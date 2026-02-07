@@ -26,3 +26,22 @@ export type {
   AdminUserInfo,
 } from "./types.ts";
 export { ROLE_PERMISSIONS, toUserInfo } from "./types.ts";
+
+// Editor
+export { markdownToBlocks, blocksToMarkdown } from "./editor/serializer.ts";
+export { parseMarkdownToBlocks } from "./editor/parser.ts";
+export { generateBlockId } from "./editor/types.ts";
+export type {
+  Block,
+  BlockDocument,
+  BlockType,
+  ParagraphBlock,
+  HeadingBlock,
+  ListBlock,
+  BlockquoteBlock,
+  CodeBlock,
+  ImageBlock,
+  DividerBlock,
+  TableBlock,
+  HtmlBlock,
+} from "./editor/types.ts";

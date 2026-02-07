@@ -1,0 +1,637 @@
+/**
+ * Page editor UI — two-panel editor with block editing and live preview.
+ *
+ * Left panel: Block editor (visual) or raw source editor
+ * Right panel: Live preview iframe
+ * Sidebar: Frontmatter editor (title, slug, template, taxonomy, etc.)
+ */
+
+/**
+ * Render the page editor page.
+ */
+export function renderPageEditorPage(
+  prefix: string,
+  userName: string,
+  pageData: {
+    sourcePath: string;
+    route: string;
+    title: string;
+    format: string;
+    template: string;
+    published: boolean;
+    rawContent: string | null;
+    frontmatter: Record<string, unknown>;
+    media: Array<{ name: string; url: string; type: string; size: number }>;
+  },
+): string {
+  const fm = pageData.frontmatter;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit: ${escapeHtml(pageData.title)} — Dune Admin</title>
+  <style>${editorStyles()}</style>
+</head>
+<body>
+  <div class="editor-layout">
+    <!-- Top toolbar -->
+    <header class="editor-toolbar">
+      <div class="toolbar-left">
+        <a href="${prefix}/pages" class="btn btn-sm btn-outline">← Pages</a>
+        <span class="editor-title">${escapeHtml(pageData.title)}</span>
+        <span class="badge badge-${pageData.format}">${pageData.format}</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-sm btn-outline" onclick="togglePreview()">Preview</button>
+        <button class="btn btn-sm btn-outline" onclick="toggleSource()">Source</button>
+        <a href="${escapeAttr(pageData.route)}" target="_blank" class="btn btn-sm btn-outline">View →</a>
+        <button class="btn btn-sm btn-primary" onclick="savePage()">Save</button>
+      </div>
+    </header>
+
+    <div class="editor-body">
+      <!-- Frontmatter sidebar -->
+      <aside class="editor-sidebar" id="editor-sidebar">
+        <h4>Page Settings</h4>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="fm-title" value="${escapeAttr(String(fm.title ?? ""))}" onchange="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Template</label>
+          <input type="text" id="fm-template" value="${escapeAttr(String(fm.template ?? "default"))}" onchange="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Slug</label>
+          <input type="text" id="fm-slug" value="${escapeAttr(String(fm.slug ?? ""))}" placeholder="auto" onchange="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="fm-published" ${fm.published !== false ? "checked" : ""} onchange="markDirty()">
+            Published
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="fm-date" value="${escapeAttr(String(fm.date ?? ""))}" onchange="markDirty()">
+        </div>
+
+        ${pageData.media.length > 0 ? `
+        <h4>Media Files</h4>
+        <div class="media-list">
+          ${pageData.media.map((m) => `
+            <div class="media-item">
+              ${m.type.startsWith("image/") ? `<img src="${escapeAttr(m.url)}" alt="${escapeAttr(m.name)}" class="media-thumb">` : `<span class="media-file-icon">📎</span>`}
+              <span class="media-name" title="${escapeAttr(m.name)}">${escapeHtml(m.name)}</span>
+              <button class="btn btn-xs" onclick="insertMedia('${escapeAttr(m.name)}', '${escapeAttr(m.url)}')" title="Insert">+</button>
+            </div>
+          `).join("")}
+        </div>
+        ` : ""}
+
+        <div class="sidebar-section">
+          <h4>Info</h4>
+          <div class="info-row"><span>Source:</span> <code>${escapeHtml(pageData.sourcePath)}</code></div>
+          <div class="info-row"><span>Route:</span> <code>${escapeHtml(pageData.route)}</code></div>
+          <div class="info-row"><span>Format:</span> ${pageData.format}</div>
+        </div>
+      </aside>
+
+      <!-- Main editor area -->
+      <div class="editor-main">
+        <!-- Block editor view -->
+        <div class="editor-view" id="block-editor">
+          <div class="block-list" id="block-list">
+            <!-- Blocks populated by JS -->
+          </div>
+          <button class="btn btn-sm btn-outline add-block-btn" onclick="addBlock('paragraph')">+ Add Block</button>
+        </div>
+
+        <!-- Source editor view (hidden by default) -->
+        <div class="editor-view" id="source-editor" style="display:none">
+          <textarea id="source-textarea" class="source-textarea" spellcheck="false" onchange="markDirty()">${escapeHtml(pageData.rawContent ?? "")}</textarea>
+        </div>
+      </div>
+
+      <!-- Preview panel (hidden by default) -->
+      <div class="editor-preview" id="preview-panel" style="display:none">
+        <iframe id="preview-frame" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  ${editorScript(prefix, pageData)}
+  </script>
+</body>
+</html>`;
+}
+
+function editorScript(
+  prefix: string,
+  pageData: { sourcePath: string; rawContent: string | null; format: string },
+): string {
+  return `
+    // Editor state
+    let blocks = [];
+    let isDirty = false;
+    let sourceMode = false;
+    let previewVisible = false;
+
+    // Block type definitions for the add menu
+    const BLOCK_TYPES = [
+      { type: 'paragraph', label: 'Paragraph', icon: '¶' },
+      { type: 'heading', label: 'Heading', icon: 'H' },
+      { type: 'list', label: 'List', icon: '•' },
+      { type: 'blockquote', label: 'Quote', icon: '"' },
+      { type: 'code', label: 'Code', icon: '<>' },
+      { type: 'image', label: 'Image', icon: '🖼' },
+      { type: 'divider', label: 'Divider', icon: '—' },
+      { type: 'table', label: 'Table', icon: '⊞' },
+    ];
+
+    // Initialize blocks from source content
+    function initEditor() {
+      const content = ${JSON.stringify(pageData.rawContent ?? "")};
+      if (content && ${JSON.stringify(pageData.format !== "tsx")}) {
+        // Parse markdown to blocks via API
+        fetch('${prefix}/api/editor/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          blocks = data.blocks || [];
+          renderBlocks();
+        })
+        .catch(() => {
+          // Fallback: single paragraph block
+          blocks = [{ id: genId(), type: 'paragraph', text: content }];
+          renderBlocks();
+        });
+      } else {
+        blocks = [];
+        renderBlocks();
+      }
+    }
+
+    function genId() {
+      return Math.random().toString(36).substr(2, 8);
+    }
+
+    function markDirty() {
+      isDirty = true;
+      document.querySelector('.editor-title').style.fontStyle = 'italic';
+    }
+
+    // Render all blocks
+    function renderBlocks() {
+      const list = document.getElementById('block-list');
+      list.innerHTML = blocks.map((block, i) => renderBlock(block, i)).join('');
+    }
+
+    function renderBlock(block, index) {
+      const moveUp = index > 0 ? '<button class="block-action" onclick="moveBlock(' + index + ',-1)" title="Move up">↑</button>' : '';
+      const moveDown = index < blocks.length - 1 ? '<button class="block-action" onclick="moveBlock(' + index + ',1)" title="Move down">↓</button>' : '';
+
+      let content = '';
+      switch (block.type) {
+        case 'paragraph':
+          content = '<div class="block-input" contenteditable="true" data-index="' + index + '" data-field="text" onblur="updateField(this)">' + escapeHtml(block.text || '') + '</div>';
+          break;
+        case 'heading':
+          content = '<div class="block-heading-row"><select class="block-level" onchange="updateLevel(' + index + ', this.value)">' +
+            [1,2,3,4,5,6].map(l => '<option value="' + l + '"' + (block.level === l ? ' selected' : '') + '>H' + l + '</option>').join('') +
+            '</select><div class="block-input block-heading" contenteditable="true" data-index="' + index + '" data-field="text" onblur="updateField(this)">' + escapeHtml(block.text || '') + '</div></div>';
+          break;
+        case 'list':
+          content = '<div class="block-list-editor"><label><input type="checkbox" ' + (block.ordered ? 'checked' : '') + ' onchange="toggleOrdered(' + index + ', this.checked)"> Ordered</label>' +
+            '<div class="block-list-items">' + (block.items || []).map((item, j) =>
+              '<div class="list-item-row"><span class="list-bullet">' + (block.ordered ? (j+1)+'.' : '•') + '</span><div contenteditable="true" class="block-input list-item-input" data-index="' + index + '" data-item="' + j + '" onblur="updateListItem(this)">' + escapeHtml(item) + '</div><button class="block-action" onclick="removeListItem(' + index + ',' + j + ')">×</button></div>'
+            ).join('') + '</div>' +
+            '<button class="btn btn-xs btn-outline" onclick="addListItem(' + index + ')">+ Item</button></div>';
+          break;
+        case 'blockquote':
+          content = '<div class="block-quote-bar"><div class="block-input" contenteditable="true" data-index="' + index + '" data-field="text" onblur="updateField(this)">' + escapeHtml(block.text || '') + '</div></div>';
+          break;
+        case 'code':
+          content = '<div class="block-code-editor"><input type="text" class="code-lang" placeholder="language" value="' + (block.language || '') + '" onchange="updateCodeLang(' + index + ', this.value)"><textarea class="code-textarea" data-index="' + index + '" onchange="updateCode(' + index + ', this.value)">' + escapeHtml(block.code || '') + '</textarea></div>';
+          break;
+        case 'image':
+          content = '<div class="block-image-editor"><input type="text" placeholder="Image source" value="' + escapeAttr(block.src || '') + '" onchange="updateImgField(' + index + ', \\'src\\', this.value)"><input type="text" placeholder="Alt text" value="' + escapeAttr(block.alt || '') + '" onchange="updateImgField(' + index + ', \\'alt\\', this.value)">' +
+            (block.src ? '<img src="' + escapeAttr(block.src) + '" class="block-image-preview">' : '') + '</div>';
+          break;
+        case 'divider':
+          content = '<hr class="block-divider">';
+          break;
+        case 'table':
+          content = '<div class="block-table-editor"><table class="block-table"><thead><tr>' +
+            (block.headers || []).map((h, j) => '<th><div contenteditable="true" data-index="' + index + '" data-header="' + j + '" onblur="updateTableHeader(this)">' + escapeHtml(h) + '</div></th>').join('') +
+            '</tr></thead><tbody>' +
+            (block.rows || []).map((row, ri) => '<tr>' + row.map((cell, ci) => '<td><div contenteditable="true" data-index="' + index + '" data-row="' + ri + '" data-col="' + ci + '" onblur="updateTableCell(this)">' + escapeHtml(cell) + '</div></td>').join('') + '</tr>').join('') +
+            '</tbody></table></div>';
+          break;
+        case 'html':
+          content = '<textarea class="html-textarea" data-index="' + index + '" onchange="updateHtml(' + index + ', this.value)">' + escapeHtml(block.html || '') + '</textarea>';
+          break;
+        default:
+          content = '<div class="block-unknown">Unknown block: ' + block.type + '</div>';
+      }
+
+      return '<div class="block" data-index="' + index + '" data-type="' + block.type + '">' +
+        '<div class="block-header"><span class="block-type-label">' + block.type + '</span><div class="block-controls">' + moveUp + moveDown +
+        '<button class="block-action block-action-delete" onclick="removeBlock(' + index + ')" title="Delete">🗑</button></div></div>' +
+        '<div class="block-content">' + content + '</div>' +
+        '<div class="block-add-below"><button class="btn btn-xs btn-outline" onclick="showAddMenu(' + index + ')">+</button></div></div>';
+    }
+
+    // Block operations
+    function addBlock(type, afterIndex) {
+      const idx = afterIndex !== undefined ? afterIndex + 1 : blocks.length;
+      const block = createDefaultBlock(type);
+      blocks.splice(idx, 0, block);
+      renderBlocks();
+      markDirty();
+    }
+
+    function createDefaultBlock(type) {
+      const id = genId();
+      switch (type) {
+        case 'paragraph': return { id, type, text: '' };
+        case 'heading': return { id, type, level: 2, text: '' };
+        case 'list': return { id, type, ordered: false, items: [''] };
+        case 'blockquote': return { id, type, text: '' };
+        case 'code': return { id, type, language: '', code: '' };
+        case 'image': return { id, type, src: '', alt: '' };
+        case 'divider': return { id, type: 'divider' };
+        case 'table': return { id, type, headers: ['Col 1', 'Col 2'], rows: [['', '']] };
+        case 'html': return { id, type, html: '' };
+        default: return { id, type: 'paragraph', text: '' };
+      }
+    }
+
+    function removeBlock(index) {
+      blocks.splice(index, 1);
+      renderBlocks();
+      markDirty();
+    }
+
+    function moveBlock(index, dir) {
+      const newIndex = index + dir;
+      if (newIndex < 0 || newIndex >= blocks.length) return;
+      [blocks[index], blocks[newIndex]] = [blocks[newIndex], blocks[index]];
+      renderBlocks();
+      markDirty();
+    }
+
+    // Field update handlers
+    function updateField(el) {
+      const i = parseInt(el.dataset.index);
+      const field = el.dataset.field;
+      blocks[i][field] = el.textContent;
+      markDirty();
+    }
+
+    function updateLevel(index, level) {
+      blocks[index].level = parseInt(level);
+      markDirty();
+    }
+
+    function toggleOrdered(index, ordered) {
+      blocks[index].ordered = ordered;
+      renderBlocks();
+      markDirty();
+    }
+
+    function addListItem(index) {
+      blocks[index].items.push('');
+      renderBlocks();
+      markDirty();
+    }
+
+    function removeListItem(index, itemIndex) {
+      blocks[index].items.splice(itemIndex, 1);
+      renderBlocks();
+      markDirty();
+    }
+
+    function updateListItem(el) {
+      const i = parseInt(el.dataset.index);
+      const j = parseInt(el.dataset.item);
+      blocks[i].items[j] = el.textContent;
+      markDirty();
+    }
+
+    function updateCodeLang(index, lang) {
+      blocks[index].language = lang;
+      markDirty();
+    }
+
+    function updateCode(index, code) {
+      blocks[index].code = code;
+      markDirty();
+    }
+
+    function updateImgField(index, field, value) {
+      blocks[index][field] = value;
+      renderBlocks();
+      markDirty();
+    }
+
+    function updateHtml(index, html) {
+      blocks[index].html = html;
+      markDirty();
+    }
+
+    function updateTableHeader(el) {
+      const i = parseInt(el.dataset.index);
+      const j = parseInt(el.dataset.header);
+      blocks[i].headers[j] = el.textContent;
+      markDirty();
+    }
+
+    function updateTableCell(el) {
+      const i = parseInt(el.dataset.index);
+      const r = parseInt(el.dataset.row);
+      const c = parseInt(el.dataset.col);
+      blocks[i].rows[r][c] = el.textContent;
+      markDirty();
+    }
+
+    // Add block menu
+    function showAddMenu(afterIndex) {
+      const menu = document.createElement('div');
+      menu.className = 'add-block-menu';
+      menu.innerHTML = BLOCK_TYPES.map(bt =>
+        '<button class="add-block-option" onclick="addBlock(\\'' + bt.type + '\\',' + afterIndex + ');this.parentElement.remove()">' +
+        '<span class="add-icon">' + bt.icon + '</span> ' + bt.label + '</button>'
+      ).join('');
+      const btn = event.target;
+      btn.parentElement.appendChild(menu);
+      setTimeout(() => document.addEventListener('click', function close(e) {
+        if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
+      }), 0);
+    }
+
+    // Insert media from sidebar
+    function insertMedia(name, url) {
+      const block = { id: genId(), type: 'image', src: name, alt: name.replace(/\\.[^.]+$/, '') };
+      blocks.push(block);
+      renderBlocks();
+      markDirty();
+    }
+
+    // Source/preview toggle
+    function toggleSource() {
+      sourceMode = !sourceMode;
+      document.getElementById('block-editor').style.display = sourceMode ? 'none' : '';
+      document.getElementById('source-editor').style.display = sourceMode ? '' : 'none';
+      if (sourceMode) {
+        // Serialize blocks to markdown for source view
+        fetch('${prefix}/api/editor/serialize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blocks }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('source-textarea').value = data.markdown || '';
+        });
+      } else {
+        // Parse source back to blocks
+        const src = document.getElementById('source-textarea').value;
+        fetch('${prefix}/api/editor/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: src }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          blocks = data.blocks || [];
+          renderBlocks();
+        });
+      }
+    }
+
+    function togglePreview() {
+      previewVisible = !previewVisible;
+      document.getElementById('preview-panel').style.display = previewVisible ? '' : 'none';
+      if (previewVisible) refreshPreview();
+    }
+
+    function refreshPreview() {
+      // Get current content as markdown
+      const getContent = sourceMode
+        ? Promise.resolve(document.getElementById('source-textarea').value)
+        : fetch('${prefix}/api/editor/serialize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blocks }),
+          }).then(r => r.json()).then(d => d.markdown || '');
+
+      getContent.then(content => {
+        fetch('${prefix}/api/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourcePath: ${JSON.stringify(pageData.sourcePath)},
+            content,
+            frontmatter: getFrontmatter(),
+          }),
+        })
+        .then(r => r.text())
+        .then(html => {
+          const frame = document.getElementById('preview-frame');
+          frame.srcdoc = html;
+        });
+      });
+    }
+
+    // Collect frontmatter from sidebar form
+    function getFrontmatter() {
+      const fm = {};
+      fm.title = document.getElementById('fm-title').value;
+      fm.template = document.getElementById('fm-template').value;
+      const slug = document.getElementById('fm-slug').value;
+      if (slug) fm.slug = slug;
+      fm.published = document.getElementById('fm-published').checked;
+      const date = document.getElementById('fm-date').value;
+      if (date) fm.date = date;
+      return fm;
+    }
+
+    // Save
+    function savePage() {
+      const getContent = sourceMode
+        ? Promise.resolve(document.getElementById('source-textarea').value)
+        : fetch('${prefix}/api/editor/serialize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blocks }),
+          }).then(r => r.json()).then(d => d.markdown || '');
+
+      getContent.then(content => {
+        const fm = getFrontmatter();
+        return fetch('${prefix}/api/pages/${encodeURIComponent(pageData.sourcePath)}', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, frontmatter: fm }),
+        });
+      })
+      .then(r => r.json())
+      .then(result => {
+        if (result.updated) {
+          isDirty = false;
+          document.querySelector('.editor-title').style.fontStyle = 'normal';
+          if (previewVisible) refreshPreview();
+        } else {
+          alert('Save failed: ' + (result.error || 'Unknown error'));
+        }
+      })
+      .catch(err => alert('Save error: ' + err.message));
+    }
+
+    // Utility
+    function escapeHtml(s) {
+      return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function escapeAttr(s) {
+      return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // Warn on unsaved changes
+    window.addEventListener('beforeunload', function(e) {
+      if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // Init
+    initEditor();
+  `;
+}
+
+function editorStyles(): string {
+  return `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; }
+
+  .editor-layout { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Toolbar */
+  .editor-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #1a1a2e; color: #fff; }
+  .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 0.5rem; }
+  .editor-title { font-weight: 600; margin: 0 0.5rem; }
+  .btn { display: inline-block; padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer; text-decoration: none; color: inherit; }
+  .btn-primary { background: #c9a96e; color: #fff; }
+  .btn-primary:hover { background: #b8944f; }
+  .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #ccc; }
+  .btn-outline:hover { background: rgba(255,255,255,0.1); }
+  .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .btn-xs { padding: 0.15rem 0.4rem; font-size: 0.75rem; }
+
+  .badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; }
+  .badge-md { background: #e8f4f8; color: #1a7a9b; }
+  .badge-mdx { background: #f0e8f8; color: #7a1a9b; }
+  .badge-tsx { background: #e8f8e8; color: #1a7a3b; }
+  .badge-draft { background: #fff3cd; color: #856404; }
+
+  /* Body layout */
+  .editor-body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .editor-sidebar { width: 280px; background: #fff; border-right: 1px solid #e0e0e0; padding: 1rem; overflow-y: auto; flex-shrink: 0; }
+  .editor-sidebar h4 { margin-bottom: 0.5rem; font-size: 0.85rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 1rem; }
+  .editor-sidebar h4:first-child { margin-top: 0; }
+  .form-group { margin-bottom: 0.75rem; }
+  .form-group label { display: block; margin-bottom: 0.2rem; font-size: 0.8rem; color: #555; }
+  .form-group input[type="text"], .form-group input[type="date"], .form-group select {
+    width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #c9a96e; }
+  .info-row { font-size: 0.8rem; color: #666; margin-bottom: 0.25rem; }
+  .info-row code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.75rem; }
+
+  /* Media list */
+  .media-list { display: flex; flex-direction: column; gap: 0.25rem; }
+  .media-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-radius: 4px; }
+  .media-item:hover { background: #f5f5f5; }
+  .media-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 3px; }
+  .media-file-icon { width: 32px; text-align: center; }
+  .media-name { flex: 1; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Main editor */
+  .editor-main { flex: 1; overflow-y: auto; padding: 1rem; }
+  .editor-view { max-width: 800px; margin: 0 auto; }
+
+  /* Block list */
+  .block { margin-bottom: 0.5rem; background: #fff; border: 1px solid #e8e8e8; border-radius: 6px; transition: border-color 0.15s; }
+  .block:hover { border-color: #c9a96e; }
+  .block-header { display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0.5rem; background: #fafafa; border-bottom: 1px solid #eee; border-radius: 6px 6px 0 0; }
+  .block-type-label { font-size: 0.7rem; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+  .block-controls { display: flex; gap: 0.15rem; }
+  .block-action { background: none; border: none; cursor: pointer; padding: 0.1rem 0.3rem; font-size: 0.75rem; border-radius: 3px; color: #999; }
+  .block-action:hover { background: #eee; color: #333; }
+  .block-action-delete:hover { background: #fee; color: #c33; }
+  .block-content { padding: 0.5rem; }
+  .block-input { min-height: 1.5em; padding: 0.25rem; outline: none; border-radius: 3px; }
+  .block-input:focus { background: #fffef5; }
+  .block-heading { font-weight: 600; font-size: 1.2rem; }
+  .block-add-below { text-align: center; padding: 0.15rem; opacity: 0; transition: opacity 0.15s; }
+  .block:hover .block-add-below { opacity: 1; }
+
+  /* Block-specific styles */
+  .block-heading-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+  .block-level { width: 60px; padding: 0.2rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.8rem; }
+  .block-quote-bar { border-left: 3px solid #c9a96e; padding-left: 0.75rem; }
+  .block-code-editor { display: flex; flex-direction: column; gap: 0.25rem; }
+  .code-lang { width: 120px; padding: 0.2rem 0.4rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.8rem; }
+  .code-textarea { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; padding: 0.5rem; border: 1px solid #ddd; border-radius: 3px; min-height: 80px; resize: vertical; background: #1e1e1e; color: #d4d4d4; }
+  .block-image-editor { display: flex; flex-direction: column; gap: 0.25rem; }
+  .block-image-editor input { padding: 0.3rem 0.5rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.85rem; }
+  .block-image-preview { max-width: 100%; max-height: 200px; object-fit: contain; border-radius: 3px; margin-top: 0.25rem; }
+  .block-divider { border: none; border-top: 2px solid #e0e0e0; margin: 0.5rem 0; }
+  .block-table { width: 100%; border-collapse: collapse; }
+  .block-table th, .block-table td { border: 1px solid #ddd; padding: 0.3rem 0.5rem; font-size: 0.85rem; }
+  .block-table th { background: #f8f8f8; }
+  .block-table [contenteditable] { outline: none; min-width: 40px; }
+  .html-textarea { width: 100%; min-height: 60px; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; border: 1px solid #ddd; border-radius: 3px; }
+  .block-list-editor label { font-size: 0.8rem; color: #666; margin-bottom: 0.25rem; display: block; }
+  .list-item-row { display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.15rem; }
+  .list-bullet { color: #999; font-size: 0.85rem; min-width: 20px; }
+  .list-item-input { flex: 1; }
+
+  /* Add block menu */
+  .add-block-menu { position: absolute; background: #fff; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 0.25rem; z-index: 100; display: flex; flex-wrap: wrap; gap: 0.15rem; width: 280px; }
+  .add-block-option { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border: none; background: none; cursor: pointer; border-radius: 4px; font-size: 0.85rem; width: calc(50% - 0.1rem); }
+  .add-block-option:hover { background: #f0f0f0; }
+  .add-icon { font-size: 1rem; width: 20px; text-align: center; }
+  .add-block-btn { margin-top: 0.5rem; }
+
+  /* Source editor */
+  .source-textarea { width: 100%; height: calc(100vh - 120px); font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.9rem; padding: 1rem; border: 1px solid #ddd; border-radius: 6px; resize: none; line-height: 1.6; }
+
+  /* Preview panel */
+  .editor-preview { width: 50%; border-left: 1px solid #e0e0e0; background: #fff; flex-shrink: 0; }
+  .editor-preview iframe { width: 100%; height: 100%; border: none; }
+
+  /* Modal */
+  .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+  .modal-content { position: relative; background: #fff; border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 480px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  .modal-content h3 { margin-bottom: 1rem; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+  .form-actions .btn-outline { color: #666; border-color: #ddd; }
+
+  .sidebar-section { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+  `;
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function escapeAttr(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
