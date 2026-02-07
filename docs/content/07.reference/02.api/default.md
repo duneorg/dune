@@ -79,6 +79,52 @@ Returns the full page object including rendered HTML content.
 }
 ```
 
+### Get child pages
+
+```
+GET /api/pages/{route}/children
+```
+
+Returns direct child pages of the given page.
+
+```json
+{
+  "items": [
+    {
+      "route": "/blog/hello-world",
+      "title": "Hello World",
+      "date": "2025-06-15",
+      "template": "post",
+      "format": "md",
+      "order": 1
+    }
+  ],
+  "total": 3
+}
+```
+
+### Get page media
+
+```
+GET /api/pages/{route}/media
+```
+
+Returns co-located media files for a page.
+
+```json
+{
+  "items": [
+    {
+      "name": "cover.jpg",
+      "url": "/content-media/02.blog/01.hello-world/cover.jpg",
+      "type": "image/jpeg",
+      "size": 48320
+    }
+  ],
+  "total": 1
+}
+```
+
 ## Collections
 
 ### Query a collection
@@ -96,6 +142,28 @@ Query parameters:
 | `page` | number | Pagination page number |
 
 ## Taxonomy
+
+### List all taxonomies
+
+```
+GET /api/taxonomy
+```
+
+Returns all taxonomy types with their values and page counts.
+
+```json
+{
+  "tag": {
+    "deno": 12,
+    "fresh": 8,
+    "cms": 3
+  },
+  "category": {
+    "tutorials": 5,
+    "announcements": 2
+  }
+}
+```
 
 ### List taxonomy values
 
@@ -153,6 +221,58 @@ Response:
     }
   ],
   "total": 3
+}
+```
+
+## Site Configuration
+
+### Get site config
+
+```
+GET /api/config/site
+```
+
+Returns the public site configuration values.
+
+```json
+{
+  "title": "My Site",
+  "description": "A site built with Dune CMS",
+  "url": "https://example.com",
+  "author": { "name": "Jane Doe" },
+  "metadata": {},
+  "taxonomies": ["tag", "category"]
+}
+```
+
+## Navigation
+
+### Get navigation tree
+
+```
+GET /api/nav
+```
+
+Returns the ordered navigation tree of visible pages.
+
+```json
+{
+  "items": [
+    {
+      "route": "/",
+      "title": "Home",
+      "order": 1,
+      "depth": 0,
+      "template": "default"
+    },
+    {
+      "route": "/blog",
+      "title": "Blog",
+      "order": 2,
+      "depth": 0,
+      "template": "blog"
+    }
+  ]
 }
 ```
 

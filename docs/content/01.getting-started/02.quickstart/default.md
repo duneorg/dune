@@ -12,6 +12,16 @@ metadata:
 
 # Your First Page
 
+## Start the dev server
+
+If you haven't already, start the development server so you can see changes in real time:
+
+```bash
+deno task dev
+```
+
+The server starts at `http://localhost:8000` with hot-reload — every content or theme change is picked up automatically.
+
 ## Create a blog section
 
 Create a folder for your blog and add a listing page:

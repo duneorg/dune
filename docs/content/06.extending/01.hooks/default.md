@@ -52,6 +52,13 @@ Hooks let you run code at specific points in Dune's lifecycle — when a page lo
 | `onCacheMiss` | Cache miss, will process | Performance monitoring |
 | `onCacheInvalidate` | Cache entry invalidated | CDN purging |
 
+### API hooks
+
+| Hook | When it fires | Use case |
+|------|--------------|----------|
+| `onApiRequest` | Before API request is handled | Auth, rate limiting, request logging |
+| `onApiResponse` | After API response is built | Response transformation, headers |
+
 ## Registering hooks
 
 ```typescript
