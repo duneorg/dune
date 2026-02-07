@@ -14,11 +14,17 @@ import { createCollectionEngine } from "../collections/engine.ts";
 import { createTaxonomyEngine } from "../taxonomy/engine.ts";
 import { createSearchEngine } from "../search/engine.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
+import { createImageProcessor } from "../images/processor.ts";
+import { createImageCache } from "../images/cache.ts";
+import { createImageHandler } from "../images/handler.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import type { HookRegistry } from "../hooks/types.ts";
+import type { ImageHandler } from "../images/handler.ts";
+import type { ImageProcessor } from "../images/processor.ts";
+import type { ImageCache } from "../images/cache.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -31,6 +37,9 @@ export interface BootstrapResult {
   taxonomy: TaxonomyEngine;
   search: SearchEngine;
   hooks: HookRegistry;
+  imageHandler: ImageHandler;
+  imageProcessor: ImageProcessor;
+  imageCache: ImageCache;
 }
 
 export interface BootstrapOptions {
@@ -108,5 +117,25 @@ export async function bootstrap(
     await search.build();
   }
 
-  return { engine, storage, config, formats, collections, taxonomy, search, hooks };
+  // 9. Image processing pipeline
+  const imageProcessor = createImageProcessor({
+    defaultQuality: config.system.images.default_quality,
+    allowedSizes: config.system.images.allowed_sizes,
+  });
+
+  const imageCache = createImageCache({
+    storage,
+    cacheDir: config.system.images.cache_dir,
+  });
+
+  const imageHandler = createImageHandler({
+    engine,
+    processor: imageProcessor,
+    cache: imageCache,
+  });
+
+  return {
+    engine, storage, config, formats, collections, taxonomy,
+    search, hooks, imageHandler, imageProcessor, imageCache,
+  };
 }

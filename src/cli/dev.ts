@@ -22,7 +22,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Bootstrap engine
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
-  const { engine, collections, taxonomy, search } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler } = ctx;
   const routes = duneRoutes(engine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
 
@@ -94,9 +94,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           { status: 404, headers: { "Content-Type": "application/json" } },
         );
       }
-      // Media routes
+      // Media routes (image processing first, then raw media)
       else if (url.pathname.startsWith("/content-media/")) {
-        response = await routes.mediaHandler(req);
+        const imageResult = await imageHandler(req);
+        response = imageResult ?? await routes.mediaHandler(req);
       }
       // Content routes
       else {

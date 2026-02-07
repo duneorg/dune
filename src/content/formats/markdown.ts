@@ -7,7 +7,8 @@
  *   3. At render time: markdown → HTML via marked
  *   4. Resolve co-located media references
  *
- * v0.1: images served as-is. Image processing deferred to v0.2.
+ * Images: query params (width, height, format, quality) are preserved in URLs
+ * and processed by the image handler at request time (v0.2).
  */
 
 import matter from "gray-matter";

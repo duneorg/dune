@@ -14,7 +14,8 @@
     "@std/encoding": "jsr:@std/encoding@^1",
     "marked": "npm:marked@^15",
     "gray-matter": "npm:gray-matter@^4",
-    "@mdx-js/mdx": "npm:@mdx-js/mdx@^3"
+    "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
+    "sharp": "npm:sharp@^0.33"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",

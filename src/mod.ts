@@ -76,3 +76,18 @@ export type { HookEvent, HookHandler, HookContext, DunePlugin, HookRegistry } fr
 // Search
 export { createSearchEngine } from "./search/engine.ts";
 export type { SearchEngine, SearchResult } from "./search/engine.ts";
+
+// Images
+export { createImageProcessor } from "./images/processor.ts";
+export type {
+  ImageProcessor,
+  ImageProcessingOptions,
+  ImageOutputFormat,
+  ImageFit,
+  ProcessedImage,
+  ImageProcessorConfig,
+} from "./images/processor.ts";
+export { createImageCache } from "./images/cache.ts";
+export type { ImageCache, ImageCacheConfig, CachedImage } from "./images/cache.ts";
+export { createImageHandler } from "./images/handler.ts";
+export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";

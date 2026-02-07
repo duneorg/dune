@@ -20,7 +20,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler } = ctx;
   const routes = duneRoutes(engine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
 
@@ -45,7 +45,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         );
       }
       if (url.pathname.startsWith("/content-media/")) {
-        return await routes.mediaHandler(req);
+        const imageResult = await imageHandler(req);
+        return imageResult ?? await routes.mediaHandler(req);
       }
       return await routes.contentHandler(req, renderJsx);
     } catch (err) {
