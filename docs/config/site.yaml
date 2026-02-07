@@ -1,0 +1,14 @@
+title: "Dune CMS Documentation"
+description: "The official documentation for Dune, a flat-file CMS built on Deno Fresh"
+url: "https://dunecms.dev/docs"
+author:
+  name: "Dune Contributors"
+taxonomies:
+  - audience
+  - difficulty
+  - topic
+metadata:
+  og:type: "website"
+  og:site_name: "Dune CMS"
+routes: {}
+redirects: {}
