@@ -79,9 +79,9 @@ export async function loadPage(
     isModule: index.isModule,
     media,
 
-    // Lazy: rendered HTML (for .md pages)
+    // Lazy: rendered HTML (for .md and .mdx pages)
     html: lazyOnce(async () => {
-      if (index.format !== "md") return "";
+      if (index.format !== "md" && index.format !== "mdx") return "";
       const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir);
       return handler.renderToHtml(page, ctx);
     }),

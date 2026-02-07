@@ -1,0 +1,56 @@
+---
+title: "MDX Content"
+published: true
+visible: true
+taxonomy:
+  audience: [developer]
+  difficulty: [intermediate]
+  topic: [extending, content]
+metadata:
+  description: "Using MDX for Markdown with embedded JSX components"
+---
+
+# MDX Content Format
+
+MDX lets you use JSX components directly inside your Markdown content. It's the hybrid format between pure Markdown (`.md`) and pure JSX (`.tsx`).
+
+## Format Spectrum
+
+Dune supports three content formats:
+
+- **`.md`** — Pure Markdown, rendered through theme templates. Best for blog posts, documentation.
+- **`.mdx`** — Markdown + JSX. Write prose in Markdown, embed interactive components. Best for tutorials with live examples.
+- **`.tsx`** — Pure JSX. The component IS the content. Best for landing pages, dashboards.
+
+## Writing MDX
+
+MDX files use the same frontmatter as Markdown files:
+
+```mdx
+---
+title: "My Tutorial"
+taxonomy:
+  tag: [tutorial, interactive]
+---
+
+# Welcome
+
+Regular **markdown** works normally.
+
+You can also embed JSX components inline.
+```
+
+## Key Differences from Markdown
+
+1. **JSX expressions** — You can use JSX syntax inline with markdown
+2. **Component imports** — Theme-provided components are available automatically
+3. **Same frontmatter** — YAML between `---` delimiters, identical to `.md`
+4. **Same routing** — Folder = page, numeric prefixes for ordering
+5. **Same collections** — MDX pages appear in collections and taxonomy queries
+6. **Same API** — REST API returns `format: "mdx"` for MDX pages
+
+## When to Use MDX
+
+Choose MDX when you need the simplicity of Markdown for most of your content but want to embed interactive elements or custom components in specific sections.
+
+For pure prose, use `.md`. For fully programmatic pages, use `.tsx`. For the middle ground, use `.mdx`.

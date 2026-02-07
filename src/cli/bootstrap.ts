@@ -8,6 +8,7 @@ import { loadConfig } from "../config/mod.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
+import { MdxHandler } from "../content/formats/mdx.ts";
 import { createDuneEngine } from "../core/engine.ts";
 import { createCollectionEngine } from "../collections/engine.ts";
 import { createTaxonomyEngine } from "../taxonomy/engine.ts";
@@ -64,6 +65,7 @@ export async function bootstrap(
   const formats = new FormatRegistry();
   formats.register(new MarkdownHandler());
   formats.register(new TsxHandler());
+  formats.register(new MdxHandler());
 
   // 4. Engine
   const engine = await createDuneEngine({
