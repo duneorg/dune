@@ -1,0 +1,33 @@
+{
+  "name": "@dune/cms",
+  "version": "0.1.0",
+  "exports": "./src/mod.ts",
+  "imports": {
+    "fresh": "jsr:@fresh/core@^2",
+    "@std/yaml": "jsr:@std/yaml@^1",
+    "@std/path": "jsr:@std/path@^1",
+    "@std/fs": "jsr:@std/fs@^1",
+    "@std/crypto": "jsr:@std/crypto@^1",
+    "@std/encoding": "jsr:@std/encoding@^1",
+    "marked": "npm:marked@^15",
+    "gray-matter": "npm:gray-matter@^4"
+  },
+  "tasks": {
+    "dev": "deno run -A src/cli.ts dev",
+    "build": "deno run -A src/cli.ts build",
+    "serve": "deno run -A src/cli.ts serve",
+    "test": "deno test -A tests/",
+    "check": "deno check src/**/*.ts",
+    "dune": "deno run -A src/cli.ts"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any"]
+    }
+  }
+}

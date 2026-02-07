@@ -1,0 +1,372 @@
+/**
+ * Content index builder — scans content directory and builds the PageIndex.
+ *
+ * This is the heart of Dune's performance story:
+ *   - Scans content directory once, parses ALL frontmatter (not body)
+ *   - Produces a lightweight PageIndex[] for routing, collections, taxonomy
+ *   - Incremental updates: only reparse changed files (mtime/hash comparison)
+ *   - Never loads full page content — that's lazy, on-demand
+ *
+ * Format-aware indexing:
+ *   - .md / .mdx → Parse YAML frontmatter between --- delimiters
+ *   - .tsx → Fast path: read .frontmatter.yaml sidecar. Fallback: AST extract.
+ */
+
+import { ContentError } from "../core/errors.ts";
+import type { StorageAdapter, StorageEntry } from "../storage/types.ts";
+import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
+import type { FormatRegistry } from "./formats/registry.ts";
+import {
+  calculateDepth,
+  getParentPath,
+  isContentFile,
+  isInDraftsFolder,
+  isInModuleFolder,
+  isMediaFile,
+  isMetadataFile,
+  parseContentFilename,
+  parseFolderName,
+  sourcePathToRoute,
+} from "./path-utils.ts";
+
+export interface IndexBuilderOptions {
+  /** Storage adapter for reading files */
+  storage: StorageAdapter;
+  /** Content directory path (relative to storage root) */
+  contentDir: string;
+  /** Format handler registry */
+  formats: FormatRegistry;
+}
+
+export interface BuildResult {
+  /** The built page index */
+  pages: PageIndex[];
+  /** Taxonomy reverse index: { tag: { deno: ["path1", "path2"] } } */
+  taxonomyMap: TaxonomyMap;
+  /** Number of files scanned */
+  scanned: number;
+  /** Number of pages indexed */
+  indexed: number;
+  /** Errors encountered (non-fatal) */
+  errors: IndexError[];
+  /** Build duration in milliseconds */
+  duration: number;
+}
+
+export interface IndexError {
+  path: string;
+  message: string;
+}
+
+/** Taxonomy reverse index */
+export type TaxonomyMap = Record<string, Record<string, string[]>>;
+
+/**
+ * Build a complete content index from scratch.
+ */
+export async function buildIndex(
+  options: IndexBuilderOptions,
+): Promise<BuildResult> {
+  const start = performance.now();
+  const { storage, contentDir, formats } = options;
+
+  const pages: PageIndex[] = [];
+  const taxonomyMap: TaxonomyMap = {};
+  const errors: IndexError[] = [];
+  let scanned = 0;
+
+  // Recursively scan the content directory
+  let entries: StorageEntry[];
+  try {
+    entries = await storage.listRecursive(contentDir);
+  } catch (err) {
+    throw new ContentError(
+      `Failed to scan content directory "${contentDir}": ${err}`,
+    );
+  }
+
+  // Process each file
+  for (const entry of entries) {
+    scanned++;
+
+    // Skip directories, metadata files, and non-content files
+    if (!entry.isFile) continue;
+    if (isMetadataFile(entry.name)) continue;
+    if (isMediaFile(entry.name)) continue;
+    if (!isContentFile(entry.name)) continue;
+
+    // Skip files in _drafts folders
+    const relativePath = stripContentDir(entry.path, contentDir);
+    if (isInDraftsFolder(relativePath)) continue;
+
+    // Parse content filename
+    const fileInfo = parseContentFilename(entry.name);
+    if (!fileInfo) continue;
+
+    // Get the format handler
+    const handler = formats.get(fileInfo.ext);
+    if (!handler) {
+      errors.push({
+        path: entry.path,
+        message: `No format handler registered for ${fileInfo.ext}`,
+      });
+      continue;
+    }
+
+    try {
+      // Get file stats for mtime
+      const stat = await storage.stat(entry.path);
+
+      // Read file content for frontmatter extraction
+      const raw = await storage.readText(entry.path);
+
+      // Extract frontmatter (fast — no body parsing/rendering)
+      const frontmatter = await handler.extractFrontmatter(raw, entry.path);
+
+      // Build the page index entry
+      const pageIndex = buildPageIndex(
+        relativePath,
+        fileInfo.format,
+        fileInfo.template,
+        frontmatter,
+        stat.mtime,
+        raw,
+      );
+
+      if (pageIndex) {
+        pages.push(pageIndex);
+
+        // Update taxonomy map
+        if (frontmatter.taxonomy) {
+          updateTaxonomyMap(taxonomyMap, frontmatter.taxonomy, pageIndex.sourcePath);
+        }
+      }
+    } catch (err) {
+      errors.push({
+        path: entry.path,
+        message: `${err}`,
+      });
+    }
+  }
+
+  // Sort pages by route for consistent ordering
+  pages.sort((a, b) => a.route.localeCompare(b.route));
+
+  const duration = performance.now() - start;
+
+  return {
+    pages,
+    taxonomyMap,
+    scanned,
+    indexed: pages.length,
+    errors,
+    duration,
+  };
+}
+
+/**
+ * Incrementally update the index with changed files.
+ * Compares mtime to detect changes.
+ */
+export async function updateIndex(
+  existingPages: PageIndex[],
+  existingTaxonomy: TaxonomyMap,
+  options: IndexBuilderOptions,
+): Promise<BuildResult> {
+  const start = performance.now();
+  const { storage, contentDir, formats } = options;
+
+  // Build a map of existing pages by sourcePath
+  const existing = new Map<string, PageIndex>();
+  for (const page of existingPages) {
+    existing.set(page.sourcePath, page);
+  }
+
+  const pages: PageIndex[] = [];
+  const taxonomyMap: TaxonomyMap = {};
+  const errors: IndexError[] = [];
+  let scanned = 0;
+  let reindexed = 0;
+
+  let entries: StorageEntry[];
+  try {
+    entries = await storage.listRecursive(contentDir);
+  } catch (err) {
+    throw new ContentError(
+      `Failed to scan content directory "${contentDir}": ${err}`,
+    );
+  }
+
+  // Track which paths are still present (for detecting deletions)
+  const currentPaths = new Set<string>();
+
+  for (const entry of entries) {
+    scanned++;
+
+    if (!entry.isFile) continue;
+    if (isMetadataFile(entry.name)) continue;
+    if (isMediaFile(entry.name)) continue;
+    if (!isContentFile(entry.name)) continue;
+
+    const relativePath = stripContentDir(entry.path, contentDir);
+    if (isInDraftsFolder(relativePath)) continue;
+
+    const fileInfo = parseContentFilename(entry.name);
+    if (!fileInfo) continue;
+
+    currentPaths.add(relativePath);
+
+    // Check if file has changed
+    const stat = await storage.stat(entry.path);
+    const existingPage = existing.get(relativePath);
+
+    if (existingPage && existingPage.mtime === stat.mtime) {
+      // Unchanged — reuse existing index entry
+      pages.push(existingPage);
+
+      // Rebuild taxonomy from existing data
+      if (existingPage.taxonomy) {
+        updateTaxonomyMap(taxonomyMap, existingPage.taxonomy, existingPage.sourcePath);
+      }
+      continue;
+    }
+
+    // Changed or new — reindex
+    reindexed++;
+    const handler = formats.get(fileInfo.ext);
+    if (!handler) {
+      errors.push({
+        path: entry.path,
+        message: `No format handler registered for ${fileInfo.ext}`,
+      });
+      continue;
+    }
+
+    try {
+      const raw = await storage.readText(entry.path);
+      const frontmatter = await handler.extractFrontmatter(raw, entry.path);
+
+      const pageIndex = buildPageIndex(
+        relativePath,
+        fileInfo.format,
+        fileInfo.template,
+        frontmatter,
+        stat.mtime,
+        raw,
+      );
+
+      if (pageIndex) {
+        pages.push(pageIndex);
+        if (frontmatter.taxonomy) {
+          updateTaxonomyMap(taxonomyMap, frontmatter.taxonomy, pageIndex.sourcePath);
+        }
+      }
+    } catch (err) {
+      errors.push({ path: entry.path, message: `${err}` });
+    }
+  }
+
+  pages.sort((a, b) => a.route.localeCompare(b.route));
+
+  const duration = performance.now() - start;
+
+  return {
+    pages,
+    taxonomyMap,
+    scanned,
+    indexed: pages.length,
+    errors,
+    duration,
+  };
+}
+
+// === Internal helpers ===
+
+/** Build a single PageIndex entry from parsed data. */
+function buildPageIndex(
+  sourcePath: string,
+  format: ContentFormat,
+  defaultTemplate: string,
+  frontmatter: PageFrontmatter,
+  mtime: number,
+  rawContent: string,
+): PageIndex | null {
+  const isModule = isInModuleFolder(sourcePath);
+
+  // Determine route
+  const route = sourcePathToRoute(sourcePath, frontmatter.slug);
+
+  // Non-routable pages (modules, etc.) still get indexed for collection queries
+  // but with an empty route
+  const finalRoute = route ?? "";
+
+  // Determine order from folder prefix
+  const parts = sourcePath.split("/");
+  const folderName = parts.length > 1 ? parts[parts.length - 2] : "";
+  const folderInfo = parseFolderName(folderName);
+
+  // Template: frontmatter override > filename convention
+  const template = frontmatter.template ?? defaultTemplate;
+
+  // Compute a hash of the frontmatter for change detection
+  const hash = computeHash(JSON.stringify(frontmatter));
+
+  return {
+    sourcePath,
+    route: finalRoute,
+    format,
+    template,
+    title: frontmatter.title || "",
+    date: frontmatter.date ?? null,
+    published: frontmatter.published ?? true,
+    visible: frontmatter.visible ?? true,
+    routable: frontmatter.routable ?? true,
+    isModule,
+    order: folderInfo.order,
+    depth: calculateDepth(sourcePath),
+    parentPath: getParentPath(sourcePath),
+    taxonomy: frontmatter.taxonomy ?? {},
+    mtime,
+    hash,
+  };
+}
+
+/** Update the taxonomy reverse index. */
+function updateTaxonomyMap(
+  map: TaxonomyMap,
+  taxonomy: Record<string, string[]>,
+  sourcePath: string,
+): void {
+  for (const [taxName, values] of Object.entries(taxonomy)) {
+    if (!map[taxName]) map[taxName] = {};
+
+    const valArray = Array.isArray(values) ? values : [values];
+    for (const val of valArray) {
+      const strVal = String(val);
+      if (!map[taxName][strVal]) map[taxName][strVal] = [];
+      if (!map[taxName][strVal].includes(sourcePath)) {
+        map[taxName][strVal].push(sourcePath);
+      }
+    }
+  }
+}
+
+/** Strip the content directory prefix from a path. */
+function stripContentDir(path: string, contentDir: string): string {
+  if (path.startsWith(contentDir + "/")) {
+    return path.slice(contentDir.length + 1);
+  }
+  return path;
+}
+
+/** Compute a simple hash of a string for change detection. */
+function computeHash(input: string): string {
+  // Use a simple hash for v0.1 — not crypto-strength, just change detection
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // Convert to 32-bit int
+  }
+  return hash.toString(36);
+}
