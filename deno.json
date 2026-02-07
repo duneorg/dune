@@ -4,6 +4,9 @@
   "exports": "./src/mod.ts",
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
+    "preact": "npm:preact@^10",
+    "preact/": "npm:preact@^10/",
+    "preact-render-to-string": "npm:preact-render-to-string@^6",
     "@std/yaml": "jsr:@std/yaml@^1",
     "@std/path": "jsr:@std/path@^1",
     "@std/fs": "jsr:@std/fs@^1",
