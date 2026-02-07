@@ -20,9 +20,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search, imageHandler } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler, adminHandler } = ctx;
   const routes = duneRoutes(engine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
+  const adminPrefix = ctx.config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
 
@@ -38,6 +39,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     const url = new URL(req.url);
 
     try {
+      if (url.pathname.startsWith(adminPrefix)) {
+        const adminResult = await adminHandler(req);
+        return adminResult ?? new Response("Not found", { status: 404 });
+      }
       if (url.pathname.startsWith("/api/")) {
         return (await apiHandler(req)) ?? new Response(
           JSON.stringify({ error: "Not found" }),

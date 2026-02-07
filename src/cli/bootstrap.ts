@@ -17,6 +17,10 @@ import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
 import { createImageCache } from "../images/cache.ts";
 import { createImageHandler } from "../images/handler.ts";
+import { createUserManager } from "../admin/auth/users.ts";
+import { createSessionManager } from "../admin/auth/sessions.ts";
+import { createAuthMiddleware } from "../admin/auth/middleware.ts";
+import { createAdminHandler } from "../admin/server.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -25,6 +29,9 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { ImageHandler } from "../images/handler.ts";
 import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
+import type { UserManager } from "../admin/auth/users.ts";
+import type { SessionManager } from "../admin/auth/sessions.ts";
+import type { AuthMiddleware } from "../admin/auth/middleware.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -40,6 +47,10 @@ export interface BootstrapResult {
   imageHandler: ImageHandler;
   imageProcessor: ImageProcessor;
   imageCache: ImageCache;
+  adminHandler: (req: Request) => Promise<Response | null>;
+  users: UserManager;
+  sessions: SessionManager;
+  auth: AuthMiddleware;
 }
 
 export interface BootstrapOptions {
@@ -134,8 +145,51 @@ export async function bootstrap(
     cache: imageCache,
   });
 
+  // 10. Admin panel
+  const adminConfig = config.admin ?? {
+    path: "/admin",
+    sessionLifetime: 86400,
+    dataDir: ".dune/admin",
+    enabled: true,
+  };
+
+  const users = createUserManager({
+    storage,
+    usersDir: `${adminConfig.dataDir}/users`,
+  });
+
+  const sessions = createSessionManager({
+    storage,
+    sessionsDir: `${adminConfig.dataDir}/sessions`,
+    lifetime: adminConfig.sessionLifetime,
+  });
+
+  const auth = createAuthMiddleware({ sessions, users });
+
+  const adminHandler = adminConfig.enabled
+    ? createAdminHandler({
+        engine,
+        storage,
+        config,
+        auth,
+        users,
+        sessions,
+        prefix: adminConfig.path,
+      })
+    : async (_req: Request) => null as Response | null;
+
+  // Ensure a default admin user exists on first run
+  if (adminConfig.enabled) {
+    const result = await users.ensureDefaultAdmin();
+    if (result.created) {
+      console.log(`\n  🔑 Default admin created — username: admin, password: ${result.password}`);
+      console.log(`     Change this password after first login.\n`);
+    }
+  }
+
   return {
     engine, storage, config, formats, collections, taxonomy,
     search, hooks, imageHandler, imageProcessor, imageCache,
+    adminHandler, users, sessions, auth,
   };
 }

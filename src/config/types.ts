@@ -8,6 +8,20 @@ export interface DuneConfig {
   system: SystemConfig;
   theme: ThemeConfig;
   plugins: Record<string, Record<string, unknown>>;
+  /** Admin panel configuration (optional — defaults applied if omitted) */
+  admin?: AdminConfig;
+}
+
+/** Admin panel configuration */
+export interface AdminConfig {
+  /** Admin panel route prefix (default: "/admin") */
+  path: string;
+  /** Session lifetime in seconds (default: 86400 = 24h) */
+  sessionLifetime: number;
+  /** Admin data directory (default: ".dune/admin") */
+  dataDir: string;
+  /** Whether admin panel is enabled (default: true) */
+  enabled: boolean;
 }
 
 /** Site-level configuration (content, identity, metadata) */

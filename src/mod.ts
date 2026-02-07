@@ -21,7 +21,7 @@ export type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "./st
 // Config
 export { loadConfig } from "./config/mod.ts";
 export { validateConfig } from "./config/validator.ts";
-export type { DuneConfig, SiteConfig, SystemConfig, ThemeConfig } from "./config/types.ts";
+export type { DuneConfig, SiteConfig, SystemConfig, ThemeConfig, AdminConfig } from "./config/types.ts";
 
 // Content
 export type {
@@ -91,3 +91,19 @@ export { createImageCache } from "./images/cache.ts";
 export type { ImageCache, ImageCacheConfig, CachedImage } from "./images/cache.ts";
 export { createImageHandler } from "./images/handler.ts";
 export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";
+
+// Admin
+export { createAdminHandler } from "./admin/server.ts";
+export type { AdminServerConfig } from "./admin/server.ts";
+export { createUserManager } from "./admin/auth/users.ts";
+export type { UserManager, CreateUserInput } from "./admin/auth/users.ts";
+export { createSessionManager } from "./admin/auth/sessions.ts";
+export type { SessionManager } from "./admin/auth/sessions.ts";
+export { createAuthMiddleware } from "./admin/auth/middleware.ts";
+export type { AuthMiddleware } from "./admin/auth/middleware.ts";
+export { hashPassword, verifyPassword } from "./admin/auth/passwords.ts";
+export type {
+  AdminUser, AdminRole, AdminSession, AdminPermission,
+  AuthResult, AdminUserInfo,
+} from "./admin/types.ts";
+export { ROLE_PERMISSIONS, toUserInfo } from "./admin/types.ts";

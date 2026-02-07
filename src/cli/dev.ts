@@ -22,13 +22,15 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Bootstrap engine
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
-  const { engine, collections, taxonomy, search, imageHandler } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler, adminHandler } = ctx;
   const routes = duneRoutes(engine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
+  const adminPrefix = ctx.config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🏷️  ${taxonomy.names().length} taxonomies`);
   console.log(`  🔍 Search index built`);
+  console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
 
   // JSX renderer
   const renderJsx = (jsx: unknown, statusCode = 200) => {
@@ -86,8 +88,13 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     let response: Response;
 
     try {
+      // Admin routes (must come before content routes)
+      if (url.pathname.startsWith(adminPrefix)) {
+        const adminResult = await adminHandler(req);
+        response = adminResult ?? new Response("Not found", { status: 404 });
+      }
       // API routes
-      if (url.pathname.startsWith("/api/")) {
+      else if (url.pathname.startsWith("/api/")) {
         const apiResult = await apiHandler(req);
         response = apiResult ?? new Response(
           JSON.stringify({ error: "Not found" }),
