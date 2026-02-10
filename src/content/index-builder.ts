@@ -319,6 +319,7 @@ function buildPageIndex(
     title: frontmatter.title || "",
     date: frontmatter.date ?? null,
     published: frontmatter.published ?? true,
+    status: inferStatus(frontmatter),
     visible: frontmatter.visible ?? true,
     routable: frontmatter.routable ?? true,
     isModule,
@@ -357,6 +358,22 @@ function stripContentDir(path: string, contentDir: string): string {
     return path.slice(contentDir.length + 1);
   }
   return path;
+}
+
+/** Infer workflow status from frontmatter. */
+function inferStatus(
+  frontmatter: PageFrontmatter,
+): "draft" | "in_review" | "published" | "archived" {
+  // Explicit status takes precedence
+  const status = frontmatter.status;
+  if (
+    status === "draft" || status === "in_review" ||
+    status === "published" || status === "archived"
+  ) {
+    return status;
+  }
+  // Infer from published flag
+  return (frontmatter.published ?? true) ? "published" : "draft";
 }
 
 /** Compute a simple hash of a string for change detection. */

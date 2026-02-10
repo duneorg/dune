@@ -42,6 +42,8 @@ export function createRouteResolver(options: RouteResolverOptions) {
   for (const page of options.pages) {
     if (!page.routable) continue;
     if (!page.published) continue;
+    // Only published status pages are publicly routable
+    if (page.status && page.status !== "published") continue;
 
     routeMap.set(normalizeRoute(page.route), page);
 
@@ -139,6 +141,7 @@ export function createRouteResolver(options: RouteResolverOptions) {
       aliasMap.clear();
       for (const page of pages) {
         if (!page.routable || !page.published) continue;
+        if (page.status && page.status !== "published") continue;
         routeMap.set(normalizeRoute(page.route), page);
       }
     },

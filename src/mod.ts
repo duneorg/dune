@@ -107,3 +107,23 @@ export type {
   AuthResult, AdminUserInfo,
 } from "./admin/types.ts";
 export { ROLE_PERMISSIONS, toUserInfo } from "./admin/types.ts";
+
+// Workflow
+export { createWorkflowEngine } from "./workflow/engine.ts";
+export type { WorkflowEngine, WorkflowEngineConfig } from "./workflow/engine.ts";
+export { createScheduler } from "./workflow/scheduler.ts";
+export type { Scheduler, SchedulerConfig } from "./workflow/scheduler.ts";
+export type {
+  ContentStatus,
+  StatusTransition,
+  ScheduledAction,
+  ContentRevision,
+  ContentDiff,
+  TranslationStatus,
+} from "./workflow/types.ts";
+export { TRANSITIONS } from "./workflow/types.ts";
+
+// History
+export { createHistoryEngine } from "./history/engine.ts";
+export type { HistoryEngine, HistoryEngineConfig, RecordInput } from "./history/engine.ts";
+export { computeDiff, applyPatch } from "./history/diff.ts";

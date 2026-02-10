@@ -22,6 +22,7 @@ import { newCommand } from "./cli/new.ts";
 import { cacheCommands } from "./cli/cache.ts";
 import { configCommands } from "./cli/config.ts";
 import { contentCommands } from "./cli/content.ts";
+import { i18nStatusCommand } from "./cli/i18n.ts";
 
 const HELP = `
 dune — Flat-file CMS for Deno Fresh
@@ -43,6 +44,7 @@ Commands:
 
   content:list        List all pages with routes and templates
   content:check       Check content for broken links, missing templates
+  content:i18n-status Report translation coverage across languages
 
 Options:
   --port <n>          Server port (default: 3000)
@@ -122,6 +124,10 @@ async function main() {
 
       case "content:check":
         await contentCommands.check(root, { debug: options.debug === true });
+        break;
+
+      case "content:i18n-status":
+        await i18nStatusCommand(root, { debug: options.debug === true });
         break;
 
       default:

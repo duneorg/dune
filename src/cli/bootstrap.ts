@@ -21,6 +21,9 @@ import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { createAdminHandler } from "../admin/server.ts";
+import { createWorkflowEngine } from "../workflow/engine.ts";
+import { createScheduler } from "../workflow/scheduler.ts";
+import { createHistoryEngine } from "../history/engine.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -32,6 +35,9 @@ import type { ImageCache } from "../images/cache.ts";
 import type { UserManager } from "../admin/auth/users.ts";
 import type { SessionManager } from "../admin/auth/sessions.ts";
 import type { AuthMiddleware } from "../admin/auth/middleware.ts";
+import type { WorkflowEngine } from "../workflow/engine.ts";
+import type { Scheduler } from "../workflow/scheduler.ts";
+import type { HistoryEngine } from "../history/engine.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -51,6 +57,9 @@ export interface BootstrapResult {
   users: UserManager;
   sessions: SessionManager;
   auth: AuthMiddleware;
+  workflow: WorkflowEngine;
+  scheduler: Scheduler;
+  history: HistoryEngine;
 }
 
 export interface BootstrapOptions {
@@ -145,7 +154,26 @@ export async function bootstrap(
     cache: imageCache,
   });
 
-  // 10. Admin panel
+  // 10. Workflow, scheduling, and history
+  const workflowDataDir = config.admin?.dataDir ?? ".dune/admin";
+
+  const workflow = createWorkflowEngine({
+    storage,
+    dataDir: workflowDataDir,
+  });
+
+  const scheduler = createScheduler({
+    storage,
+    dataDir: workflowDataDir,
+  });
+
+  const history = createHistoryEngine({
+    storage,
+    dataDir: workflowDataDir,
+    maxRevisions: 50,
+  });
+
+  // 11. Admin panel
   const adminConfig = config.admin ?? {
     path: "/admin",
     sessionLifetime: 86400,
@@ -175,6 +203,9 @@ export async function bootstrap(
         users,
         sessions,
         prefix: adminConfig.path,
+        workflow,
+        scheduler,
+        history,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -191,5 +222,6 @@ export async function bootstrap(
     engine, storage, config, formats, collections, taxonomy,
     search, hooks, imageHandler, imageProcessor, imageCache,
     adminHandler, users, sessions, auth,
+    workflow, scheduler, history,
   };
 }

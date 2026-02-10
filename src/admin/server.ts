@@ -39,6 +39,12 @@ import { renderPageTree } from "./ui/page-tree.ts";
 import { renderPageEditorPage } from "./ui/page-editor.ts";
 import { renderMediaLibrary } from "./ui/media-library.ts";
 import { markdownToBlocks, blocksToMarkdown } from "./editor/serializer.ts";
+import type { WorkflowEngine } from "../workflow/engine.ts";
+import type { Scheduler } from "../workflow/scheduler.ts";
+import type { HistoryEngine } from "../history/engine.ts";
+import { renderRevisionHistory, renderRevisionScripts, revisionHistoryStyles } from "./ui/revision-history.ts";
+import { renderTranslationStatus, translationStatusStyles } from "./ui/translation-status.ts";
+import { renderWorkflowPanel, workflowPanelStyles } from "./ui/workflow-panel.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -49,6 +55,9 @@ export interface AdminServerConfig {
   sessions: SessionManager;
   /** Admin route prefix (e.g. "/admin") */
   prefix: string;
+  workflow?: WorkflowEngine;
+  scheduler?: Scheduler;
+  history?: HistoryEngine;
 }
 
 /**
@@ -56,7 +65,7 @@ export interface AdminServerConfig {
  * Returns null if the request is not for an admin route.
  */
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history } = config;
   const adminConfig = config.config.admin!;
 
   return async function handleAdminRequest(req: Request): Promise<Response | null> {
@@ -137,6 +146,16 @@ export function createAdminHandler(config: AdminServerConfig) {
     // GET /admin/media — Media library
     if (adminPath === "/media") {
       return htmlResponse(renderMediaLibraryPage(prefix, authResult));
+    }
+
+    // GET /admin/pages/history?path=... — Revision history
+    if (adminPath === "/pages/history" && req.method === "GET") {
+      return handleRevisionHistoryPage(url, authResult);
+    }
+
+    // GET /admin/i18n — Translation status
+    if (adminPath === "/i18n") {
+      return htmlResponse(renderI18nPage(prefix, authResult));
     }
 
     // GET /admin/users — User management
@@ -383,6 +402,79 @@ export function createAdminHandler(config: AdminServerConfig) {
       requirePermission(authResult, "config.read");
       const { title, description, url: siteUrl, author, metadata, taxonomies } = engine.site;
       return jsonResponse({ title, description, url: siteUrl, author, metadata, taxonomies });
+    }
+
+    // === Workflow API routes ===
+
+    // POST /admin/api/workflow/transition — Change page status
+    if (adminPath === "/api/workflow/transition" && method === "POST") {
+      requirePermission(authResult, "pages.update");
+      return handleWorkflowTransition(req);
+    }
+
+    // GET /admin/api/workflow/status/:path — Get workflow status
+    if (adminPath.startsWith("/api/workflow/status/") && method === "GET") {
+      requirePermission(authResult, "pages.read");
+      const pagePath = decodeURIComponent(adminPath.replace("/api/workflow/status/", ""));
+      return handleGetWorkflowStatus(pagePath);
+    }
+
+    // POST /admin/api/workflow/schedule — Schedule an action
+    if (adminPath === "/api/workflow/schedule" && method === "POST") {
+      requirePermission(authResult, "pages.update");
+      return handleScheduleAction(req, authResult);
+    }
+
+    // DELETE /admin/api/workflow/schedule/:id — Cancel scheduled action
+    if (adminPath.startsWith("/api/workflow/schedule/") && method === "DELETE") {
+      requirePermission(authResult, "pages.update");
+      const actionId = adminPath.replace("/api/workflow/schedule/", "");
+      return handleCancelSchedule(actionId);
+    }
+
+    // GET /admin/api/workflow/scheduled/:path — List scheduled actions
+    if (adminPath.startsWith("/api/workflow/scheduled/") && method === "GET") {
+      requirePermission(authResult, "pages.read");
+      const pagePath = decodeURIComponent(adminPath.replace("/api/workflow/scheduled/", ""));
+      return handleListScheduled(pagePath);
+    }
+
+    // === History API routes ===
+
+    // GET /admin/api/history/:path — List revisions
+    if (adminPath.startsWith("/api/history/") && method === "GET" && !adminPath.includes("/diff")) {
+      requirePermission(authResult, "pages.read");
+      const rest = adminPath.replace("/api/history/", "");
+      const parts = rest.split("/");
+      const pagePath = decodeURIComponent(parts[0]);
+
+      if (parts.length === 2 && parts[1]) {
+        // GET /admin/api/history/:path/:revNum — Get specific revision
+        const revNum = parseInt(parts[1], 10);
+        return handleGetRevision(pagePath, revNum);
+      }
+
+      return handleGetHistory(pagePath);
+    }
+
+    // GET /admin/api/history/:path/:revNum/diff — Diff revision vs current
+    if (adminPath.startsWith("/api/history/") && method === "GET" && adminPath.endsWith("/diff")) {
+      requirePermission(authResult, "pages.read");
+      const rest = adminPath.replace("/api/history/", "").replace("/diff", "");
+      const parts = rest.split("/");
+      const pagePath = decodeURIComponent(parts[0]);
+      const revNum = parseInt(parts[1], 10);
+      return handleDiffRevision(pagePath, revNum);
+    }
+
+    // POST /admin/api/history/:path/:revNum/restore — Restore a revision
+    if (adminPath.startsWith("/api/history/") && method === "POST" && adminPath.endsWith("/restore")) {
+      requirePermission(authResult, "pages.update");
+      const rest = adminPath.replace("/api/history/", "").replace("/restore", "");
+      const parts = rest.split("/");
+      const pagePath = decodeURIComponent(parts[0]);
+      const revNum = parseInt(parts[1], 10);
+      return handleRestoreRevision(pagePath, revNum);
     }
 
     return jsonResponse({ error: "Not found" }, 404);
@@ -647,6 +739,259 @@ export function createAdminHandler(config: AdminServerConfig) {
     }
   }
 
+  // === Workflow handlers ===
+
+  async function handleWorkflowTransition(req: Request): Promise<Response> {
+    if (!workflow) return jsonResponse({ error: "Workflow not enabled" }, 501);
+    try {
+      const body = await req.json();
+      const { sourcePath, status: newStatus } = body;
+      if (!sourcePath || !newStatus) {
+        return jsonResponse({ error: "sourcePath and status are required" }, 400);
+      }
+
+      const pageIndex = engine.pages.find((p) => p.sourcePath === sourcePath);
+      if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
+
+      const currentStatus = workflow.getStatus(pageIndex);
+      if (!workflow.canTransition(currentStatus, newStatus)) {
+        return jsonResponse({ error: `Cannot transition from ${currentStatus} to ${newStatus}` }, 400);
+      }
+
+      // Update frontmatter with new status
+      const contentDir = config.config.system.content.dir;
+      const filePath = `${contentDir}/${pageIndex.sourcePath}`;
+      const raw = new TextDecoder().decode(await storage.read(filePath));
+
+      let updated: string;
+      if (raw.match(/^status:\s*.+$/m)) {
+        updated = raw.replace(/^status:\s*.+$/m, `status: ${newStatus}`);
+      } else {
+        // Add status after the opening ---
+        updated = raw.replace(/^---\n/, `---\nstatus: ${newStatus}\n`);
+      }
+
+      // Also update published flag based on status
+      if (newStatus === "published") {
+        if (updated.match(/^published:\s*.+$/m)) {
+          updated = updated.replace(/^published:\s*.+$/m, "published: true");
+        }
+      } else if (newStatus === "draft" || newStatus === "archived") {
+        if (updated.match(/^published:\s*.+$/m)) {
+          updated = updated.replace(/^published:\s*.+$/m, "published: false");
+        }
+      }
+
+      await storage.write(filePath, new TextEncoder().encode(updated));
+      await engine.rebuild();
+
+      return jsonResponse({ transitioned: true, from: currentStatus, to: newStatus });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  function handleGetWorkflowStatus(pagePath: string): Response {
+    if (!workflow) return jsonResponse({ error: "Workflow not enabled" }, 501);
+    const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
+    if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
+
+    const status = workflow.getStatus(pageIndex);
+    const allowed = workflow.allowedTransitions(status);
+    return jsonResponse({ sourcePath: pagePath, status, allowedTransitions: allowed });
+  }
+
+  async function handleScheduleAction(req: Request, authResult: AuthResult): Promise<Response> {
+    if (!scheduler) return jsonResponse({ error: "Scheduler not enabled" }, 501);
+    try {
+      const body = await req.json();
+      const { sourcePath, action, scheduledAt } = body;
+      if (!sourcePath || !action || !scheduledAt) {
+        return jsonResponse({ error: "sourcePath, action, and scheduledAt are required" }, 400);
+      }
+
+      const scheduled = await scheduler.schedule({
+        sourcePath,
+        action,
+        scheduledAt,
+        createdBy: authResult.user?.username,
+      });
+
+      return jsonResponse({ scheduled: true, action: scheduled }, 201);
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  async function handleCancelSchedule(actionId: string): Promise<Response> {
+    if (!scheduler) return jsonResponse({ error: "Scheduler not enabled" }, 501);
+    try {
+      const cancelled = await scheduler.cancel(actionId);
+      return jsonResponse({ cancelled });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  async function handleListScheduled(pagePath: string): Promise<Response> {
+    if (!scheduler) return jsonResponse({ error: "Scheduler not enabled" }, 501);
+    try {
+      const actions = await scheduler.listForPage(pagePath);
+      return jsonResponse({ items: actions, total: actions.length });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  // === History handlers ===
+
+  async function handleGetHistory(pagePath: string): Promise<Response> {
+    if (!history) return jsonResponse({ error: "History not enabled" }, 501);
+    try {
+      const revisions = await history.getHistory(pagePath);
+      return jsonResponse({ items: revisions, total: revisions.length });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  async function handleGetRevision(pagePath: string, revNum: number): Promise<Response> {
+    if (!history) return jsonResponse({ error: "History not enabled" }, 501);
+    try {
+      const revision = await history.getRevision(pagePath, revNum);
+      if (!revision) return jsonResponse({ error: "Revision not found" }, 404);
+      return jsonResponse(revision);
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  async function handleDiffRevision(pagePath: string, revNum: number): Promise<Response> {
+    if (!history) return jsonResponse({ error: "History not enabled" }, 501);
+    try {
+      // Get current content
+      const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
+      if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
+
+      const page = await engine.loadPage(pageIndex.sourcePath);
+      const currentContent = page.rawContent ?? "";
+
+      const diff = await history.diffWithCurrent(pagePath, revNum, currentContent);
+      if (!diff) return jsonResponse({ error: "Revision not found" }, 404);
+      return jsonResponse(diff);
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  async function handleRestoreRevision(pagePath: string, revNum: number): Promise<Response> {
+    if (!history) return jsonResponse({ error: "History not enabled" }, 501);
+    try {
+      const revision = await history.getRevision(pagePath, revNum);
+      if (!revision) return jsonResponse({ error: "Revision not found" }, 404);
+
+      // Write the revision content back to the file
+      const contentDir = config.config.system.content.dir;
+      const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
+      if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
+
+      const filePath = `${contentDir}/${pageIndex.sourcePath}`;
+
+      // Reconstruct file: frontmatter + content
+      const fmYaml = Object.entries(revision.frontmatter)
+        .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+        .join("\n");
+      const fullContent = `---\n${fmYaml}\n---\n\n${revision.content}`;
+
+      await storage.write(filePath, new TextEncoder().encode(fullContent));
+      await engine.rebuild();
+
+      return jsonResponse({ restored: true, revision: revNum });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  // === Revision history page ===
+
+  async function handleRevisionHistoryPage(url: URL, authResult: AuthResult): Promise<Response> {
+    const sourcePath = url.searchParams.get("path");
+    if (!sourcePath) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/pages` },
+      });
+    }
+
+    const userName = authResult.user?.name ?? "Admin";
+    const revisions = history ? await history.getHistory(sourcePath) : [];
+
+    // Get current content
+    let currentContent = "";
+    try {
+      const page = await engine.loadPage(sourcePath);
+      currentContent = page.rawContent ?? "";
+    } catch { /* ignore */ }
+
+    const content = renderRevisionHistory(prefix, {
+      sourcePath,
+      revisions,
+      currentContent,
+    });
+
+    return htmlResponse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>History: ${escapeHtml(sourcePath)} — Dune Admin</title>
+  <style>${baseAdminStyles()}${revisionHistoryStyles()}</style>
+</head>
+<body>
+  ${adminShell(prefix, "pages", userName, content)}
+  ${renderRevisionScripts(prefix)}
+</body>
+</html>`);
+  }
+
+  // === i18n page ===
+
+  function renderI18nPage(pfx: string, authResult: AuthResult): string {
+    const userName = authResult.user?.name ?? "Admin";
+    const languages = config.config.system.languages?.supported ?? [];
+    const defaultLang = config.config.system.languages?.default ?? "en";
+
+    // Build translation data
+    const otherLangs = languages.filter((l: string) => l !== defaultLang);
+    const pages = engine.pages.map((p) => {
+      const translations: Record<string, { exists: boolean; upToDate: boolean }> = {};
+      for (const lang of otherLangs) {
+        const langPath = p.sourcePath.replace(/\.(md|mdx|tsx)$/, `.${lang}.$1`);
+        const exists = engine.pages.some((pp) => pp.sourcePath === langPath);
+        translations[lang] = { exists, upToDate: exists };
+      }
+      return { sourcePath: p.sourcePath, title: p.title, route: p.route, translations };
+    });
+
+    const content = renderTranslationStatus(pfx, { languages, defaultLanguage: defaultLang, pages });
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Translations — Dune Admin</title>
+  <style>${baseAdminStyles()}${translationStatusStyles()}</style>
+</head>
+<body>
+  ${adminShell(pfx, "i18n", userName, `
+    <h2>Translations</h2>
+    ${content}
+  `)}
+</body>
+</html>`;
+  }
+
   function requirePermission(authResult: AuthResult, permission: AdminPermission): void {
     if (!auth.hasPermission(authResult, permission)) {
       throw new PermissionError(permission);
@@ -667,6 +1012,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "dashboard", label: "Dashboard", icon: "📊", href: `${prefix}/` },
     { id: "pages", label: "Pages", icon: "📄", href: `${prefix}/pages` },
     { id: "media", label: "Media", icon: "🖼️", href: `${prefix}/media` },
+    { id: "i18n", label: "Translations", icon: "🌐", href: `${prefix}/i18n` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
   ];
 

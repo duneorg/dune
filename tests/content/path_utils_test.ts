@@ -84,7 +84,7 @@ Deno.test("parseContentFilename: non-content file returns null", () => {
 
 Deno.test("sourcePathToRoute: simple page", () => {
   const route = sourcePathToRoute("01.home/default.md");
-  assertEquals(route, "/home");
+  assertEquals(route, "/"); // "home" folder maps to homepage
 });
 
 Deno.test("sourcePathToRoute: nested page", () => {

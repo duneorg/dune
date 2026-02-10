@@ -20,6 +20,8 @@ export interface PageFrontmatter {
   /** Layout control (TSX content files): string = named layout, false = no layout */
   layout?: string | false;
   published?: boolean;
+  /** Content workflow status */
+  status?: "draft" | "in_review" | "published" | "archived";
   date?: string;
   publish_date?: string;
   unpublish_date?: string;
@@ -123,6 +125,8 @@ export interface PageIndex {
   title: string;
   date: string | null;
   published: boolean;
+  /** Content workflow status */
+  status: "draft" | "in_review" | "published" | "archived";
   visible: boolean;
   routable: boolean;
   isModule: boolean;
