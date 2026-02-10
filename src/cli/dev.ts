@@ -5,6 +5,7 @@
 /** @jsxImportSource preact */
 import { h } from "preact";
 import { render } from "preact-render-to-string";
+import { join } from "@std/path";
 import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
@@ -12,6 +13,90 @@ import { createApiHandler } from "../api/handlers.ts";
 export interface DevOptions {
   port?: number;
   debug?: boolean;
+}
+
+/**
+ * Serve static files from the site's static directory or theme static directories.
+ */
+async function serveStaticFile(root: string, pathname: string, themeName?: string): Promise<Response> {
+  // Check for theme static files first: /themes/{theme}/static/*
+  if (pathname.startsWith("/themes/") && pathname.includes("/static/")) {
+    const themeMatch = pathname.match(/^\/themes\/([^/]+)\/static\/(.+)$/);
+    if (themeMatch) {
+      const [, theme, filePath] = themeMatch;
+      const fullPath = join(root, "themes", theme, "static", filePath);
+      
+      try {
+        // Security: prevent directory traversal
+        if (filePath.includes("..") || filePath.startsWith("/")) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        const file = await Deno.readFile(fullPath);
+        const stat = await Deno.stat(fullPath);
+        return createFileResponse(file, stat.size, fullPath);
+      } catch {
+        return new Response("Not found", { status: 404 });
+      }
+    }
+  }
+
+  // Fall back to site static directory: /static/*
+  const filePath = pathname.replace(/^\/static\//, "");
+  const fullPath = join(root, "static", filePath);
+
+  try {
+    // Security: prevent directory traversal
+    if (filePath.includes("..") || filePath.startsWith("/")) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const file = await Deno.readFile(fullPath);
+    const stat = await Deno.stat(fullPath);
+    return createFileResponse(file, stat.size, fullPath);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+}
+
+/**
+ * Create a Response with appropriate headers for a file.
+ */
+function createFileResponse(file: Uint8Array, size: number, fullPath: string): Response {
+  // Determine content type from extension
+  const ext = fullPath.split(".").pop()?.toLowerCase() ?? "";
+  const mimeTypes: Record<string, string> = {
+    // Fonts
+    ttf: "font/ttf",
+    otf: "font/otf",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    eot: "application/vnd.ms-fontobject",
+    // Images
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+    // Text
+    css: "text/css",
+    js: "text/javascript",
+    json: "application/json",
+    txt: "text/plain",
+    xml: "application/xml",
+    // Other
+    pdf: "application/pdf",
+  };
+
+  return new Response(file, {
+    headers: {
+      "Content-Type": mimeTypes[ext] ?? "application/octet-stream",
+      "Content-Length": String(size),
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
 }
 
 export async function devCommand(root: string, options: DevOptions = {}) {
@@ -23,7 +108,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
   const { engine, collections, taxonomy, search, imageHandler, adminHandler } = ctx;
-  const routes = duneRoutes(engine);
+  const routes = duneRoutes(engine, collections);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
 
@@ -100,6 +185,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           JSON.stringify({ error: "Not found" }),
           { status: 404, headers: { "Content-Type": "application/json" } },
         );
+      }
+      // Static files (must come before content routes)
+      else if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
+        response = await serveStaticFile(root, url.pathname, ctx.config.theme.name);
       }
       // Media routes (image processing first, then raw media)
       else if (url.pathname.startsWith("/content-media/")) {

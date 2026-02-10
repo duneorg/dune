@@ -148,6 +148,7 @@ export async function createDuneEngine(
       storage,
       themesDir,
       themeName: config.theme.name,
+      rootDir: storageRoot,
     });
   }
 

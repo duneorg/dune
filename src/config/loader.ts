@@ -170,9 +170,19 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
     loadYamlFile(storage, "config/system.yaml"),
   ]);
 
-  // site.yaml values go under the "site" key
-  if (Object.keys(siteYaml).length > 0) {
-    config = deepMerge(config, { site: siteYaml });
+  // Extract theme from site.yaml if present (theme is top-level, not under site)
+  const themeFromSite = siteYaml.theme;
+  const siteWithoutTheme = { ...siteYaml };
+  delete siteWithoutTheme.theme;
+
+  // site.yaml values go under the "site" key (except theme)
+  if (Object.keys(siteWithoutTheme).length > 0) {
+    config = deepMerge(config, { site: siteWithoutTheme });
+  }
+
+  // Theme config goes at top level
+  if (themeFromSite) {
+    config = deepMerge(config, { theme: themeFromSite });
   }
 
   // system.yaml values go under the "system" key

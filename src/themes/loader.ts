@@ -27,13 +27,15 @@ export interface ThemeLoaderOptions {
   themesDir: string;
   /** Active theme name from config */
   themeName: string;
+  /** Root directory for resolving absolute paths (optional, defaults to cwd) */
+  rootDir?: string;
 }
 
 /**
  * Create a theme loader that discovers and loads theme templates.
  */
 export async function createThemeLoader(options: ThemeLoaderOptions) {
-  const { storage, themesDir, themeName } = options;
+  const { storage, themesDir, themeName, rootDir } = options;
 
   // Resolve the theme chain (child → parent → grandparent...)
   const theme = await resolveTheme(storage, themesDir, themeName);
@@ -95,15 +97,16 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         const templatePath = join(current.dir, "templates", `${name}.tsx`);
         try {
           if (await storage.exists(templatePath)) {
-            const absPath = await resolveAbsPath(templatePath);
-            const mod = await import(`file://${absPath}`);
+            const absPath = await resolveAbsPath(templatePath, rootDir);
+            const fileUrl = `file://${absPath}`;
+            const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
               templateCache.set(name, component);
               return { name, component, fromTheme: current.manifest.name };
             }
           }
-        } catch {
+        } catch (err) {
           // Template file exists but failed to load — continue to parent
         }
         current = current.parent;
@@ -127,7 +130,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         const layoutPath = join(current.dir, "components", `${name}.tsx`);
         try {
           if (await storage.exists(layoutPath)) {
-            const absPath = await resolveAbsPath(layoutPath);
+            const absPath = await resolveAbsPath(layoutPath, rootDir);
             const mod = await import(`file://${absPath}`);
             const component = mod.default as TemplateComponent;
             if (component) {
@@ -295,11 +298,19 @@ async function discoverLayouts(
 /**
  * Resolve absolute path for dynamic import.
  */
-async function resolveAbsPath(relativePath: string): Promise<string> {
+async function resolveAbsPath(relativePath: string, rootDir?: string): Promise<string> {
+  const baseDir = rootDir || Deno.cwd();
   try {
-    return await Deno.realPath(relativePath);
+    // Try relative to rootDir first
+    const fullPath = join(baseDir, relativePath);
+    return await Deno.realPath(fullPath);
   } catch {
-    return await Deno.realPath(join(Deno.cwd(), relativePath));
+    // Fallback to cwd
+    try {
+      return await Deno.realPath(relativePath);
+    } catch {
+      return await Deno.realPath(join(Deno.cwd(), relativePath));
+    }
   }
 }
 

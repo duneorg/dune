@@ -43,6 +43,35 @@ cd my-site
 deno task dev
 ```
 
+## Installing the CLI
+
+To use the `dune` command directly, install it globally. Choose one of the following methods:
+
+**From local source** (if you have the repository cloned):
+```bash
+cd dune  # or wherever you cloned the repo
+deno install --global -n dune -A --import-map=deno.json src/cli.ts
+```
+
+**From JSR** (once published):
+```bash
+deno install --global -n dune -A jsr:@dune/cms/src/cli.ts
+```
+
+This installs the `dune` command globally. Make sure Deno's bin directory is in your PATH (usually `~/.deno/bin`).
+
+To uninstall: `deno uninstall dune`
+
+**Note:** When installing from local source, the command must be run from the repository root directory where `deno.json` is located, as it needs access to the import map.
+
+**Alternative for local development:** Instead of installing globally, you can use `deno task dune <command>` from within the repository, which automatically uses the correct import map and permissions. For example:
+```bash
+deno task dune dev
+deno task dune build
+```
+
+Once published to JSR, you can use `deno run -A jsr:@dune/cms <command>` directly without installing.
+
 ## CLI Commands
 
 | Command | Description |
@@ -195,9 +224,11 @@ deno run -A src/cli.ts build --root docs
 
 The `docs/` directory is a real Dune content site — structured using Dune's own folder conventions, frontmatter, and taxonomy system. Every page is tagged by audience (`editor`, `webmaster`, `developer`) and difficulty level.
 
-Serve the docs locally:
+Serve the docs locally (run from the repository root):
 
 ```bash
+deno task dune dev --root docs
+# or
 deno run -A src/cli.ts dev --root docs
 ```
 

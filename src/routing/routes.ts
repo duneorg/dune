@@ -15,12 +15,13 @@
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { MediaFile } from "../content/types.ts";
+import type { CollectionEngine } from "../collections/engine.ts";
 
 /**
  * Register all Dune routes on a Fresh App.
  * Returns a function that takes the app and returns it with routes added.
  */
-export function duneRoutes(engine: DuneEngine) {
+export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
   return {
     /**
      * Register media serving route.
@@ -267,11 +268,28 @@ export function duneRoutes(engine: DuneEngine) {
       const html = await page.html();
       const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 
+      // Load collection if page defines one
+      let collection: any = undefined;
+      if (collections && page.frontmatter.collection) {
+        const collectionDef = page.frontmatter.collection;
+        // Find the PageIndex for this page to use as context
+        const pageIndex = engine.pages.find(p => p.sourcePath === page.sourcePath);
+        if (pageIndex) {
+          collection = await collections.resolve(collectionDef, pageIndex);
+          // Pre-load collection items by calling the async load() method
+          // This ensures items are loaded before template rendering (SSR)
+          if (collection && typeof collection.load === 'function') {
+            await collection.load();
+          }
+        }
+      }
+
       return renderJsx(
         h(template.component as ComponentType<any>, {
           page,
           site: engine.site,
           config: engine.config,
+          collection,
           children: htmlContent,
         }),
       );

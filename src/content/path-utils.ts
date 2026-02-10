@@ -192,10 +192,14 @@ export function sourcePathToRoute(
   }
 
   // Build the route
-  const route = "/" + segments.join("/");
+  let route = "/" + segments.join("/");
 
-  // Normalize: "/home" → "/" (if the first folder is "home")
-  // This is a convention — the first ordered folder is the homepage
+  // Normalize: "/home" → "/" (if it's a top-level route with slug "home")
+  // This is a convention — the first ordered folder named "home" becomes the homepage
+  if (route === "/home" && segments.length === 1 && segments[0] === "home") {
+    route = "/";
+  }
+
   return route;
 }
 

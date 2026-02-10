@@ -390,7 +390,10 @@ function createCollectionObject(
     return loadedItems;
   };
 
-  const collection: Collection = {
+  const collection: Collection & { load(): Promise<Page[]> } = {
+    async load(): Promise<Page[]> {
+      return await loadItems();
+    },
     get items(): Page[] {
       // Synchronous access — returns empty if not yet loaded.
       // Templates should use `await collection.items` pattern
