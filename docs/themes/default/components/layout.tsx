@@ -5,19 +5,16 @@
  * Provides navigation, consistent styling, and page structure.
  */
 
-import type { SiteConfig, DuneConfig } from "../../../../src/config/types.ts";
-import type { Page } from "../../../../src/content/types.ts";
-import { buildPageTitle } from "../../../../src/content/types.ts";
-
 interface LayoutProps {
-  page?: Page;
-  site: SiteConfig;
-  config?: DuneConfig;
+  page?: any;
+  pageTitle?: string;
+  site: any;
+  config?: any;
   children?: unknown;
 }
 
-export default function Layout({ page, site, children }: LayoutProps) {
-  const title = buildPageTitle(page, site.title);
+export default function Layout({ page, pageTitle, site, children }: LayoutProps) {
+  const title = pageTitle ?? site.title;
 
   return (
     <html lang="en">

@@ -126,10 +126,10 @@ export function createRouteResolver(options: RouteResolverOptions) {
     },
 
     /**
-     * Get top-level navigation items (depth 1).
+     * Get top-level navigation items (depth 0 = direct children of content root).
      */
     getTopNavigation(): PageIndex[] {
-      return this.getNavigation().filter((p) => p.depth === 1);
+      return this.getNavigation().filter((p) => p.depth === 0);
     },
 
     /**
