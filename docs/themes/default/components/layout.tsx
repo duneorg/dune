@@ -7,6 +7,7 @@
 
 import type { SiteConfig, DuneConfig } from "../../../../src/config/types.ts";
 import type { Page } from "../../../../src/content/types.ts";
+import { buildPageTitle } from "../../../../src/content/types.ts";
 
 interface LayoutProps {
   page?: Page;
@@ -16,9 +17,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ page, site, children }: LayoutProps) {
-  const title = page?.frontmatter?.title
-    ? `${page.frontmatter.title} — ${site.title}`
-    : site.title;
+  const title = buildPageTitle(page, site.title);
 
   return (
     <html lang="en">

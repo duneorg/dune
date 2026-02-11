@@ -14,6 +14,12 @@
  *
  * For .tsx pages: the component IS the template, but layout wrapping
  * is resolved from the theme's components/ directory.
+ *
+ * Hot-reload strategy:
+ *   Deno caches `import()` by URL. A `?v=N` query on a parent module
+ *   does NOT bust the cache of its static imports. To reload the full
+ *   module graph (template → layout → helpers), we copy .tsx files to
+ *   a versioned temp directory so every URL in the graph is new.
  */
 
 import { join } from "@std/path";
@@ -43,8 +49,166 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
   // Template component cache (lazy-loaded on first use)
   const templateCache = new Map<string, TemplateComponent>();
   const layoutCache = new Map<string, TemplateComponent>();
-  // Cache-bust counter: incremented on clearCache() to force Deno to re-import modules
+
+  // Hot-reload: version counter and temp dir for module graph cache busting
   let importVersion = 0;
+  let snapshotDir: string | null = null;
+
+  /**
+   * Get the import URL for a theme file.
+   * Version 0 (initial load): import from the real path.
+   * Version 1+ (after clearCache): import from a snapshot that mirrors the
+   * repo root. Theme .tsx files are copied (fresh URLs → full module graph
+   * reload), while everything else is symlinked so relative imports that
+   * reach outside the theme (e.g., "../../../../src/content/types.ts") resolve.
+   */
+  async function getImportPath(realAbsPath: string): Promise<string> {
+    if (importVersion === 0) {
+      return `file://${realAbsPath}`;
+    }
+
+    // Ensure the snapshot exists for this version
+    if (!snapshotDir) {
+      snapshotDir = await createThemeSnapshot();
+    }
+    // Map real absolute path → snapshot absolute path
+    const repoRoot = await findRepoRoot(rootDir || Deno.cwd());
+    const relative = realAbsPath.slice(repoRoot.length);
+    const snapshotPath = join(snapshotDir, relative);
+    return `file://${snapshotPath}`;
+  }
+
+  /**
+   * Create a versioned snapshot mirroring the repo root.
+   *
+   * Strategy:
+   *   1. Find the repo root (walk up looking for .git or deno.json).
+   *   2. Create /tmp/dune-themes/v{N}/ mirroring that root.
+   *   3. Symlink all top-level entries from the repo root.
+   *   4. "Unpack" the path down to each theme dir: replace symlinks with
+   *      real directories whose children are symlinked, until we reach
+   *      the theme's templates/ and components/ dirs.
+   *   5. Copy .tsx files into those dirs (fresh copies → new module URLs).
+   *
+   * Since every theme file URL is new, Deno re-evaluates the full module
+   * graph. Symlinks ensure non-theme relative imports still resolve.
+   */
+  async function createThemeSnapshot(): Promise<string> {
+    const repoRoot = await findRepoRoot(rootDir || Deno.cwd());
+    // Place snapshot INSIDE the repo root so Deno's import map (deno.json)
+    // applies to the copied .tsx files. Bare specifiers like "preact" only
+    // resolve when the importing file is under the deno.json scope.
+    const tmpBase = join(repoRoot, ".dune-cache", "themes");
+    const versionedDir = join(tmpBase, `v${importVersion}`);
+
+    // Clean up previous version if it exists
+    try {
+      await Deno.remove(versionedDir, { recursive: true });
+    } catch {
+      // Doesn't exist yet
+    }
+    await Deno.mkdir(versionedDir, { recursive: true });
+
+    // Step 1: Symlink all top-level entries in the repo root (skip .dune-cache itself)
+    for await (const entry of Deno.readDir(repoRoot)) {
+      if (entry.name === ".dune-cache") continue;
+      try {
+        await Deno.symlink(
+          join(repoRoot, entry.name),
+          join(versionedDir, entry.name),
+        );
+      } catch {
+        // Already exists
+      }
+    }
+
+    // Step 2: For each theme in the chain, "unpack" the path from repo root
+    // down to the theme dir, then copy .tsx files.
+    let current: ResolvedTheme | undefined = theme;
+    while (current) {
+      const absThemeDir = await resolveAbsPath(current.dir, rootDir);
+      const relFromRepo = absThemeDir.slice(repoRoot.length); // e.g. /zumbrunn.com/themes/starter
+      const segments = relFromRepo.split("/").filter(Boolean);
+
+      // Unpack each segment: replace symlink with real dir + symlinked children
+      let currentPath = versionedDir;
+      let realPath = repoRoot;
+      for (const segment of segments) {
+        currentPath = join(currentPath, segment);
+        realPath = join(realPath, segment);
+        try {
+          const info = await Deno.lstat(currentPath);
+          if (info.isSymlink) {
+            await Deno.remove(currentPath);
+            await Deno.mkdir(currentPath, { recursive: true });
+            // Symlink children of the real directory
+            for await (const child of Deno.readDir(realPath)) {
+              try {
+                await Deno.symlink(
+                  join(realPath, child.name),
+                  join(currentPath, child.name),
+                );
+              } catch {
+                // Already exists
+              }
+            }
+          }
+        } catch {
+          // Path doesn't exist yet — create it
+          await Deno.mkdir(currentPath, { recursive: true });
+        }
+      }
+
+      // Now currentPath points to the unpacked theme dir in the snapshot.
+      // Replace templates/ and components/ symlinks with real dirs + copied .tsx files.
+      for (const subdir of ["templates", "components"]) {
+        const srcDir = join(absThemeDir, subdir);
+        const destDir = join(currentPath, subdir);
+
+        // Remove symlink if it exists
+        try {
+          const info = await Deno.lstat(destDir);
+          if (info.isSymlink) {
+            await Deno.remove(destDir);
+          }
+        } catch {
+          // Doesn't exist
+        }
+
+        try {
+          await Deno.mkdir(destDir, { recursive: true });
+          for await (const entry of Deno.readDir(srcDir)) {
+            if (!entry.isFile || !entry.name.endsWith(".tsx")) continue;
+            await Deno.copyFile(
+              join(srcDir, entry.name),
+              join(destDir, entry.name),
+            );
+          }
+        } catch {
+          // Source directory doesn't exist — skip
+        }
+      }
+
+      current = current.parent;
+    }
+
+    // Clean up older snapshot versions (keep only current)
+    try {
+      for await (const entry of Deno.readDir(tmpBase)) {
+        if (entry.isDirectory && entry.name !== `v${importVersion}`) {
+          try {
+            await Deno.remove(join(tmpBase, entry.name), { recursive: true });
+          } catch {
+            // Best effort cleanup
+          }
+        }
+      }
+    } catch {
+      // tmpBase might not exist yet
+    }
+
+    return versionedDir;
+  }
 
   return {
     /** The resolved theme with inheritance chain */
@@ -100,8 +264,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         try {
           if (await storage.exists(templatePath)) {
             const absPath = await resolveAbsPath(templatePath, rootDir);
-            // Append version query to bust Deno's module cache after clearCache()
-            const fileUrl = `file://${absPath}${importVersion > 0 ? `?v=${importVersion}` : ""}`;
+            const fileUrl = await getImportPath(absPath);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
@@ -134,8 +297,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         try {
           if (await storage.exists(layoutPath)) {
             const absPath = await resolveAbsPath(layoutPath, rootDir);
-            // Append version query to bust Deno's module cache after clearCache()
-            const fileUrl = `file://${absPath}${importVersion > 0 ? `?v=${importVersion}` : ""}`;
+            const fileUrl = await getImportPath(absPath);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
@@ -169,11 +331,14 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
 
     /**
      * Clear the template cache (for dev mode hot-reload).
+     * Increments the version so next load creates a fresh temp snapshot,
+     * ensuring the entire module graph (templates + layouts + helpers) is re-imported.
      */
     clearCache() {
       templateCache.clear();
       layoutCache.clear();
-      importVersion++; // Force Deno to re-import modules with new URL
+      importVersion++;
+      snapshotDir = null; // Force new snapshot on next load
     },
   };
 }
@@ -318,6 +483,49 @@ async function resolveAbsPath(relativePath: string, rootDir?: string): Promise<s
       return await Deno.realPath(join(Deno.cwd(), relativePath));
     }
   }
+}
+
+/**
+ * Walk up from a starting directory to find the repo/project root.
+ *
+ * Prioritises .git (the true repo root) over deno.json, because a
+ * monorepo may have deno.json files in subdirectories (e.g. site roots).
+ * Falls back to the nearest deno.json/deno.jsonc, then the starting dir.
+ */
+async function findRepoRoot(startDir: string): Promise<string> {
+  let dir = await Deno.realPath(startDir);
+  const fsRoot = "/";
+  let denoJsonDir: string | null = null;
+
+  while (dir !== fsRoot) {
+    // .git is the definitive repo root — return immediately
+    try {
+      await Deno.stat(join(dir, ".git"));
+      return dir;
+    } catch {
+      // Not found
+    }
+
+    // Remember the first deno.json we find as a fallback
+    if (!denoJsonDir) {
+      for (const name of ["deno.json", "deno.jsonc"]) {
+        try {
+          await Deno.stat(join(dir, name));
+          denoJsonDir = dir;
+        } catch {
+          // Not found
+        }
+      }
+    }
+
+    const parent = join(dir, "..");
+    const resolved = await Deno.realPath(parent);
+    if (resolved === dir) break; // Reached filesystem root
+    dir = resolved;
+  }
+
+  // No .git found — fall back to deno.json location, then starting dir
+  return denoJsonDir ?? await Deno.realPath(startDir);
 }
 
 export type ThemeLoader = Awaited<ReturnType<typeof createThemeLoader>>;

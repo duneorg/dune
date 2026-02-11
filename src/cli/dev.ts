@@ -96,11 +96,16 @@ function createFileResponse(file: Uint8Array, size: number, fullPath: string): R
     pdf: "application/pdf",
   };
 
+  // Fonts rarely change during dev — cache them to avoid FOUT on navigation.
+  // CSS/JS/other assets use no-cache so edits show up immediately.
+  const isFont = ["ttf", "otf", "woff", "woff2", "eot"].includes(ext);
+  const cacheControl = isFont ? "public, max-age=3600" : "no-cache";
+
   return new Response(file, {
     headers: {
       "Content-Type": mimeTypes[ext] ?? "application/octet-stream",
       "Content-Length": String(size),
-      "Cache-Control": "no-cache", // Dev mode: no caching
+      "Cache-Control": cacheControl,
     },
   });
 }

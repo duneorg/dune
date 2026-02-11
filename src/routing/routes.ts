@@ -15,6 +15,7 @@
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { MediaFile } from "../content/types.ts";
+import { buildPageTitle } from "../content/types.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 
 /**
@@ -214,8 +215,10 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
           return renderJsx(
             h(layout as ComponentType<any>, {
               page,
+              pageTitle: buildPageTitle(page, engine.site.title),
               site: engine.site,
               config: engine.config,
+              nav: engine.router.getTopNavigation(),
               children: content,
             }),
           );
@@ -235,7 +238,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
         return renderJsx(
           h("html", null,
             h("head", null,
-              h("title", null, page.frontmatter.title, " — ", engine.site.title),
+              h("title", null, buildPageTitle(page, engine.site.title)),
               h("meta", { charset: "utf-8" }),
               h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
               h("style", null, `
@@ -287,8 +290,10 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
       return renderJsx(
         h(template.component as ComponentType<any>, {
           page,
+          pageTitle: buildPageTitle(page, engine.site.title),
           site: engine.site,
           config: engine.config,
+          nav: engine.router.getTopNavigation(),
           collection,
           children: htmlContent,
         }),

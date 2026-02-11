@@ -15,6 +15,9 @@ export type ContentFormat = "md" | "tsx" | "mdx";
 /** Raw frontmatter parsed from YAML (.md/.mdx) or extracted from export (.tsx) */
 export interface PageFrontmatter {
   title: string;
+  /** Short descriptor/subtitle shown after the title in the browser tab.
+   *  Produces: "Title - Descriptor | Site Name" */
+  descriptor?: string;
   slug?: string;
   template?: string;
   /** Layout control (TSX content files): string = named layout, false = no layout */
@@ -259,4 +262,25 @@ export interface ContentFormatHandler {
     page: Page,
     ctx: RenderContext,
   ): Promise<string>;
+}
+
+// === Title Helpers ===
+
+/**
+ * Build a formatted page title for the <title> tag.
+ *
+ * Pattern: "Title - Descriptor | Site Name"
+ *   - Page with title + descriptor: "Services - Custom Web Solutions | My Site"
+ *   - Page with title only:         "Services | My Site"
+ *   - Home page (no title):         "My Site"
+ */
+export function buildPageTitle(
+  page: { frontmatter: Pick<PageFrontmatter, "title" | "descriptor"> } | undefined | null,
+  siteName: string,
+): string {
+  if (!page?.frontmatter?.title) return siteName;
+
+  const { title, descriptor } = page.frontmatter;
+  const pagePart = descriptor ? `${title} - ${descriptor}` : title;
+  return `${pagePart} | ${siteName}`;
 }
