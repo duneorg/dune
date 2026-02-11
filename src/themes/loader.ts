@@ -43,6 +43,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
   // Template component cache (lazy-loaded on first use)
   const templateCache = new Map<string, TemplateComponent>();
   const layoutCache = new Map<string, TemplateComponent>();
+  // Cache-bust counter: incremented on clearCache() to force Deno to re-import modules
+  let importVersion = 0;
 
   return {
     /** The resolved theme with inheritance chain */
@@ -98,7 +100,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         try {
           if (await storage.exists(templatePath)) {
             const absPath = await resolveAbsPath(templatePath, rootDir);
-            const fileUrl = `file://${absPath}`;
+            // Append version query to bust Deno's module cache after clearCache()
+            const fileUrl = `file://${absPath}${importVersion > 0 ? `?v=${importVersion}` : ""}`;
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
@@ -106,7 +109,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
               return { name, component, fromTheme: current.manifest.name };
             }
           }
-        } catch (err) {
+        } catch (_err) {
           // Template file exists but failed to load — continue to parent
         }
         current = current.parent;
@@ -131,7 +134,9 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
         try {
           if (await storage.exists(layoutPath)) {
             const absPath = await resolveAbsPath(layoutPath, rootDir);
-            const mod = await import(`file://${absPath}`);
+            // Append version query to bust Deno's module cache after clearCache()
+            const fileUrl = `file://${absPath}${importVersion > 0 ? `?v=${importVersion}` : ""}`;
+            const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
               layoutCache.set(name, component);
@@ -168,6 +173,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
     clearCache() {
       templateCache.clear();
       layoutCache.clear();
+      importVersion++; // Force Deno to re-import modules with new URL
     },
   };
 }

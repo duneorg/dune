@@ -1,5 +1,11 @@
 /**
- * dune dev — Development server with file watching and hot-reload.
+ * dune dev — Development server with file watching and live-reload.
+ *
+ * Features:
+ *   - Watches content/ and themes/ for changes
+ *   - Rebuilds index, taxonomy, collections, search on file changes
+ *   - SSE-based live reload: browser auto-refreshes after rebuild
+ *   - Template cache busting: theme/layout changes take effect immediately
  */
 
 /** @jsxImportSource preact */
@@ -18,14 +24,14 @@ export interface DevOptions {
 /**
  * Serve static files from the site's static directory or theme static directories.
  */
-async function serveStaticFile(root: string, pathname: string, themeName?: string): Promise<Response> {
+async function serveStaticFile(root: string, pathname: string, _themeName?: string): Promise<Response> {
   // Check for theme static files first: /themes/{theme}/static/*
   if (pathname.startsWith("/themes/") && pathname.includes("/static/")) {
     const themeMatch = pathname.match(/^\/themes\/([^/]+)\/static\/(.+)$/);
     if (themeMatch) {
       const [, theme, filePath] = themeMatch;
       const fullPath = join(root, "themes", theme, "static", filePath);
-      
+
       try {
         // Security: prevent directory traversal
         if (filePath.includes("..") || filePath.startsWith("/")) {
@@ -94,9 +100,65 @@ function createFileResponse(file: Uint8Array, size: number, fullPath: string): R
     headers: {
       "Content-Type": mimeTypes[ext] ?? "application/octet-stream",
       "Content-Length": String(size),
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "no-cache", // Dev mode: no caching
     },
   });
+}
+
+// === Live Reload ===
+
+/** Client-side script injected into HTML responses during dev mode */
+const LIVE_RELOAD_SCRIPT = `<script>
+(function() {
+  let retries = 0;
+  function connect() {
+    const es = new EventSource("/__dune_reload");
+    es.onmessage = function(e) {
+      if (e.data === "reload") {
+        console.log("[dune] Reloading...");
+        location.reload();
+      }
+    };
+    es.onerror = function() {
+      es.close();
+      if (retries++ < 10) {
+        setTimeout(connect, 1000 + retries * 500);
+      }
+    };
+    es.onopen = function() { retries = 0; };
+  }
+  connect();
+})();
+</script>`;
+
+/**
+ * Inject the live-reload script before </body> or </html> in HTML responses.
+ */
+function injectLiveReload(response: Response): Response {
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  // Clone the response to read its body
+  return new Response(
+    response.body
+      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            // Decode, inject, re-encode
+            const text = new TextDecoder().decode(chunk);
+            const injected = text.includes("</body>")
+              ? text.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`)
+              : text.includes("</html>")
+                ? text.replace("</html>", `${LIVE_RELOAD_SCRIPT}</html>`)
+                : text + LIVE_RELOAD_SCRIPT;
+            controller.enqueue(new TextEncoder().encode(injected));
+          },
+        }))
+      : null,
+    {
+      status: response.status,
+      headers: new Headers([...response.headers.entries()].filter(([k]) => k.toLowerCase() !== "content-length")),
+    },
+  );
 }
 
 export async function devCommand(root: string, options: DevOptions = {}) {
@@ -126,7 +188,46 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     });
   };
 
-  // Start file watcher
+  // --- SSE Live Reload ---
+  // Connected clients waiting for reload events
+  const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
+
+  /** Notify all connected browsers to reload */
+  function notifyReload() {
+    const message = new TextEncoder().encode("data: reload\n\n");
+    for (const controller of sseClients) {
+      try {
+        controller.enqueue(message);
+      } catch {
+        sseClients.delete(controller);
+      }
+    }
+  }
+
+  /** Handle SSE connection from browser */
+  function handleSSE(): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        sseClients.add(controller);
+        // Send initial heartbeat
+        controller.enqueue(new TextEncoder().encode(": connected\n\n"));
+      },
+      cancel() {
+        // Client disconnected — cleanup handled by the Set
+      },
+    });
+
+    return new Response(body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // --- File Watcher ---
   const contentDir = `${root}/${engine.config.system.content.dir}`;
   const themesDir = `${root}/themes`;
 
@@ -142,6 +243,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
     const watcher = Deno.watchFs(watchPaths);
     console.log(`  👀 Watching: ${watchPaths.join(", ")}`);
+    console.log(`  ⚡ Live reload enabled`);
 
     // Debounced rebuild
     let rebuildTimeout: number | undefined;
@@ -150,13 +252,19 @@ export async function devCommand(root: string, options: DevOptions = {}) {
         if (event.kind === "modify" || event.kind === "create" || event.kind === "remove") {
           clearTimeout(rebuildTimeout);
           rebuildTimeout = setTimeout(async () => {
-            const start = performance.now();
-            await engine.rebuild();
-            taxonomy.rebuild(engine.pages, engine.taxonomyMap);
-            collections.rebuild(engine.pages, engine.taxonomyMap);
-            await search.rebuild(engine.pages);
-            const elapsed = (performance.now() - start).toFixed(0);
-            console.log(`  🔄 Rebuilt in ${elapsed}ms (${engine.pages.length} pages)`);
+            try {
+              const start = performance.now();
+              await engine.rebuild();
+              taxonomy.rebuild(engine.pages, engine.taxonomyMap);
+              collections.rebuild(engine.pages, engine.taxonomyMap);
+              await search.rebuild(engine.pages);
+              const elapsed = (performance.now() - start).toFixed(0);
+              console.log(`  🔄 Rebuilt in ${elapsed}ms (${engine.pages.length} pages)`);
+              // Notify all connected browsers
+              notifyReload();
+            } catch (err) {
+              console.error(`  ✗ Rebuild error: ${err}`);
+            }
           }, 200);
         }
       }
@@ -165,7 +273,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     console.log(`  ⚠️  File watching not available — changes require restart`);
   }
 
-  // Request handler
+  // --- Request handler ---
   const handler = async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const start = performance.now();
@@ -173,8 +281,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     let response: Response;
 
     try {
+      // SSE live-reload endpoint
+      if (url.pathname === "/__dune_reload") {
+        return handleSSE();
+      }
       // Admin routes (must come before content routes)
-      if (url.pathname.startsWith(adminPrefix)) {
+      else if (url.pathname.startsWith(adminPrefix)) {
         const adminResult = await adminHandler(req);
         response = adminResult ?? new Response("Not found", { status: 404 });
       }
@@ -198,6 +310,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       // Content routes
       else {
         response = await routes.contentHandler(req, renderJsx);
+      }
+
+      // Inject live-reload script into HTML responses (except admin)
+      if (!url.pathname.startsWith(adminPrefix) && !url.pathname.startsWith("/api/")) {
+        response = injectLiveReload(response);
       }
     } catch (err) {
       console.error(`  ✗ Error: ${err}`);
