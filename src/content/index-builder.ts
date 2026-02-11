@@ -36,6 +36,8 @@ export interface IndexBuilderOptions {
   contentDir: string;
   /** Format handler registry */
   formats: FormatRegistry;
+  /** Explicit home page slug from config (overrides autodetect) */
+  siteHome?: string;
 }
 
 export interface BuildResult {
@@ -51,6 +53,8 @@ export interface BuildResult {
   errors: IndexError[];
   /** Build duration in milliseconds */
   duration: number;
+  /** Detected or configured home page slug (e.g., "home", "efficiency") */
+  homeSlug: string;
 }
 
 export interface IndexError {
@@ -68,7 +72,7 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats } = options;
+  const { storage, contentDir, formats, siteHome } = options;
 
   const pages: PageIndex[] = [];
   const taxonomyMap: TaxonomyMap = {};
@@ -153,6 +157,7 @@ export async function buildIndex(
   pages.sort((a, b) => a.route.localeCompare(b.route));
 
   const duration = performance.now() - start;
+  const homeSlug = siteHome ?? detectHomeSlug(pages);
 
   return {
     pages,
@@ -161,6 +166,7 @@ export async function buildIndex(
     indexed: pages.length,
     errors,
     duration,
+    homeSlug,
   };
 }
 
@@ -174,7 +180,7 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats } = options;
+  const { storage, contentDir, formats, siteHome } = options;
 
   // Build a map of existing pages by sourcePath
   const existing = new Map<string, PageIndex>();
@@ -269,6 +275,7 @@ export async function updateIndex(
   pages.sort((a, b) => a.route.localeCompare(b.route));
 
   const duration = performance.now() - start;
+  const homeSlug = siteHome ?? detectHomeSlug(pages);
 
   return {
     pages,
@@ -277,6 +284,7 @@ export async function updateIndex(
     indexed: pages.length,
     errors,
     duration,
+    homeSlug,
   };
 }
 
@@ -374,6 +382,31 @@ function inferStatus(
   }
   // Infer from published flag
   return (frontmatter.published ?? true) ? "published" : "draft";
+}
+
+/**
+ * Detect the home page slug from content structure.
+ *
+ * Finds the first ordered top-level folder (lowest numeric prefix > 0).
+ * Falls back to "home" if no ordered folders are found (backward compatibility).
+ */
+export function detectHomeSlug(pages: PageIndex[]): string {
+  // Find top-level pages with explicit ordering
+  const ordered = pages
+    .filter((p) => p.depth === 0 && p.order > 0)
+    .sort((a, b) => a.order - b.order);
+
+  if (ordered.length > 0) {
+    // Extract the folder slug from the first ordered page's sourcePath
+    const parts = ordered[0].sourcePath.split("/");
+    if (parts.length > 0) {
+      const info = parseFolderName(parts[0]);
+      return info.slug;
+    }
+  }
+
+  // Fallback for backward compatibility
+  return "home";
 }
 
 /** Compute a simple hash of a string for change detection. */

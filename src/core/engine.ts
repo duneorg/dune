@@ -126,13 +126,19 @@ export async function createDuneEngine(
    */
   async function init(): Promise<void> {
     // Build content index
-    const result = await buildIndex({ storage, contentDir, formats });
+    const result = await buildIndex({
+      storage,
+      contentDir,
+      formats,
+      siteHome: config.site.home,
+    });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
 
     if (config.system.debug) {
       console.log(
         `[dune] Indexed ${result.indexed} pages in ${result.duration}ms` +
+        ` (home: ${result.homeSlug})` +
         (result.errors.length > 0 ? ` (${result.errors.length} errors)` : ""),
       );
     }
@@ -141,6 +147,7 @@ export async function createDuneEngine(
     router = createRouteResolver({
       pages,
       site: config.site,
+      homeSlug: result.homeSlug,
     });
 
     // Create theme loader
@@ -226,10 +233,15 @@ export async function createDuneEngine(
     pageCache.clear();
     themes.clearCache();
 
-    const result = await buildIndex({ storage, contentDir, formats });
+    const result = await buildIndex({
+      storage,
+      contentDir,
+      formats,
+      siteHome: config.site.home,
+    });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
-    router.rebuild(pages);
+    router.rebuild(pages, result.homeSlug);
 
     if (config.system.debug) {
       console.log(`[dune] Rebuilt index: ${result.indexed} pages in ${result.duration}ms`);

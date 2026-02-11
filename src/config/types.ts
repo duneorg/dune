@@ -33,6 +33,11 @@ export interface SiteConfig {
     name: string;
     email?: string;
   };
+  /** Folder slug or route that serves as homepage. Autodetected if omitted.
+   * When omitted, the first ordered top-level folder (lowest numeric prefix) is used.
+   * @example "home" | "efficiency" | "landing"
+   */
+  home?: string;
   metadata: Record<string, string>;
   /** Taxonomy types enabled for this site */
   taxonomies: string[];

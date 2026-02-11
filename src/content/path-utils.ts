@@ -155,10 +155,14 @@ export function isMetadataFile(name: string): boolean {
  * and produces a clean URL path.
  *
  * Examples:
- *   "01.home/default.md"              → "/"
+ *   "01.home/default.md"              → "/home"
+ *   "01.efficiency/default.md"        → "/efficiency"
  *   "02.blog/blog.md"                 → "/blog"
  *   "02.blog/01.hello-world/post.md"  → "/blog/hello-world"
  *   "_sidebar/item.md"                → null (non-routable)
+ *
+ * Note: Home page mapping (which route serves as "/") is handled by the
+ * route resolver via config, not here. This function produces natural routes.
  */
 export function sourcePathToRoute(
   sourcePath: string,
@@ -192,13 +196,7 @@ export function sourcePathToRoute(
   }
 
   // Build the route
-  let route = "/" + segments.join("/");
-
-  // Normalize: "/home" → "/" (if it's a top-level route with slug "home")
-  // This is a convention — the first ordered folder named "home" becomes the homepage
-  if (route === "/home" && segments.length === 1 && segments[0] === "home") {
-    route = "/";
-  }
+  const route = "/" + segments.join("/");
 
   return route;
 }

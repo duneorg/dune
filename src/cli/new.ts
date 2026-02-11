@@ -7,6 +7,9 @@ description: A flat-file CMS powered by Deno Fresh
 url: http://localhost:3000
 author:
   name: ""
+# Home page: which folder serves as "/". Autodetected if omitted
+# (uses the first ordered folder, e.g. 01.home/).
+# home: home
 taxonomies:
   - category
   - tag

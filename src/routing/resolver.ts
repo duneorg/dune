@@ -28,6 +28,8 @@ export interface RouteResolverOptions {
   pages: PageIndex[];
   /** Site config for redirects and route aliases */
   site: SiteConfig;
+  /** Folder slug that maps to "/" (from config or autodetect) */
+  homeSlug: string;
 }
 
 /**
@@ -46,11 +48,11 @@ export function createRouteResolver(options: RouteResolverOptions) {
     if (page.status && page.status !== "published") continue;
 
     routeMap.set(normalizeRoute(page.route), page);
-
-    // Index frontmatter route aliases
-    // (We'd need to look these up from frontmatter — since PageIndex
-    //  doesn't carry aliases, we skip for now and match on route only)
   }
+
+  // Resolve the home page from homeSlug
+  const homeRoute = normalizeRoute("/" + options.homeSlug);
+  let homePage = routeMap.get(homeRoute) ?? null;
 
   return {
     /**
@@ -66,7 +68,12 @@ export function createRouteResolver(options: RouteResolverOptions) {
         return { type: "redirect", redirectTo: redirectTarget };
       }
 
-      // 2. Check route aliases from site config
+      // 2. Home page: map "/" to the configured/autodetected home page
+      if ((normalized === "/" || normalized === "") && homePage) {
+        return { type: "page", page: homePage };
+      }
+
+      // 3. Check route aliases from site config
       const aliasTarget = options.site.routes[pathname] ??
         options.site.routes[normalized];
       if (aliasTarget) {
@@ -76,13 +83,13 @@ export function createRouteResolver(options: RouteResolverOptions) {
         }
       }
 
-      // 3. Direct route match
+      // 4. Direct route match
       const directMatch = routeMap.get(normalized);
       if (directMatch) {
         return { type: "page", page: directMatch };
       }
 
-      // 4. Try with/without trailing slash
+      // 5. Try with/without trailing slash
       if (normalized.endsWith("/")) {
         const withoutSlash = normalized.slice(0, -1);
         const match = routeMap.get(withoutSlash);
@@ -91,13 +98,6 @@ export function createRouteResolver(options: RouteResolverOptions) {
         const withSlash = normalized + "/";
         const match = routeMap.get(withSlash);
         if (match) return { type: "page", page: match };
-      }
-
-      // 5. Check for /index → / style routes
-      if (normalized === "/" || normalized === "") {
-        // Try matching a page with route "/"
-        const homeMatch = routeMap.get("/");
-        if (homeMatch) return { type: "page", page: homeMatch };
       }
 
       // Not found
@@ -135,8 +135,11 @@ export function createRouteResolver(options: RouteResolverOptions) {
     /**
      * Rebuild lookup maps (call after content index changes).
      */
-    rebuild(pages: PageIndex[]) {
+    rebuild(pages: PageIndex[], newHomeSlug?: string) {
       options.pages = pages;
+      if (newHomeSlug !== undefined) {
+        options.homeSlug = newHomeSlug;
+      }
       routeMap.clear();
       aliasMap.clear();
       for (const page of pages) {
@@ -144,6 +147,9 @@ export function createRouteResolver(options: RouteResolverOptions) {
         if (page.status && page.status !== "published") continue;
         routeMap.set(normalizeRoute(page.route), page);
       }
+      // Re-resolve home page
+      const newHomeRoute = normalizeRoute("/" + options.homeSlug);
+      homePage = routeMap.get(newHomeRoute) ?? null;
     },
   };
 }
