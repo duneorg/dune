@@ -200,8 +200,14 @@ export type TemplateComponent = (props: TemplateProps) => unknown;
 /** Props passed to theme templates (for .md/.mdx pages) */
 export interface TemplateProps {
   page: Page;
+  /** Pre-formatted page title: "Title - Descriptor | Site Name" */
+  pageTitle: string;
   site: SiteConfig;
   config: DuneConfig;
+  /** Top-level navigation pages */
+  nav: PageIndex[];
+  /** Dynamically loaded layout component (use for hot-reload compatibility) */
+  Layout?: TemplateComponent;
   collection?: Collection;
   children?: unknown;
 }

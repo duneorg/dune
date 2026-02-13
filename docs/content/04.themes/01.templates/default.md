@@ -20,22 +20,26 @@ Every template receives `TemplateProps`:
 
 ```tsx
 import type { TemplateProps } from "dune/types";
+import StaticLayout from "../components/layout.tsx";
 
-export default function PostTemplate({ page, site, config, collection }: TemplateProps) {
+export default function PostTemplate({ page, pageTitle, site, config, nav, Layout, children }: TemplateProps) {
+  const LayoutComponent = Layout ?? StaticLayout;
   return (
-    <article>
-      <h1>{page.frontmatter.title}</h1>
+    <LayoutComponent site={site} config={config} nav={nav} page={page} pageTitle={pageTitle}>
+      <article>
+        <h1>{page.frontmatter.title}</h1>
 
-      <time datetime={page.frontmatter.date}>
-        {new Date(page.frontmatter.date).toLocaleDateString()}
-      </time>
+        <time datetime={page.frontmatter.date}>
+          {new Date(page.frontmatter.date).toLocaleDateString()}
+        </time>
 
-      <div dangerouslySetInnerHTML={{ __html: await page.html() }} />
+        <div>{children}</div>
 
-      {page.frontmatter.taxonomy?.tag?.map((tag) => (
-        <a key={tag} href={`/tag/${tag}`}>{tag}</a>
-      ))}
-    </article>
+        {page.frontmatter.taxonomy?.tag?.map((tag) => (
+          <a key={tag} href={`/tag/${tag}`}>{tag}</a>
+        ))}
+      </article>
+    </LayoutComponent>
   );
 }
 ```
@@ -45,10 +49,33 @@ export default function PostTemplate({ page, site, config, collection }: Templat
 | Prop | Type | Description |
 |------|------|-------------|
 | `page` | `Page` | The full page object (frontmatter, content, media, relations) |
+| `pageTitle` | `string` | Pre-formatted title: "Title - Descriptor \| Site Name" |
 | `site` | `SiteConfig` | Site configuration (title, URL, metadata) |
 | `config` | `DuneConfig` | Full merged configuration |
+| `nav` | `PageIndex[]` | Top-level navigation pages |
+| `Layout` | `Component?` | Dynamically loaded layout component (see below) |
 | `collection` | `Collection?` | Collection results if page defines one |
-| `children` | `JSX.Element?` | Child content (for layouts) |
+| `children` | `Element?` | Pre-rendered content (HTML wrapped in a div) |
+
+### Using the Layout prop
+
+The router passes a `Layout` prop that is loaded dynamically on each request. This ensures layout changes take effect during development without restarting the server. Templates should prefer the `Layout` prop over a static import:
+
+```tsx
+import StaticLayout from "../components/layout.tsx";
+
+export default function MyTemplate({ Layout, ...props }: TemplateProps) {
+  // Layout prop is fresh on every request; StaticLayout is the build-time fallback
+  const LayoutComponent = Layout ?? StaticLayout;
+  return (
+    <LayoutComponent {...props}>
+      {/* content */}
+    </LayoutComponent>
+  );
+}
+```
+
+If a template only uses `import Layout from "../components/layout.tsx"` directly, layout file changes won't appear until the server restarts. Dune logs a warning when it detects this pattern during development.
 
 ### What's in `Page`
 
@@ -85,12 +112,15 @@ template: landing   # uses templates/landing.tsx instead
 ## Blog listing template example
 
 ```tsx
-export default function BlogTemplate({ page, collection }: TemplateProps) {
+import StaticLayout from "../components/layout.tsx";
+
+export default function BlogTemplate({ page, pageTitle, site, config, nav, Layout, collection, children }: TemplateProps) {
+  const LayoutComponent = Layout ?? StaticLayout;
   return (
-    <section>
+    <LayoutComponent site={site} config={config} nav={nav} page={page} pageTitle={pageTitle}>
       <h1>{page.frontmatter.title}</h1>
 
-      <div dangerouslySetInnerHTML={{ __html: await page.html() }} />
+      <div>{children}</div>
 
       {collection && (
         <ul>
@@ -99,7 +129,6 @@ export default function BlogTemplate({ page, collection }: TemplateProps) {
               <a href={post.route}>
                 <h2>{post.frontmatter.title}</h2>
                 <time>{post.frontmatter.date}</time>
-                <p>{await post.summary()}</p>
               </a>
             </li>
           ))}
@@ -111,7 +140,7 @@ export default function BlogTemplate({ page, collection }: TemplateProps) {
           Older posts →
         </a>
       )}
-    </section>
+    </LayoutComponent>
   );
 }
 ```

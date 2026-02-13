@@ -21,20 +21,32 @@ Frontmatter is the YAML block at the top of every content file. It controls how 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `title` | string | `""` | Page title (required for meaningful pages) |
+| `descriptor` | string | — | Short subtitle shown after title in browser tab |
 | `slug` | string | folder name | Override the URL slug |
 | `template` | string | filename | Override template selection (`.md` only) |
 | `layout` | string \| false | `"default"` | Layout wrapping (`.tsx` only) |
+
+The `descriptor` field controls the page title shown in the browser tab. When present, the title format is **"Title - Descriptor | Site Name"**. Without it, the format is **"Title | Site Name"**.
+
+```yaml
+title: "Services"
+descriptor: "Custom Web Solutions"
+# → browser tab: "Services - Custom Web Solutions | My Site"
+```
 
 ### Publishing
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `published` | boolean | `true` | If `false`, page doesn't exist for visitors |
+| `status` | string | — | Workflow status: `draft`, `in_review`, `published`, `archived` |
 | `date` | string | — | Publication date (ISO 8601) |
 | `publish_date` | string | — | Scheduled publish (ISO 8601 datetime) |
 | `unpublish_date` | string | — | Scheduled unpublish (ISO 8601 datetime) |
 | `visible` | boolean | `true` | If `false`, accessible but hidden from navigation |
 | `routable` | boolean | `true` | If `false`, page has no URL (modular sections) |
+
+The `status` field is used by the content workflow system for editorial management. It works independently of `published` — a page with `status: draft` and `published: true` is still accessible. Use `published: false` to actually hide a page from visitors.
 
 ### Taxonomy
 
