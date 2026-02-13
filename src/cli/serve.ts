@@ -3,7 +3,9 @@
  *
  * Features:
  *   - Security headers (CSP, X-Frame-Options, etc.)
+ *   - Gzip compression for text-based responses
  *   - Cache-aware static file serving (long-lived for fonts/images, short for HTML)
+ *   - Auto-generated /sitemap.xml from content index
  *   - /health endpoint for monitoring
  *   - Custom 404/500 error pages rendered through the theme
  */
@@ -15,6 +17,7 @@ import { join } from "@std/path";
 import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
+import { generateSitemap } from "../sitemap/generator.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -37,6 +40,51 @@ function withSecurityHeaders(response: Response): Response {
     if (!headers.has(key)) headers.set(key, value);
   }
   return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+// === Compression ===
+
+/** Content types worth compressing (text-based formats). */
+const COMPRESSIBLE_TYPES = /^(text\/|application\/json|application\/xml|application\/javascript|image\/svg\+xml)/;
+
+/**
+ * Compress response body with gzip if the client supports it
+ * and the content type is compressible.
+ */
+async function maybeCompress(req: Request, response: Response): Promise<Response> {
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (!COMPRESSIBLE_TYPES.test(contentType)) return response;
+
+  const accept = req.headers.get("Accept-Encoding") ?? "";
+  if (!accept.includes("gzip")) return response;
+
+  if (!response.body) return response;
+
+  const body = await response.arrayBuffer();
+  // Don't compress tiny responses — overhead isn't worth it
+  if (body.byteLength < 256) {
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  const compressed = new Response(
+    new Blob([body]).stream().pipeThrough(new CompressionStream("gzip")),
+  );
+  const compressedBody = await compressed.arrayBuffer();
+
+  const headers = new Headers(response.headers);
+  headers.set("Content-Encoding", "gzip");
+  headers.set("Content-Length", String(compressedBody.byteLength));
+  headers.set("Vary", "Accept-Encoding");
+
+  return new Response(compressedBody, {
     status: response.status,
     statusText: response.statusText,
     headers,
@@ -181,7 +229,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const siteName = engine.site.title;
   const startTime = Date.now();
 
+  // Generate sitemap at startup
+  const siteUrl = engine.site.url || `http://localhost:${port}`;
+  const sitemapXml = generateSitemap(engine.pages, siteUrl);
+
   console.log(`  📄 ${engine.pages.length} pages indexed`);
+  console.log(`  🗺️  Sitemap generated`);
 
   const renderJsx = (jsx: unknown, statusCode = 200) => {
     const html = render(jsx as any);
@@ -209,8 +262,18 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         });
       }
 
-      // Root-level static files (favicon.ico, robots.txt, sitemap.xml)
-      if (/^\/(favicon\.(ico|svg)|robots\.txt|sitemap\.xml)$/.test(url.pathname)) {
+      // Dynamic sitemap
+      if (url.pathname === "/sitemap.xml") {
+        return maybeCompress(req, new Response(sitemapXml, {
+          headers: {
+            "Content-Type": "application/xml; charset=utf-8",
+            "Cache-Control": "public, max-age=3600, must-revalidate",
+          },
+        }));
+      }
+
+      // Root-level static files (favicon.ico, robots.txt)
+      if (/^\/(favicon\.(ico|svg)|robots\.txt)$/.test(url.pathname)) {
         const staticResult = await serveStaticFile(root, url.pathname);
         return withSecurityHeaders(staticResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName));
       }
@@ -244,7 +307,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
       // Content routes
       const response = await routes.contentHandler(req, renderJsx);
-      return withSecurityHeaders(response);
+      return maybeCompress(req, withSecurityHeaders(response));
     } catch (err) {
       if (debug) {
         console.error(`✗ Error serving ${url.pathname}:`, err);
