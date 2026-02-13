@@ -101,7 +101,7 @@ function createFileResponse(file: Uint8Array, size: number, fullPath: string): R
   const isFont = ["ttf", "otf", "woff", "woff2", "eot"].includes(ext);
   const cacheControl = isFont ? "public, max-age=3600" : "no-cache";
 
-  return new Response(file, {
+  return new Response(new Uint8Array(file), {
     headers: {
       "Content-Type": mimeTypes[ext] ?? "application/octet-stream",
       "Content-Length": String(size),
@@ -302,6 +302,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           JSON.stringify({ error: "Not found" }),
           { status: 404, headers: { "Content-Type": "application/json" } },
         );
+      }
+      // Root-level static files (favicon, robots.txt, sitemap.xml)
+      else if (/^\/(favicon\.(ico|svg)|robots\.txt|sitemap\.xml)$/.test(url.pathname)) {
+        response = await serveStaticFile(root, `/static${url.pathname}`);
       }
       // Static files (must come before content routes)
       else if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {

@@ -357,6 +357,7 @@ export function createCollectionEngine(
         taxonomy: {},
         mtime: 0,
         hash: "",
+        status: "published",
       };
       const sourceItems = resolveSource(definition.items, dummyContext);
       return buildCollection(sourceItems, definition);
