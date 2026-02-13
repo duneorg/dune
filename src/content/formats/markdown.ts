@@ -74,7 +74,9 @@ export class MarkdownHandler implements ContentFormatHandler {
     const resolved = this.resolveMediaReferences(raw, ctx);
 
     // Parse markdown to HTML
-    const html = await this.marked.parse(resolved);
+    let html = await this.marked.parse(resolved);
+    // Add loading="lazy" to img tags that don't have it
+    html = html.replace(/<img(?=\s)(?![^>]*\bloading=)/gi, '<img loading="lazy"');
     return html;
   }
 
