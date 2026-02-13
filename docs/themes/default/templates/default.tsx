@@ -9,11 +9,12 @@
  */
 
 import type { TemplateProps } from "../../../../src/content/types.ts";
-import Layout from "../components/layout.tsx";
+import StaticLayout from "../components/layout.tsx";
 
-export default function DefaultTemplate({ page, site, config, children }: TemplateProps) {
+export default function DefaultTemplate({ page, site, config, Layout, children }: TemplateProps & { Layout?: any }) {
+  const LayoutComponent = Layout ?? StaticLayout;
   return (
-    <Layout page={page} site={site} config={config}>
+    <LayoutComponent page={page} site={site} config={config}>
       <article>
         <h1>{page.frontmatter.title}</h1>
         {page.frontmatter.metadata?.description && (
@@ -23,6 +24,6 @@ export default function DefaultTemplate({ page, site, config, children }: Templa
         )}
         {children}
       </article>
-    </Layout>
+    </LayoutComponent>
   );
 }

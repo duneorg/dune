@@ -122,6 +122,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
+              // Warn about static layout imports that break hot-reload
+              warnStaticLayoutImport(templatePath, storage);
               templateCache.set(name, component);
               return { name, component, fromTheme: current.manifest.name };
             }
@@ -197,6 +199,32 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
 }
 
 // === Internal helpers ===
+
+/** Set of template paths already warned about, to avoid repeated messages. */
+const _warnedTemplates = new Set<string>();
+
+/**
+ * Check if a template file contains a static layout import and warn the
+ * developer. Static imports like `import Layout from "../components/layout.tsx"`
+ * won't be cache-busted during hot-reload — the template must use the `Layout`
+ * prop passed by the router instead.
+ */
+async function warnStaticLayoutImport(templatePath: string, storage: StorageAdapter): Promise<void> {
+  if (_warnedTemplates.has(templatePath)) return;
+  try {
+    const source = await storage.readText(templatePath);
+    // Match: import <anything> from "<path containing /components/>"
+    if (/import\s+\w+\s+from\s+["'][^"']*\/components\/[^"']*["']/.test(source)) {
+      _warnedTemplates.add(templatePath);
+      console.warn(
+        `  ⚠️  ${templatePath}: static layout import won't hot-reload.\n` +
+        `     Use the Layout prop instead: const LayoutComponent = Layout ?? StaticLayout;`,
+      );
+    }
+  } catch {
+    // Can't read source — skip warning
+  }
+}
 
 /**
  * Resolve a theme and its inheritance chain.

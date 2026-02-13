@@ -287,6 +287,10 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
         }
       }
 
+      // Load layout dynamically so it gets ?v=N cache busting on hot-reload.
+      // Templates receive it as a prop instead of using a static import.
+      const layout = await engine.themes.loadLayout("layout");
+
       return renderJsx(
         h(template.component as ComponentType<any>, {
           page,
@@ -295,6 +299,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
           config: engine.config,
           nav: engine.router.getTopNavigation(),
           collection,
+          Layout: layout ?? undefined,
           children: htmlContent,
         }),
       );
