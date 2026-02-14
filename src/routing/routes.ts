@@ -272,7 +272,14 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
       }
 
       // Pre-resolve HTML and pass as children to the template
-      const html = await page.html();
+      let html = await page.html();
+      const supportedLangs = engine.config?.system?.languages?.supported ?? [];
+      const defaultLang = engine.config?.system?.languages?.default ?? "en";
+      const includeDefaultInUrl = engine.config?.system?.languages?.include_default_in_url ?? false;
+      const pageLang = page.language ?? defaultLang;
+      if (supportedLangs.length > 1) {
+        html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs);
+      }
       const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 
       // Load collection if page defines one
@@ -313,6 +320,36 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
       );
     },
   };
+}
+
+/**
+ * Rewrite internal links in HTML to include language prefix when needed.
+ * E.g. /contact → /de/contact when rendering a German page.
+ */
+function rewriteInternalLinks(
+  html: string,
+  lang: string,
+  defaultLang: string,
+  includeDefaultInUrl: boolean,
+  supportedLangs: string[],
+): string {
+  const needsPrefix = lang !== defaultLang || includeDefaultInUrl;
+  if (!needsPrefix) return html;
+
+  const langPrefix = `/${lang}`;
+  const skipPrefixes = ["/themes/", "/content-media/", "/api/", "/admin/", "//", "mailto:", "tel:"];
+  const hasLangPrefix = new RegExp(`^/(${supportedLangs.join("|")})(/|$)`);
+
+  return html.replace(
+    /href="(\/[^"]*)"/g,
+    (_, path: string) => {
+      if (hasLangPrefix.test(path)) return `href="${path}"`;
+      if (skipPrefixes.some((p) => path.startsWith(p))) return `href="${path}"`;
+      if (path.includes(":")) return `href="${path}"`;
+      const newPath = path === "/" ? langPrefix : `${langPrefix}${path}`;
+      return `href="${newPath}"`;
+    },
+  );
 }
 
 /**
