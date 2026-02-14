@@ -212,6 +212,8 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
         });
 
         if (layout) {
+          const strings = await engine.themes.loadLocale(page.language ?? "en");
+          const t = (key: string) => (strings[key] ?? key) as string;
           return renderJsx(
             h(layout as ComponentType<any>, {
               page,
@@ -220,6 +222,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
               config: engine.config,
               nav: engine.router.getTopNavigation(page.language),
               pathname: url.pathname,
+              t,
               children: content,
             }),
           );
@@ -291,6 +294,8 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
       // Load layout dynamically so it gets ?v=N cache busting on hot-reload.
       // Templates receive it as a prop instead of using a static import.
       const layout = await engine.themes.loadLayout("layout");
+      const strings = await engine.themes.loadLocale(page.language ?? "en");
+      const t = (key: string) => (strings[key] ?? key) as string;
 
       return renderJsx(
         h(template.component as ComponentType<any>, {
@@ -302,6 +307,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
           pathname: url.pathname,
           collection,
           Layout: layout ?? undefined,
+          t,
           children: htmlContent,
         }),
       );

@@ -50,6 +50,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
   // Template component cache (lazy-loaded on first use)
   const templateCache = new Map<string, TemplateComponent>();
   const layoutCache = new Map<string, TemplateComponent>();
+  const localeCache = new Map<string, Record<string, string>>();
 
   // Hot-reload: version counter for ?v=N cache busting
   let importVersion = 0;
@@ -171,6 +172,44 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
     },
 
     /**
+     * Load theme UI locale strings for a language.
+     * Looks in themes/{theme}/locales/{lang}.json across the theme chain.
+     * Falls back to "en" if the requested language is not found.
+     * Returns a flat object of key → string for use with t(key).
+     */
+    async loadLocale(lang: string): Promise<Record<string, string>> {
+      const cached = localeCache.get(lang);
+      if (cached) return cached;
+
+      const fallback = lang !== "en" ? await this.loadLocale("en") : null;
+      let current: ResolvedTheme | undefined = theme;
+      while (current) {
+        const localePath = join(current.dir, "locales", `${lang}.json`);
+        try {
+          if (await storage.exists(localePath)) {
+            const text = await storage.readText(localePath);
+            const parsed = JSON.parse(text) as Record<string, string>;
+            if (parsed && typeof parsed === "object") {
+              const merged = fallback ? { ...fallback, ...parsed } : parsed;
+              localeCache.set(lang, merged);
+              return merged;
+            }
+          }
+        } catch {
+          // Continue to parent theme
+        }
+        current = current.parent;
+      }
+
+      if (fallback) {
+        localeCache.set(lang, fallback);
+        return fallback;
+      }
+      localeCache.set(lang, {});
+      return {};
+    },
+
+    /**
      * Get all available template names across the theme chain.
      */
     getAvailableTemplates(): string[] {
@@ -193,6 +232,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
     clearCache() {
       templateCache.clear();
       layoutCache.clear();
+      localeCache.clear();
       importVersion++;
     },
   };
