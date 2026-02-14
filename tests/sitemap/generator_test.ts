@@ -6,6 +6,7 @@ function makePage(overrides: Partial<PageIndex> = {}): PageIndex {
   return {
     sourcePath: "01.home/default.md",
     route: "/home",
+    language: "en",
     format: "md",
     template: "default",
     title: "Home",

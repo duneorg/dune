@@ -30,17 +30,20 @@ export async function i18nStatusCommand(root: string, options: I18nOptions = {})
     return;
   }
 
+  // One logical page per route (use default-language pages)
+  const defaultLangPages = engine.pages.filter((p) => p.language === defaultLang);
+
   console.log(`\n  🌐 Translation Status`);
   console.log(`     Default language: ${defaultLang}`);
   console.log(`     Languages: ${languages.join(", ")}`);
-  console.log(`     Total pages: ${engine.pages.length}\n`);
+  console.log(`     Total pages: ${defaultLangPages.length}\n`);
 
   // Check each non-default language
   for (const lang of otherLangs) {
     let translated = 0;
     let missing = 0;
 
-    for (const page of engine.pages) {
+    for (const page of defaultLangPages) {
       // Convention: translations live in {sourcePath}.{lang}.{ext}
       // or in a parallel directory structure under {lang}/
       const langPath = page.sourcePath.replace(
@@ -59,7 +62,7 @@ export async function i18nStatusCommand(root: string, options: I18nOptions = {})
       }
     }
 
-    const total = engine.pages.length;
+    const total = defaultLangPages.length;
     const pct = total > 0 ? Math.round((translated / total) * 100) : 0;
     const bar = renderBar(pct, 30);
 

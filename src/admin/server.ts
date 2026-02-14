@@ -961,9 +961,10 @@ export function createAdminHandler(config: AdminServerConfig) {
     const languages = config.config.system.languages?.supported ?? [];
     const defaultLang = config.config.system.languages?.default ?? "en";
 
-    // Build translation data
+    // Build translation data — one row per route (use default-language pages to avoid duplicates)
     const otherLangs = languages.filter((l: string) => l !== defaultLang);
-    const pages = engine.pages.map((p) => {
+    const defaultLangPages = engine.pages.filter((p) => p.language === defaultLang);
+    const pages = defaultLangPages.map((p) => {
       const translations: Record<string, { exists: boolean; upToDate: boolean }> = {};
       for (const lang of otherLangs) {
         const langPath = p.sourcePath.replace(/\.(md|mdx|tsx)$/, `.${lang}.$1`);

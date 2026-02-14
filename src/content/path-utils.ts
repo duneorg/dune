@@ -85,13 +85,13 @@ export function parseFolderName(name: string): FolderInfo {
 }
 
 /**
- * Parse a content filename to extract format and template name.
+ * Parse a content filename to extract format, template name, and optional language.
  *
  * Examples:
- *   "default.md"  → { template: "default", format: "md", ext: ".md" }
- *   "post.md"     → { template: "post", format: "md", ext: ".md" }
- *   "page.tsx"    → { template: "self", format: "tsx", ext: ".tsx" }
- *   "blog.mdx"    → { template: "blog", format: "mdx", ext: ".mdx" }
+ *   "default.md"      → { template: "default", format: "md", ext: ".md" }
+ *   "default.de.md"   → { template: "default", format: "md", ext: ".md", language: "de" }  (when "de" in supportedLanguages)
+ *   "post.md"         → { template: "post", format: "md", ext: ".md" }
+ *   "page.tsx"        → { template: "self", format: "tsx", ext: ".tsx" }
  */
 export interface FileInfo {
   /** Template name (for .md/.mdx) or "self" (for .tsx) */
@@ -102,9 +102,14 @@ export interface FileInfo {
   ext: string;
   /** Original filename */
   raw: string;
+  /** Language code when filename matches {template}.{lang}.{ext} and lang is supported */
+  language?: string;
 }
 
-export function parseContentFilename(name: string): FileInfo | null {
+export function parseContentFilename(
+  name: string,
+  supportedLanguages?: string[],
+): FileInfo | null {
   const dotIndex = name.lastIndexOf(".");
   if (dotIndex === -1) return null;
 
@@ -113,6 +118,27 @@ export function parseContentFilename(name: string): FileInfo | null {
   if (!format) return null;
 
   const baseName = name.slice(0, dotIndex);
+
+  // Check for language variant: {template}.{lang} when lang is in supported list
+  if (supportedLanguages && supportedLanguages.length > 0 && format !== "tsx") {
+    const lastDot = baseName.lastIndexOf(".");
+    if (lastDot !== -1) {
+      const possibleLang = baseName.slice(lastDot + 1);
+      const template = baseName.slice(0, lastDot);
+      if (
+        possibleLang.length >= 2 &&
+        supportedLanguages.includes(possibleLang.toLowerCase())
+      ) {
+        return {
+          template,
+          format,
+          ext,
+          raw: name,
+          language: possibleLang.toLowerCase(),
+        };
+      }
+    }
+  }
 
   return {
     template: format === "tsx" ? "self" : baseName,

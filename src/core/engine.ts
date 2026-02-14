@@ -131,6 +131,8 @@ export async function createDuneEngine(
       contentDir,
       formats,
       siteHome: config.site.home,
+      supportedLanguages: config.system.languages?.supported,
+      defaultLanguage: config.system.languages?.default,
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
@@ -148,6 +150,9 @@ export async function createDuneEngine(
       pages,
       site: config.site,
       homeSlug: result.homeSlug,
+      supportedLanguages: config.system.languages?.supported,
+      defaultLanguage: config.system.languages?.default,
+      includeDefaultInUrl: config.system.languages?.include_default_in_url,
     });
 
     // Create theme loader
@@ -238,6 +243,8 @@ export async function createDuneEngine(
       contentDir,
       formats,
       siteHome: config.site.home,
+      supportedLanguages: config.system.languages?.supported,
+      defaultLanguage: config.system.languages?.default,
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;

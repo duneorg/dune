@@ -70,6 +70,7 @@ export async function loadPage(
   const page: Page = {
     sourcePath: index.sourcePath,
     route: index.route,
+    language: index.language,
     format: index.format,
     template: index.template,
     frontmatter,

@@ -86,6 +86,8 @@ export interface Page {
   sourcePath: string;
   /** URL slug: "/blog/hello-world" */
   route: string;
+  /** Language code (from PageIndex) */
+  language: string;
   /** Content format: "md", "tsx", or "mdx" */
   format: ContentFormat;
   /** Resolved template name: "post" (for .md/.mdx) or "self" (for .tsx) */
@@ -122,6 +124,8 @@ export interface Page {
 export interface PageIndex {
   sourcePath: string;
   route: string;
+  /** Language code (from filename suffix or config default) */
+  language: string;
   /** Content format */
   format: ContentFormat;
   template: string;
@@ -206,6 +210,8 @@ export interface TemplateProps {
   config: DuneConfig;
   /** Top-level navigation pages */
   nav: PageIndex[];
+  /** Current request pathname (for canonical, hreflang, language switcher) */
+  pathname?: string;
   /** Dynamically loaded layout component (use for hot-reload compatibility) */
   Layout?: TemplateComponent;
   collection?: Collection;

@@ -30,29 +30,64 @@ export interface RouteResolverOptions {
   site: SiteConfig;
   /** Folder slug that maps to "/" (from config or autodetect) */
   homeSlug: string;
+  /** Supported language codes (when length > 1, enables /{lang}/path routing) */
+  supportedLanguages?: string[];
+  /** Default language for path without prefix */
+  defaultLanguage?: string;
+  /** If true, default language also appears in URL (/en/page) */
+  includeDefaultInUrl?: boolean;
 }
 
 /**
  * Create a route resolver from page indexes and site config.
  */
 export function createRouteResolver(options: RouteResolverOptions) {
-  // Build lookup maps for fast resolution
+  const supportedLangs = options.supportedLanguages ?? [];
+  const defaultLang = options.defaultLanguage ?? "en";
+  const includeDefaultInUrl = options.includeDefaultInUrl ?? false;
+  const isMultilingual = supportedLangs.length > 1;
+
+  // Build lookup: route|lang -> PageIndex (when multilingual) or route -> PageIndex (single lang)
   const routeMap = new Map<string, PageIndex>();
   const aliasMap = new Map<string, PageIndex>();
 
-  // Index all pages by route and their aliases
+  function routeLangKey(route: string, lang: string): string {
+    return normalizeRoute(route) + "|" + lang.toLowerCase();
+  }
+
+  function findPage(route: string, lang: string): PageIndex | undefined {
+    const key = routeLangKey(route, lang);
+    const match = routeMap.get(key);
+    if (match) return match;
+    // Fallback to default language if requested lang not found
+    if (lang !== defaultLang) {
+      return routeMap.get(routeLangKey(route, defaultLang));
+    }
+    return undefined;
+  }
+
+  // Index all pages by route (and route+lang when multilingual)
   for (const page of options.pages) {
     if (!page.routable) continue;
     if (!page.published) continue;
-    // Only published status pages are publicly routable
     if (page.status && page.status !== "published") continue;
 
-    routeMap.set(normalizeRoute(page.route), page);
+    const route = normalizeRoute(page.route);
+    if (isMultilingual) {
+      routeMap.set(routeLangKey(route, page.language), page);
+    } else {
+      routeMap.set(route, page);
+    }
   }
 
   // Resolve the home page from homeSlug
   const homeRoute = normalizeRoute("/" + options.homeSlug);
-  let homePage = routeMap.get(homeRoute) ?? null;
+  let homePage: PageIndex | null = null;
+  if (isMultilingual) {
+    homePage = findPage(homeRoute, defaultLang) ?? null;
+  } else {
+    homePage = routeMap.get(homeRoute) ?? null;
+  }
 
   return {
     /**
@@ -68,8 +103,34 @@ export function createRouteResolver(options: RouteResolverOptions) {
         return { type: "redirect", redirectTo: redirectTarget };
       }
 
+      let route = normalized;
+      let lang = defaultLang;
+
+      if (isMultilingual) {
+        const segments = normalized.split("/").filter(Boolean);
+        const first = segments[0]?.toLowerCase();
+        if (first && supportedLangs.includes(first)) {
+          lang = first;
+          route = "/" + segments.slice(1).join("/") || "/";
+          // "/de" with nothing after -> home route
+          if (route === "/" && segments.length === 1) {
+            route = homeRoute;
+          }
+        } else if (first && includeDefaultInUrl && first === defaultLang) {
+          lang = defaultLang;
+          route = "/" + segments.slice(1).join("/") || "/";
+          if (route === "/" && segments.length === 1) {
+            route = homeRoute;
+          }
+        }
+      }
+
       // 2. Home page: map "/" to the configured/autodetected home page
-      if ((normalized === "/" || normalized === "") && homePage) {
+      if ((route === "/" || route === "") && homePage) {
+        if (isMultilingual) {
+          const page = findPage(homeRoute, lang);
+          return page ? { type: "page", page } : null;
+        }
         return { type: "page", page: homePage };
       }
 
@@ -77,30 +138,34 @@ export function createRouteResolver(options: RouteResolverOptions) {
       const aliasTarget = options.site.routes[pathname] ??
         options.site.routes[normalized];
       if (aliasTarget) {
-        const aliasPage = routeMap.get(normalizeRoute(aliasTarget));
+        const aliasRoute = normalizeRoute(aliasTarget);
+        const aliasPage = isMultilingual
+          ? findPage(aliasRoute, lang)
+          : routeMap.get(aliasRoute);
         if (aliasPage) {
           return { type: "page", page: aliasPage };
         }
       }
 
       // 4. Direct route match
-      const directMatch = routeMap.get(normalized);
+      const directMatch = isMultilingual
+        ? findPage(route, lang)
+        : routeMap.get(route);
       if (directMatch) {
         return { type: "page", page: directMatch };
       }
 
       // 5. Try with/without trailing slash
-      if (normalized.endsWith("/")) {
-        const withoutSlash = normalized.slice(0, -1);
-        const match = routeMap.get(withoutSlash);
+      if (route.endsWith("/") && route.length > 1) {
+        const withoutSlash = route.slice(0, -1);
+        const match = isMultilingual ? findPage(withoutSlash, lang) : routeMap.get(withoutSlash);
         if (match) return { type: "page", page: match };
-      } else {
-        const withSlash = normalized + "/";
-        const match = routeMap.get(withSlash);
+      } else if (route !== "/") {
+        const withSlash = route + "/";
+        const match = isMultilingual ? findPage(withSlash, lang) : routeMap.get(withSlash);
         if (match) return { type: "page", page: match };
       }
 
-      // Not found
       return null;
     },
 
@@ -113,23 +178,27 @@ export function createRouteResolver(options: RouteResolverOptions) {
 
     /**
      * Get all visible, published pages in navigation order.
+     * When multilingual, pass lang to filter to that language (avoids duplicate routes).
      */
-    getNavigation(): PageIndex[] {
-      return options.pages
-        .filter((p) => p.visible && p.published && p.routable && !p.isModule)
-        .sort((a, b) => {
-          // Sort by depth first, then order, then route
-          if (a.depth !== b.depth) return a.depth - b.depth;
-          if (a.order !== b.order) return a.order - b.order;
-          return a.route.localeCompare(b.route);
-        });
+    getNavigation(lang?: string): PageIndex[] {
+      let items = options.pages.filter(
+        (p) => p.visible && p.published && p.routable && !p.isModule,
+      );
+      if (isMultilingual && lang) {
+        items = items.filter((p) => p.language === lang);
+      }
+      return items.sort((a, b) => {
+        if (a.depth !== b.depth) return a.depth - b.depth;
+        if (a.order !== b.order) return a.order - b.order;
+        return a.route.localeCompare(b.route);
+      });
     },
 
     /**
      * Get top-level navigation items (depth 0 = direct children of content root).
      */
-    getTopNavigation(): PageIndex[] {
-      return this.getNavigation().filter((p) => p.depth === 0);
+    getTopNavigation(lang?: string): PageIndex[] {
+      return this.getNavigation(lang).filter((p) => p.depth === 0);
     },
 
     /**
@@ -145,11 +214,17 @@ export function createRouteResolver(options: RouteResolverOptions) {
       for (const page of pages) {
         if (!page.routable || !page.published) continue;
         if (page.status && page.status !== "published") continue;
-        routeMap.set(normalizeRoute(page.route), page);
+        const route = normalizeRoute(page.route);
+        if (isMultilingual) {
+          routeMap.set(routeLangKey(route, page.language), page);
+        } else {
+          routeMap.set(route, page);
+        }
       }
-      // Re-resolve home page
       const newHomeRoute = normalizeRoute("/" + options.homeSlug);
-      homePage = routeMap.get(newHomeRoute) ?? null;
+      homePage = isMultilingual
+        ? findPage(newHomeRoute, defaultLang) ?? null
+        : routeMap.get(newHomeRoute) ?? null;
     },
   };
 }

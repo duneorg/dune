@@ -38,6 +38,10 @@ export interface IndexBuilderOptions {
   formats: FormatRegistry;
   /** Explicit home page slug from config (overrides autodetect) */
   siteHome?: string;
+  /** Supported language codes for i18n (e.g. ["en", "de", "fr"]) */
+  supportedLanguages?: string[];
+  /** Default language for files without suffix (from config) */
+  defaultLanguage?: string;
 }
 
 export interface BuildResult {
@@ -72,7 +76,8 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage } = options;
+  const defaultLang = defaultLanguage ?? "en";
 
   const pages: PageIndex[] = [];
   const taxonomyMap: TaxonomyMap = {};
@@ -103,8 +108,8 @@ export async function buildIndex(
     const relativePath = stripContentDir(entry.path, contentDir);
     if (isInDraftsFolder(relativePath)) continue;
 
-    // Parse content filename
-    const fileInfo = parseContentFilename(entry.name);
+    // Parse content filename (with language variant detection when i18n configured)
+    const fileInfo = parseContentFilename(entry.name, supportedLanguages);
     if (!fileInfo) continue;
 
     // Get the format handler
@@ -135,6 +140,7 @@ export async function buildIndex(
         frontmatter,
         stat.mtime,
         raw,
+        fileInfo.language ?? defaultLang,
       );
 
       if (pageIndex) {
@@ -180,7 +186,8 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage } = options;
+  const defaultLang = defaultLanguage ?? "en";
 
   // Build a map of existing pages by sourcePath
   const existing = new Map<string, PageIndex>();
@@ -217,7 +224,7 @@ export async function updateIndex(
     const relativePath = stripContentDir(entry.path, contentDir);
     if (isInDraftsFolder(relativePath)) continue;
 
-    const fileInfo = parseContentFilename(entry.name);
+    const fileInfo = parseContentFilename(entry.name, supportedLanguages);
     if (!fileInfo) continue;
 
     currentPaths.add(relativePath);
@@ -259,6 +266,7 @@ export async function updateIndex(
         frontmatter,
         stat.mtime,
         raw,
+        fileInfo.language ?? defaultLang,
       );
 
       if (pageIndex) {
@@ -298,6 +306,7 @@ function buildPageIndex(
   frontmatter: PageFrontmatter,
   mtime: number,
   rawContent: string,
+  language: string,
 ): PageIndex | null {
   const isModule = isInModuleFolder(sourcePath);
 
@@ -322,6 +331,7 @@ function buildPageIndex(
   return {
     sourcePath,
     route: finalRoute,
+    language,
     format,
     template,
     title: frontmatter.title || "",
