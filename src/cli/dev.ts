@@ -16,6 +16,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
+import { detectHomeSlug } from "../content/index-builder.ts";
 
 export interface DevOptions {
   port?: number;
@@ -307,10 +308,13 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       // Dynamic sitemap (generated from content index)
       else if (url.pathname === "/sitemap.xml") {
         const siteUrl = ctx.config.site.url || `http://localhost:${port}`;
+        const homeSlug = ctx.config.site.home ?? detectHomeSlug(engine.pages);
         const sitemapXml = generateSitemap(engine.pages, {
           siteUrl,
           supportedLanguages: ctx.config.system.languages?.supported,
           defaultLanguage: ctx.config.system.languages?.default,
+          includeDefaultInUrl: ctx.config.system.languages?.include_default_in_url,
+          homeSlug,
         });
         response = new Response(sitemapXml, {
           headers: {

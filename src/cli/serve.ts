@@ -18,6 +18,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
+import { detectHomeSlug } from "../content/index-builder.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -231,10 +232,13 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // Generate sitemap at startup
   const siteUrl = engine.site.url || `http://localhost:${port}`;
+  const homeSlug = ctx.config.site.home ?? detectHomeSlug(engine.pages);
   const sitemapXml = generateSitemap(engine.pages, {
     siteUrl,
     supportedLanguages: ctx.config.system.languages?.supported,
     defaultLanguage: ctx.config.system.languages?.default,
+    includeDefaultInUrl: ctx.config.system.languages?.include_default_in_url,
+    homeSlug,
   });
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);

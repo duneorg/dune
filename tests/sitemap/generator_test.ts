@@ -117,6 +117,7 @@ Deno.test("generateSitemap: empty pages produces valid XML", () => {
 });
 
 Deno.test("generateSitemap: adds hreflang alternates for multilingual pages", () => {
+  // PageIndex stores base route (same for all languages); language is in language field
   const pages = [
     makePage({
       route: "/webapps",
@@ -124,12 +125,12 @@ Deno.test("generateSitemap: adds hreflang alternates for multilingual pages", ()
       language: "en",
     }),
     makePage({
-      route: "/de/webapps",
+      route: "/webapps",
       sourcePath: "01.webapps/default.de.md",
       language: "de",
     }),
     makePage({
-      route: "/fr/webapps",
+      route: "/webapps",
       sourcePath: "01.webapps/default.fr.md",
       language: "fr",
     }),

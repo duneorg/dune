@@ -2,10 +2,12 @@
  * Sitemap generator — produces XML sitemap from the content index.
  *
  * Respects routable, published, and visible fields.
+ * Excludes pages whose ancestor (parent section) is unpublished.
  * Generates <lastmod> from page modification time.
  * For multilingual sites, adds xhtml:link hreflang alternates.
  */
 
+import { dirname } from "@std/path";
 import type { PageIndex } from "../content/types.ts";
 
 export interface SitemapOptions {
@@ -15,6 +17,10 @@ export interface SitemapOptions {
   supportedLanguages?: string[];
   /** Default language for x-default hreflang */
   defaultLanguage?: string;
+  /** If true, default language also gets /en/ prefix in URLs */
+  includeDefaultInUrl?: boolean;
+  /** Home page slug (e.g. "efficiency") — route "/efficiency" maps to "/" for default lang */
+  homeSlug?: string;
 }
 
 /**
@@ -35,7 +41,34 @@ export function generateSitemap(
   const base = options.siteUrl.replace(/\/$/, "");
   const supportedLangs = options.supportedLanguages ?? [];
   const defaultLang = options.defaultLanguage ?? "en";
+  const includeDefaultInUrl = options.includeDefaultInUrl ?? false;
+  const homeRoute = "/" + (options.homeSlug ?? "");
   const isMultilingual = supportedLangs.length > 1;
+
+  /** Build full URL for a page (with language prefix when multilingual) */
+  const pageToUrl = (p: PageIndex): string => {
+    if (!isMultilingual) return base + p.route;
+    const needsPrefix = p.language !== defaultLang || includeDefaultInUrl;
+    if (!needsPrefix) {
+      return base + (p.route === homeRoute ? "/" : p.route);
+    }
+    const path = p.route === homeRoute ? "" : p.route;
+    return base + "/" + p.language + path;
+  };
+
+  /** Check if page has any unpublished ancestor (exclude from sitemap if so) */
+  const hasUnpublishedAncestor = (p: PageIndex): boolean => {
+    let current: PageIndex | null = p;
+    while (current?.parentPath) {
+      const parent = pages.find(
+        (q) => dirname(q.sourcePath) === current!.parentPath && q.language === current!.language,
+      );
+      if (!parent) break;
+      if (!parent.published) return true;
+      current = parent;
+    }
+    return false;
+  };
 
   // Build translation groups: sourcePath base → Map<language, page>
   const groups = new Map<string, Map<string, PageIndex>>();
@@ -51,9 +84,11 @@ export function generateSitemap(
   }
 
   const urlEntries = pages
-    .filter((p) => p.published && p.routable && !p.isModule)
+    .filter((p) =>
+      p.published && p.routable && !p.isModule && !hasUnpublishedAncestor(p),
+    )
     .map((p) => {
-      const loc = escapeXml(`${base}${p.route}`);
+      const loc = escapeXml(pageToUrl(p));
       const lastmod = p.mtime
         ? new Date(p.mtime).toISOString().split("T")[0]
         : undefined;
@@ -67,12 +102,10 @@ export function generateSitemap(
         const group = groups.get(key);
         if (group && group.size > 0) {
           const defaultPage = group.get(defaultLang);
-          const defaultHref = defaultPage
-            ? escapeXml(`${base}${defaultPage.route}`)
-            : null;
-          for (const [lang, altPage] of group) {
-            const href = escapeXml(`${base}${altPage.route}`);
-            entry += `\n    <xhtml:link rel="alternate" hreflang="${lang}" href="${href}"/>`;
+          const defaultHref = defaultPage ? escapeXml(pageToUrl(defaultPage)) : null;
+          for (const [, altPage] of group) {
+            const href = escapeXml(pageToUrl(altPage));
+            entry += `\n    <xhtml:link rel="alternate" hreflang="${altPage.language}" href="${href}"/>`;
           }
           if (defaultHref) {
             entry += `\n    <xhtml:link rel="alternate" hreflang="x-default" href="${defaultHref}"/>`;
