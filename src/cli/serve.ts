@@ -231,7 +231,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // Generate sitemap at startup
   const siteUrl = engine.site.url || `http://localhost:${port}`;
-  const sitemapXml = generateSitemap(engine.pages, siteUrl);
+  const sitemapXml = generateSitemap(engine.pages, {
+    siteUrl,
+    supportedLanguages: ctx.config.system.languages?.supported,
+    defaultLanguage: ctx.config.system.languages?.default,
+  });
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🗺️  Sitemap generated`);

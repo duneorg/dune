@@ -115,3 +115,37 @@ Deno.test("generateSitemap: empty pages produces valid XML", () => {
   assertEquals(xml.includes("</urlset>"), true);
   assertEquals(xml.includes("<url>"), false);
 });
+
+Deno.test("generateSitemap: adds hreflang alternates for multilingual pages", () => {
+  const pages = [
+    makePage({
+      route: "/webapps",
+      sourcePath: "01.webapps/default.md",
+      language: "en",
+    }),
+    makePage({
+      route: "/de/webapps",
+      sourcePath: "01.webapps/default.de.md",
+      language: "de",
+    }),
+    makePage({
+      route: "/fr/webapps",
+      sourcePath: "01.webapps/default.fr.md",
+      language: "fr",
+    }),
+  ];
+  const xml = generateSitemap(pages, {
+    siteUrl: "https://example.com",
+    supportedLanguages: ["en", "de", "fr"],
+    defaultLanguage: "en",
+  });
+
+  assertEquals(xml.includes('xmlns:xhtml="http://www.w3.org/1999/xhtml"'), true);
+  assertEquals(xml.includes('hreflang="en"'), true);
+  assertEquals(xml.includes('hreflang="de"'), true);
+  assertEquals(xml.includes('hreflang="fr"'), true);
+  assertEquals(xml.includes('hreflang="x-default"'), true);
+  assertEquals(xml.includes("https://example.com/webapps"), true);
+  assertEquals(xml.includes("https://example.com/de/webapps"), true);
+  assertEquals(xml.includes("https://example.com/fr/webapps"), true);
+});

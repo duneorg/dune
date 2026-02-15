@@ -15,6 +15,7 @@ import { join } from "@std/path";
 import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
+import { generateSitemap } from "../sitemap/generator.ts";
 
 export interface DevOptions {
   port?: number;
@@ -303,8 +304,23 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           { status: 404, headers: { "Content-Type": "application/json" } },
         );
       }
-      // Root-level static files (favicon, robots.txt, sitemap.xml)
-      else if (/^\/(favicon\.(ico|svg)|robots\.txt|sitemap\.xml)$/.test(url.pathname)) {
+      // Dynamic sitemap (generated from content index)
+      else if (url.pathname === "/sitemap.xml") {
+        const siteUrl = ctx.config.site.url || `http://localhost:${port}`;
+        const sitemapXml = generateSitemap(engine.pages, {
+          siteUrl,
+          supportedLanguages: ctx.config.system.languages?.supported,
+          defaultLanguage: ctx.config.system.languages?.default,
+        });
+        response = new Response(sitemapXml, {
+          headers: {
+            "Content-Type": "application/xml; charset=utf-8",
+            "Cache-Control": "no-cache",
+          },
+        });
+      }
+      // Root-level static files (favicon, robots.txt)
+      else if (/^\/(favicon\.(ico|svg)|robots\.txt)$/.test(url.pathname)) {
         response = await serveStaticFile(root, `/static${url.pathname}`);
       }
       // Static files (must come before content routes)
