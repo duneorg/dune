@@ -114,6 +114,7 @@ export async function createDuneEngine(
         pages,
         loadPage,
         storageRoot,
+        orphanProtection: config.system.typography?.orphan_protection !== false,
       },
     );
 

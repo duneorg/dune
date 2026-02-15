@@ -73,6 +73,11 @@ export interface SystemConfig {
     default: string;
     include_default_in_url: boolean;
   };
+  /** Typography options (orphan protection, etc.) */
+  typography?: {
+    /** Insert &nbsp; before last word of paragraphs to avoid orphans (default: true) */
+    orphan_protection?: boolean;
+  };
   debug: boolean;
   timezone: string;
 }

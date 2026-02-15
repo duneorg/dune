@@ -12,6 +12,7 @@
 import { dirname, extname, join } from "@std/path";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
+import { applyOrphanProtection } from "./typography.ts";
 import type {
   ContentFormat,
   MediaFile,
@@ -33,6 +34,8 @@ export interface PageLoaderOptions {
   loadPage: (sourcePath: string) => Promise<Page>;
   /** Storage root directory (for resolving absolute paths for dynamic imports) */
   storageRoot?: string;
+  /** Apply orphan protection (&nbsp; before last word) to rendered HTML (default: true) */
+  orphanProtection?: boolean;
 }
 
 /**
@@ -84,7 +87,11 @@ export async function loadPage(
     html: lazyOnce(async () => {
       if (index.format !== "md" && index.format !== "mdx") return "";
       const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir);
-      return handler.renderToHtml(page, ctx);
+      let html = await handler.renderToHtml(page, ctx);
+      if (options.orphanProtection !== false) {
+        html = applyOrphanProtection(html);
+      }
+      return html;
     }),
 
     // Lazy: TSX component (for .tsx pages)

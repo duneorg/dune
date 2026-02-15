@@ -43,6 +43,9 @@ export const DEFAULT_CONFIG: DuneConfig = {
       default: "en",
       include_default_in_url: false,
     },
+    typography: {
+      orphan_protection: true,
+    },
     debug: false,
     timezone: "UTC",
   },
