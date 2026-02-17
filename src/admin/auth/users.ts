@@ -93,12 +93,15 @@ export function createUserManager(config: UserManagerConfig): UserManager {
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
           users.push(JSON.parse(new TextDecoder().decode(data)) as AdminUser);
-        } catch {
-          // Skip corrupt files
+        } catch (err) {
+          console.warn(`  ⚠️  Skipping corrupt user file: ${entry.name}`, err);
         }
       }
-    } catch {
-      // Users dir may not exist yet
+    } catch (err) {
+      if (err instanceof Error && !err.message.includes("not found")) {
+        console.warn(`  ⚠️  Failed to list users directory:`, err);
+      }
+      // Directory may not exist yet on first run
     }
     return users;
   }
@@ -143,11 +146,18 @@ export function createUserManager(config: UserManagerConfig): UserManager {
   }
 
   async function ensureDefaultAdmin(): Promise<{ created: boolean; password?: string }> {
-    const users = await list();
-    const hasAdmin = users.some((u) => u.role === "admin" && u.enabled);
+    const allUsers = await list();
+    const admins = allUsers.filter((u) => u.role === "admin" && u.enabled);
 
-    if (hasAdmin) {
+    if (admins.length > 0) {
+      if (admins.length > 1) {
+        console.warn(`  ⚠️  Found ${admins.length} enabled admin users (${admins.map((u) => u.username).join(", ")})`);
+      }
       return { created: false };
+    }
+
+    if (allUsers.length > 0) {
+      console.warn(`  ⚠️  Found ${allUsers.length} user(s) but none are enabled admins — creating default admin`);
     }
 
     // Generate a random password
