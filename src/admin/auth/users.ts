@@ -1,7 +1,8 @@
 /**
  * User management — CRUD operations for admin users.
  *
- * Users are stored as JSON files in .dune/admin/users/{id}.json.
+ * Users are stored as JSON files in data/users/{id}.json (git-tracked).
+ * This is persistent, user-authored data — not ephemeral runtime state.
  */
 
 import { encodeHex } from "@std/encoding/hex";

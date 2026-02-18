@@ -1,7 +1,8 @@
 /**
  * Session management — create, validate, and revoke admin sessions.
  *
- * Sessions are stored as JSON files in .dune/admin/sessions/.
+ * Sessions are stored as JSON files in .dune/admin/sessions/ (gitignored).
+ * This is ephemeral runtime state — losing sessions only means users must log in again.
  * Each session has a crypto-random ID used as the session cookie value.
  */
 

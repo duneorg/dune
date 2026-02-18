@@ -57,7 +57,8 @@ export const DEFAULT_CONFIG: DuneConfig = {
   admin: {
     path: "/admin",
     sessionLifetime: 86400,
-    dataDir: ".dune/admin",
+    dataDir: "data",
+    runtimeDir: ".dune/admin",
     enabled: true,
   },
 };

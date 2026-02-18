@@ -155,40 +155,55 @@ export async function bootstrap(
   });
 
   // 10. Workflow, scheduling, and history
-  const workflowDataDir = config.admin?.dataDir ?? ".dune/admin";
+  const adminConfig = config.admin ?? {
+    path: "/admin",
+    sessionLifetime: 86400,
+    dataDir: "data",
+    runtimeDir: ".dune/admin",
+    enabled: true,
+  };
+
+  const runtimeDir = adminConfig.runtimeDir ?? ".dune/admin";
+  const dataDir = adminConfig.dataDir ?? "data";
 
   const workflow = createWorkflowEngine({
     storage,
-    dataDir: workflowDataDir,
+    dataDir: runtimeDir,
   });
 
   const scheduler = createScheduler({
     storage,
-    dataDir: workflowDataDir,
+    dataDir: runtimeDir,
   });
 
   const history = createHistoryEngine({
     storage,
-    dataDir: workflowDataDir,
+    dataDir: runtimeDir,
     maxRevisions: 50,
   });
 
   // 11. Admin panel
-  const adminConfig = config.admin ?? {
-    path: "/admin",
-    sessionLifetime: 86400,
-    dataDir: ".dune/admin",
-    enabled: true,
-  };
-
   const users = createUserManager({
     storage,
-    usersDir: `${adminConfig.dataDir}/users`,
+    usersDir: `${dataDir}/users`,
   });
+
+  // Migration warning: detect users left in the old .dune/admin/users location
+  const legacyUsersDir = ".dune/admin/users";
+  if (await storage.exists(legacyUsersDir)) {
+    try {
+      const legacyEntries = await storage.list(legacyUsersDir);
+      if (legacyEntries.some((e) => e.name.endsWith(".json"))) {
+        console.warn(`\n  ⚠️  Legacy admin users found in ${legacyUsersDir}/`);
+        console.warn(`     Users are now stored in ${dataDir}/users/ (git-tracked).`);
+        console.warn(`     Move your user files or a new default admin will be created.\n`);
+      }
+    } catch { /* ignore */ }
+  }
 
   const sessions = createSessionManager({
     storage,
-    sessionsDir: `${adminConfig.dataDir}/sessions`,
+    sessionsDir: `${runtimeDir}/sessions`,
     lifetime: adminConfig.sessionLifetime,
   });
 

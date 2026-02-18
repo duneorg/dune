@@ -18,8 +18,18 @@ export interface AdminConfig {
   path: string;
   /** Session lifetime in seconds (default: 86400 = 24h) */
   sessionLifetime: number;
-  /** Admin data directory (default: ".dune/admin") */
+  /**
+   * Persistent data directory — git-tracked, user-authored records.
+   * Stores: admin users, form submissions.
+   * (default: "data")
+   */
   dataDir: string;
+  /**
+   * Runtime directory — ephemeral, machine-local, gitignored.
+   * Stores: sessions, scheduled actions, revision history, workflow state.
+   * (default: ".dune/admin")
+   */
+  runtimeDir: string;
   /** Whether admin panel is enabled (default: true) */
   enabled: boolean;
 }
