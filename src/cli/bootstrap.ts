@@ -24,6 +24,7 @@ import { createAdminHandler } from "../admin/server.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
+import { createSubmissionManager } from "../admin/submissions.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -38,6 +39,7 @@ import type { AuthMiddleware } from "../admin/auth/middleware.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
+import type { SubmissionManager } from "../admin/submissions.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -60,6 +62,7 @@ export interface BootstrapResult {
   workflow: WorkflowEngine;
   scheduler: Scheduler;
   history: HistoryEngine;
+  submissionManager: SubmissionManager;
 }
 
 export interface BootstrapOptions {
@@ -209,6 +212,11 @@ export async function bootstrap(
 
   const auth = createAuthMiddleware({ sessions, users });
 
+  const submissionManager = createSubmissionManager({
+    storage,
+    submissionsDir: `${dataDir}/submissions`,
+  });
+
   const adminHandler = adminConfig.enabled
     ? createAdminHandler({
         engine,
@@ -221,6 +229,7 @@ export async function bootstrap(
         workflow,
         scheduler,
         history,
+        submissions: submissionManager,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -238,5 +247,6 @@ export async function bootstrap(
     search, hooks, imageHandler, imageProcessor, imageCache,
     adminHandler, users, sessions, auth,
     workflow, scheduler, history,
+    submissionManager,
   };
 }

@@ -23,6 +23,9 @@
  *   POST /admin/api/editor/parse     → Markdown → Blocks
  *   POST /admin/api/editor/serialize → Blocks → Markdown
  *   POST /admin/api/preview   → Render preview HTML
+ *
+ * Public routes (no admin auth):
+ *   POST /api/contact         → Accept contact form submissions
  */
 
 import type { DuneEngine } from "../core/engine.ts";
@@ -45,6 +48,12 @@ import type { HistoryEngine } from "../history/engine.ts";
 import { renderRevisionHistory, renderRevisionScripts, revisionHistoryStyles } from "./ui/revision-history.ts";
 import { renderTranslationStatus, translationStatusStyles } from "./ui/translation-status.ts";
 import { renderWorkflowPanel, workflowPanelStyles } from "./ui/workflow-panel.ts";
+import type { SubmissionManager, SubmissionStatus } from "./submissions.ts";
+import {
+  renderSubmissionsList,
+  renderSubmissionDetail,
+  submissionStyles,
+} from "./ui/submissions.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -58,6 +67,7 @@ export interface AdminServerConfig {
   workflow?: WorkflowEngine;
   scheduler?: Scheduler;
   history?: HistoryEngine;
+  submissions?: SubmissionManager;
 }
 
 /**
@@ -65,12 +75,18 @@ export interface AdminServerConfig {
  * Returns null if the request is not for an admin route.
  */
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions } = config;
   const adminConfig = config.config.admin!;
 
   return async function handleAdminRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
     const path = url.pathname;
+
+    // === Public contact form endpoint ===
+    // POST /api/contact — accepts contact form data, no admin auth required
+    if (path === "/api/contact" && req.method === "POST") {
+      return handleContactSubmission(req);
+    }
 
     // Only handle admin routes
     if (!path.startsWith(prefix)) return null;
@@ -164,6 +180,56 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse("<h1>403 Forbidden</h1>", 403);
       }
       return htmlResponse(renderShellPage(prefix, "users", authResult));
+    }
+
+    // GET /admin/submissions — submissions index (redirect to first form or show all forms)
+    if (adminPath === "/submissions") {
+      if (!auth.hasPermission(authResult, "submissions.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      return handleSubmissionsIndex(authResult);
+    }
+
+    // GET /admin/submissions/:form — list submissions for a form
+    if (adminPath.startsWith("/submissions/") && adminPath.split("/").length === 3) {
+      if (!auth.hasPermission(authResult, "submissions.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      const form = decodeURIComponent(adminPath.split("/")[2]);
+      return handleSubmissionsListPage(form, authResult);
+    }
+
+    // GET /admin/submissions/:form/:id — single submission detail
+    if (adminPath.startsWith("/submissions/") && adminPath.split("/").length === 4) {
+      if (!auth.hasPermission(authResult, "submissions.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      const parts = adminPath.split("/");
+      const form = decodeURIComponent(parts[2]);
+      const id = parts[3];
+      return handleSubmissionDetailPage(form, id, authResult);
+    }
+
+    // POST /admin/submissions/:form/:id/status — update submission status
+    if (adminPath.startsWith("/submissions/") && adminPath.endsWith("/status") && req.method === "POST") {
+      if (!auth.hasPermission(authResult, "submissions.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      const parts = adminPath.split("/");
+      const form = decodeURIComponent(parts[2]);
+      const id = parts[3];
+      return handleSubmissionStatusUpdate(req, form, id);
+    }
+
+    // POST /admin/submissions/:form/:id/delete — delete submission
+    if (adminPath.startsWith("/submissions/") && adminPath.endsWith("/delete") && req.method === "POST") {
+      if (!auth.hasPermission(authResult, "submissions.delete")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      const parts = adminPath.split("/");
+      const form = decodeURIComponent(parts[2]);
+      const id = parts[3];
+      return handleSubmissionDelete(form, id);
     }
 
     return new Response("Not found", { status: 404 });
@@ -954,6 +1020,212 @@ export function createAdminHandler(config: AdminServerConfig) {
 </html>`);
   }
 
+  // === Contact form submission handler (public) ===
+
+  async function handleContactSubmission(req: Request): Promise<Response> {
+    if (!submissions) {
+      return jsonResponse({ error: "Submissions not enabled" }, 501);
+    }
+    try {
+      const contentType = req.headers.get("content-type") ?? "";
+      let fields: Record<string, string> = {};
+
+      if (contentType.includes("application/json")) {
+        const body = await req.json();
+        for (const [k, v] of Object.entries(body)) {
+          if (typeof v === "string") fields[k] = v;
+        }
+      } else {
+        // application/x-www-form-urlencoded or multipart/form-data
+        const formData = await req.formData();
+        for (const [k, v] of formData.entries()) {
+          if (typeof v === "string") fields[k] = v;
+        }
+      }
+
+      // Basic required field validation
+      if (!fields.name && !fields.email) {
+        return jsonResponse({ error: "Missing required fields" }, 400);
+      }
+
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+        ?? req.headers.get("x-real-ip")
+        ?? undefined;
+      const language = req.headers.get("accept-language") ?? undefined;
+      const userAgent = req.headers.get("user-agent") ?? undefined;
+
+      // Use form_name field if provided (allows multiple forms), otherwise default to "contact"
+      const formName = fields.form_name ?? "contact";
+      delete fields.form_name;
+
+      await submissions.create(formName, fields, { ip, language, userAgent });
+
+      // Support both JSON and form POST responses
+      const acceptsJson = req.headers.get("accept")?.includes("application/json");
+      if (acceptsJson) {
+        return jsonResponse({ ok: true });
+      }
+
+      // Redirect back (form POST) — use Referer or fallback to "/"
+      const referer = req.headers.get("referer") ?? "/";
+      const redirectUrl = new URL(referer);
+      redirectUrl.searchParams.set("submitted", "1");
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": redirectUrl.toString() },
+      });
+    } catch (err) {
+      return jsonResponse({ error: String(err) }, 500);
+    }
+  }
+
+  // === Submissions UI pages ===
+
+  async function handleSubmissionsIndex(authResult: AuthResult): Promise<Response> {
+    if (!submissions) {
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", `
+        <h2>Submissions</h2>
+        <p style="color:#999">Submissions are not configured.</p>
+      `));
+    }
+    try {
+      // List all form directories under the submissions dir
+      const adminCfg = config.config.admin!;
+      const submissionsDir = `${adminCfg.dataDir}/submissions`;
+      let formDirs: string[] = [];
+      try {
+        const entries = await storage.list(submissionsDir);
+        formDirs = entries.filter((e) => e.isDirectory).map((e) => e.name);
+      } catch { /* no submissions yet */ }
+
+      if (formDirs.length === 0) {
+        return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", `
+          <h2>Submissions</h2>
+          <p style="color:#999;padding:2rem 0">No submissions yet. They will appear here once your contact form receives its first message.</p>
+        `));
+      }
+
+      // Build a summary row per form
+      const rows = await Promise.all(formDirs.map(async (form) => {
+        const newCount = await submissions!.countNew(form);
+        const list = await submissions!.list(form);
+        const total = list.length;
+        const latest = list[0];
+        return { form, newCount, total, latest };
+      }));
+
+      const tableRows = rows.map((r) => `
+        <tr>
+          <td><a href="${prefix}/submissions/${encodeURIComponent(r.form)}">${escapeHtml(r.form)}</a></td>
+          <td>${r.total}</td>
+          <td>${r.newCount > 0 ? `<span class="sub-badge sub-badge-new">${r.newCount} new</span>` : "—"}</td>
+          <td>${r.latest ? formatDate(r.latest.receivedAt) : "—"}</td>
+        </tr>`).join("");
+
+      const content = `
+        <h2>Submissions</h2>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Form</th><th>Total</th><th>New</th><th>Latest</th></tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>`;
+
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
+    } catch (err) {
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
+        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+    }
+  }
+
+  async function handleSubmissionsListPage(form: string, authResult: AuthResult): Promise<Response> {
+    if (!submissions) {
+      return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions` } });
+    }
+    try {
+      const list = await submissions.list(form);
+      const newCount = list.filter((s) => s.status === "new").length;
+      // Mark "new" submissions as "read" when listing them
+      // (don't auto-mark — let admin explicitly mark)
+      const content = renderSubmissionsList(prefix, form, list, newCount);
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
+    } catch (err) {
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
+        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+    }
+  }
+
+  async function handleSubmissionDetailPage(form: string, id: string, authResult: AuthResult): Promise<Response> {
+    if (!submissions) {
+      return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions` } });
+    }
+    try {
+      const submission = await submissions.get(form, id);
+      if (!submission) {
+        return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
+          `<h1>Submission not found</h1>`), 404);
+      }
+      // Auto-mark as read when opening detail view
+      if (submission.status === "new") {
+        await submissions.setStatus(form, id, "read");
+        submission.status = "read";
+      }
+      const content = renderSubmissionDetail(prefix, form, submission);
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
+    } catch (err) {
+      return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
+        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+    }
+  }
+
+  async function handleSubmissionStatusUpdate(req: Request, form: string, id: string): Promise<Response> {
+    if (!submissions) return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions` } });
+    try {
+      const formData = await req.formData();
+      const status = formData.get("status") as string;
+      if (!["new", "read", "archived"].includes(status)) {
+        return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}/${id}` } });
+      }
+      await submissions.setStatus(form, id, status as SubmissionStatus);
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}/${id}` },
+      });
+    } catch {
+      return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}` } });
+    }
+  }
+
+  async function handleSubmissionDelete(form: string, id: string): Promise<Response> {
+    if (!submissions) return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions` } });
+    try {
+      await submissions.delete(form, id);
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}` },
+      });
+    } catch {
+      return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}` } });
+    }
+  }
+
+  // === Submissions shell page helper ===
+
+  function renderSubmissionsShell(pfx: string, active: string, userName: string, content: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Submissions — Dune Admin</title>
+  <style>${baseAdminStyles()}${submissionsTableStyles()}${submissionStyles()}</style>
+</head>
+<body>
+  ${adminShell(pfx, active, userName, content)}
+</body>
+</html>`;
+  }
+
   // === i18n page ===
 
   function renderI18nPage(pfx: string, authResult: AuthResult): string {
@@ -1014,6 +1286,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "pages", label: "Pages", icon: "📄", href: `${prefix}/pages` },
     { id: "media", label: "Media", icon: "🖼️", href: `${prefix}/media` },
     { id: "i18n", label: "Translations", icon: "🌐", href: `${prefix}/i18n` },
+    { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
   ];
 
@@ -1135,6 +1408,24 @@ function mediaLibraryStyles(): string {
   .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
   `;
+}
+
+function submissionsTableStyles(): string {
+  return `
+  .admin-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .admin-table th { text-align: left; padding: 0.6rem 0.75rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; border-bottom: 1px solid #e0e0e0; background: #fafafa; }
+  .admin-table td { padding: 0.6rem 0.75rem; font-size: 0.85rem; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+  .admin-table tr:last-child td { border-bottom: none; }
+  .admin-table a { color: #c9a96e; text-decoration: none; }
+  .admin-table a:hover { text-decoration: underline; }
+  `;
+}
+
+function formatDate(ms: number): string {
+  return new Date(ms).toLocaleString("en-CH", {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
 function baseAdminStyles(): string {

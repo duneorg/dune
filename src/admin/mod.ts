@@ -27,6 +27,16 @@ export type {
 } from "./types.ts";
 export { ROLE_PERMISSIONS, toUserInfo } from "./types.ts";
 
+// Submissions
+export { createSubmissionManager } from "./submissions.ts";
+export type {
+  Submission,
+  SubmissionStatus,
+  SubmissionMeta,
+  SubmissionManager,
+  SubmissionManagerConfig,
+} from "./submissions.ts";
+
 // Editor
 export { markdownToBlocks, blocksToMarkdown } from "./editor/serializer.ts";
 export { parseMarkdownToBlocks } from "./editor/parser.ts";

@@ -2,7 +2,7 @@
  * Admin system types — users, sessions, permissions, and config.
  */
 
-/** Admin user stored in .dune/admin/users/ */
+/** Admin user stored in data/users/ */
 export interface AdminUser {
   id: string;
   username: string;
@@ -21,7 +21,7 @@ export interface AdminUser {
 /** Admin user roles with hierarchical permissions */
 export type AdminRole = "admin" | "editor" | "author";
 
-/** Session stored in .dune/admin/sessions/ */
+/** Session stored in .dune/admin/sessions/ (ephemeral, gitignored) */
 export interface AdminSession {
   id: string;
   userId: string;
@@ -38,17 +38,20 @@ export const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     "media.upload", "media.read", "media.delete",
     "users.create", "users.read", "users.update", "users.delete",
     "config.read", "config.update",
+    "submissions.read", "submissions.delete",
     "admin.access",
   ],
   editor: [
     "pages.create", "pages.read", "pages.update",
     "media.upload", "media.read", "media.delete",
     "config.read",
+    "submissions.read",
     "admin.access",
   ],
   author: [
     "pages.create", "pages.read", "pages.update",
     "media.upload", "media.read",
+    "submissions.read",
     "admin.access",
   ],
 };
@@ -59,6 +62,7 @@ export type AdminPermission =
   | "media.upload" | "media.read" | "media.delete"
   | "users.create" | "users.read" | "users.update" | "users.delete"
   | "config.read" | "config.update"
+  | "submissions.read" | "submissions.delete"
   | "admin.access";
 
 /** Admin configuration (added to DuneConfig) */
@@ -67,8 +71,18 @@ export interface AdminConfig {
   path: string;
   /** Session lifetime in seconds (default: 86400 = 24h) */
   sessionLifetime: number;
-  /** Admin data directory (default: ".dune/admin") */
+  /**
+   * Persistent data directory — git-tracked, user-authored records.
+   * Stores: admin users, form submissions.
+   * (default: "data")
+   */
   dataDir: string;
+  /**
+   * Runtime directory — ephemeral, machine-local, gitignored.
+   * Stores: sessions, scheduled actions, revision history, workflow state.
+   * (default: ".dune/admin")
+   */
+  runtimeDir: string;
   /** Whether admin panel is enabled (default: true) */
   enabled: boolean;
 }
