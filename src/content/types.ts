@@ -18,6 +18,9 @@ export interface PageFrontmatter {
   /** Short descriptor/subtitle shown after the title in the browser tab.
    *  Produces: "Title - Descriptor | Site Name" */
   descriptor?: string;
+  /** Navigation label override — shown in nav instead of title.
+   *  Use when the SEO title is too long for the navigation menu. */
+  nav_title?: string;
   slug?: string;
   template?: string;
   /** Layout control (TSX content files): string = named layout, false = no layout */
@@ -130,6 +133,8 @@ export interface PageIndex {
   format: ContentFormat;
   template: string;
   title: string;
+  /** Navigation label — falls back to title when nav_title is not set */
+  navTitle: string;
   date: string | null;
   published: boolean;
   /** Content workflow status */

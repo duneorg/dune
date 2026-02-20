@@ -343,9 +343,11 @@ export function createCollectionEngine(
       const dummyContext: PageIndex = {
         sourcePath: "",
         route: "/",
+        language: "",
         format: "md",
         template: "default",
         title: "",
+        navTitle: "",
         date: null,
         published: true,
         visible: true,

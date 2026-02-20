@@ -335,6 +335,7 @@ function buildPageIndex(
     format,
     template,
     title: frontmatter.title || "",
+    navTitle: frontmatter.nav_title || frontmatter.title || "",
     date: frontmatter.date ?? null,
     published: frontmatter.published ?? true,
     status: inferStatus(frontmatter),
