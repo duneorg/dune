@@ -297,10 +297,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
         const adminResult = await adminHandler(req);
         response = adminResult ?? new Response("Not found", { status: 404 });
       }
-      // API routes
+      // API routes — try adminHandler first (handles /api/contact etc.), then apiHandler
       else if (url.pathname.startsWith("/api/")) {
-        const apiResult = await apiHandler(req);
-        response = apiResult ?? new Response(
+        const adminApiResult = await adminHandler(req);
+        response = adminApiResult ?? await apiHandler(req) ?? new Response(
           JSON.stringify({ error: "Not found" }),
           { status: 404, headers: { "Content-Type": "application/json" } },
         );

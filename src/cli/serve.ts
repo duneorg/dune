@@ -292,8 +292,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         return withSecurityHeaders(adminResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName));
       }
 
-      // API routes
+      // API routes — try adminHandler first (handles /api/contact etc.), then apiHandler
       if (url.pathname.startsWith("/api/")) {
+        const adminApiResult = await adminHandler(req);
+        if (adminApiResult) return adminApiResult;
         const apiResult = await apiHandler(req);
         return apiResult ?? new Response(
           JSON.stringify({ error: "Not found" }),
