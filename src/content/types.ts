@@ -21,6 +21,9 @@ export interface PageFrontmatter {
   /** Navigation label override — shown in nav instead of title.
    *  Use when the SEO title is too long for the navigation menu. */
   nav_title?: string;
+  /** Page heading override — shown as the h1 instead of title.
+   *  Use when the SEO title differs from the desired on-page heading. */
+  heading?: string;
   slug?: string;
   template?: string;
   /** Layout control (TSX content files): string = named layout, false = no layout */
