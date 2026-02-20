@@ -220,6 +220,8 @@ export interface TemplateProps {
   nav: PageIndex[];
   /** Current request pathname (for canonical, hreflang, language switcher) */
   pathname?: string;
+  /** Current request query string, e.g. "?submitted=1" (empty string when none) */
+  search?: string;
   /** Dynamically loaded layout component (use for hot-reload compatibility) */
   Layout?: TemplateComponent;
   collection?: Collection;
