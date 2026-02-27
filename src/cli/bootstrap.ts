@@ -242,8 +242,9 @@ export async function bootstrap(
   if (adminConfig.enabled) {
     const result = await users.ensureDefaultAdmin();
     if (result.created) {
-      console.log(`\n  🔑 Default admin created — username: admin, password: ${result.password}`);
-      console.log(`     Change this password after first login.\n`);
+      console.log(`\n  🔑 Default admin created — username: admin`);
+      console.log(`     Password written to: ${result.passwordFile}`);
+      console.log(`     Read it, then delete the file and change your password.\n`);
     }
   }
 

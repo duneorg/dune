@@ -39,8 +39,13 @@ export interface UserManager {
   changePassword(id: string, newPassword: string): Promise<boolean>;
   /** Delete a user */
   delete(id: string): Promise<boolean>;
-  /** Ensure a default admin user exists (for first-time setup) */
-  ensureDefaultAdmin(): Promise<{ created: boolean; password?: string }>;
+  /**
+   * Ensure a default admin user exists (for first-time setup).
+   * If created, the password is written to a file on disk (not returned in
+   * the response) to avoid it appearing in logs or process output.
+   * `passwordFile` is the path to that file when `created` is true.
+   */
+  ensureDefaultAdmin(): Promise<{ created: boolean; passwordFile?: string }>;
 }
 
 /**
@@ -146,7 +151,7 @@ export function createUserManager(config: UserManagerConfig): UserManager {
     }
   }
 
-  async function ensureDefaultAdmin(): Promise<{ created: boolean; password?: string }> {
+  async function ensureDefaultAdmin(): Promise<{ created: boolean; passwordFile?: string }> {
     const allUsers = await list();
     const admins = allUsers.filter((u) => u.role === "admin" && u.enabled);
 
@@ -161,7 +166,7 @@ export function createUserManager(config: UserManagerConfig): UserManager {
       console.warn(`  ⚠️  Found ${allUsers.length} user(s) but none are enabled admins — creating default admin`);
     }
 
-    // Generate a random password
+    // Generate a random password and write it to a file — never log it.
     const password = generatePassword();
 
     await create({
@@ -172,7 +177,13 @@ export function createUserManager(config: UserManagerConfig): UserManager {
       name: "Admin",
     });
 
-    return { created: true, password };
+    // Write the password to a file next to the users directory.
+    // The caller can print the file path; the password never appears in logs.
+    const passwordFile = `${usersDir}/../initial-password.txt`;
+    const content = `Dune CMS — initial admin password\n\nUsername: admin\nPassword: ${password}\n\nDelete this file after logging in and changing your password.\n`;
+    await storage.write(passwordFile, new TextEncoder().encode(content));
+
+    return { created: true, passwordFile };
   }
 
   async function saveUser(user: AdminUser): Promise<void> {
