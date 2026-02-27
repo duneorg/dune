@@ -115,6 +115,55 @@ interface HookContext<T> {
 
 `setData()` replaces the data flowing through the hook chain. The next hook receives the modified data.
 
+## Event data shapes
+
+The `data` field in `HookContext` is typed per event. Here is what each hook receives:
+
+### Startup hooks (fired automatically by the engine)
+
+| Hook | `data` type | Description |
+|------|-------------|-------------|
+| `onConfigLoaded` | `DuneConfig` | The fully merged config object |
+| `onStorageReady` | `StorageAdapter` | The initialized storage adapter |
+| `onContentIndexReady` | `PageIndex[]` | All indexed pages |
+
+### Request lifecycle hooks (intended for custom server integrations)
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onRequest` | `{ req: Request }` | Incoming HTTP request before routing |
+| `onRouteResolved` | `{ req: Request, page: PageIndex }` | Route matched to a page |
+| `onPageLoaded` | `{ req: Request, page: Page }` | Full page object ready |
+| `onCollectionResolved` | `{ req: Request, collection: Collection }` | Collection query result |
+| `onBeforeRender` | `{ req: Request, page: Page, props: Record<string, unknown> }` | Before JSX render |
+| `onAfterRender` | `{ req: Request, html: string }` | After render, HTML available |
+| `onResponse` | `{ req: Request, response: Response }` | Before response is sent |
+
+### Content processing hooks
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onMarkdownProcess` | `{ raw: string, page: PageIndex }` | Raw Markdown before processing |
+| `onMarkdownProcessed` | `{ html: string, page: PageIndex }` | Rendered HTML after processing |
+| `onMediaDiscovered` | `{ media: MediaFile[], page: PageIndex }` | Media files found for a page |
+
+### Cache hooks
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onCacheHit` | `{ key: string, value: unknown }` | Cache entry found |
+| `onCacheMiss` | `{ key: string }` | Cache entry not found |
+| `onCacheInvalidate` | `{ key: string }` | Cache entry removed |
+
+### API hooks
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onApiRequest` | `{ req: Request }` | Before API request is handled |
+| `onApiResponse` | `{ req: Request, response: unknown }` | After API response is built |
+
+> **Note:** The startup hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`) are fired automatically when Dune boots. The remaining hooks are defined in the type system and can be fired by custom server code using `hooks.fire(event, data)` when integrating Dune into a custom server.
+
 ## Hook execution order
 
 Hooks fire in the order they're registered. If multiple plugins register the same hook, they run sequentially. Each hook sees the data as modified by previous hooks.

@@ -21,6 +21,8 @@ Frontmatter is the YAML block at the top of every content file. It controls how 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `title` | string | `""` | Page title (required for meaningful pages) |
+| `nav_title` | string | `title` | Navigation label — used in menus and breadcrumbs instead of `title` when set |
+| `heading` | string | `title` | On-page `<h1>` — use when the SEO title differs from the desired on-page heading |
 | `descriptor` | string | — | Short subtitle shown after title in browser tab |
 | `slug` | string | folder name | Override the URL slug |
 | `template` | string | filename | Override template selection (`.md` only) |
