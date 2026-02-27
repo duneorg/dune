@@ -37,7 +37,11 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
         return new Response("Not found", { status: 404 });
       }
 
-      return new Response(media.data, {
+      // Uint8Array<ArrayBufferLike> is a valid BodyInit at runtime, but
+      // TypeScript 5.7's generic typed-array signature requires an explicit
+      // cast here.  A single cast (not double `as unknown as BodyInit`) is
+      // sufficient and documents the intent clearly.
+      return new Response(media.data as BodyInit, {
         headers: {
           "Content-Type": media.contentType,
           "Content-Length": String(media.size),

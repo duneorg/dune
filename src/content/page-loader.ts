@@ -293,8 +293,6 @@ function buildMinimalRenderContext(
   contentDir: string,
 ): RenderContext {
   return {
-    site: {} as any,
-    config: {} as any,
     media: {
       url: (filename: string) => {
         const file = media.find((m) => m.name === filename);

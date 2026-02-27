@@ -197,6 +197,14 @@ export interface Collection {
   hasNext: boolean;
   hasPrev: boolean;
 
+  /**
+   * Pre-load all collection items asynchronously.
+   * Must be called (and awaited) before accessing `items` or `filter()`,
+   * otherwise the synchronous `items` getter returns an empty array.
+   * The routing layer calls this automatically for template rendering.
+   */
+  load(): Promise<Page[]>;
+
   // Chainable modifiers (return new Collection)
   order(by: string, dir?: "asc" | "desc"): Collection;
   filter(fn: (page: Page) => boolean): Collection;
@@ -244,8 +252,18 @@ export interface ContentPageProps {
 
 /** Render context passed to format handlers at request time */
 export interface RenderContext {
-  site: SiteConfig;
-  config: DuneConfig;
+  /**
+   * Site configuration — available at full render time (routes.ts), but
+   * intentionally omitted when building a minimal context for index-time
+   * markdown rendering (page-loader.ts `buildMinimalRenderContext`).
+   * Format handlers must treat this as potentially absent.
+   */
+  site?: SiteConfig;
+  /**
+   * Full CMS configuration — same availability caveat as `site`.
+   * Format handlers must treat this as potentially absent.
+   */
+  config?: DuneConfig;
   media: MediaHelper;
   collection?: Collection;
   params: Record<string, string>;
