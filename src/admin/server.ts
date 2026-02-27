@@ -324,12 +324,13 @@ export function createAdminHandler(config: AdminServerConfig) {
       }
 
       const user = await users.getByUsername(username);
-      if (!user || !user.enabled) {
-        return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
-      }
-
-      const valid = await verifyPassword(password, user.passwordHash);
-      if (!valid) {
+      // Always run verifyPassword regardless of whether the user exists to prevent
+      // username enumeration via response-time differences (timing oracle).
+      const DUMMY_HASH =
+        "pbkdf2:100000:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000";
+      const hashToVerify = user?.passwordHash ?? DUMMY_HASH;
+      const valid = await verifyPassword(password, hashToVerify);
+      if (!user || !user.enabled || !valid) {
         return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
       }
 
