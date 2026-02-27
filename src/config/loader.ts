@@ -10,7 +10,7 @@
  */
 
 import { parse as parseYaml } from "@std/yaml";
-import { join } from "@std/path";
+import { join, normalize } from "@std/path";
 import { ConfigError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "./types.ts";
@@ -97,6 +97,20 @@ async function loadConfigTs(
   rootDir: string,
 ): Promise<Record<string, unknown>> {
   const configPath = join(rootDir, "dune.config.ts");
+
+  // Defense-in-depth: verify the resolved path stays within rootDir.
+  // join() already normalizes, but be explicit about the invariant.
+  const normalizedRoot = normalize(rootDir);
+  const normalizedConfig = normalize(configPath);
+  if (
+    normalizedConfig !== `${normalizedRoot}/dune.config.ts` &&
+    normalizedConfig !== `${normalizedRoot}\\dune.config.ts`
+  ) {
+    throw new ConfigError(
+      "dune.config.ts path escapes site root — refusing to load",
+      configPath,
+    );
+  }
 
   try {
     await Deno.stat(configPath);
