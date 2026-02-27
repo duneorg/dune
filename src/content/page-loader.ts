@@ -10,6 +10,7 @@
  */
 
 import { dirname, extname, join } from "@std/path";
+import { parse as parseYaml } from "@std/yaml";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import { applyOrphanProtection } from "./typography.ts";
@@ -249,9 +250,8 @@ async function discoverMedia(
       const sidecarPath = join(dir, `${entry.name}.meta.yaml`);
       try {
         if (await storage.exists(sidecarPath)) {
-          const { parse } = await import("@std/yaml");
           const text = await storage.readText(sidecarPath);
-          const parsed = parse(text);
+          const parsed = parseYaml(text);
           if (parsed && typeof parsed === "object") {
             meta = parsed as Record<string, unknown>;
           }
