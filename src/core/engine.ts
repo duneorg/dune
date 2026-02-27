@@ -98,6 +98,12 @@ export async function createDuneEngine(
   // Page cache (sourcePath → Page)
   const pageCache = new Map<string, Page>();
 
+  // Rebuild guard — prevents concurrent rebuilds from interleaving their
+  // mutations to pages/taxonomyMap/router, which would expose partial state.
+  // In dev mode, rapid file changes can trigger multiple rebuild() calls;
+  // we serialize them by chaining onto the in-flight rebuild promise.
+  let rebuildChain: Promise<void> = Promise.resolve();
+
   /**
    * Load a single page by source path (with caching).
    */
@@ -242,26 +248,32 @@ export async function createDuneEngine(
 
   /**
    * Rebuild content index and router (dev mode hot-reload).
+   *
+   * Serialized via rebuildChain — concurrent calls queue behind the in-flight
+   * rebuild rather than interleaving their mutations to shared state.
    */
-  async function rebuild(): Promise<void> {
-    pageCache.clear();
-    themes.clearCache();
+  function rebuild(): Promise<void> {
+    rebuildChain = rebuildChain.then(async () => {
+      pageCache.clear();
+      themes.clearCache();
 
-    const result = await buildIndex({
-      storage,
-      contentDir,
-      formats,
-      siteHome: config.site.home,
-      supportedLanguages: config.system.languages?.supported,
-      defaultLanguage: config.system.languages?.default,
+      const result = await buildIndex({
+        storage,
+        contentDir,
+        formats,
+        siteHome: config.site.home,
+        supportedLanguages: config.system.languages?.supported,
+        defaultLanguage: config.system.languages?.default,
+      });
+      pages = result.pages;
+      taxonomyMap = result.taxonomyMap;
+      router.rebuild(pages, result.homeSlug);
+
+      if (config.system.debug) {
+        console.log(`[dune] Rebuilt index: ${result.indexed} pages in ${result.duration}ms`);
+      }
     });
-    pages = result.pages;
-    taxonomyMap = result.taxonomyMap;
-    router.rebuild(pages, result.homeSlug);
-
-    if (config.system.debug) {
-      console.log(`[dune] Rebuilt index: ${result.indexed} pages in ${result.duration}ms`);
-    }
+    return rebuildChain;
   }
 
   // Build the engine object
