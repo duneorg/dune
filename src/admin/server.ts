@@ -1064,13 +1064,26 @@ export function createAdminHandler(config: AdminServerConfig) {
         return jsonResponse({ ok: true });
       }
 
-      // Redirect back (form POST) — use Referer or fallback to "/"
-      const referer = req.headers.get("referer") ?? "/";
-      const redirectUrl = new URL(referer);
-      redirectUrl.searchParams.set("submitted", "1");
+      // Redirect back (form POST) — validate Referer is same-origin to prevent open redirect.
+      // If Referer is missing, cross-origin, or unparseable, fall back to "/".
+      const requestOrigin = new URL(req.url).origin;
+      const refererHeader = req.headers.get("referer");
+      let redirectPath = "/";
+      if (refererHeader) {
+        try {
+          const refererUrl = new URL(refererHeader);
+          if (refererUrl.origin === requestOrigin) {
+            // Safe: same-origin — keep the path+query, append ?submitted=1
+            refererUrl.searchParams.set("submitted", "1");
+            redirectPath = refererUrl.pathname + refererUrl.search;
+          }
+        } catch {
+          // Unparseable Referer — fall back to "/"
+        }
+      }
       return new Response(null, {
         status: 302,
-        headers: { "Location": redirectUrl.toString() },
+        headers: { "Location": redirectPath },
       });
     } catch (err) {
       return jsonResponse({ error: String(err) }, 500);
