@@ -151,16 +151,24 @@ export function createSearchEngine(
 
   /**
    * Score a search query against a document.
+   *
+   * @param termRegexps  Pre-compiled regexps parallel to queryTerms — one
+   *   per term, compiled once per query in search() so they are not
+   *   reconstructed for every candidate document.  String.match() with a
+   *   /g regex resets lastIndex after each call, so the same RegExp objects
+   *   are safe to reuse across multiple documents.
    */
   function scoreDocument(
     doc: IndexedDocument,
     queryTerms: string[],
+    termRegexps: RegExp[],
   ): { score: number; excerpt: string } {
     let score = 0;
     const titleLower = doc.title.toLowerCase();
     const textLower = doc.text;
 
-    for (const term of queryTerms) {
+    for (let i = 0; i < queryTerms.length; i++) {
+      const term = queryTerms[i];
       // Title match (boosted 3x)
       if (titleLower.includes(term)) {
         score += 3;
@@ -168,8 +176,8 @@ export function createSearchEngine(
         if (titleLower === term) score += 5;
       }
 
-      // Body match
-      const bodyMatches = (textLower.match(new RegExp(escapeRegex(term), "g")) || []).length;
+      // Body match — use pre-compiled regexp (no per-document construction)
+      const bodyMatches = (textLower.match(termRegexps[i]) || []).length;
       score += Math.min(bodyMatches, 5); // Cap at 5 per term
 
       // Taxonomy match (boosted 2x)
@@ -230,6 +238,13 @@ export function createSearchEngine(
       const queryTerms = tokenize(query);
       if (queryTerms.length === 0) return [];
 
+      // Pre-compile one RegExp per term.  These are reused across all
+      // candidate documents — avoids constructing N_terms × N_docs regexp
+      // objects on every search call.
+      const termRegexps = queryTerms.map(
+        (t) => new RegExp(escapeRegex(t), "g"),
+      );
+
       // Find candidate documents (any term matches)
       const candidates = new Set<string>();
       for (const term of queryTerms) {
@@ -247,7 +262,7 @@ export function createSearchEngine(
         const doc = documents.get(sp);
         if (!doc) continue;
 
-        const { score, excerpt } = scoreDocument(doc, queryTerms);
+        const { score, excerpt } = scoreDocument(doc, queryTerms, termRegexps);
         if (score > 0) {
           results.push({ page: doc.page, score, excerpt });
         }
