@@ -39,7 +39,7 @@ export interface Scheduler {
 export function createScheduler(config: SchedulerConfig): Scheduler {
   const { storage, dataDir } = config;
   const interval = (config.interval ?? 60) * 1000;
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
 
   const actionsDir = `${dataDir}/scheduled`;
 

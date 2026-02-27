@@ -11,7 +11,7 @@
 
 import { dirname, extname, join } from "@std/path";
 import { parse as parseYaml } from "@std/yaml";
-import { StorageError } from "../core/errors.ts";
+import { ContentError, StorageError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import { applyOrphanProtection } from "./typography.ts";
@@ -52,7 +52,7 @@ export async function loadPage(
   // Find the content file within the source folder
   const contentFilePath = await findContentFile(storage, contentDir, index.sourcePath);
   if (!contentFilePath) {
-    throw new Error(`Content file not found for ${index.sourcePath}`);
+    throw new ContentError(`Content file not found`, index.sourcePath);
   }
 
   // Read raw content
@@ -61,7 +61,7 @@ export async function loadPage(
   // Get the format handler
   const handler = formats.getForFile(contentFilePath);
   if (!handler) {
-    throw new Error(`No format handler for ${contentFilePath}`);
+    throw new ContentError(`No format handler for "${contentFilePath}"`, index.sourcePath);
   }
 
   // Extract frontmatter and body

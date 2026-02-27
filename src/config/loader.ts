@@ -17,11 +17,23 @@ import type { DuneConfig } from "./types.ts";
 import { DEFAULT_CONFIG } from "./defaults.ts";
 import { validateConfig } from "./validator.ts";
 
-/** Deep merge two objects. Arrays are replaced, not concatenated. */
+/**
+ * Deep merge two objects.  Arrays are replaced, not concatenated.
+ *
+ * @param depth  Internal recursion depth guard — callers should not pass this.
+ *   Limits recursion to 20 levels to prevent a stack overflow from
+ *   accidentally circular or deeply-nested config objects.
+ */
 export function deepMerge<T extends Record<string, unknown>>(
   base: T,
   override: Record<string, unknown>,
+  depth = 0,
 ): T {
+  if (depth > 20) {
+    // Depth limit reached — treat override value as opaque (no deeper merge).
+    return override as unknown as T;
+  }
+
   const result = { ...base } as Record<string, unknown>;
 
   for (const key of Object.keys(override)) {
@@ -39,6 +51,7 @@ export function deepMerge<T extends Record<string, unknown>>(
       result[key] = deepMerge(
         baseVal as Record<string, unknown>,
         overVal as Record<string, unknown>,
+        depth + 1,
       );
     } else {
       result[key] = overVal;

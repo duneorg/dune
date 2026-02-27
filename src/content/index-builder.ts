@@ -342,7 +342,15 @@ function buildPageIndex(
     template,
     title: frontmatter.title || "",
     navTitle: frontmatter.nav_title || frontmatter.title || "",
-    date: frontmatter.date ?? null,
+    // @std/yaml (and most YAML parsers) parse bare date values like
+    // `date: 2025-06-15` as JS Date objects, not strings.  The PageFrontmatter
+    // type declares `date?: string` but the runtime value may be a Date.  Cast
+    // through `unknown` so we can perform the runtime check and coerce to an
+    // ISO date string ("YYYY-MM-DD"), ensuring PageIndex.date is always
+    // string|null as declared regardless of parser behaviour.
+    date: (frontmatter.date as unknown) instanceof Date
+      ? (frontmatter.date as unknown as Date).toISOString().slice(0, 10)
+      : (frontmatter.date ?? null),
     published: frontmatter.published ?? true,
     status: inferStatus(frontmatter),
     visible: frontmatter.visible ?? true,
