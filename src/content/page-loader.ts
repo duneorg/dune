@@ -297,12 +297,22 @@ function buildMinimalRenderContext(
   };
 }
 
-/** Create a lazy-once async function (memoized). */
+/**
+ * Create a lazy-once async function (memoized).
+ *
+ * On success the resolved value is cached forever.
+ * On failure the cache is cleared so the next call retries — important for
+ * dev mode where a file error (parse error, missing file) may be transient
+ * and should re-attempt after the file is corrected.
+ */
 function lazyOnce<T>(fn: () => Promise<T>): () => Promise<T> {
   let cached: Promise<T> | null = null;
   return () => {
     if (!cached) {
-      cached = fn();
+      cached = fn().catch((err) => {
+        cached = null; // Allow retry on next call
+        throw err;
+      });
     }
     return cached;
   };
