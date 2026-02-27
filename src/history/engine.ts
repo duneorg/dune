@@ -49,6 +49,21 @@ export function createHistoryEngine(config: HistoryEngineConfig): HistoryEngine 
   const { storage, dataDir } = config;
   const maxRevisions = config.maxRevisions ?? 50;
 
+  // Per-path write lock: chains concurrent record() calls for the same page so
+  // that getNextNumber() → write() is always atomic per source path. Without
+  // this, two simultaneous saves could read the same max revision number and
+  // both write to the same path, with the second silently overwriting the first.
+  const writeLocks = new Map<string, Promise<unknown>>();
+
+  function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = writeLocks.get(key) ?? Promise.resolve();
+    // Chain fn after prev; run fn even if prev rejected (don't block on errors)
+    const next = prev.then(fn, fn);
+    // Keep the chain alive but don't propagate the lock-holder's error
+    writeLocks.set(key, next.catch(() => {}));
+    return next as Promise<T>;
+  }
+
   function pageDir(sourcePath: string): string {
     // Encode sourcePath for safe directory naming
     const encoded = sourcePath.replace(/\//g, "__");
@@ -60,31 +75,33 @@ export function createHistoryEngine(config: HistoryEngineConfig): HistoryEngine 
   }
 
   return {
-    async record(input: RecordInput): Promise<ContentRevision> {
-      const dir = pageDir(input.sourcePath);
-      const nextNumber = (await getNextNumber(dir)) ;
+    record(input: RecordInput): Promise<ContentRevision> {
+      return withLock(input.sourcePath, async () => {
+        const dir = pageDir(input.sourcePath);
+        const nextNumber = await getNextNumber(dir);
 
-      const revision: ContentRevision = {
-        id: crypto.randomUUID().slice(0, 12),
-        sourcePath: input.sourcePath,
-        number: nextNumber,
-        content: input.content,
-        frontmatter: input.frontmatter,
-        author: input.author,
-        createdAt: Date.now(),
-        message: input.message,
-      };
+        const revision: ContentRevision = {
+          id: crypto.randomUUID().slice(0, 12),
+          sourcePath: input.sourcePath,
+          number: nextNumber,
+          content: input.content,
+          frontmatter: input.frontmatter,
+          author: input.author,
+          createdAt: Date.now(),
+          message: input.message,
+        };
 
-      const path = revisionPath(input.sourcePath, nextNumber);
-      const data = new TextEncoder().encode(JSON.stringify(revision, null, 2));
-      await storage.write(path, data);
+        const path = revisionPath(input.sourcePath, nextNumber);
+        const data = new TextEncoder().encode(JSON.stringify(revision, null, 2));
+        await storage.write(path, data);
 
-      // Prune old revisions if over limit
-      if (maxRevisions > 0) {
-        await pruneRevisions(dir, maxRevisions);
-      }
+        // Prune old revisions if over limit
+        if (maxRevisions > 0) {
+          await pruneRevisions(dir, maxRevisions);
+        }
 
-      return revision;
+        return revision;
+      });
     },
 
     async getHistory(sourcePath: string, limit = 20): Promise<ContentRevision[]> {
