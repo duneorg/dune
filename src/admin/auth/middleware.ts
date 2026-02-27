@@ -52,6 +52,18 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddlewa
       return { authenticated: false, error: "Invalid or expired session" };
     }
 
+    // IP binding: if the session was created with an IP, the current request
+    // must come from the same IP. This mitigates session fixation and cookie
+    // theft across network boundaries.
+    if (session.ip) {
+      const requestIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+        ?? req.headers.get("x-real-ip")
+        ?? undefined;
+      if (requestIp && requestIp !== session.ip) {
+        return { authenticated: false, error: "Session IP mismatch" };
+      }
+    }
+
     // Load user
     const user = await users.getById(session.userId);
     if (!user) {
