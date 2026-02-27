@@ -120,7 +120,19 @@ export class FileSystemAdapter implements StorageAdapter {
       const info = await Deno.stat(this.resolve(path));
       return {
         size: info.size,
-        mtime: info.mtime?.getTime() ?? Date.now(),
+        // info.mtime is null on FAT32, some virtual filesystems, and certain
+        // network shares.  Fall back to 0 (epoch) rather than Date.now():
+        //   - Date.now() produces a different value on every call, making
+        //     incremental mtime comparison always report "changed" → constant
+        //     full reindex on every dev-mode rebuild.
+        //   - 0 is a stable sentinel meaning "mtime unknown".  After the
+        //     first index the stored value is also 0, so comparisons stay
+        //     consistent (the file looks unchanged until content is actually
+        //     modified and its hash changes).
+        // Known limitation: FAT32/HFS+ timestamps have 2-second resolution,
+        // so two saves within the same 2-second window may not trigger an
+        // incremental re-index.  Acceptable for a CMS editing workflow.
+        mtime: info.mtime?.getTime() ?? 0,
         isFile: info.isFile,
         isDirectory: info.isDirectory,
       };

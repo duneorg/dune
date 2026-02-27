@@ -229,7 +229,13 @@ export async function updateIndex(
 
     currentPaths.add(relativePath);
 
-    // Check if file has changed
+    // Check if file has changed.
+    // Note: mtime comparison has known precision limits —
+    //   • FAT32/HFS+: 2-second resolution, so two saves within the same
+    //     2-second window may not be detected as changed.
+    //   • Virtual filesystems / network shares: mtime may be 0 (see fs.ts
+    //     stat() for rationale), in which case both values are 0 and the
+    //     file is treated as unchanged until a hash-aware comparison is added.
     const stat = await storage.stat(entry.path);
     const existingPage = existing.get(relativePath);
 
