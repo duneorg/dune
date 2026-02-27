@@ -544,7 +544,7 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /admin/api/users — Create user
     if (adminPath === "/api/users" && method === "POST") {
       requirePermission(authResult, "users.create");
-      return handleCreateUser(req);
+      return handleCreateUser(req, authResult);
     }
 
     // GET /admin/api/config — Read site config
@@ -858,13 +858,24 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   // === User creation handler ===
 
-  async function handleCreateUser(req: Request): Promise<Response> {
+  async function handleCreateUser(req: Request, authResult: AuthResult): Promise<Response> {
     try {
       const body = await req.json();
       const { username, email, password, role, name } = body;
 
       if (!username || !password || !role) {
         return jsonResponse({ error: "username, password, and role are required" }, 400);
+      }
+
+      // Validate role against the known set to prevent privilege escalation.
+      const VALID_ROLES = ["admin", "editor", "author"] as const;
+      if (!VALID_ROLES.includes(role)) {
+        return jsonResponse({ error: `Invalid role: must be one of ${VALID_ROLES.join(", ")}` }, 400);
+      }
+
+      // Only admins may create other admin accounts.
+      if (role === "admin" && authResult.user?.role !== "admin") {
+        return jsonResponse({ error: "Only admins can create admin-role users" }, 403);
       }
 
       // Check for duplicate username
