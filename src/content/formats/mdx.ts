@@ -131,10 +131,12 @@ export class MdxHandler implements ContentFormatHandler {
 
       return html;
     } catch (err) {
-      // MDX compilation/evaluation errors — return error message wrapped in HTML
+      // MDX compilation/evaluation errors — return error message wrapped in HTML.
+      // Log the full message server-side (includes paths for debugging) but strip
+      // filesystem paths from the client-facing output to avoid leaking server layout.
       const message = err instanceof Error ? err.message : String(err);
       console.error(`  ✗ MDX render error in ${page.sourcePath}: ${message}`);
-      return `<div class="mdx-error"><p><strong>MDX Error:</strong> ${escapeHtml(message)}</p></div>`;
+      return `<div class="mdx-error"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
     }
   }
 
@@ -178,4 +180,21 @@ function escapeHtml(str: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Strip absolute filesystem paths from MDX compiler error messages before
+ * sending them to the browser. The compiler often embeds the full path of the
+ * source file (e.g. `/Users/xrs/project/content/pages/foo.mdx`), which would
+ * reveal server directory structure to end users.
+ *
+ * Patterns replaced with `<path>`:
+ *   /Users/xrs/project/content/pages/foo.mdx  →  <path>
+ *   /home/user/site/src/page.mdx               →  <path>
+ *
+ * The full message is still logged server-side (see console.error above).
+ */
+function sanitizeMdxError(message: string): string {
+  // Match absolute Unix paths: at least two /segment components.
+  return message.replace(/\/(?:[^\s/]+\/)+[^\s/]*/g, "<path>");
 }
