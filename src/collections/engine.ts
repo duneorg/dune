@@ -398,13 +398,18 @@ function createCollectionObject(
       return await loadItems();
     },
     get items(): Page[] {
-      // Synchronous access — returns empty if not yet loaded.
-      // Templates should use `await collection.items` pattern
-      // or pre-load via the engine.
+      // Synchronous access — returns loaded items or empty array.
+      // Always call `await collection.load()` before accessing this getter to
+      // guarantee items are populated. The engine pre-loads collections for
+      // template rendering (see routing/routes.ts), so templates receive a
+      // fully loaded collection. In programmatic contexts, call load() first.
       if (loadedItems) return loadedItems;
-      // Trigger load and return proxy
-      loadItems();
-      return loadedItems ?? ([] as Page[]);
+      // Trigger background load and return empty for this synchronous access.
+      // A .catch() is attached to prevent unhandled rejection if load fails.
+      loadItems().catch((err) => {
+        console.error("[dune] Failed to load collection items:", err);
+      });
+      return [];
     },
     total,
     page,
@@ -430,10 +435,17 @@ function createCollectionObject(
     },
 
     filter(fn: (page: Page) => boolean): Collection {
-      // This requires loaded pages — create a filtered collection
-      const filtered = loadedItems
-        ? loadedItems.filter(fn)
-        : [];
+      // filter() requires items to be loaded first (via await collection.load()).
+      // If called before loading, warn and return an empty collection rather
+      // than silently returning wrong data with no indication of the problem.
+      if (!loadedItems) {
+        console.warn(
+          "[dune] collection.filter() called before items were loaded. " +
+          "Call `await collection.load()` first to populate items.",
+        );
+        return createCollectionObject([], 0, 1, 1, loadPage);
+      }
+      const filtered = loadedItems.filter(fn);
       const filteredIndexes = filtered.map((p) =>
         indexItems.find((idx) => idx.sourcePath === p.sourcePath)!
       ).filter(Boolean);
