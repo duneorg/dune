@@ -63,6 +63,14 @@ function mediaLibraryScript(prefix: string): string {
         document.getElementById('media-grid').innerHTML = '<p>Error loading media.</p>';
       });
 
+    // Validate a URL is a safe relative or same-origin URL (not javascript: or data:)
+    function isSafeUrl(url) {
+      if (!url || typeof url !== 'string') return false;
+      const lower = url.toLowerCase().trimStart();
+      if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) return false;
+      return url.startsWith('/') || url.startsWith('./') || url.startsWith('../') || /^https?:\/\//.test(url);
+    }
+
     function renderMediaGrid(items) {
       const grid = document.getElementById('media-grid');
       document.getElementById('media-count').textContent = items.length + ' files';
@@ -72,11 +80,14 @@ function mediaLibraryScript(prefix: string): string {
         return;
       }
 
-      grid.innerHTML = items.map(item => {
+      // Use data-index attribute instead of embedding JSON in onclick attributes
+      // to avoid XSS through double-JSON serialization of filenames.
+      grid.innerHTML = items.map((item, index) => {
         const isImage = item.type.startsWith('image/');
-        return '<div class="media-card" onclick="showMediaDetail(' + JSON.stringify(JSON.stringify(item)) + ')">' +
-          (isImage
-            ? '<div class="media-card-preview"><img src="' + escapeAttr(item.url) + '?width=200" alt="' + escapeAttr(item.name) + '" loading="lazy"></div>'
+        const safeUrl = isSafeUrl(item.url) ? item.url : '';
+        return '<div class="media-card" data-index="' + index + '">' +
+          (isImage && safeUrl
+            ? '<div class="media-card-preview"><img src="' + escapeAttr(safeUrl) + '?width=200" alt="' + escapeAttr(item.name) + '" loading="lazy"></div>'
             : '<div class="media-card-preview media-card-icon">' + fileIcon(item.type) + '</div>'
           ) +
           '<div class="media-card-info">' +
@@ -86,6 +97,16 @@ function mediaLibraryScript(prefix: string): string {
         '</div>';
       }).join('');
     }
+
+    // Delegated click handler — avoids inline event handlers with embedded data
+    document.addEventListener('click', function(e) {
+      const card = e.target.closest('.media-card[data-index]');
+      if (!card) return;
+      const index = parseInt(card.dataset.index, 10);
+      if (!isNaN(index) && allMedia[index]) {
+        showMediaDetail(allMedia[index]);
+      }
+    });
 
     function filterMedia() {
       const query = document.getElementById('media-search').value.toLowerCase();
@@ -106,15 +127,15 @@ function mediaLibraryScript(prefix: string): string {
       renderMediaGrid(filtered);
     }
 
-    function showMediaDetail(itemJson) {
-      const item = JSON.parse(itemJson);
+    function showMediaDetail(item) {
       selectedMedia = item;
 
       const preview = document.getElementById('detail-preview');
       const info = document.getElementById('detail-info');
 
-      if (item.type.startsWith('image/')) {
-        preview.innerHTML = '<img src="' + escapeAttr(item.url) + '" alt="' + escapeAttr(item.name) + '">';
+      const safeUrl = isSafeUrl(item.url) ? item.url : '';
+      if (item.type.startsWith('image/') && safeUrl) {
+        preview.innerHTML = '<img src="' + escapeAttr(safeUrl) + '" alt="' + escapeAttr(item.name) + '">';
       } else {
         preview.innerHTML = '<div class="detail-icon">' + fileIcon(item.type) + '</div>';
       }
