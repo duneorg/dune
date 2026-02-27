@@ -28,6 +28,7 @@
  *   POST /api/contact         → Accept contact form submissions
  */
 
+import { stringify as stringifyYaml } from "@std/yaml";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
 import type { UserManager } from "./auth/users.ts";
@@ -709,9 +710,9 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       // Update frontmatter if provided
       if (fm) {
-        const yamlFm = Object.entries(fm)
-          .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-          .join("\n");
+        // Use @std/yaml stringify to safely serialize frontmatter — prevents
+        // YAML injection that was possible with the previous string-concat approach.
+        const yamlFm = stringifyYaml(fm).trimEnd();
         raw = raw.replace(/^---[\s\S]*?---/, `---\n${yamlFm}\n---`);
       }
 
@@ -1045,9 +1046,8 @@ export function createAdminHandler(config: AdminServerConfig) {
       const filePath = `${contentDir}/${pageIndex.sourcePath}`;
 
       // Reconstruct file: frontmatter + content
-      const fmYaml = Object.entries(revision.frontmatter)
-        .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-        .join("\n");
+      // Use @std/yaml stringify to safely serialize frontmatter.
+      const fmYaml = stringifyYaml(revision.frontmatter as Record<string, unknown>).trimEnd();
       const fullContent = `---\n${fmYaml}\n---\n\n${revision.content}`;
 
       await storage.write(filePath, new TextEncoder().encode(fullContent));
