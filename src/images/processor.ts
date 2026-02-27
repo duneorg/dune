@@ -187,17 +187,33 @@ export function createImageProcessor(config: ImageProcessorConfig) {
     if (fit && isValidFit(fit)) options.fit = fit as ImageFit;
     if (focal) {
       const parts = focal.split(",").map(Number);
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      if (
+        parts.length === 2 &&
+        !isNaN(parts[0]) && !isNaN(parts[1]) &&
+        parts[0] >= 0 && parts[0] <= 100 &&
+        parts[1] >= 0 && parts[1] <= 100
+      ) {
         options.focal = [parts[0], parts[1]];
       }
+      // Invalid focal values are silently ignored (safe default: center crop)
     }
+
+    // Maximum dimension cap — prevents allocation of absurdly large images
+    // that could exhaust memory.
+    const MAX_IMAGE_DIMENSION = 4096;
 
     // Validate parsed values
     if (options.width !== undefined && (isNaN(options.width) || options.width <= 0)) {
       return null;
     }
+    if (options.width !== undefined && options.width > MAX_IMAGE_DIMENSION) {
+      options.width = MAX_IMAGE_DIMENSION;
+    }
     if (options.height !== undefined && (isNaN(options.height) || options.height <= 0)) {
       return null;
+    }
+    if (options.height !== undefined && options.height > MAX_IMAGE_DIMENSION) {
+      options.height = MAX_IMAGE_DIMENSION;
     }
     if (options.quality !== undefined && (isNaN(options.quality) || options.quality < 1 || options.quality > 100)) {
       return null;
