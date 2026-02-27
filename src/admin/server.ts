@@ -334,6 +334,10 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
       }
 
+      // Revoke all existing sessions for this user before issuing a new one.
+      // Prevents session proliferation and limits the impact of stolen session tokens.
+      await sessions.revokeAll(user.id);
+
       // Create session (reuse ip from rate limiting above)
       const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
 
