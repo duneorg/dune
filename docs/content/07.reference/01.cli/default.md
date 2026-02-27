@@ -43,19 +43,13 @@ All commands are run with `dune` (or `deno task dune`).
 |---------|-------------|
 | `dune content:list` | List all pages with their routes, templates, and publish status. |
 | `dune content:check` | Validate all content: broken links, missing templates, orphaned media. |
-
-## Sync & Deploy
-
-| Command | Description |
-|---------|-------------|
-| `dune sync` | Push local content to Deno KV. Used for Deno Deploy workflows. |
+| `dune content:i18n-status` | Report translation coverage across all configured languages. |
 
 ## Scaffolding
 
 | Command | Description |
 |---------|-------------|
 | `dune new [name]` | Create a new Dune site with starter content and default theme. |
-| `dune theme:create [name]` | Scaffold a new theme with basic templates and manifest. |
 
 ## Config show example
 

@@ -36,7 +36,7 @@ cache:
 images:
   default_quality: 80             # JPEG/WebP quality (1-100)
   cache_dir: ".dune/cache/images"
-  allowed_sizes: [320, 640, 960, 1280, 1920]   # prevent resize attacks
+  allowed_sizes: [320, 640, 768, 1024, 1280, 1536, 1920]   # prevent resize attacks
 
 # Language support
 languages:
