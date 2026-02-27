@@ -1167,9 +1167,12 @@ export function createAdminHandler(config: AdminServerConfig) {
       const language = req.headers.get("accept-language") ?? undefined;
       const userAgent = req.headers.get("user-agent") ?? undefined;
 
-      // Use form_name field if provided (allows multiple forms), otherwise default to "contact"
-      const formName = fields.form_name ?? "contact";
+      // Use form_name field if provided (allows multiple forms), otherwise default to "contact".
+      // Validate form_name: it becomes a filesystem directory name, so restrict to safe chars.
+      // Only alphanumeric, hyphens, and underscores — no slashes, dots, or special chars.
+      const rawFormName = fields.form_name ?? "contact";
       delete fields.form_name;
+      const formName = /^[a-zA-Z0-9_-]{1,64}$/.test(rawFormName) ? rawFormName : "contact";
 
       await submissions.create(formName, fields, { ip, language, userAgent });
 
