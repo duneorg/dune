@@ -14,7 +14,7 @@ metadata:
 
 Every content operation is available via REST. All responses are JSON.
 
-CORS is supported on all endpoints. Requests from the configured `site.url` origin are allowed. Preflight `OPTIONS` requests return `204`.
+CORS is supported on all endpoints. The `Access-Control-Allow-Origin` header is set to the origin derived from your `site.url` config value — not a wildcard. This means API requests must originate from the same domain as your configured site URL. Preflight `OPTIONS` requests return `204` with appropriate CORS headers.
 
 ## Pages
 

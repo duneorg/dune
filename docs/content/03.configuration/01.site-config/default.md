@@ -48,6 +48,9 @@ routes:
 redirects:
   "/old-page": "/new-page"
   "/legacy/post": "/blog/post"
+
+# Home page slug override (optional — auto-detected if omitted)
+home: "welcome"
 ```
 
 ## Key fields
@@ -65,6 +68,16 @@ The canonical base URL. Important for generating absolute URLs in sitemaps, RSS 
 An array of taxonomy type names. This defines WHICH taxonomies your site uses. Content pages can then use any of these in their frontmatter `taxonomy` block.
 
 Default: `["category", "tag"]`
+
+### `home`
+
+The slug of the page that serves as the site's home page (`/`). Optional — if omitted, Dune auto-detects the home page by taking the slug of the first ordered top-level page in the content tree. Falls back to `"home"` if no ordered pages exist.
+
+Set this explicitly if Dune picks the wrong page, or if your home content folder has an unusual name:
+
+```yaml
+home: "start"   # serves /content/start/ at /
+```
 
 ### `routes` and `redirects`
 

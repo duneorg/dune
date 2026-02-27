@@ -44,6 +44,10 @@ languages:
   default: "en"
   include_default_in_url: false   # if true: /en/page, if false: /page
 
+# Typography
+typography:
+  orphan_protection: true         # prevent single-word last lines in paragraphs
+
 # Debug mode
 debug: false
 
@@ -101,4 +105,19 @@ Set `DUNE_ENV` in your deploy script:
 
 ```bash
 DUNE_ENV=production dune serve
+```
+
+## Typography
+
+### `orphan_protection`
+
+Default: `true`
+
+When enabled, Dune inserts a non-breaking space (`&nbsp;`) before the last word of every rendered paragraph. This prevents typographic orphans — single words stranded alone on the last line.
+
+Disable if you're post-processing HTML output yourself or if your theme handles orphan prevention:
+
+```yaml
+typography:
+  orphan_protection: false
 ```

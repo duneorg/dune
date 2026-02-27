@@ -34,6 +34,7 @@ taxonomies:                      # string[] — Enabled taxonomy types
 
 routes: {}                       # Record<string, string> — Route aliases
 redirects: {}                    # Record<string, string> — 301 redirects
+home: null                       # string | null — Home page slug. Auto-detected if null.
 ```
 
 ## system.yaml
@@ -68,6 +69,9 @@ languages:
   supported: ["en"]              # string[] — Language codes
   default: "en"                  # string — Must be in supported list
   include_default_in_url: false  # boolean — /en/page vs /page
+
+typography:
+  orphan_protection: true        # boolean — Insert &nbsp; before last word in paragraphs
 
 debug: false                     # boolean
 timezone: "UTC"                  # string — IANA timezone

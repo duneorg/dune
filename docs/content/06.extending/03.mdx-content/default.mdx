@@ -43,11 +43,68 @@ You can also embed JSX components inline.
 ## Key Differences from Markdown
 
 1. **JSX expressions** — You can use JSX syntax inline with markdown
-2. **Component imports** — Theme-provided components are available automatically
-3. **Same frontmatter** — YAML between `---` delimiters, identical to `.md`
-4. **Same routing** — Folder = page, numeric prefixes for ordering
-5. **Same collections** — MDX pages appear in collections and taxonomy queries
-6. **Same API** — REST API returns `format: "mdx"` for MDX pages
+2. **Standard HTML always works** — All standard HTML elements (`<div>`, `<aside>`, `<details>`, etc.) can be used directly in MDX without any setup
+3. **Custom components need registration** — Theme components (`<Alert />`, `<Chart />`, etc.) must be registered via the component registry (see below)
+4. **Same frontmatter** — YAML between `---` delimiters, identical to `.md`
+5. **Same routing** — Folder = page, numeric prefixes for ordering
+6. **Same collections** — MDX pages appear in collections and taxonomy queries
+7. **Same API** — REST API returns `format: "mdx"` for MDX pages
+
+## Rendering pipeline
+
+When a `.mdx` file is requested:
+
+1. **Parse frontmatter** — YAML between `---` delimiters extracted with gray-matter
+2. **Compile MDX** — `@mdx-js/mdx` compiles the source to a JavaScript module
+3. **Evaluate** — The compiled module is evaluated to get a Preact component
+4. **Render** — The component is rendered to an HTML string via Preact SSR
+5. **Media resolution** — Relative image paths are rewritten to `/content-media/` URLs (same as Markdown)
+
+The output is a static HTML string — MDX content is server-rendered, not client-side.
+
+## Component registry
+
+MDX content can use custom JSX components that aren't standard HTML elements. These components must be registered before the engine starts using the programmatic API:
+
+```ts
+import {
+  createMdxComponentRegistry,
+  MdxHandler,
+  FormatRegistry,
+  createDuneEngine,
+} from "@dune/cms";
+import { Alert } from "./themes/my-theme/components/Alert.tsx";
+import { Chart } from "./themes/my-theme/components/Chart.tsx";
+
+// 1. Create a registry and register components
+const registry = createMdxComponentRegistry({
+  Alert,
+  Chart,
+});
+
+// 2. Build a format registry with the configured MDX handler
+const formats = new FormatRegistry();
+formats.register(new MdxHandler({ components: registry }));
+
+// 3. Pass the format registry to createDuneEngine
+const engine = await createDuneEngine({ storage, config, formats });
+```
+
+MDX content can then use registered components by name:
+
+```mdx
+---
+title: "My Tutorial"
+---
+
+# Getting Started
+
+<Alert type="warning">
+  Make sure you've installed Deno 2 before continuing.
+</Alert>
+```
+
+Any component name not in the registry falls back to the equivalent HTML element, or renders nothing if there is no matching HTML tag.
 
 ## When to Use MDX
 

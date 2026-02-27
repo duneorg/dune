@@ -87,4 +87,30 @@ Every time a page is saved through the admin panel, a revision is recorded. Revi
 - Timestamp
 - Optional change message
 
-Up to 50 revisions per page are kept (configurable via `admin.runtimeDir`). Older revisions are automatically pruned. Revisions can be browsed and restored from the admin panel's history view.
+### Storage
+
+Revisions are written to the runtime data directory (configured as `admin.runtimeDir`, default `.dune/admin`). Each page gets its own folder:
+
+```
+.dune/admin/history/{url-encoded-source-path}/{revision-number}.json
+```
+
+This directory is ephemeral — it should be in `.gitignore` and is not committed to version control. Revisions are lost if the runtime directory is deleted.
+
+### Capacity
+
+Up to 50 revisions per page are kept. Older revisions are automatically pruned when a new revision would exceed the limit. The capacity is set by the `admin.runtimeDir` configuration and currently cannot be changed per-page.
+
+### Accessing revisions
+
+Revisions are accessible from the admin panel's page editor: open any page, then click **History** to browse the revision timeline, compare versions, and restore a previous version.
+
+The admin panel also exposes revisions via its internal API (used by the panel UI):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/admin/api/pages/{route}/history` | List all revisions for a page |
+| `GET` | `/admin/api/pages/{route}/history/{n}` | Get a specific revision |
+| `POST` | `/admin/api/pages/{route}/history/{n}/restore` | Restore revision `n` as the current content |
+
+These endpoints require admin authentication (editor role or above).
