@@ -95,11 +95,18 @@ Revisions are written to the runtime data directory (configured as `admin.runtim
 .dune/admin/history/{url-encoded-source-path}/{revision-number}.json
 ```
 
-This directory is ephemeral — it should be in `.gitignore` and is not committed to version control. Revisions are lost if the runtime directory is deleted.
+This directory is ephemeral — it should be in `.gitignore` and is not committed to version control.
+
+> **⚠️ Deploy warning**: Because revisions live in `runtimeDir`, **they are not preserved across deployments to a fresh server**. Every cold deploy (new container, new VM, fresh clone) starts with an empty revision history. If you need persistent revision history across deploys, back up the `runtimeDir` before deployment and restore it after, or mount it on persistent storage.
 
 ### Capacity
 
-Up to 50 revisions per page are kept. Older revisions are automatically pruned when a new revision would exceed the limit. The capacity is set by the `admin.runtimeDir` configuration and currently cannot be changed per-page.
+Up to 50 revisions per page are kept by default. Older revisions are automatically pruned when a new save would exceed the limit. Configure the limit via `admin.maxRevisions`:
+
+```yaml
+admin:
+  maxRevisions: 100   # keep more history (uses more disk)
+```
 
 ### Accessing revisions
 

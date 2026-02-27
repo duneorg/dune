@@ -48,6 +48,18 @@ priority = max(0.1, 1.0 − depth × 0.2)
 | 3 | `/blog/2025/hello` | 0.4 |
 | 4+ | deeper pages | 0.1 (floor) |
 
+## Change frequency
+
+Each URL includes a `<changefreq>` hint derived from its depth:
+
+| Depth | `<changefreq>` |
+|-------|----------------|
+| 0 (home) | `daily` |
+| 1 | `weekly` |
+| 2+ | `monthly` |
+
+This is a hint to crawlers and is not guaranteed to reflect actual update frequency.
+
 ## Last modified date
 
 Each URL's `<lastmod>` is the file modification time of the content file, formatted as `YYYY-MM-DD`.
@@ -60,6 +72,7 @@ For sites with more than one language configured (see [Multilingual Content](/co
 <url>
   <loc>https://example.com/about</loc>
   <lastmod>2025-06-15</lastmod>
+  <changefreq>weekly</changefreq>
   <priority>0.8</priority>
   <xhtml:link rel="alternate" hreflang="en" href="https://example.com/about"/>
   <xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>

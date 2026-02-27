@@ -51,17 +51,21 @@ redirects:
 
 # Home page slug override (optional — auto-detected if omitted)
 home: "welcome"
+
+# Additional CORS origins for the REST API (optional)
+cors_origins:
+  - "https://app.example.com"
 ```
 
 ## Key fields
 
 ### `title` and `description`
 
-Your site's name and tagline. Used in templates, RSS feeds, and `<meta>` tags.
+Your site's name and tagline. Used in templates and `<meta>` tags.
 
 ### `url`
 
-The canonical base URL. Important for generating absolute URLs in sitemaps, RSS feeds, and Open Graph tags. Set this to your production domain.
+The canonical base URL. Important for generating absolute URLs in sitemaps and Open Graph tags. Set this to your production domain.
 
 ### `taxonomies`
 
@@ -78,6 +82,18 @@ Set this explicitly if Dune picks the wrong page, or if your home content folder
 ```yaml
 home: "start"   # serves /content/start/ at /
 ```
+
+### `cors_origins`
+
+Additional origins allowed to make cross-origin requests to the REST API. The origin derived from `site.url` is always permitted. Add extra origins for headless or decoupled frontends hosted on a different domain:
+
+```yaml
+cors_origins:
+  - "https://app.example.com"
+  - "https://staging.example.com"
+```
+
+Without this list, API requests from other domains will be blocked by the browser (CORS policy).
 
 ### `routes` and `redirects`
 

@@ -64,31 +64,22 @@ The output is a static HTML string — MDX content is server-rendered, not clien
 
 ## Component registry
 
-MDX content can use custom JSX components that aren't standard HTML elements. These components must be registered before the engine starts using the programmatic API:
+MDX content can use custom JSX components that aren't standard HTML elements. Components are loaded from a convention file in your active theme.
+
+### Theme convention (recommended)
+
+Create `themes/{your-theme}/mdx-components.ts` with a default export mapping component names to Preact component functions:
 
 ```ts
-import {
-  createMdxComponentRegistry,
-  MdxHandler,
-  FormatRegistry,
-  createDuneEngine,
-} from "@dune/cms";
-import { Alert } from "./themes/my-theme/components/Alert.tsx";
-import { Chart } from "./themes/my-theme/components/Chart.tsx";
+// themes/my-theme/mdx-components.ts
+import { Alert } from "./components/Alert.tsx";
+import { Chart } from "./components/Chart.tsx";
+import { Callout } from "./components/Callout.tsx";
 
-// 1. Create a registry and register components
-const registry = createMdxComponentRegistry({
-  Alert,
-  Chart,
-});
-
-// 2. Build a format registry with the configured MDX handler
-const formats = new FormatRegistry();
-formats.register(new MdxHandler({ components: registry }));
-
-// 3. Pass the format registry to createDuneEngine
-const engine = await createDuneEngine({ storage, config, formats });
+export default { Alert, Chart, Callout };
 ```
+
+Dune loads this file automatically at startup. No other configuration is needed. In debug mode, the loaded component names are logged to the console.
 
 MDX content can then use registered components by name:
 
@@ -102,6 +93,20 @@ title: "My Tutorial"
 <Alert type="warning">
   Make sure you've installed Deno 2 before continuing.
 </Alert>
+```
+
+### Programmatic API
+
+For custom bootstrap setups outside the standard `dune serve` / `dune dev` flow, use the programmatic API:
+
+```ts
+import { createMdxComponentRegistry, MdxHandler, FormatRegistry } from "@dune/cms";
+import { Alert } from "./components/Alert.tsx";
+
+const registry = createMdxComponentRegistry({ Alert });
+const formats = new FormatRegistry();
+formats.register(new MdxHandler({ components: registry }));
+// Pass formats to createDuneEngine...
 ```
 
 Any component name not in the registry falls back to the equivalent HTML element, or renders nothing if there is no matching HTML tag.

@@ -35,6 +35,7 @@ taxonomies:                      # string[] — Enabled taxonomy types
 routes: {}                       # Record<string, string> — Route aliases
 redirects: {}                    # Record<string, string> — 301 redirects
 home: null                       # string | null — Home page slug. Auto-detected if null.
+cors_origins: []                 # string[] — Extra origins allowed for cross-origin API requests
 ```
 
 ## system.yaml
@@ -85,7 +86,8 @@ admin:
   path: "/admin"                 # string — URL prefix for the admin panel
   sessionLifetime: 86400         # number — Session lifetime in seconds (default: 86400 = 24 h)
   dataDir: "data"                # string — Persistent data directory (users, submissions). Git-tracked.
-  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks). Not git-tracked.
+  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks, revisions). Not git-tracked.
+  maxRevisions: 50               # number — Maximum revisions retained per page (default: 50)
 ```
 
 `dataDir` contains user accounts and form submissions and should be committed to version control. `runtimeDir` contains ephemeral session data and should be in `.gitignore`.
