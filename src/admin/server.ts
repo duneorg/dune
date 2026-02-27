@@ -1477,7 +1477,24 @@ function adminShell(prefix: string, active: string, userName: string, content: s
 function htmlResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      // Security headers for all admin HTML pages.
+      // script-src and style-src include 'unsafe-inline' because the admin
+      // panel renders inline <script> and <style> blocks throughout.
+      // frame-ancestors 'none' is the critical clickjacking protection.
+      "Content-Security-Policy": [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: *",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+      ].join("; "),
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    },
   });
 }
 
