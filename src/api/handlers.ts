@@ -40,11 +40,25 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // Only handle /api/* routes
     if (!path.startsWith("/api/")) return null;
 
-    // CORS headers for API responses
+    // CORS: allow only the configured site origin (or the request's own origin
+    // as a same-server fallback). Using a wildcard would allow any page to read
+    // raw page content via fetch(), which is undesirable for private sites.
+    const siteUrl = engine.site.url;
+    let allowedOrigin: string;
+    try {
+      allowedOrigin = new URL(siteUrl).origin;
+    } catch {
+      // site.url is not set or invalid — fall back to same-origin only
+      allowedOrigin = new URL(req.url).origin;
+    }
+    const requestOrigin = req.headers.get("origin");
+    const corsOrigin = requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin;
+
     const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": corsOrigin,
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
+      "Vary": "Origin",
     };
 
     // Handle OPTIONS preflight
