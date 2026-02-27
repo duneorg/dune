@@ -333,9 +333,8 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
       }
 
-      // Create session
-      const ip = req.headers.get("x-forwarded-for") ?? undefined;
-      const session = await sessions.create(user.id, ip);
+      // Create session (reuse ip from rate limiting above)
+      const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
 
       return new Response(null, {
         status: 302,
@@ -1167,9 +1166,6 @@ export function createAdminHandler(config: AdminServerConfig) {
         return jsonResponse({ error: "Missing required fields" }, 400);
       }
 
-      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-        ?? req.headers.get("x-real-ip")
-        ?? undefined;
       const language = req.headers.get("accept-language") ?? undefined;
       const userAgent = req.headers.get("user-agent") ?? undefined;
 
@@ -1180,7 +1176,11 @@ export function createAdminHandler(config: AdminServerConfig) {
       delete fields.form_name;
       const formName = /^[a-zA-Z0-9_-]{1,64}$/.test(rawFormName) ? rawFormName : "contact";
 
-      await submissions.create(formName, fields, { ip, language, userAgent });
+      await submissions.create(formName, fields, {
+        ip: ip === "unknown" ? undefined : ip,
+        language,
+        userAgent,
+      });
 
       // Support both JSON and form POST responses
       const acceptsJson = req.headers.get("accept")?.includes("application/json");
