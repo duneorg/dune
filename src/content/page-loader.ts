@@ -326,8 +326,12 @@ function lazyOnce<T>(fn: () => Promise<T>): () => Promise<T> {
   };
 }
 
-/** Basic MIME type lookup. */
-function getMimeType(filename: string): string {
+/**
+ * Basic MIME type lookup by filename (or path) extension.
+ * Exported so callers (e.g. core/engine.ts serveMedia) can reuse
+ * the single source-of-truth table instead of maintaining a duplicate.
+ */
+export function getMimeType(filename: string): string {
   const ext = extname(filename).toLowerCase();
   const types: Record<string, string> = {
     ".jpg": "image/jpeg",

@@ -21,7 +21,7 @@ import type {
 } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
-import { loadPage as loadPageFromIndex } from "../content/page-loader.ts";
+import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
 import { createRouteResolver } from "../routing/resolver.ts";
 import type { RouteResolver, RouteMatch } from "../routing/resolver.ts";
 import { createThemeLoader } from "../themes/loader.ts";
@@ -217,28 +217,9 @@ export async function createDuneEngine(
 
       const data = await storage.read(fullPath);
       const stat = await storage.stat(fullPath);
-      const ext = fullPath.split(".").pop()?.toLowerCase() ?? "";
-
-      const mimeTypes: Record<string, string> = {
-        jpg: "image/jpeg",
-        jpeg: "image/jpeg",
-        png: "image/png",
-        gif: "image/gif",
-        webp: "image/webp",
-        avif: "image/avif",
-        svg: "image/svg+xml",
-        mp4: "video/mp4",
-        webm: "video/webm",
-        mp3: "audio/mpeg",
-        wav: "audio/wav",
-        pdf: "application/pdf",
-        json: "application/json",
-        csv: "text/csv",
-      };
-
       return {
         data,
-        contentType: mimeTypes[ext] ?? "application/octet-stream",
+        contentType: getMimeType(fullPath),
         size: stat.size,
       };
     } catch {
