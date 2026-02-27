@@ -122,14 +122,7 @@ export async function loadPage(
     // Lazy: relations
     parent: lazyOnce(async () => {
       if (!index.parentPath) return null;
-      // Find a page with this parent path as its source directory
-      const parentIndex = options.pages.find((p) => {
-        const pDir = p.sourcePath.split("/").slice(0, -1).join("/");
-        // Match: the parent dir's folder name matches
-        return pDir === index.parentPath ||
-          p.sourcePath.startsWith(index.parentPath + "/");
-      });
-      // More precise: find the page whose folder IS the parent path
+      // Find the page whose folder IS the parent path
       const parent = options.pages.find((p) => {
         const parts = p.sourcePath.split("/");
         const dir = parts.slice(0, -1).join("/");
