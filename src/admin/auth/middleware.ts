@@ -12,6 +12,13 @@ export interface AuthMiddlewareConfig {
   users: UserManager;
   /** Cookie name for the session ID */
   cookieName?: string;
+  /**
+   * Whether to set the Secure flag on session cookies.
+   * Defaults to true. Set to false only in local HTTP dev environments.
+   * Note: browsers exempt localhost from the Secure restriction, so leaving
+   * this true is safe even in development on most modern browsers.
+   */
+  secure?: boolean;
 }
 
 export interface AuthMiddleware {
@@ -28,6 +35,7 @@ export interface AuthMiddleware {
 export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddleware {
   const { sessions, users } = config;
   const cookieName = config.cookieName ?? "dune_session";
+  const secure = config.secure !== false; // default true
 
   async function authenticate(req: Request): Promise<AuthResult> {
     // Extract session ID from cookies
@@ -64,11 +72,13 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddlewa
   }
 
   function createSessionCookie(sessionId: string, maxAge: number): string {
-    return `${cookieName}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+    const secureFlag = secure ? "; Secure" : "";
+    return `${cookieName}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`;
   }
 
   function clearSessionCookie(): string {
-    return `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+    const secureFlag = secure ? "; Secure" : "";
+    return `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
   }
 
   return { authenticate, hasPermission, createSessionCookie, clearSessionCookie };

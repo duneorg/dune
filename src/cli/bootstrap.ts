@@ -210,7 +210,12 @@ export async function bootstrap(
     lifetime: adminConfig.sessionLifetime,
   });
 
-  const auth = createAuthMiddleware({ sessions, users });
+  // Set Secure cookie flag unless running in a local dev environment.
+  // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
+  // (except on localhost in most browsers, where the browser grants an exception).
+  // Default to true (production-safe); disable only when DUNE_ENV=dev.
+  const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
+  const auth = createAuthMiddleware({ sessions, users, secure: secureCookies });
 
   const submissionManager = createSubmissionManager({
     storage,
