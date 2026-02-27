@@ -201,22 +201,32 @@ export class FileSystemAdapter implements StorageAdapter {
     let running = true;
 
     (async () => {
-      for await (const event of watcher) {
-        if (!running) break;
+      try {
+        for await (const event of watcher) {
+          if (!running) break;
 
-        const kind = event.kind === "create"
-          ? "create"
-          : event.kind === "modify"
-          ? "modify"
-          : event.kind === "remove"
-          ? "remove"
-          : null;
+          const kind = event.kind === "create"
+            ? "create"
+            : event.kind === "modify"
+            ? "modify"
+            : event.kind === "remove"
+            ? "remove"
+            : null;
 
-        if (kind) {
-          callback({
-            kind,
-            paths: event.paths.map((p) => relative(this.rootDir, p)),
-          });
+          if (kind) {
+            callback({
+              kind,
+              paths: event.paths.map((p) => relative(this.rootDir, p)),
+            });
+          }
+        }
+      } catch (err) {
+        // watcher.close() causes the for-await loop to throw an AbortError
+        // (or similar) — that is expected and should not be logged.
+        // Any other error (permissions loss, filesystem unmount, etc.) is
+        // unexpected and warrants a warning so it doesn't vanish silently.
+        if (running) {
+          console.warn(`[dune] fs.watch: unexpected error watching "${path}": ${err}`);
         }
       }
     })();
