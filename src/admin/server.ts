@@ -873,6 +873,12 @@ export function createAdminHandler(config: AdminServerConfig) {
         return jsonResponse({ error: "username, password, and role are required" }, 400);
       }
 
+      // Enforce minimum password length.
+      const MIN_PASSWORD_LENGTH = 12;
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        return jsonResponse({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400);
+      }
+
       // Validate role against the known set to prevent privilege escalation.
       const VALID_ROLES = ["admin", "editor", "author"] as const;
       if (!VALID_ROLES.includes(role)) {
