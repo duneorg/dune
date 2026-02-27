@@ -32,6 +32,7 @@ function mockPage(overrides: Partial<PageIndex> & { sourcePath: string; route: s
     format: "md",
     template: "default",
     title: "Test",
+    navTitle: "Test",
     date: null,
     published: true,
     status: "published",

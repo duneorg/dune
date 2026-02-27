@@ -21,6 +21,7 @@ function makePage(overrides: Partial<PageIndex> = {}): PageIndex {
     format: "md",
     template: "default",
     title: "Test Page",
+    navTitle: "Test Page",
     date: null,
     published: true,
     status: "published",

@@ -278,8 +278,8 @@ Deno.test("UserManager: ensureDefaultAdmin creates admin on first run", async ()
 
   const result = await mgr.ensureDefaultAdmin();
   assertEquals(result.created, true);
-  assertEquals(typeof result.password, "string");
-  assertEquals(result.password!.length, 16);
+  // ensureDefaultAdmin now returns a passwordFile path (not the raw password)
+  assertEquals(typeof result.passwordFile, "string");
 
   // Admin user should exist
   const admin = await mgr.getByUsername("admin");
@@ -301,7 +301,7 @@ Deno.test("UserManager: ensureDefaultAdmin skips if admin exists", async () => {
 
   const result = await mgr.ensureDefaultAdmin();
   assertEquals(result.created, false);
-  assertEquals(result.password, undefined);
+  assertEquals(result.passwordFile, undefined);
 });
 
 // === Auth middleware ===
