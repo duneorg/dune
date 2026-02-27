@@ -33,43 +33,77 @@ export function computeDiff(oldText: string, newText: string): ContentDiff {
 /**
  * Apply a simple line-based patch to text.
  * This is a best-effort apply — for exact reconstruction, use the revision content directly.
+ *
+ * Algorithm: process one hunk at a time, collecting all old lines (context +
+ * removed) and all new lines (context + added), then atomically splice the
+ * result.  A cumulative offset tracks how many lines each completed hunk has
+ * added or removed so subsequent hunks are addressed correctly.
+ *
+ * This is robust for any ordering of +/- lines within a hunk (e.g. adds
+ * before removes, interleaved adds and removes, multiple consecutive adds,
+ * etc.).  The per-operation running-offset approach it replaces was fragile
+ * when +/- lines were interleaved: it used the OLD file position as the
+ * insertion point for + lines, but adjusted those positions with an offset
+ * that could already include moves from earlier + lines in the same hunk,
+ * placing inserts at wrong positions.
  */
 export function applyPatch(original: string, diff: ContentDiff): string {
-  // Parse the unified diff to extract changes
-  const lines = diff.patch.split("\n");
+  if (!diff.patch) return original;
+
+  const patchLines = diff.patch.split("\n");
   const result = original.split("\n");
 
-  // For simplicity, we track line-level operations
-  const operations: Array<{ type: "add" | "remove"; lineNum: number; text?: string }> = [];
-  let currentOldLine = 0;
+  // cumulativeOffset tracks how many lines the result has grown (positive)
+  // or shrunk (negative) due to all previously applied hunks.
+  let cumulativeOffset = 0;
+  let i = 0;
 
-  for (const line of lines) {
-    if (line.startsWith("@@")) {
-      const match = line.match(/@@ -(\d+)/);
-      if (match) {
-        currentOldLine = parseInt(match[1], 10) - 1;
+  while (i < patchLines.length) {
+    const headerLine = patchLines[i];
+    if (!headerLine.startsWith("@@")) {
+      i++;
+      continue;
+    }
+
+    // Parse `@@ -oldStart[,oldCount] +newStart[,newCount] @@`
+    const match = headerLine.match(/@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@/);
+    if (!match) {
+      i++;
+      continue;
+    }
+
+    // 0-indexed position in the ORIGINAL file where this hunk applies.
+    const hunkOldStart = parseInt(match[1], 10) - 1;
+    i++;
+
+    // Collect this hunk's body lines.
+    const hunkBody: string[] = [];
+    while (i < patchLines.length && !patchLines[i].startsWith("@@")) {
+      hunkBody.push(patchLines[i]);
+      i++;
+    }
+
+    // Split hunk body into old lines (what to replace) and new lines (what to
+    // replace them with).  Context lines appear in both.
+    const oldLines: string[] = []; // context + removed
+    const newLines: string[] = []; // context + added
+
+    for (const hunkLine of hunkBody) {
+      if (hunkLine.startsWith(" ")) {
+        oldLines.push(hunkLine.slice(1));
+        newLines.push(hunkLine.slice(1));
+      } else if (hunkLine.startsWith("-")) {
+        oldLines.push(hunkLine.slice(1));
+      } else if (hunkLine.startsWith("+")) {
+        newLines.push(hunkLine.slice(1));
       }
-    } else if (line.startsWith("-")) {
-      operations.push({ type: "remove", lineNum: currentOldLine });
-      currentOldLine++;
-    } else if (line.startsWith("+")) {
-      operations.push({ type: "add", lineNum: currentOldLine, text: line.slice(1) });
-    } else if (line.startsWith(" ")) {
-      currentOldLine++;
     }
-  }
 
-  // Apply operations in reverse to avoid index shifting
-  let offset = 0;
-  for (const op of operations) {
-    const idx = op.lineNum + offset;
-    if (op.type === "remove") {
-      result.splice(idx, 1);
-      offset--;
-    } else if (op.type === "add") {
-      result.splice(idx, 0, op.text ?? "");
-      offset++;
-    }
+    // Apply the hunk: replace `oldLines.length` lines starting at the
+    // adjusted position with `newLines`.
+    const applyAt = hunkOldStart + cumulativeOffset;
+    result.splice(applyAt, oldLines.length, ...newLines);
+    cumulativeOffset += newLines.length - oldLines.length;
   }
 
   return result.join("\n");
