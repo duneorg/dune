@@ -112,3 +112,33 @@ GET /content-media/{source-path}/{filename}
 ```
 
 Serves co-located media files. These URLs are generated automatically when resolving image references in Markdown. Responses include a one-hour `Cache-Control` header.
+
+### On-the-fly image processing
+
+Append image processing parameters to any image URL to transform it on demand:
+
+```
+GET /content-media/{source-path}/{filename}?width=800&format=webp
+```
+
+Query parameters:
+
+| Param | Alias | Type | Description |
+|-------|-------|------|-------------|
+| `width` | `w` | number | Target width in pixels. Must be in `allowed_sizes`. |
+| `height` | `h` | number | Target height in pixels. Must be in `allowed_sizes`. |
+| `quality` | `q` | number | Output quality 1–100 (default: 80). |
+| `format` | `f` | string | Output format: `jpeg`, `png`, `webp`, `avif`. |
+| `fit` | — | string | Resize fit mode: `cover` (default), `contain`, `fill`, `inside`, `outside`. |
+| `focal` | — | string | Focal point for cover crop as `x,y` percentages: `50,30` = center-top. |
+
+Processing is activated when at least one of `width`, `height`, `quality`, or `format` is present.
+
+Supported input formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.gif`, `.tiff`.
+
+**Constraints:**
+- `width` and `height` must be values in `system.images.allowed_sizes` — other values return `400`.
+- Maximum dimension is capped at 4096px.
+- Invalid `focal` values are silently ignored (falls back to center crop).
+
+Processed images are cached with `Cache-Control: public, max-age=31536000, immutable`. The response also includes diagnostic headers `X-Dune-Image`, `X-Dune-Image-Width`, and `X-Dune-Image-Height`.

@@ -55,11 +55,13 @@ cache:
 images:
   default_quality: 80            # number — 1-100
   cache_dir: ".dune/cache/images"  # string
-  allowed_sizes:                 # number[]
+  allowed_sizes:                 # number[] — widths/heights allowed for on-the-fly processing
     - 320
     - 640
-    - 960
+    - 768
+    - 1024
     - 1280
+    - 1536
     - 1920
 
 languages:
@@ -70,6 +72,19 @@ languages:
 debug: false                     # boolean
 timezone: "UTC"                  # string — IANA timezone
 ```
+
+## admin.yaml (or admin: block in dune.config.ts)
+
+```yaml
+admin:
+  enabled: true                  # boolean — Enable admin panel (default: true)
+  path: "/admin"                 # string — URL prefix for the admin panel
+  sessionLifetime: 86400         # number — Session lifetime in seconds (default: 86400 = 24 h)
+  dataDir: "data"                # string — Persistent data directory (users, submissions). Git-tracked.
+  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks). Not git-tracked.
+```
+
+`dataDir` contains user accounts and form submissions and should be committed to version control. `runtimeDir` contains ephemeral session data and should be in `.gitignore`.
 
 ## theme config
 
