@@ -70,10 +70,57 @@ export interface AdminServerConfig {
   submissions?: SubmissionManager;
 }
 
+// === In-memory rate limiter ===
+// Keyed by IP address (or any string bucket). Not shared across processes —
+// sufficient for single-instance deployments; upgrade to KV-backed limiting
+// for multi-instance production if needed.
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+class RateLimiter {
+  private buckets = new Map<string, RateLimitBucket>();
+
+  constructor(
+    private readonly maxRequests: number,
+    private readonly windowMs: number,
+  ) {}
+
+  /** Returns true if the key is within the allowed rate, false if limited. */
+  check(key: string): boolean {
+    const now = Date.now();
+    const bucket = this.buckets.get(key);
+
+    if (!bucket || now >= bucket.resetAt) {
+      this.buckets.set(key, { count: 1, resetAt: now + this.windowMs });
+      return true;
+    }
+
+    if (bucket.count >= this.maxRequests) {
+      return false; // rate limited
+    }
+
+    bucket.count++;
+    return true;
+  }
+
+  /** Returns the number of seconds until the window resets for a key. */
+  retryAfter(key: string): number {
+    const bucket = this.buckets.get(key);
+    if (!bucket) return 0;
+    return Math.ceil(Math.max(0, bucket.resetAt - Date.now()) / 1000);
+  }
+}
+
 /**
  * Create the admin request handler.
  * Returns null if the request is not for an admin route.
  */
+// Rate limiter for login: 5 attempts per 15 minutes per IP
+const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
+
 export function createAdminHandler(config: AdminServerConfig) {
   const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions } = config;
   const adminConfig = config.config.admin!;
@@ -239,6 +286,18 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   async function handleLogin(req: Request): Promise<Response> {
     try {
+      // Rate limit by IP: 5 failed attempts per 15-minute window
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+        ?? req.headers.get("x-real-ip")
+        ?? "unknown";
+      if (!loginRateLimiter.check(ip)) {
+        const retryAfter = loginRateLimiter.retryAfter(ip);
+        return htmlResponse(
+          renderLoginPage(prefix, `Too many login attempts. Try again in ${retryAfter} seconds.`),
+          429,
+        );
+      }
+
       const formData = await req.formData();
       const username = formData.get("username") as string;
       const password = formData.get("password") as string;
