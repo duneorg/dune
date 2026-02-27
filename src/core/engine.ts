@@ -105,8 +105,16 @@ export async function createDuneEngine(
     const cached = pageCache.get(sourcePath);
     if (cached) return cached;
 
+    const indexEntry = pages.find((p) => p.sourcePath === sourcePath);
+    if (!indexEntry) {
+      throw new Error(
+        `[dune] loadPage: "${sourcePath}" not found in content index. ` +
+        `This usually means the page was deleted or the index is stale — call rebuild() first.`,
+      );
+    }
+
     const page = await loadPageFromIndex(
-      pages.find((p) => p.sourcePath === sourcePath)!,
+      indexEntry,
       {
         storage,
         contentDir,
