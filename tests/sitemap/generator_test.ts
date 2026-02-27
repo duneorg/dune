@@ -10,6 +10,7 @@ function makePage(overrides: Partial<PageIndex> = {}): PageIndex {
     format: "md",
     template: "default",
     title: "Home",
+    navTitle: "Home",
     date: null,
     published: true,
     status: "published",
@@ -89,6 +90,19 @@ Deno.test("generateSitemap: priority decreases with depth", () => {
   assertEquals(xml.includes("<priority>1.0</priority>"), true);
   assertEquals(xml.includes("<priority>0.8</priority>"), true);
   assertEquals(xml.includes("<priority>0.6</priority>"), true);
+});
+
+Deno.test("generateSitemap: changefreq is depth-based", () => {
+  const pages = [
+    makePage({ route: "/home", depth: 0 }),
+    makePage({ route: "/blog", depth: 1, sourcePath: "02.blog/default.md" }),
+    makePage({ route: "/blog/post", depth: 2, sourcePath: "02.blog/01.post/default.md" }),
+  ];
+  const xml = generateSitemap(pages, "https://example.com");
+
+  assertEquals(xml.includes("<changefreq>daily</changefreq>"), true);
+  assertEquals(xml.includes("<changefreq>weekly</changefreq>"), true);
+  assertEquals(xml.includes("<changefreq>monthly</changefreq>"), true);
 });
 
 Deno.test("generateSitemap: strips trailing slash from siteUrl", () => {

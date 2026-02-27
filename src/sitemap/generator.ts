@@ -113,7 +113,11 @@ export function generateSitemap(
         }
       }
 
+      // changefreq: depth-based heuristic — shallower pages update more often
+      const changefreq = p.depth === 0 ? "daily" : p.depth === 1 ? "weekly" : "monthly";
+
       if (lastmod) entry += `\n    <lastmod>${lastmod}</lastmod>`;
+      entry += `\n    <changefreq>${changefreq}</changefreq>`;
       entry += `\n    <priority>${priority}</priority>`;
       entry += `\n  </url>`;
       return entry;

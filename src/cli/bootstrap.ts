@@ -9,6 +9,7 @@ import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
 import { MdxHandler } from "../content/formats/mdx.ts";
+import { createMdxComponentRegistry } from "../content/formats/mdx-components.ts";
 import { createDuneEngine } from "../core/engine.ts";
 import { createCollectionEngine } from "../collections/engine.ts";
 import { createTaxonomyEngine } from "../taxonomy/engine.ts";
@@ -97,7 +98,40 @@ export async function bootstrap(
   const formats = new FormatRegistry();
   formats.register(new MarkdownHandler());
   formats.register(new TsxHandler());
-  formats.register(new MdxHandler());
+
+  // Auto-load MDX components from the active theme if present.
+  // Convention: themes/{name}/mdx-components.ts must default-export
+  // an object mapping component names to Preact component functions.
+  // e.g. export default { Alert, Chart, Callout }
+  let mdxHandler: MdxHandler;
+  const mdxComponentsPath = `themes/${config.theme.name}/mdx-components.ts`;
+  if (await storage.exists(mdxComponentsPath)) {
+    try {
+      const absPath = await Deno.realPath(`${root}/${mdxComponentsPath}`);
+      const mod = await import(`file://${absPath}`);
+      if (mod.default && typeof mod.default === "object") {
+        const registry = createMdxComponentRegistry(
+          mod.default as Record<string, unknown>,
+        );
+        mdxHandler = new MdxHandler({ components: registry });
+        if (debug) {
+          const names = Object.keys(mod.default).join(", ");
+          console.log(`  ✓ MDX components loaded from theme: ${names}`);
+        }
+      } else {
+        console.warn(
+          `  ⚠️  ${mdxComponentsPath}: default export must be a plain object — MDX components not loaded`,
+        );
+        mdxHandler = new MdxHandler();
+      }
+    } catch (err) {
+      console.warn(`  ⚠️  Failed to load ${mdxComponentsPath}: ${err} — MDX components not loaded`);
+      mdxHandler = new MdxHandler();
+    }
+  } else {
+    mdxHandler = new MdxHandler();
+  }
+  formats.register(mdxHandler);
 
   // 4. Engine
   const engine = await createDuneEngine({
@@ -182,7 +216,7 @@ export async function bootstrap(
   const history = createHistoryEngine({
     storage,
     dataDir: runtimeDir,
-    maxRevisions: 50,
+    maxRevisions: adminConfig.maxRevisions ?? 50,
   });
 
   // 11. Admin panel

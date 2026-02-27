@@ -60,5 +60,6 @@ export const DEFAULT_CONFIG: DuneConfig = {
     dataDir: "data",
     runtimeDir: ".dune/admin",
     enabled: true,
+    maxRevisions: 50,
   },
 };

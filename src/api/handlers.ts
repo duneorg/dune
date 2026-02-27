@@ -40,19 +40,29 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // Only handle /api/* routes
     if (!path.startsWith("/api/")) return null;
 
-    // CORS: allow only the configured site origin (or the request's own origin
-    // as a same-server fallback). Using a wildcard would allow any page to read
-    // raw page content via fetch(), which is undesirable for private sites.
+    // CORS: allow only explicitly configured origins. Using a wildcard would
+    // allow any page to read raw page content, which is undesirable for private
+    // sites. The origin derived from site.url is always permitted; additional
+    // origins can be added via site.cors_origins for headless/decoupled setups.
     const siteUrl = engine.site.url;
-    let allowedOrigin: string;
+    let primaryOrigin: string;
     try {
-      allowedOrigin = new URL(siteUrl).origin;
+      primaryOrigin = new URL(siteUrl).origin;
     } catch {
-      // site.url is not set or invalid — fall back to same-origin only
-      allowedOrigin = new URL(req.url).origin;
+      // site.url is not set or invalid — fall back to the request's own origin
+      primaryOrigin = new URL(req.url).origin;
     }
+    const extraOrigins = (engine.site.cors_origins ?? [])
+      .map((o) => { try { return new URL(o).origin; } catch { return null; } })
+      .filter(Boolean) as string[];
+    const allowedOrigins = new Set([primaryOrigin, ...extraOrigins]);
+
     const requestOrigin = req.headers.get("origin");
-    const corsOrigin = requestOrigin === allowedOrigin ? allowedOrigin : allowedOrigin;
+    // Reflect the request origin back if it's in the allowed set; otherwise
+    // respond with the primary origin (the browser will block the request).
+    const corsOrigin = (requestOrigin && allowedOrigins.has(requestOrigin))
+      ? requestOrigin
+      : primaryOrigin;
 
     const corsHeaders = {
       "Access-Control-Allow-Origin": corsOrigin,

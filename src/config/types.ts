@@ -32,6 +32,11 @@ export interface AdminConfig {
   runtimeDir: string;
   /** Whether admin panel is enabled (default: true) */
   enabled: boolean;
+  /**
+   * Maximum number of revisions to retain per page (default: 50).
+   * When the limit is reached, the oldest revision is pruned on each save.
+   */
+  maxRevisions?: number;
 }
 
 /** Site-level configuration (content, identity, metadata) */
@@ -55,6 +60,13 @@ export interface SiteConfig {
   routes: Record<string, string>;
   /** Redirects: { "/old": "/new" } (301 by default) */
   redirects: Record<string, string>;
+  /**
+   * Additional origins allowed to make cross-origin API requests.
+   * The origin derived from `site.url` is always allowed.
+   * Add extra origins here for headless/decoupled frontends on different domains.
+   * @example ["https://app.example.com", "https://staging.example.com"]
+   */
+  cors_origins?: string[];
 }
 
 /** System-level configuration (engine behavior) */
