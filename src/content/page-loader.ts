@@ -11,6 +11,7 @@
 
 import { dirname, extname, join } from "@std/path";
 import { parse as parseYaml } from "@std/yaml";
+import { StorageError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import { applyOrphanProtection } from "./typography.ts";
@@ -269,8 +270,17 @@ async function discoverMedia(
         url,
       });
     }
-  } catch {
-    // Directory listing failed — no media
+  } catch (err) {
+    // A "directory not found" error is expected — the page's folder simply has
+    // no media files (or the folder doesn't exist yet).  Any other error
+    // (permissions failure, KV-storage error, filesystem corruption, etc.) is
+    // unexpected and should be surfaced so it doesn't silently corrupt the
+    // media list.
+    const isNotFound =
+      err instanceof StorageError && err.message.startsWith("Directory not found");
+    if (!isNotFound) {
+      console.warn(`[dune] discoverMedia: unexpected error for "${sourcePath}": ${err}`);
+    }
   }
 
   return media;
