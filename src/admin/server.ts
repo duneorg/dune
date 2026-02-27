@@ -121,6 +121,9 @@ class RateLimiter {
 // Rate limiter for login: 5 attempts per 15 minutes per IP
 const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 
+// Rate limiter for public contact form: 5 submissions per minute per IP
+const contactRateLimiter = new RateLimiter(5, 60 * 1000);
+
 export function createAdminHandler(config: AdminServerConfig) {
   const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions } = config;
   const adminConfig = config.config.admin!;
@@ -1098,6 +1101,21 @@ export function createAdminHandler(config: AdminServerConfig) {
       return jsonResponse({ error: "Submissions not enabled" }, 501);
     }
     try {
+      // Rate limit by IP: 5 submissions per minute
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+        ?? req.headers.get("x-real-ip")
+        ?? "unknown";
+      if (!contactRateLimiter.check(ip)) {
+        const retryAfter = contactRateLimiter.retryAfter(ip);
+        return new Response(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(retryAfter),
+          },
+        });
+      }
+
       const contentType = req.headers.get("content-type") ?? "";
       let fields: Record<string, string> = {};
 
