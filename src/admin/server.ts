@@ -661,7 +661,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         })),
       });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -692,7 +692,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ created: true, path: pagePath, file: filePath }, 201);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -734,7 +734,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ updated: true, sourcePath: page.sourcePath });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -753,7 +753,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ deleted: true, sourcePath: page.sourcePath });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -789,7 +789,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ items, total: items.length });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -807,7 +807,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       const doc = markdownToBlocks(content);
       return jsonResponse(doc);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -823,7 +823,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       const markdown = blocksToMarkdown(blocks);
       return jsonResponse({ markdown });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -858,7 +858,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 <html><head><meta charset="utf-8"><style>body{font-family:system-ui;padding:2rem;max-width:800px;margin:0 auto;line-height:1.6;}img{max-width:100%;}pre{background:#f5f5f5;padding:1rem;border-radius:4px;overflow-x:auto;}code{background:#f0f0f0;padding:0.1em 0.3em;border-radius:2px;}blockquote{border-left:3px solid #ccc;padding-left:1rem;color:#666;margin:1rem 0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:0.5rem;}</style></head>
 <body>${html}</body></html>`);
     } catch (err) {
-      return htmlResponse(`<h1>Preview Error</h1><pre>${escapeHtml(String(err))}</pre>`, 500);
+      return serverErrorHtml(err, "preview");
     }
   }
 
@@ -900,7 +900,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ created: true, user: toUserInfo(user) }, 201);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -952,7 +952,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ transitioned: true, from: currentStatus, to: newStatus });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -984,7 +984,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ scheduled: true, action: scheduled }, 201);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -994,7 +994,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       const cancelled = await scheduler.cancel(actionId);
       return jsonResponse({ cancelled });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1004,7 +1004,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       const actions = await scheduler.listForPage(pagePath);
       return jsonResponse({ items: actions, total: actions.length });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1016,7 +1016,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       const revisions = await history.getHistory(pagePath);
       return jsonResponse({ items: revisions, total: revisions.length });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1027,7 +1027,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!revision) return jsonResponse({ error: "Revision not found" }, 404);
       return jsonResponse(revision);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1045,7 +1045,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!diff) return jsonResponse({ error: "Revision not found" }, 404);
       return jsonResponse(diff);
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1072,7 +1072,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return jsonResponse({ restored: true, revision: revNum });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1201,7 +1201,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         headers: { "Location": redirectPath },
       });
     } catch (err) {
-      return jsonResponse({ error: String(err) }, 500);
+      return serverError(err);
     }
   }
 
@@ -1259,8 +1259,9 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
     } catch (err) {
+      console.error("  ❌ Admin server error [submissions-index]:", err instanceof Error ? err.message : err);
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
-        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+        `<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>`), 500);
     }
   }
 
@@ -1276,8 +1277,9 @@ export function createAdminHandler(config: AdminServerConfig) {
       const content = renderSubmissionsList(prefix, form, list, newCount);
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
     } catch (err) {
+      console.error("  ❌ Admin server error [submissions-list]:", err instanceof Error ? err.message : err);
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
-        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+        `<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>`), 500);
     }
   }
 
@@ -1299,8 +1301,9 @@ export function createAdminHandler(config: AdminServerConfig) {
       const content = renderSubmissionDetail(prefix, form, submission);
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin", content));
     } catch (err) {
+      console.error("  ❌ Admin server error [submission-detail]:", err instanceof Error ? err.message : err);
       return htmlResponse(renderSubmissionsShell(prefix, "submissions", authResult.user?.name ?? "Admin",
-        `<h1>Error</h1><pre>${escapeHtml(String(err))}</pre>`), 500);
+        `<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>`), 500);
     }
   }
 
@@ -1503,6 +1506,26 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
+}
+
+/**
+ * Log an unexpected error server-side and return a generic 500 response.
+ * Never includes the raw error message in the client response — that would
+ * leak stack traces, file paths, and implementation details.
+ */
+function serverError(err: unknown, context?: string): Response {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`  ❌ Admin server error${context ? ` [${context}]` : ""}: ${message}`);
+  return jsonResponse({ error: "Internal server error" }, 500);
+}
+
+/**
+ * Same as serverError() but returns an HTML response for UI routes.
+ */
+function serverErrorHtml(err: unknown, context?: string): Response {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`  ❌ Admin server error${context ? ` [${context}]` : ""}: ${message}`);
+  return htmlResponse("<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>", 500);
 }
 
 function escapeHtml(str: string): string {
