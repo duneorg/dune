@@ -189,7 +189,14 @@ export function createAdminHandler(config: AdminServerConfig) {
     // === Admin API routes ===
 
     if (adminPath.startsWith("/api/")) {
-      return handleAdminApi(adminPath, req, authResult);
+      try {
+        return await handleAdminApi(adminPath, req, authResult);
+      } catch (err) {
+        if (err instanceof PermissionError) {
+          return jsonResponse({ error: err.message }, 403);
+        }
+        throw err;
+      }
     }
 
     // === Admin UI routes ===
