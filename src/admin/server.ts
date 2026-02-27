@@ -360,6 +360,20 @@ export function createAdminHandler(config: AdminServerConfig) {
   ): Promise<Response> {
     const method = req.method;
 
+    // CSRF protection: reject state-mutating requests that carry a cross-origin
+    // Origin header. Browsers always send Origin on cross-site requests, so a
+    // mismatch means the request was initiated by a different origin.
+    // Requests with no Origin header (e.g. direct API calls or same-origin form
+    // POSTs in some browsers) are allowed — SameSite=Lax on the session cookie
+    // provides the second layer of protection.
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const requestOrigin = new URL(req.url).origin;
+      const origin = req.headers.get("origin");
+      if (origin !== null && origin !== requestOrigin) {
+        return jsonResponse({ error: "Forbidden: cross-origin request rejected" }, 403);
+      }
+    }
+
     // GET /admin/api/dashboard
     if (adminPath === "/api/dashboard" && method === "GET") {
       return jsonResponse({
