@@ -129,6 +129,12 @@ export function createAdminHandler(config: AdminServerConfig) {
   const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions } = config;
   const adminConfig = config.config.admin!;
 
+  // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
+  // causes path.startsWith(prefix) to match unintended routes or fail silently.
+  if (!prefix.startsWith("/")) {
+    throw new Error(`Admin prefix must start with "/" — got: ${JSON.stringify(prefix)}`);
+  }
+
   return async function handleAdminRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
     const path = url.pathname;
