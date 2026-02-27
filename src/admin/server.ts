@@ -550,9 +550,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   async function handleGetPage(pagePath: string): Promise<Response> {
     try {
-      const pageIndex = engine.pages.find((p) =>
-        p.sourcePath === pagePath || p.sourcePath.includes(pagePath)
-      );
+      const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
       if (!pageIndex) {
         return jsonResponse({ error: "Page not found" }, 404);
       }
@@ -586,6 +584,10 @@ export function createAdminHandler(config: AdminServerConfig) {
         return jsonResponse({ error: "path and title are required" }, 400);
       }
 
+      if (!validatePagePath(pagePath)) {
+        return jsonResponse({ error: "Invalid page path: must not contain '..' or absolute segments" }, 400);
+      }
+
       const ext = format === "mdx" ? ".mdx" : format === "tsx" ? ".tsx" : ".md";
       const frontmatter = `---\ntitle: "${title}"\ntemplate: ${template ?? "default"}\npublished: true\n---\n`;
       const fullContent = frontmatter + "\n" + (content ?? "");
@@ -609,10 +611,8 @@ export function createAdminHandler(config: AdminServerConfig) {
       const body = await req.json();
       const { content, frontmatter: fm } = body;
 
-      // Find the page by source path
-      const page = engine.pages.find((p) =>
-        p.sourcePath === pagePath || p.sourcePath.includes(pagePath)
-      );
+      // Find the page by source path (exact match — no fuzzy includes())
+      const page = engine.pages.find((p) => p.sourcePath === pagePath);
       if (!page) {
         return jsonResponse({ error: "Page not found" }, 404);
       }
@@ -650,9 +650,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   async function handleDeletePage(pagePath: string): Promise<Response> {
     try {
-      const page = engine.pages.find((p) =>
-        p.sourcePath === pagePath || p.sourcePath.includes(pagePath)
-      );
+      const page = engine.pages.find((p) => p.sourcePath === pagePath);
       if (!page) {
         return jsonResponse({ error: "Page not found" }, 404);
       }
@@ -1270,6 +1268,31 @@ export function createAdminHandler(config: AdminServerConfig) {
       throw new PermissionError(permission);
     }
   }
+}
+
+/**
+ * Validate that a page path is safe to use as a filesystem path segment.
+ *
+ * A valid page path:
+ * - Is a non-empty string
+ * - Contains no null bytes
+ * - Does not start with "/"
+ * - Does not end with "/"
+ * - Contains no consecutive slashes
+ * - Has no "." or ".." segments (prevents directory traversal)
+ * - Contains only alphanumeric characters, hyphens, underscores, and dots per segment
+ */
+export function validatePagePath(path: string): boolean {
+  if (!path || typeof path !== "string") return false;
+  if (path.includes("\0")) return false;
+  if (path.startsWith("/")) return false;
+  if (path.endsWith("/")) return false;
+  if (path.includes("//")) return false;
+  for (const segment of path.split("/")) {
+    if (!segment || segment === "." || segment === "..") return false;
+    if (!/^[a-zA-Z0-9._-]+$/.test(segment)) return false;
+  }
+  return true;
 }
 
 class PermissionError extends Error {
