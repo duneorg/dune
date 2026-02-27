@@ -37,12 +37,11 @@ export function createWorkflowEngine(
 ): WorkflowEngine {
   return {
     getStatus(page: PageIndex): ContentStatus {
-      // Check frontmatter for explicit status
-      const fm = page as any;
-      if (fm.status && isValidStatus(fm.status)) {
-        return fm.status;
+      // PageIndex.status is already typed as the full union — no cast needed.
+      if (page.status && isValidStatus(page.status)) {
+        return page.status;
       }
-      // Infer from published flag
+      // Infer from published flag for pages without an explicit status.
       return page.published ? "published" : "draft";
     },
 
