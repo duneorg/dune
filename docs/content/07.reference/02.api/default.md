@@ -14,6 +14,8 @@ metadata:
 
 Every content operation is available via REST. All responses are JSON.
 
+CORS is supported on all endpoints. Requests from the configured `site.url` origin are allowed. Preflight `OPTIONS` requests return `204`.
+
 ## Pages
 
 ### List all pages
@@ -29,8 +31,9 @@ Query parameters:
 | `limit` | number | Maximum pages to return (default: 20) |
 | `offset` | number | Skip N pages (default: 0) |
 | `template` | string | Filter by template name |
-
-Only published, routable pages are returned.
+| `published` | boolean | Filter by publish status. Omit to return only published pages. |
+| `order` | string | Sort as `field:direction` — e.g. `date:desc`, `title:asc`, `order:asc` |
+| `taxonomy.{name}` | string | Filter by taxonomy value — e.g. `taxonomy.tag=deno` |
 
 Response:
 ```json
@@ -44,14 +47,16 @@ Response:
       "format": "md",
       "published": true,
       "taxonomy": {
-        "tag": ["deno", "fresh"],
-        "category": ["tutorials"]
+        "tag": ["deno", "fresh"]
       }
     }
   ],
-  "total": 42,
-  "limit": 20,
-  "offset": 0
+  "meta": {
+    "total": 42,
+    "page": 1,
+    "pages": 3,
+    "limit": 20
+  }
 }
 ```
 
@@ -61,7 +66,7 @@ Response:
 GET /api/pages/{route}
 ```
 
-Returns the full page object including rendered HTML content. The `{route}` segment starts with `/` — e.g. `/api/pages/blog/hello-world` returns the page at route `/blog/hello-world`.
+Returns the full page object including rendered HTML and raw content. The `{route}` segment starts with `/` — e.g. `/api/pages/blog/hello-world` returns the page at route `/blog/hello-world`.
 
 ```json
 {
@@ -70,17 +75,136 @@ Returns the full page object including rendered HTML content. The `{route}` segm
   "date": "2025-06-15",
   "template": "post",
   "format": "md",
+  "rawContent": "---\ntitle: Hello World\n---\n\n# Hello World\n...",
   "html": "<h1>Hello World</h1><p>This is my first post...</p>",
-  "frontmatter": { "...": "all frontmatter fields" },
+  "frontmatter": { "title": "Hello World", "date": "2025-06-15" },
   "media": [
-    { "name": "cover.jpg", "url": "/content-media/02.blog/01.hello-world/cover.jpg", "type": "image/jpeg" }
+    { "name": "cover.jpg", "url": "/content-media/02.blog/01.hello-world/cover.jpg", "type": "image/jpeg", "size": 48320 }
   ]
 }
 ```
 
-Returns `404` if no page exists at that route.
+Returns `404` (as `{ "error": "Not found" }`) if no page exists at that route.
+
+### Get child pages
+
+```
+GET /api/pages/{route}/children
+```
+
+Returns direct child pages of the given page.
+
+```json
+{
+  "items": [
+    {
+      "route": "/blog/hello-world",
+      "title": "Hello World",
+      "date": "2025-06-15",
+      "template": "post",
+      "format": "md",
+      "order": 1
+    }
+  ],
+  "total": 3
+}
+```
+
+### Get page media
+
+```
+GET /api/pages/{route}/media
+```
+
+Returns all co-located media files for a page, including sidecar metadata.
+
+```json
+{
+  "items": [
+    {
+      "name": "cover.jpg",
+      "url": "/content-media/02.blog/01.hello-world/cover.jpg",
+      "type": "image/jpeg",
+      "size": 48320,
+      "meta": { "alt": "A sunset", "credit": "Photo by Jane Doe" }
+    }
+  ],
+  "total": 1
+}
+```
+
+## Collections
+
+### Query a collection
+
+```
+GET /api/collections
+```
+
+Returns a filtered, ordered, paginated set of pages. Build queries with query parameters rather than frontmatter definitions.
+
+Query parameters:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `source` | string | Collection source (default: `@self.children`). See below. |
+| `order` | string | Sort field: `date` (default), `title`, `order` |
+| `dir` | string | Sort direction: `desc` (default), `asc` |
+| `limit` | number | Items per page (default: 20) |
+| `offset` | number | Skip N items (default: 0) |
+| `template` | string | Filter by template name |
+
+**Source values:**
+- `@self.children` — all direct children (default)
+- `@page.children:/blog` — children of a specific page
+- `@page.descendants:/blog` — all descendants of a page
+- `@taxonomy.tag:deno` — pages with a specific taxonomy value
+
+Response:
+```json
+{
+  "items": [
+    {
+      "route": "/blog/hello-world",
+      "title": "Hello World",
+      "date": "2025-06-15",
+      "template": "post",
+      "format": "md"
+    }
+  ],
+  "meta": {
+    "total": 42,
+    "page": 1,
+    "pages": 3,
+    "hasNext": true,
+    "hasPrev": false
+  }
+}
+```
 
 ## Taxonomy
+
+### List all taxonomies
+
+```
+GET /api/taxonomy
+```
+
+Returns all taxonomy types with their values and page counts.
+
+```json
+{
+  "tag": {
+    "deno": 12,
+    "fresh": 8,
+    "cms": 3
+  },
+  "category": {
+    "tutorials": 5,
+    "announcements": 2
+  }
+}
+```
 
 ### List taxonomy values
 
@@ -102,6 +226,118 @@ Returns all values for a taxonomy type with page counts.
 ```
 
 Returns `404` if the taxonomy name is not defined in the site config.
+
+### Get pages by taxonomy value
+
+```
+GET /api/taxonomy/{name}/{value}
+```
+
+Returns all pages with a specific taxonomy value.
+
+```json
+{
+  "taxonomy": "tag",
+  "value": "deno",
+  "items": [
+    {
+      "route": "/blog/hello-world",
+      "title": "Hello World",
+      "date": "2025-06-15",
+      "template": "post",
+      "format": "md"
+    }
+  ],
+  "total": 12
+}
+```
+
+## Search
+
+### Full-text search
+
+```
+GET /api/search?q={query}
+```
+
+Query parameters:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Search query (required) |
+| `limit` | number | Maximum results (default: 20) |
+
+Response:
+```json
+{
+  "query": "deno fresh",
+  "items": [
+    {
+      "route": "/blog/hello-world",
+      "title": "Hello World",
+      "excerpt": "...built with deno and fresh...",
+      "score": 0.95,
+      "template": "post",
+      "format": "md"
+    }
+  ],
+  "total": 3
+}
+```
+
+Returns an empty `items` array (not a 404) if no results are found or `q` is omitted.
+
+## Site Configuration
+
+### Get site config
+
+```
+GET /api/config/site
+```
+
+Returns public site configuration values.
+
+```json
+{
+  "title": "My Site",
+  "description": "A site built with Dune CMS",
+  "url": "https://example.com",
+  "author": { "name": "Jane Doe" },
+  "metadata": {},
+  "taxonomies": ["tag", "category"]
+}
+```
+
+## Navigation
+
+### Get navigation tree
+
+```
+GET /api/nav
+```
+
+Returns the ordered navigation tree of all visible pages.
+
+```json
+{
+  "items": [
+    {
+      "route": "/",
+      "title": "Home",
+      "order": 1,
+      "depth": 0,
+      "template": "default"
+    },
+    {
+      "route": "/blog",
+      "title": "Blog",
+      "order": 2,
+      "depth": 0,
+      "template": "blog"
+    }
+  ]
+}
+```
 
 ## Content Media
 
