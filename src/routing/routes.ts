@@ -14,7 +14,7 @@
 /** @jsxImportSource preact */
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
-import type { MediaFile } from "../content/types.ts";
+import type { Collection, MediaFile } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 
@@ -37,7 +37,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
         return new Response("Not found", { status: 404 });
       }
 
-      return new Response(media.data as unknown as BodyInit, {
+      return new Response(media.data, {
         headers: {
           "Content-Type": media.contentType,
           "Content-Length": String(media.size),
@@ -284,7 +284,7 @@ export function duneRoutes(engine: DuneEngine, collections?: CollectionEngine) {
       const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 
       // Load collection if page defines one
-      let collection: any = undefined;
+      let collection: Collection | undefined = undefined;
       if (collections && page.frontmatter.collection) {
         const collectionDef = page.frontmatter.collection;
         // Find the PageIndex for this page to use as context
