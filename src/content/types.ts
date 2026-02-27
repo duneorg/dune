@@ -98,6 +98,8 @@ export interface Page {
   format: ContentFormat;
   /** Resolved template name: "post" (for .md/.mdx) or "self" (for .tsx) */
   template: string;
+  /** Navigation label — falls back to title when nav_title is not set */
+  navTitle: string;
   /** Parsed frontmatter */
   frontmatter: PageFrontmatter;
   /** Raw markdown body — only for .md/.mdx (not rendered — lazy) */

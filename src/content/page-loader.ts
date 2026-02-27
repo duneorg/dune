@@ -78,6 +78,7 @@ export async function loadPage(
     language: index.language,
     format: index.format,
     template: index.template,
+    navTitle: index.navTitle,
     frontmatter,
     rawContent,
     order: index.order,
