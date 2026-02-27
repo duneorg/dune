@@ -34,13 +34,13 @@ export async function verifyPassword(
 
   const iterations = parseInt(parts[1], 10);
   const salt = hexToBytes(parts[2]);
-  const expectedHash = parts[3];
+  const expectedBytes = hexToBytes(parts[3]);
 
-  const key = await deriveKey(password, salt, iterations);
-  const actualHash = encodeHex(key);
+  const derivedBytes = await deriveKey(password, salt, iterations);
 
-  // Constant-time comparison
-  return timingSafeEqual(expectedHash, actualHash);
+  // Constant-time byte comparison — avoids the timing side-channel in the
+  // previous hex-string comparison which also had an early return on length.
+  return timingSafeEqual(expectedBytes, derivedBytes);
 }
 
 async function deriveKey(
@@ -74,13 +74,18 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 /**
- * Constant-time string comparison to prevent timing attacks.
+ * Constant-time comparison of two byte arrays.
+ *
+ * Runs for max(a.length, b.length) iterations regardless of content,
+ * and captures a length difference in the initial XOR — no early returns.
+ * Operating on raw bytes (not hex strings) removes the encoding layer.
  */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  const maxLen = Math.max(a.length, b.length);
+  // Start with the length difference: if lengths differ, result is already non-zero.
+  let result = a.length ^ b.length;
+  for (let i = 0; i < maxLen; i++) {
+    result |= (a[i] ?? 0) ^ (b[i] ?? 0);
   }
   return result === 0;
 }
