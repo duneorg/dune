@@ -22,6 +22,8 @@ import type {
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
 import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
+import { loadBlueprints } from "../blueprints/loader.ts";
+import type { BlueprintMap } from "../blueprints/types.ts";
 import { createRouteResolver } from "../routing/resolver.ts";
 import type { RouteResolver, RouteMatch } from "../routing/resolver.ts";
 import { createThemeLoader } from "../themes/loader.ts";
@@ -38,6 +40,12 @@ export interface DuneEngineOptions {
   themesDir?: string;
   /** Storage root directory (for resolving absolute paths) */
   storageRoot?: string;
+  /**
+   * Directory containing blueprint YAML files (default: "blueprints").
+   * Blueprints define per-template frontmatter schemas.
+   * Set to null to disable blueprint loading entirely.
+   */
+  blueprintsDir?: string | null;
 }
 
 export interface DuneEngine {
@@ -88,6 +96,7 @@ export async function createDuneEngine(
   const themesDir = options.themesDir ?? "themes";
   const contentDir = config.system.content.dir;
   const storageRoot = options.storageRoot;
+  const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
 
   // State
   let pages: PageIndex[] = [];
@@ -140,6 +149,15 @@ export async function createDuneEngine(
    * Initialize: build index, set up router & theme loader.
    */
   async function init(): Promise<void> {
+    // Load blueprints (best-effort — missing blueprints dir is not an error)
+    let blueprints: BlueprintMap | undefined;
+    if (blueprintsDir !== null) {
+      blueprints = await loadBlueprints(storage, blueprintsDir);
+      if (config.system.debug && Object.keys(blueprints).length > 0) {
+        console.log(`[dune] Loaded ${Object.keys(blueprints).length} blueprint(s): ${Object.keys(blueprints).join(", ")}`);
+      }
+    }
+
     // Build content index
     const result = await buildIndex({
       storage,
@@ -148,6 +166,7 @@ export async function createDuneEngine(
       siteHome: config.site.home,
       supportedLanguages: config.system.languages?.supported,
       defaultLanguage: config.system.languages?.default,
+      blueprints,
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
@@ -238,6 +257,12 @@ export async function createDuneEngine(
       pageCache.clear();
       themes.clearCache();
 
+      // Reload blueprints in case any changed on disk
+      let blueprints: BlueprintMap | undefined;
+      if (blueprintsDir !== null) {
+        blueprints = await loadBlueprints(storage, blueprintsDir);
+      }
+
       const result = await buildIndex({
         storage,
         contentDir,
@@ -245,6 +270,7 @@ export async function createDuneEngine(
         siteHome: config.site.home,
         supportedLanguages: config.system.languages?.supported,
         defaultLanguage: config.system.languages?.default,
+        blueprints,
       });
       pages = result.pages;
       taxonomyMap = result.taxonomyMap;

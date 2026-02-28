@@ -16,6 +16,8 @@ import { ContentError } from "../core/errors.ts";
 import type { StorageAdapter, StorageEntry } from "../storage/types.ts";
 import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
+import type { BlueprintMap } from "../blueprints/types.ts";
+import { validateFrontmatter } from "../blueprints/validator.ts";
 import {
   calculateDepth,
   getParentPath,
@@ -42,6 +44,13 @@ export interface IndexBuilderOptions {
   supportedLanguages?: string[];
   /** Default language for files without suffix (from config) */
   defaultLanguage?: string;
+  /**
+   * Blueprint map for frontmatter validation.
+   * When provided, each page's frontmatter is validated against the blueprint
+   * matching its template name.  Violations are added to BuildResult.errors
+   * (non-fatal — the page is still indexed).
+   */
+  blueprints?: BlueprintMap;
 }
 
 export interface BuildResult {
@@ -76,7 +85,7 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   const pages: PageIndex[] = [];
@@ -150,6 +159,17 @@ export async function buildIndex(
         if (frontmatter.taxonomy) {
           updateTaxonomyMap(taxonomyMap, frontmatter.taxonomy, pageIndex.sourcePath);
         }
+
+        // Validate frontmatter against blueprint (non-fatal)
+        if (blueprints) {
+          const bpErrors = validateFrontmatter(frontmatter, pageIndex.template, blueprints);
+          for (const e of bpErrors) {
+            errors.push({
+              path: entry.path,
+              message: `[${pageIndex.template} blueprint] ${e.field}: ${e.message}`,
+            });
+          }
+        }
       }
     } catch (err) {
       errors.push({
@@ -186,7 +206,7 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   // Build a map of existing pages by sourcePath
@@ -279,6 +299,17 @@ export async function updateIndex(
         pages.push(pageIndex);
         if (frontmatter.taxonomy) {
           updateTaxonomyMap(taxonomyMap, frontmatter.taxonomy, pageIndex.sourcePath);
+        }
+
+        // Validate frontmatter against blueprint (non-fatal)
+        if (blueprints) {
+          const bpErrors = validateFrontmatter(frontmatter, pageIndex.template, blueprints);
+          for (const e of bpErrors) {
+            errors.push({
+              path: entry.path,
+              message: `[${pageIndex.template} blueprint] ${e.field}: ${e.message}`,
+            });
+          }
         }
       }
     } catch (err) {
