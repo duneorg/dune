@@ -171,6 +171,11 @@ function injectLiveReload(response: Response): Response {
 export async function devCommand(root: string, options: DevOptions = {}) {
   const { port = 3000, debug = false } = options;
 
+  // Disable Secure cookie flag in dev so session cookies work over plain HTTP.
+  // Without this, browsers (particularly Safari) reject the Secure cookie on
+  // localhost and every login redirects back to the login page silently.
+  Deno.env.set("DUNE_ENV", "dev");
+
   console.log("🏜️  Dune — starting development server...\n");
 
   // Bootstrap engine
