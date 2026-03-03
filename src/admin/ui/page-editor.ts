@@ -450,16 +450,18 @@ function editorScript(
       });
     }
 
-    // Collect frontmatter from sidebar form
+    // Collect frontmatter from sidebar form.
+    // Start from the full existing frontmatter so custom fields (taxonomy,
+    // descriptor, metadata, collection, etc.) are preserved across saves.
     function getFrontmatter() {
-      const fm = {};
+      const fm = Object.assign({}, ${JSON.stringify(pageData.frontmatter)});
       fm.title = document.getElementById('fm-title').value;
       fm.template = document.getElementById('fm-template').value;
       const slug = document.getElementById('fm-slug').value;
-      if (slug) fm.slug = slug;
+      if (slug) fm.slug = slug; else delete fm.slug;
       fm.published = document.getElementById('fm-published').checked;
       const date = document.getElementById('fm-date').value;
-      if (date) fm.date = date;
+      if (date) fm.date = date; else delete fm.date;
       return fm;
     }
 

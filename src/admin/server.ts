@@ -28,7 +28,7 @@
  *   POST /api/contact         → Accept contact form submissions
  */
 
-import { stringify as stringifyYaml } from "@std/yaml";
+import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
 import type { UserManager } from "./auth/users.ts";
@@ -718,11 +718,17 @@ export function createAdminHandler(config: AdminServerConfig) {
       const existing = await storage.read(filePath);
       let raw = new TextDecoder().decode(existing);
 
-      // Update frontmatter if provided
+      // Update frontmatter if provided.
+      // Merge incoming fields over the existing frontmatter so custom fields
+      // (taxonomy, descriptor, metadata, collection, etc.) are never silently
+      // dropped when the editor only knows about a subset of fields.
       if (fm) {
-        // Use @std/yaml stringify to safely serialize frontmatter — prevents
-        // YAML injection that was possible with the previous string-concat approach.
-        const yamlFm = stringifyYaml(fm).trimEnd();
+        const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+        const existingFm = fmMatch
+          ? (parseYaml(fmMatch[1]) as Record<string, unknown> ?? {})
+          : {};
+        const mergedFm = { ...existingFm, ...fm };
+        const yamlFm = stringifyYaml(mergedFm).trimEnd();
         raw = raw.replace(/^---[\s\S]*?---/, `---\n${yamlFm}\n---`);
       }
 
