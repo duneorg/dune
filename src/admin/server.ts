@@ -66,8 +66,10 @@ import {
 } from "./ui/submissions.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
 import { renderConfigEditor, configEditorStyles } from "./ui/config-editor.ts";
+import { renderPluginsPage, pluginStyles } from "./ui/plugins.ts";
 import { validateConfig } from "../config/validator.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import { sendSubmissionEmail } from "./email.ts";
 import { sendWebhookNotification } from "./webhook.ts";
 import type { SubmissionFile } from "./submissions.ts";
@@ -87,6 +89,8 @@ export interface AdminServerConfig {
   history?: HistoryEngine;
   submissions?: SubmissionManager;
   flex?: FlexEngine;
+  /** Hook registry — exposes registered plugins to the admin panel */
+  hooks?: HookRegistry;
 }
 
 // === In-memory rate limiter ===
@@ -144,7 +148,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -340,6 +344,16 @@ export function createAdminHandler(config: AdminServerConfig) {
       const form = decodeURIComponent(parts[2]);
       const id = parts[3];
       return handleSubmissionDelete(form, id);
+    }
+
+    // === Plugin management UI ===
+
+    // GET /admin/plugins — Plugin list page
+    if (adminPath === "/plugins" && req.method === "GET") {
+      const plugins = hooks?.plugins() ?? [];
+      return htmlResponse(
+        renderPluginsPage(prefix, plugins, config.config.plugins, authResult),
+      );
     }
 
     // === Flex Object UI routes ===
@@ -659,6 +673,39 @@ export function createAdminHandler(config: AdminServerConfig) {
       requirePermission(authResult, "config.read");
       const { title, description, url: siteUrl, author, metadata, taxonomies } = engine.site;
       return jsonResponse({ title, description, url: siteUrl, author, metadata, taxonomies });
+    }
+
+    // === Plugin API routes ===
+
+    // GET /admin/api/plugins — List registered plugins and their configs
+    if (adminPath === "/api/plugins" && method === "GET") {
+      const plugins = hooks?.plugins() ?? [];
+      return jsonResponse({
+        items: plugins.map((p) => ({
+          name: p.name,
+          version: p.version,
+          description: p.description,
+          author: p.author,
+          hooks: Object.keys(p.hooks),
+          hasConfigSchema: !!(p.configSchema && Object.keys(p.configSchema).length > 0),
+          config: config.config.plugins[p.name] ?? {},
+        })),
+        total: plugins.length,
+      });
+    }
+
+    // PUT /admin/api/plugins/:name/config — Save plugin config
+    if (adminPath.startsWith("/api/plugins/") && adminPath.endsWith("/config") && method === "PUT") {
+      const pluginName = decodeURIComponent(
+        adminPath.slice("/api/plugins/".length, -"/config".length),
+      );
+      if (!pluginName) return jsonResponse({ error: "Plugin name required" }, 400);
+
+      // Verify plugin is registered
+      const plugin = hooks?.plugins().find((p) => p.name === pluginName);
+      if (!plugin) return jsonResponse({ error: "Plugin not found" }, 404);
+
+      return handleSavePluginConfig(req, pluginName, plugin.configSchema);
     }
 
     // === Workflow API routes ===
@@ -1948,6 +1995,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         ) as unknown as typeof config.config.system,
         theme: config.config.theme,
         plugins: config.config.plugins,
+        pluginList: config.config.pluginList,
         admin: config.config.admin,
       };
 
@@ -1963,6 +2011,50 @@ export function createAdminHandler(config: AdminServerConfig) {
       ]);
 
       return jsonResponse({ updated: true, restartRequired: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  /**
+   * Save plugin-specific config to data/plugins/{name}.json.
+   * The saved values are merged over site.yaml static config at next startup.
+   */
+  async function handleSavePluginConfig(
+    req: Request,
+    pluginName: string,
+    configSchema: import("../blueprints/types.ts").BlueprintField[] | Record<string, import("../blueprints/types.ts").BlueprintField> | undefined,
+  ): Promise<Response> {
+    try {
+      const body = await req.json() as Record<string, unknown>;
+
+      // Validate against schema if present
+      if (configSchema && typeof configSchema === "object" && !Array.isArray(configSchema)) {
+        const schema = configSchema as Record<string, import("../blueprints/types.ts").BlueprintField>;
+        for (const [key, field] of Object.entries(schema)) {
+          const val = body[key];
+          if (field.required && (val === undefined || val === null || val === "")) {
+            return jsonResponse({
+              error: `Missing required field: ${field.label ?? key}`,
+            }, 422);
+          }
+        }
+      }
+
+      const dataDir = config.config.admin?.dataDir ?? "data";
+      const pluginsDir = `${dataDir}/plugins`;
+      const filePath = `${pluginsDir}/${pluginName}.json`;
+
+      // Persist to data/plugins/{name}.json
+      await storage.write(filePath, new TextEncoder().encode(JSON.stringify(body, null, 2)));
+
+      // Update in-memory config so subsequent requests see the new values
+      config.config.plugins[pluginName] = {
+        ...(config.config.plugins[pluginName] ?? {}),
+        ...body,
+      };
+
+      return jsonResponse({ saved: true });
     } catch (err) {
       return serverError(err);
     }

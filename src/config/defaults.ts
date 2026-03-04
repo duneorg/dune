@@ -54,6 +54,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
     custom: {},
   },
   plugins: {},
+  pluginList: [],
   admin: {
     path: "/admin",
     sessionLifetime: 86400,

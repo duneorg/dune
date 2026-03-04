@@ -9,4 +9,5 @@ export type {
   HookEvent,
   HookHandler,
   HookRegistry,
+  PluginApi,
 } from "./types.ts";

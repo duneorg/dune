@@ -197,19 +197,35 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
     loadYamlFile(storage, "config/system.yaml"),
   ]);
 
-  // Extract theme from site.yaml if present (theme is top-level, not under site)
+  // Extract top-level keys from site.yaml — theme, plugins (list), and
+  // plugin_configs (per-plugin config map) are promoted to DuneConfig
+  // top-level rather than nested under "site".
   const themeFromSite = siteYaml.theme;
-  const siteWithoutTheme = { ...siteYaml };
-  delete siteWithoutTheme.theme;
+  const pluginListFromSite = siteYaml.plugins;    // PluginEntry[]
+  const pluginCfgsFromSite = siteYaml.plugin_configs; // Record<name, config>
+  const siteWithoutTop = { ...siteYaml };
+  delete siteWithoutTop.theme;
+  delete siteWithoutTop.plugins;
+  delete siteWithoutTop.plugin_configs;
 
-  // site.yaml values go under the "site" key (except theme)
-  if (Object.keys(siteWithoutTheme).length > 0) {
-    config = deepMerge(config, { site: siteWithoutTheme });
+  // site.yaml values go under the "site" key (except promoted top-level keys)
+  if (Object.keys(siteWithoutTop).length > 0) {
+    config = deepMerge(config, { site: siteWithoutTop });
   }
 
   // Theme config goes at top level
   if (themeFromSite) {
     config = deepMerge(config, { theme: themeFromSite });
+  }
+
+  // Plugin list — replace default empty array (arrays are replaced, not merged)
+  if (Array.isArray(pluginListFromSite) && pluginListFromSite.length > 0) {
+    (config as Record<string, unknown>).pluginList = pluginListFromSite;
+  }
+
+  // Explicit per-plugin config overrides (Record<name, Record<k,v>>)
+  if (pluginCfgsFromSite && typeof pluginCfgsFromSite === "object" && !Array.isArray(pluginCfgsFromSite)) {
+    config = deepMerge(config, { plugins: pluginCfgsFromSite });
   }
 
   // system.yaml values go under the "system" key

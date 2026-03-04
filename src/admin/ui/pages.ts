@@ -180,7 +180,11 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "dashboard", label: "Dashboard", icon: "📊", href: `${prefix}/` },
     { id: "pages", label: "Pages", icon: "📄", href: `${prefix}/pages` },
     { id: "media", label: "Media", icon: "🖼️", href: `${prefix}/media` },
+    { id: "flex", label: "Flex Objects", icon: "🗂️", href: `${prefix}/flex` },
+    { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
+    { id: "plugins", label: "Plugins", icon: "🔌", href: `${prefix}/plugins` },
+    { id: "config", label: "Config", icon: "⚙️", href: `${prefix}/config` },
   ];
 
   return `

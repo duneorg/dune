@@ -4,6 +4,7 @@
 
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+import type { BlueprintField } from "../blueprints/types.ts";
 
 /** All lifecycle events a plugin can subscribe to */
 export type HookEvent =
@@ -50,13 +51,47 @@ export interface HookContext<T = unknown> {
   setData: (data: T) => void;
 }
 
+/**
+ * API surface passed to a plugin's setup() function.
+ * Gives plugins access to infrastructure without exposing full internals.
+ */
+export interface PluginApi {
+  /** Hook registry — call hooks.on() to subscribe to lifecycle events */
+  hooks: HookRegistry;
+  /** Merged site configuration (read-only) */
+  config: DuneConfig;
+  /** Storage adapter for reading/writing plugin-specific data */
+  storage: StorageAdapter;
+}
+
 /** Plugin definition */
 export interface DunePlugin {
+  /** Unique plugin identifier — used as the key in config.plugins */
   name: string;
+  /** SemVer plugin version */
   version: string;
+  /** Human-readable description shown in the admin panel */
+  description?: string;
+  /** Plugin author — shown in admin panel */
+  author?: string;
+  /**
+   * Lifecycle hook subscriptions.
+   * The registry calls these in registration order for each event.
+   */
   hooks: Partial<Record<HookEvent, HookHandler>>;
-  /** Optional: plugin config schema for validation */
-  configSchema?: Record<string, unknown>;
+  /**
+   * Blueprint-style config schema.
+   * When set, the admin panel renders a typed form for this plugin's config.
+   * Config is persisted to data/plugins/{name}.json and merged into
+   * config.plugins[name] at startup.
+   */
+  configSchema?: Record<string, BlueprintField>;
+  /**
+   * Optional setup function called once when the plugin is registered.
+   * Use this for one-time initialization (e.g. registering extra hooks,
+   * validating config, seeding data).
+   */
+  setup?: (api: PluginApi) => Promise<void> | void;
 }
 
 /** Hook registry interface */

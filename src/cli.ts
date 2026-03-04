@@ -2,17 +2,20 @@
  * Dune CLI entry point.
  *
  * Commands:
- *   dune new [dir]         — Scaffold a new Dune site
- *   dune dev               — Start dev server with file watching
- *   dune build             — Build content index + validate config
- *   dune serve             — Start production server
- *   dune cache:clear       — Clear all caches
- *   dune cache:rebuild     — Rebuild content index from scratch
- *   dune config:show       — Display merged config with source annotations
- *   dune config:validate   — Validate all config files
- *   dune content:list      — List all pages with routes
- *   dune content:check     — Validate content (broken links, missing templates)
- *   dune theme:create [n]  — Scaffold a new theme
+ *   dune new [dir]             — Scaffold a new Dune site
+ *   dune dev                   — Start dev server with file watching
+ *   dune build                 — Build content index + validate config
+ *   dune serve                 — Start production server
+ *   dune cache:clear           — Clear all caches
+ *   dune cache:rebuild         — Rebuild content index from scratch
+ *   dune config:show           — Display merged config with source annotations
+ *   dune config:validate       — Validate all config files
+ *   dune content:list          — List all pages with routes
+ *   dune content:check         — Validate content (broken links, missing templates)
+ *   dune plugin:list           — List installed plugins
+ *   dune plugin:install <src>  — Add a plugin to site.yaml
+ *   dune plugin:remove <src>   — Remove a plugin from site.yaml
+ *   dune plugin:create [name]  — Scaffold a new plugin
  */
 
 import { devCommand } from "./cli/dev.ts";
@@ -23,6 +26,7 @@ import { cacheCommands } from "./cli/cache.ts";
 import { configCommands } from "./cli/config.ts";
 import { contentCommands } from "./cli/content.ts";
 import { i18nStatusCommand } from "./cli/i18n.ts";
+import { pluginCommands } from "./cli/plugin.ts";
 
 const HELP = `
 dune — Flat-file CMS for Deno Fresh
@@ -45,6 +49,11 @@ Commands:
   content:list        List all pages with routes and templates
   content:check       Check content for broken links, missing templates
   content:i18n-status Report translation coverage across languages
+
+  plugin:list         List installed plugins and their hook subscriptions
+  plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name")
+  plugin:remove       Remove a plugin from site.yaml
+  plugin:create       Scaffold a new plugin project
 
 Options:
   --port <n>          Server port (default: 3000)
@@ -128,6 +137,22 @@ async function main() {
 
       case "content:i18n-status":
         await i18nStatusCommand(root, { debug: options.debug === true });
+        break;
+
+      case "plugin:list":
+        await pluginCommands.list(root);
+        break;
+
+      case "plugin:install":
+        await pluginCommands.install(root, options.positional as string);
+        break;
+
+      case "plugin:remove":
+        await pluginCommands.remove(root, options.positional as string);
+        break;
+
+      case "plugin:create":
+        await pluginCommands.create(root, options.positional as string);
         break;
 
       default:

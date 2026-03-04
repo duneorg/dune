@@ -27,6 +27,7 @@ import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
 import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
+import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -148,6 +149,14 @@ export async function bootstrap(
 
   // 5. Hooks
   const hooks = createHookRegistry({ config, storage });
+
+  // 5a. Plugin loading — load admin-saved config overrides first, then
+  // import and register each plugin so their hooks are in place before
+  // the lifecycle events fire.
+  const adminCfg = config.admin ?? { dataDir: "data", runtimeDir: ".dune/admin" };
+  await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
+  await loadPlugins({ config, hooks, storage, root });
+
   await hooks.fire("onConfigLoaded", config);
   await hooks.fire("onStorageReady", storage);
   await hooks.fire("onContentIndexReady", engine.pages);
@@ -277,6 +286,7 @@ export async function bootstrap(
         history,
         submissions: submissionManager,
         flex: flexEngine,
+        hooks,
       })
     : async (_req: Request) => null as Response | null;
 

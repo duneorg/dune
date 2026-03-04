@@ -15,6 +15,7 @@ import type {
   HookEvent,
   HookHandler,
   HookRegistry,
+  PluginApi,
 } from "./types.ts";
 
 export interface HookRegistryOptions {
@@ -39,7 +40,11 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
     return handlers.get(event)!;
   }
 
-  return {
+  // Capture self-reference so setup() can receive the registry as PluginApi.hooks.
+  // The variable is assigned immediately after the object literal is created.
+  let self: HookRegistry;
+
+  const registry: HookRegistry = {
     registerPlugin(plugin: DunePlugin): void {
       registeredPlugins.push(plugin);
 
@@ -47,6 +52,20 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
       for (const [event, handler] of Object.entries(plugin.hooks)) {
         if (handler) {
           getHandlers(event as HookEvent).push(handler);
+        }
+      }
+
+      // Call the plugin's setup function if defined, giving it access to the
+      // registry, config, and storage — but NOT the full engine (not yet ready).
+      if (plugin.setup) {
+        const api: PluginApi = { hooks: self, config, storage };
+        // setup() may return a Promise — fire-and-forget is intentional here;
+        // async setup tasks should subscribe to onContentIndexReady instead.
+        const maybePromise = plugin.setup(api);
+        if (maybePromise instanceof Promise) {
+          maybePromise.catch((err) => {
+            console.error(`[dune] Plugin "${plugin.name}" setup() failed: ${err}`);
+          });
         }
       }
 
@@ -102,4 +121,7 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
       return [...registeredPlugins];
     },
   };
+
+  self = registry;
+  return registry;
 }
