@@ -38,6 +38,7 @@ export function renderPageEditorPage(
     taxonomies: string[];
     taxonomyValues: Record<string, string[]>;
     blueprint: ResolvedBp | null;
+    revisionCount?: number;
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -63,6 +64,7 @@ export function renderPageEditorPage(
         <button class="btn btn-sm btn-outline" onclick="togglePreview()">Preview</button>
         <button class="btn btn-sm btn-outline" onclick="toggleSource()">Source</button>
         <a href="${escapeAttr(pageData.route)}" target="_blank" class="btn btn-sm btn-outline">View →</a>
+        <a href="${prefix}/pages/history?path=${encodeURIComponent(pageData.sourcePath)}" class="btn btn-sm btn-outline">History${pageData.revisionCount ? ` <span class="toolbar-rev-count">${pageData.revisionCount}</span>` : ""}</a>
         <button class="btn btn-sm btn-primary" onclick="savePage()">Save</button>
       </div>
     </header>
@@ -971,6 +973,7 @@ function editorStyles(): string {
   .editor-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; background: #1a1a2e; color: #fff; }
   .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 0.5rem; }
   .editor-title { font-weight: 600; margin: 0 0.5rem; }
+  .toolbar-rev-count { display: inline-block; background: rgba(255,255,255,0.25); color: #fff; border-radius: 10px; padding: 0 0.4rem; font-size: 0.7rem; font-weight: 700; line-height: 1.5; margin-left: 0.25rem; vertical-align: middle; }
   .btn { display: inline-block; padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer; text-decoration: none; color: inherit; }
   .btn-primary { background: #c9a96e; color: #fff; }
   .btn-primary:hover { background: #b8944f; }

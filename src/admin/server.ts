@@ -418,6 +418,9 @@ export function createAdminHandler(config: AdminServerConfig) {
         ? resolveBlueprint(page.template, blueprintDef, engine.blueprints, 0)
         : null;
 
+      // Fetch revision count for the History button badge (0 if history not enabled)
+      const revisionCount = history ? await history.getRevisionCount(page.sourcePath) : 0;
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -436,6 +439,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         taxonomies: configuredTaxonomies,
         taxonomyValues,
         blueprint: resolvedBlueprint,
+        revisionCount,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);

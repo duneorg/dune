@@ -17,6 +17,8 @@ interface RevisionHistoryData {
  * Render the revision history page content.
  */
 export function renderRevisionHistory(prefix: string, data: RevisionHistoryData): string {
+  const editUrl = `${prefix}/pages/edit?path=${encodeURIComponent(data.sourcePath)}`;
+
   const timelineItems = data.revisions.map((rev, i) => {
     const date = new Date(rev.createdAt);
     const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -51,7 +53,13 @@ export function renderRevisionHistory(prefix: string, data: RevisionHistoryData)
   return `
   <div class="revision-history">
     <div class="revision-toolbar">
-      <h3>Revision History</h3>
+      <div class="revision-toolbar-left">
+        <a href="${editUrl}" class="btn btn-sm btn-outline">← Edit page</a>
+        <div>
+          <h3>Revision History</h3>
+          <div class="revision-path">${escapeHtml(data.sourcePath)}</div>
+        </div>
+      </div>
       <span class="revision-count">${data.revisions.length} revision${data.revisions.length !== 1 ? "s" : ""}</span>
     </div>
 
@@ -151,8 +159,7 @@ export function renderRevisionScripts(prefix: string): string {
         if (data.error) {
           alert('Error: ' + data.error);
         } else {
-          alert('Revision #' + revNum + ' restored successfully.');
-          location.reload();
+          window.location.href = \`${prefix}/pages/edit?path=\${encodeURIComponent(sourcePath)}\`;
         }
       } catch (err) {
         alert('Failed to restore: ' + err.message);
@@ -183,9 +190,11 @@ export function renderRevisionScripts(prefix: string): string {
 export function revisionHistoryStyles(): string {
   return `
   .revision-history { }
-  .revision-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-  .revision-toolbar h3 { margin: 0; }
-  .revision-count { color: #6b7280; font-size: 0.85rem; }
+  .revision-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 1rem; }
+  .revision-toolbar-left { display: flex; align-items: center; gap: 0.75rem; }
+  .revision-toolbar h3 { margin: 0 0 0.1rem; }
+  .revision-path { font-size: 0.75rem; color: #9ca3af; font-family: monospace; }
+  .revision-count { color: #6b7280; font-size: 0.85rem; white-space: nowrap; }
   .revision-layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; }
   .revision-timeline { }
   .revision-item { display: flex; gap: 0.75rem; }
