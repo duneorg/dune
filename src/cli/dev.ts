@@ -182,7 +182,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
   const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
-  const routes = duneRoutes(engine, collections);
+  const routes = duneRoutes(engine, collections, flexEngine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
 
@@ -243,6 +243,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const contentDir = `${root}/${engine.config.system.content.dir}`;
   const themesDir = `${root}/themes`;
 
+  const flexObjectsDir = `${root}/flex-objects`;
+
   let watchPaths: string[];
   try {
     watchPaths = [contentDir];
@@ -251,6 +253,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       watchPaths.push(themesDir);
     } catch {
       // No themes dir
+    }
+    try {
+      await Deno.stat(flexObjectsDir);
+      watchPaths.push(flexObjectsDir);
+    } catch {
+      // No flex-objects dir yet
     }
 
     const watcher = Deno.watchFs(watchPaths);

@@ -224,7 +224,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
-  const routes = duneRoutes(engine, collections);
+  const routes = duneRoutes(engine, collections, flexEngine);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
   const siteName = engine.site.title;

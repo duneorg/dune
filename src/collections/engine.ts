@@ -15,10 +15,14 @@ import type {
   Collection,
   CollectionDefinition,
   CollectionSource,
+  ContentFormat,
   Page,
+  PageFrontmatter,
   PageIndex,
 } from "../content/types.ts";
 import type { TaxonomyMap } from "../content/index-builder.ts";
+import type { FlexEngine } from "../flex/engine.ts";
+import type { FlexRecord } from "../flex/types.ts";
 
 export interface CollectionEngineOptions {
   /** All page indexes */
@@ -27,6 +31,11 @@ export interface CollectionEngineOptions {
   taxonomyMap: TaxonomyMap;
   /** Function to load a full Page by source path */
   loadPage: (sourcePath: string) => Promise<Page>;
+  /**
+   * Optional Flex engine for `@flex` collection sources.
+   * Required when any collection definition uses `{ "@flex": "type" }`.
+   */
+  flex?: FlexEngine;
 }
 
 export interface CollectionEngine {
@@ -58,6 +67,7 @@ export function createCollectionEngine(
   options: CollectionEngineOptions,
 ): CollectionEngine {
   let { pages, taxonomyMap, loadPage } = options;
+  const flex = options.flex;
 
   function resolveSource(
     source: CollectionSource,
@@ -295,7 +305,9 @@ export function createCollectionEngine(
   function buildCollection(
     allItems: PageIndex[],
     definition: CollectionDefinition,
+    overrideLoadPage?: (sourcePath: string) => Promise<Page>,
   ): Collection {
+    const pageLoader = overrideLoadPage ?? loadPage;
     // Apply default published filter
     let items = allItems.filter((p) => p.published);
 
@@ -325,7 +337,30 @@ export function createCollectionEngine(
       pageNum = Math.floor(offset / pageSize) + 1;
     }
 
-    return createCollectionObject(items, total, pageNum, totalPages, loadPage);
+    return createCollectionObject(items, total, pageNum, totalPages, pageLoader);
+  }
+
+  /** Resolve a `{ "@flex": "type" }` source into a Collection of Flex records. */
+  async function resolveFlexSource(
+    flexType: string,
+    definition: CollectionDefinition,
+  ): Promise<Collection> {
+    if (!flex) {
+      throw new Error(
+        `Collection source "@flex" requires a Flex engine. ` +
+        `Pass flex to createCollectionEngine options.`,
+      );
+    }
+    const records = await flex.list(flexType);
+    const recordMap = new Map(records.map((r) => [r._id, r]));
+    const indexes = records.map((r) => flexRecordToIndex(r, flexType));
+    const flexLoader = async (sourcePath: string): Promise<Page> => {
+      const id = sourcePath.split("/").pop()?.replace(".yaml", "") ?? "";
+      const record = recordMap.get(id) ?? await flex.get(flexType, id);
+      if (!record) throw new Error(`Flex record not found: ${sourcePath}`);
+      return flexRecordToPage(record, flexType);
+    };
+    return buildCollection(indexes, definition, flexLoader);
   }
 
   return {
@@ -333,11 +368,23 @@ export function createCollectionEngine(
       definition: CollectionDefinition,
       contextPage: PageIndex,
     ): Promise<Collection> {
+      if ("@flex" in definition.items) {
+        return resolveFlexSource(
+          (definition.items as { "@flex": string })["@flex"],
+          definition,
+        );
+      }
       const sourceItems = resolveSource(definition.items, contextPage);
       return buildCollection(sourceItems, definition);
     },
 
     async query(definition: CollectionDefinition): Promise<Collection> {
+      if ("@flex" in definition.items) {
+        return resolveFlexSource(
+          (definition.items as { "@flex": string })["@flex"],
+          definition,
+        );
+      }
       // For programmatic queries without a context page, resolve source
       // using a dummy context (only matters for @self.* sources)
       const dummyContext: PageIndex = {
@@ -370,6 +417,95 @@ export function createCollectionEngine(
       taxonomyMap = newTaxonomyMap;
     },
   };
+}
+
+// ─── Flex Object → PageIndex / Page adapters ──────────────────────────────────
+
+/**
+ * Convert a FlexRecord into a synthetic PageIndex so it can flow through the
+ * existing collection filtering, ordering, and pagination pipeline.
+ *
+ * The synthetic route is `/flex/{type}/{id}`, which the public routing layer
+ * maps to a theme template at `themes/{theme}/templates/flex/{type}.tsx`.
+ */
+function flexRecordToIndex(record: FlexRecord, type: string): PageIndex {
+  const id = record._id;
+  // Prefer name > title > id as the human-readable label.
+  const title = String((record.name ?? record.title ?? id) as string);
+  const date = record._createdAt
+    ? new Date(record._createdAt).toISOString().split("T")[0]
+    : null;
+
+  return {
+    sourcePath: `flex-objects/${type}/${id}.yaml`,
+    route: `/flex/${type}/${id}`,
+    language: "en",
+    format: "md" as ContentFormat,
+    template: `flex/${type}`,
+    title,
+    navTitle: title,
+    date,
+    // Treat records without an explicit `published` field as published.
+    published: record.published !== false,
+    visible: true,
+    routable: true,
+    isModule: false,
+    order: 0,
+    depth: 0,
+    parentPath: null,
+    taxonomy: {},
+    mtime: Number(record._updatedAt ?? 0),
+    hash: id,
+    status: "published",
+  };
+}
+
+/**
+ * Convert a FlexRecord into a synthetic Page so collection consumers can
+ * access all fields uniformly through `page.frontmatter.*`.
+ *
+ * Behaviour:
+ * - `page.frontmatter` contains all user-defined fields plus `_id`, `_type`,
+ *   `_createdAt`, `_updatedAt`.
+ * - `page.html()` returns an empty string (flex records have no Markdown body).
+ * - `page.component()` returns null (not a TSX content page).
+ * - `page.media` is empty (flex records have no co-located media).
+ */
+function flexRecordToPage(record: FlexRecord, type: string): Page {
+  const { _id, _type, _createdAt, _updatedAt, ...userFields } = record;
+  const title = String((userFields.name ?? userFields.title ?? _id) as string);
+  const date = _createdAt
+    ? new Date(_createdAt).toISOString().split("T")[0]
+    : null;
+
+  const frontmatter: PageFrontmatter = {
+    title,
+    date,
+    ...userFields,
+    _id,
+    _type,
+    _createdAt,
+    _updatedAt,
+  } as unknown as PageFrontmatter;
+
+  return {
+    sourcePath: `flex-objects/${type}/${_id}.yaml`,
+    route: `/flex/${type}/${_id}`,
+    language: "en",
+    format: "md" as ContentFormat,
+    template: `flex/${type}`,
+    navTitle: title,
+    frontmatter,
+    rawContent: null,
+    html: async () => "",
+    component: async () => null,
+    media: [],
+    order: 0,
+    depth: 0,
+    isModule: false,
+    modules: [],
+    status: "published",
+  } as unknown as Page;
 }
 
 /**

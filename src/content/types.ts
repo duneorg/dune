@@ -188,7 +188,9 @@ export type CollectionSource =
   | { "@page.descendants": string }
   | { "@taxonomy.category": string | string[] }
   | { "@taxonomy.tag": string | string[] }
-  | { "@taxonomy": Record<string, string | string[]> };
+  | { "@taxonomy": Record<string, string | string[]> }
+  /** Flex Object type — e.g. `{ "@flex": "products" }` */
+  | { "@flex": string };
 
 /** Resolved collection with query results */
 export interface Collection {

@@ -158,14 +158,18 @@ export async function bootstrap(
     taxonomyMap: engine.taxonomyMap,
   });
 
-  // 7. Collection engine
+  // 7. Flex Objects engine (created early — needed by collection engine)
+  const flexEngine = createFlexEngine({ storage });
+
+  // 8. Collection engine (flex engine injected for @flex collection sources)
   const collections = createCollectionEngine({
     pages: engine.pages,
     taxonomyMap: engine.taxonomyMap,
     loadPage: engine.loadPage,
+    flex: flexEngine,
   });
 
-  // 8. Search engine
+  // 9. Search engine
   const search = createSearchEngine({
     pages: engine.pages,
     storage,
@@ -221,8 +225,6 @@ export async function bootstrap(
     dataDir: runtimeDir,
     maxRevisions: adminConfig.maxRevisions ?? 50,
   });
-
-  const flexEngine = createFlexEngine({ storage });
 
   // 11. Admin panel
   const users = createUserManager({
