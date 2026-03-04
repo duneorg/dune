@@ -58,6 +58,10 @@ import {
 } from "./ui/submissions.ts";
 import { resolveBlueprint } from "../blueprints/validator.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
+import { sendSubmissionEmail } from "./email.ts";
+import { sendWebhookNotification } from "./webhook.ts";
+import type { SubmissionFile } from "./submissions.ts";
+import { encodeHex } from "@std/encoding/hex";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -275,6 +279,18 @@ export function createAdminHandler(config: AdminServerConfig) {
       const form = decodeURIComponent(parts[2]);
       const id = parts[3];
       return handleSubmissionDetailPage(form, id, authResult);
+    }
+
+    // GET /admin/submissions/:form/:id/files/:filename — download uploaded file attachment
+    if (adminPath.startsWith("/submissions/") && adminPath.split("/").length === 6 && adminPath.split("/")[4] === "files" && req.method === "GET") {
+      if (!auth.hasPermission(authResult, "submissions.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      const parts = adminPath.split("/");
+      const form = decodeURIComponent(parts[2]);
+      const id = parts[3];
+      const filename = basename(decodeURIComponent(parts[5]));
+      return handleSubmissionFileDownload(form, id, filename);
     }
 
     // POST /admin/submissions/:form/:id/status — update submission status
@@ -1272,6 +1288,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       const contentType = req.headers.get("content-type") ?? "";
       let fields: Record<string, string> = {};
+      const uploadedFiles: Array<{ key: string; file: File }> = [];
 
       if (contentType.includes("application/json")) {
         const body = await req.json();
@@ -1282,9 +1299,25 @@ export function createAdminHandler(config: AdminServerConfig) {
         // application/x-www-form-urlencoded or multipart/form-data
         const formData = await req.formData();
         for (const [k, v] of formData.entries()) {
-          if (typeof v === "string") fields[k] = v;
+          if (typeof v === "string") {
+            fields[k] = v;
+          } else if (v instanceof File && v.size > 0) {
+            uploadedFiles.push({ key: k, file: v });
+          }
         }
       }
+
+      // ── Honeypot anti-spam ────────────────────────────────────────────────
+      // If the configured honeypot field is present and non-empty, a bot filled
+      // it in. Silently accept (so bots get no useful signal) but don't save.
+      const honeypotField = config.config.admin?.honeypot ?? "_hp";
+      if (fields[honeypotField]) {
+        // Looks like a bot submission — return success without saving
+        const acceptsJson = req.headers.get("accept")?.includes("application/json");
+        if (acceptsJson) return jsonResponse({ ok: true });
+        return new Response(null, { status: 302, headers: { "Location": "/" } });
+      }
+      delete fields[honeypotField]; // remove the empty honeypot field from data
 
       // Basic required field validation
       if (!fields.name && !fields.email) {
@@ -1301,11 +1334,58 @@ export function createAdminHandler(config: AdminServerConfig) {
       delete fields.form_name;
       const formName = /^[a-zA-Z0-9_-]{1,64}$/.test(rawFormName) ? rawFormName : "contact";
 
-      await submissions.create(formName, fields, {
+      // ── File uploads ──────────────────────────────────────────────────────
+      // Pre-generate submission ID so we can store files before creating the record.
+      const submissionId = encodeHex(crypto.getRandomValues(new Uint8Array(6)));
+      const storedFiles: SubmissionFile[] = [];
+
+      if (uploadedFiles.length > 0) {
+        const dataDir = config.config.admin?.dataDir ?? "data";
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
+        const MAX_FILES = 5;
+
+        for (const { key: _key, file } of uploadedFiles.slice(0, MAX_FILES)) {
+          if (file.size > MAX_FILE_SIZE) continue; // silently skip oversized files
+
+          // Sanitise filename: strip path separators, collapse whitespace
+          const safeName = file.name
+            .replace(/[/\\:*?"<>|]/g, "_")
+            .replace(/\s+/g, "_")
+            .replace(/_{2,}/g, "_")
+            .slice(0, 200);
+          if (!safeName) continue;
+
+          const storagePath = `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await storage.write(storagePath, bytes);
+
+          storedFiles.push({
+            name: safeName,
+            contentType: file.type || "application/octet-stream",
+            size: file.size,
+            storagePath,
+          });
+        }
+      }
+
+      const submission = await submissions.create(formName, fields, {
         ip: ip === "unknown" ? undefined : ip,
         language,
         userAgent,
-      });
+      }, { id: submissionId, files: storedFiles });
+
+      // ── Notifications (fire-and-forget) ───────────────────────────────────
+      const notifCfg = config.config.admin?.notifications;
+      if (notifCfg) {
+        if (notifCfg.email) {
+          sendSubmissionEmail(notifCfg.email, submission)
+            .catch((err: Error) => console.error(`[dune] Email notification failed: ${err.message}`));
+        }
+        if (notifCfg.webhook) {
+          sendWebhookNotification(notifCfg.webhook, submission)
+            .catch((err: Error) => console.error(`[dune] Webhook notification failed: ${err.message}`));
+        }
+      }
 
       // Support both JSON and form POST responses
       const acceptsJson = req.headers.get("accept")?.includes("application/json");
@@ -1469,6 +1549,29 @@ export function createAdminHandler(config: AdminServerConfig) {
       });
     } catch {
       return new Response(null, { status: 302, headers: { "Location": `${prefix}/submissions/${encodeURIComponent(form)}` } });
+    }
+  }
+
+  async function handleSubmissionFileDownload(form: string, id: string, filename: string): Promise<Response> {
+    const dataDir = config.config.admin?.dataDir ?? "data";
+    const storagePath = `${dataDir}/uploads/${form}/${id}/${filename}`;
+    try {
+      const data = await storage.read(storagePath);
+      // Look up content-type from submission metadata
+      const sub = await submissions?.get(form, id);
+      const fileMeta = sub?.files?.find((f) => f.name === filename);
+      const contentType = fileMeta?.contentType ?? "application/octet-stream";
+      return new Response(data.buffer as ArrayBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Disposition": `attachment; filename="${filename.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+          "Content-Length": String(data.byteLength),
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch {
+      return new Response("File not found", { status: 404 });
     }
   }
 

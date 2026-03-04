@@ -21,6 +21,19 @@ export interface Submission {
   status: SubmissionStatus;
   fields: Record<string, string>;
   meta: SubmissionMeta;
+  /** Uploaded file attachments (set if form includes file inputs) */
+  files?: SubmissionFile[];
+}
+
+export interface SubmissionFile {
+  /** Original filename from the upload */
+  name: string;
+  /** Detected MIME type */
+  contentType: string;
+  /** File size in bytes */
+  size: number;
+  /** Storage path (relative to storage root), used internally for serving */
+  storagePath: string;
 }
 
 export type SubmissionStatus = "new" | "read" | "archived";
@@ -41,8 +54,11 @@ export interface SubmissionManagerConfig {
 }
 
 export interface SubmissionManager {
-  /** Save a new submission. Returns the created record. */
-  create(form: string, fields: Record<string, string>, meta?: SubmissionMeta): Promise<Submission>;
+  /**
+   * Save a new submission. Returns the created record.
+   * Pass `id` to use a pre-generated ID (useful when files are stored before create()).
+   */
+  create(form: string, fields: Record<string, string>, meta?: SubmissionMeta, options?: { id?: string; files?: SubmissionFile[] }): Promise<Submission>;
   /** Get a single submission by form + id. */
   get(form: string, id: string): Promise<Submission | null>;
   /** List all submissions for a form, newest first. */
@@ -75,8 +91,9 @@ export function createSubmissionManager(config: SubmissionManagerConfig): Submis
     form: string,
     fields: Record<string, string>,
     meta: SubmissionMeta = {},
+    options?: { id?: string; files?: SubmissionFile[] },
   ): Promise<Submission> {
-    const id = await generateId();
+    const id = options?.id ?? await generateId();
     const receivedAt = Date.now();
 
     const submission: Submission = {
@@ -86,6 +103,7 @@ export function createSubmissionManager(config: SubmissionManagerConfig): Submis
       status: "new",
       fields,
       meta,
+      ...(options?.files && options.files.length > 0 ? { files: options.files } : {}),
     };
 
     const path = fileFor(form, id, receivedAt);

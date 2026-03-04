@@ -12,6 +12,12 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleString("en-CH", {
     year: "numeric", month: "short", day: "numeric",
@@ -99,6 +105,24 @@ export function renderSubmissionDetail(
     submission.meta.userAgent ? `<tr><th>User-Agent</th><td><small>${escapeHtml(submission.meta.userAgent)}</small></td></tr>` : "",
   ].filter(Boolean).join("");
 
+  const filesSection = submission.files && submission.files.length > 0
+    ? `
+  <div class="sub-files">
+    <h3>Attachments</h3>
+    <ul class="sub-files-list">
+      ${
+        submission.files.map((f) => `
+      <li>
+        <span class="sub-file-icon">📎</span>
+        <a href="${prefix}/submissions/${encodeURIComponent(form)}/${submission.id}/files/${encodeURIComponent(f.name)}"
+           class="sub-file-name" download="${escapeHtml(f.name)}">${escapeHtml(f.name)}</a>
+        <span class="sub-file-meta">${escapeHtml(f.contentType)} · ${formatBytes(f.size)}</span>
+      </li>`).join("")
+      }
+    </ul>
+  </div>`
+    : "";
+
   return `
   <div class="sub-detail-header">
     <a href="${prefix}/submissions/${encodeURIComponent(form)}" class="btn btn-sm btn-outline">← Back</a>
@@ -124,6 +148,8 @@ export function renderSubmissionDetail(
       </table>
     </div>` : ""}
   </div>
+
+  ${filesSection}
 
   <div class="sub-detail-actions">
     <form method="POST" action="${prefix}/submissions/${encodeURIComponent(form)}/${submission.id}/status" style="display:inline">
@@ -165,5 +191,11 @@ export function submissionStyles(): string {
   .sub-fields-table td { white-space: pre-wrap; word-break: break-word; }
   .sub-detail-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   h3 { margin-bottom: 0.75rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+  .sub-files { margin-bottom: 1.5rem; }
+  .sub-files-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .sub-files-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; }
+  .sub-file-icon { font-size: 1rem; flex-shrink: 0; }
+  .sub-file-name { font-size: 0.875rem; word-break: break-all; }
+  .sub-file-meta { margin-left: auto; font-size: 0.8rem; color: #888; white-space: nowrap; flex-shrink: 0; padding-left: 0.5rem; }
   `;
 }

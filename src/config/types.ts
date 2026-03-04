@@ -37,6 +37,62 @@ export interface AdminConfig {
    * When the limit is reached, the oldest revision is pruned on each save.
    */
   maxRevisions?: number;
+  /**
+   * Honeypot field name for form spam protection.
+   * If this field is present and non-empty in a submission, the submission
+   * is silently discarded (bots fill hidden fields; humans leave them empty).
+   * Default: "_hp"
+   */
+  honeypot?: string;
+  /** Outbound notifications fired after each form submission is saved. */
+  notifications?: AdminNotificationsConfig;
+}
+
+/** Notifications sent after a form submission is accepted. */
+export interface AdminNotificationsConfig {
+  /** Send an email for every new submission. */
+  email?: SmtpNotificationConfig;
+  /** POST submission JSON to a webhook URL for every new submission. */
+  webhook?: WebhookNotificationConfig;
+}
+
+/**
+ * SMTP-based email notification.
+ *
+ * String values that start with "$" are treated as environment variable names
+ * and expanded at runtime:  pass: "$SMTP_PASSWORD"  →  Deno.env.get("SMTP_PASSWORD")
+ */
+export interface SmtpNotificationConfig {
+  smtp: {
+    host: string;
+    port: number;
+    /** true = implicit TLS on port 465; false = STARTTLS on port 587 (default) */
+    secure: boolean;
+    user: string;
+    /** Supports "$ENV_VAR" expansion */
+    pass: string;
+  };
+  /** RFC 5321 envelope from address, e.g. "Dune CMS <noreply@example.com>" */
+  from: string;
+  /** Recipient address(es) */
+  to: string | string[];
+  /**
+   * Email subject.  Supports {form} placeholder.
+   * Default: "New {form} submission"
+   */
+  subject?: string;
+}
+
+/** HTTP webhook notification. */
+export interface WebhookNotificationConfig {
+  /** URL to POST the submission JSON to. */
+  url: string;
+  /**
+   * Optional secret used to sign the request body.
+   * Adds X-Dune-Signature: sha256=<hex> header so the receiver can verify authenticity.
+   * Supports "$ENV_VAR" expansion.
+   */
+  secret?: string;
 }
 
 /** Site-level configuration (content, identity, metadata) */

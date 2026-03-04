@@ -16,7 +16,8 @@
     "marked": "npm:marked@^15",
     "gray-matter": "npm:gray-matter@^4",
     "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
-    "sharp": "npm:sharp@^0.33"
+    "sharp": "npm:sharp@^0.33",
+    "nodemailer": "npm:nodemailer@^6"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",
