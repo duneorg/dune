@@ -57,6 +57,8 @@ import {
   submissionStyles,
 } from "./ui/submissions.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
+import { renderConfigEditor, configEditorStyles } from "./ui/config-editor.ts";
+import { validateConfig } from "../config/validator.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
 import { sendSubmissionEmail } from "./email.ts";
 import { sendWebhookNotification } from "./webhook.ts";
@@ -243,6 +245,22 @@ export function createAdminHandler(config: AdminServerConfig) {
     // GET /admin/i18n — Translation status
     if (adminPath === "/i18n") {
       return htmlResponse(renderI18nPage(prefix, authResult));
+    }
+
+    // GET /admin/config — Config editor
+    if (adminPath === "/config" && req.method === "GET") {
+      if (!auth.hasPermission(authResult, "config.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      return htmlResponse(renderConfigPage(prefix, authResult));
+    }
+
+    // PUT /admin/api/config — Save config
+    if (adminPath === "/api/config" && req.method === "PUT") {
+      if (!auth.hasPermission(authResult, "config.update")) {
+        return jsonResponse({ error: "Forbidden" }, 403);
+      }
+      return handleConfigSave(req);
     }
 
     // GET /admin/users — User management
@@ -1651,6 +1669,105 @@ export function createAdminHandler(config: AdminServerConfig) {
 </html>`;
   }
 
+  // === Config editor ===
+
+  function renderConfigPage(pfx: string, authResult: AuthResult): string {
+    const userName = authResult.user?.name ?? "Admin";
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration — Dune Admin</title>
+  <style>${baseAdminStyles()}${configEditorStyles()}</style>
+</head>
+<body>
+  ${adminShell(pfx, "config", userName, renderConfigEditor(pfx, config.config))}
+</body>
+</html>`;
+  }
+
+  async function handleConfigSave(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as {
+        site?: Record<string, unknown>;
+        system?: Record<string, unknown>;
+      };
+
+      const { site: siteData, system: systemData } = body;
+
+      // Read existing YAML files so we preserve keys the editor doesn't manage
+      // (theme, metadata, routes, redirects, plugins, etc.)
+      const [existingSiteRaw, existingSystemRaw] = await Promise.all([
+        storage.readText("config/site.yaml").catch(() => ""),
+        storage.readText("config/system.yaml").catch(() => ""),
+      ]);
+
+      const existingSite = (parseYaml(existingSiteRaw || "") ?? {}) as Record<string, unknown>;
+      const existingSystem = (parseYaml(existingSystemRaw || "") ?? {}) as Record<
+        string,
+        unknown
+      >;
+
+      // Merge: existing → new (editor values win; unmanaged keys preserved)
+      const mergedSite = siteData ? { ...existingSite, ...siteData } : existingSite;
+      const mergedSystem = systemData
+        ? deepMergeConfig(existingSystem, systemData)
+        : existingSystem;
+
+      // Validate the resulting full config (using current defaults as base)
+      const testConfig = {
+        site: { ...config.config.site, ...mergedSite } as typeof config.config.site,
+        system: deepMergeConfig(
+          config.config.system as unknown as Record<string, unknown>,
+          mergedSystem,
+        ) as unknown as typeof config.config.system,
+        theme: config.config.theme,
+        plugins: config.config.plugins,
+        admin: config.config.admin,
+      };
+
+      const errors = validateConfig(testConfig);
+      if (errors.length > 0) {
+        return jsonResponse({ error: "Validation failed", validationErrors: errors }, 422);
+      }
+
+      // Write back to YAML files
+      await Promise.all([
+        storage.write("config/site.yaml", stringifyYaml(mergedSite).trimEnd() + "\n"),
+        storage.write("config/system.yaml", stringifyYaml(mergedSystem).trimEnd() + "\n"),
+      ]);
+
+      return jsonResponse({ updated: true, restartRequired: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  /** Shallow-deep merge for nested system config objects (arrays replaced). */
+  function deepMergeConfig(
+    base: Record<string, unknown>,
+    override: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const result: Record<string, unknown> = { ...base };
+    for (const key of Object.keys(override)) {
+      const bv = base[key];
+      const ov = override[key];
+      if (
+        ov !== null && typeof ov === "object" && !Array.isArray(ov) &&
+        bv !== null && typeof bv === "object" && !Array.isArray(bv)
+      ) {
+        result[key] = deepMergeConfig(
+          bv as Record<string, unknown>,
+          ov as Record<string, unknown>,
+        );
+      } else {
+        result[key] = ov;
+      }
+    }
+    return result;
+  }
+
   function requirePermission(authResult: AuthResult, permission: AdminPermission): void {
     if (!auth.hasPermission(authResult, permission)) {
       throw new PermissionError(permission);
@@ -1699,6 +1816,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "i18n", label: "Translations", icon: "🌐", href: `${prefix}/i18n` },
     { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
+    { id: "config", label: "Configuration", icon: "⚙️", href: `${prefix}/config` },
   ];
 
   return `
