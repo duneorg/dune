@@ -62,13 +62,29 @@ On first startup, a default `admin` account is created automatically. Delete the
 
 | Feature | Description |
 |---------|-------------|
-| **Content editor** | Create, edit, and delete pages. Supports Markdown, MDX, and frontmatter editing. |
+| **Content editor** | Create, edit, and delete pages. Supports Markdown, MDX, and frontmatter editing. Blueprint-driven custom fields are auto-generated from `blueprints/{template}.yaml`. |
 | **Workflow** | Move pages through `draft → in_review → published → archived` states. |
 | **Scheduled actions** | Set a date/time for automatic publish or unpublish. |
-| **Revision history** | Browse, compare, and restore previous versions of any page. Up to `admin.maxRevisions` (default 50) per page. |
+| **Revision history** | Browse and restore previous versions of any page. Up to `admin.maxRevisions` (default 50) saved per page. The current revision count is shown in the editor toolbar. |
+| **Flex Objects** | Create, edit, and delete records for schema-driven custom data types (products, team members, events, etc.). Schemas defined in `flex-objects/{type}.yaml`. See [Flex Objects](/flex-objects). |
+| **Configuration editor** | Edit `config/site.yaml` and `config/system.yaml` through a form UI without touching files directly (admin role only). |
 | **Media library** | Upload, browse, and delete media files co-located with content pages. |
 | **Form submissions** | View submissions collected from contact forms or other form integrations. |
 | **User management** | Create, edit, enable/disable admin users (admin role only). |
+
+## Configuration editor
+
+The configuration editor (admin role only) lets you edit `config/site.yaml` and `config/system.yaml` through a form UI at `/admin/config`. Fields are rendered based on the schema for each config file — no need to know the YAML syntax.
+
+Changes are written back to the config files and take effect on next request (for system config) or after a content rebuild (for site config). The editor shows all recognised fields with their current values and inline help text.
+
+## Revision history
+
+Every save to a page creates a revision snapshot. The page editor toolbar shows a **History** button with the current revision count. Clicking it opens a timeline of all saved versions, with timestamps and author information.
+
+From the history view you can restore any previous version — this creates a new revision rather than overwriting the current one, so you can always undo a restore by reverting again.
+
+Revisions are stored in `admin.runtimeDir` (default `.dune/admin/`) and are **not** committed to version control. The maximum number of revisions kept per page is controlled by `admin.maxRevisions` (default 50); older revisions are pruned automatically.
 
 ## Sessions
 

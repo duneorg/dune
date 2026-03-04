@@ -378,3 +378,53 @@ Supported input formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.gif`, `.ti
 - Invalid `focal` values are silently ignored (falls back to center crop).
 
 Processed images are cached with `Cache-Control: public, max-age=31536000, immutable`. The response also includes diagnostic headers `X-Dune-Image`, `X-Dune-Image-Width`, and `X-Dune-Image-Height`.
+
+## Flex Objects
+
+Flex Objects are schema-driven custom data types managed outside the content tree. See the [Flex Objects](/flex-objects) documentation for schema authoring details.
+
+### List records
+
+```
+GET /api/flex/{type}
+```
+
+Returns all records for the given type, sorted newest first.
+
+```json
+[
+  {
+    "_id": "a3f2c19d0e8b",
+    "_type": "products",
+    "_createdAt": 1741234567890,
+    "_updatedAt": 1741234567890,
+    "name": "Ceramic Mug",
+    "price": 24.00,
+    "published": true
+  }
+]
+```
+
+Returns `404` if the type schema does not exist. Returns an empty array if the type exists but has no records.
+
+### Get a single record
+
+```
+GET /api/flex/{type}/{id}
+```
+
+Returns a single record by its ID.
+
+```json
+{
+  "_id": "a3f2c19d0e8b",
+  "_type": "products",
+  "_createdAt": 1741234567890,
+  "_updatedAt": 1741234567890,
+  "name": "Ceramic Mug",
+  "price": 24.00,
+  "published": true
+}
+```
+
+Returns `404` if the type or record does not exist.
