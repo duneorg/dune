@@ -16,7 +16,7 @@ Flex Objects are schema-driven custom data types that live outside the normal pa
 
 ## How it works
 
-Each Flex Object **type** is defined by a YAML schema file and gets its own admin UI section and REST API endpoint automatically. Records are stored as flat YAML files on disk.
+Each Flex Object **type** is defined by a YAML schema file and gets its own admin UI section, REST API endpoints, public URL routes, and collection query support — automatically. Records are stored as flat YAML files on disk.
 
 ```
 flex-objects/
@@ -203,6 +203,122 @@ Returns one record by its 12-character ID.
 
 Returns `404` if the type or record does not exist.
 
+## Using in collection queries
+
+Flex Objects integrate with the standard collection system using the `@flex` source key. This lets any page render a list of flex records using exactly the same template patterns as page collections.
+
+```yaml
+# In any page's frontmatter (e.g. content/products/default.md)
+collection:
+  items:
+    "@flex": products
+  order:
+    by: date
+    dir: desc
+  limit: 12
+```
+
+In the theme template, access records through `collection.items` — each item exposes all user-defined fields through `page.frontmatter.*`:
+
+```tsx
+// themes/default/templates/product-list.tsx
+export default function ProductList({ page, collection }: TemplateProps) {
+  return (
+    <div class="product-grid">
+      {collection?.items.map((item) => (
+        <a key={item.frontmatter._id} href={`/flex/products/${item.frontmatter._id}`}>
+          <h2>{item.frontmatter.name}</h2>
+          <p>CHF {item.frontmatter.price}</p>
+        </a>
+      ))}
+    </div>
+  );
+}
+```
+
+The `@flex` source also supports the standard `filter`, `order`, `limit`, `offset`, and `pagination` modifiers. Flex records without an explicit `published` field are treated as published.
+
+## Public routes and theme templates
+
+Every Flex Object type automatically gets two public-facing URLs that themes can style. No configuration required — they are active as soon as a schema file exists.
+
+| URL | Purpose |
+|-----|---------|
+| `/flex/{type}` | List all records of a type |
+| `/flex/{type}/{id}` | Show a single record |
+
+### Theme templates
+
+Place TSX template files in your theme's `templates/flex/` directory. The routing layer looks for type-specific templates first, then falls back to generic ones:
+
+**List view** (`/flex/products` looks for, in order):
+1. `themes/{theme}/templates/flex/products-list.tsx`
+2. `themes/{theme}/templates/flex/list.tsx`
+3. Built-in auto-generated table (always works, no template needed)
+
+**Detail view** (`/flex/products/{id}` looks for, in order):
+1. `themes/{theme}/templates/flex/products.tsx`
+2. `themes/{theme}/templates/flex/detail.tsx`
+3. Built-in auto-generated key/value page
+
+### Template props
+
+List templates receive `FlexListTemplateProps`:
+
+```tsx
+// themes/default/templates/flex/products-list.tsx
+import type { FlexListTemplateProps } from "@dune/routing";
+
+export default function ProductList({
+  type,      // "products"
+  schema,    // FlexSchema — title, icon, fields definition
+  records,   // FlexRecord[] — all records, newest first
+  site,
+  config,
+  nav,
+  Layout,
+  t,
+}: FlexListTemplateProps) {
+  return (
+    <Layout page={null} site={site} nav={nav} pageTitle={schema.title}>
+      <h1>{schema.icon} {schema.title}</h1>
+      {records.map((r) => (
+        <div key={r._id}>
+          <a href={`/flex/${type}/${r._id}`}>{String(r.name ?? r._id)}</a>
+          <span>CHF {String(r.price ?? "")}</span>
+        </div>
+      ))}
+    </Layout>
+  );
+}
+```
+
+Detail templates receive `FlexDetailTemplateProps`:
+
+```tsx
+// themes/default/templates/flex/products.tsx
+import type { FlexDetailTemplateProps } from "@dune/routing";
+
+export default function ProductDetail({
+  type,
+  schema,
+  record,   // FlexRecord — the single record
+  site,
+  nav,
+  Layout,
+}: FlexDetailTemplateProps) {
+  return (
+    <Layout page={null} site={site} nav={nav} pageTitle={String(record.name ?? record._id)}>
+      <h1>{String(record.name)}</h1>
+      <p>{String(record.description ?? "")}</p>
+      <strong>CHF {String(record.price)}</strong>
+    </Layout>
+  );
+}
+```
+
+Both prop types also include `pathname` (current URL path) and `t` (locale translation function).
+
 ## Record format on disk
 
 Each record is a YAML file named `{id}.yaml`. The `_id`, `_createdAt`, and `_updatedAt` fields are managed automatically — do not edit them by hand.
@@ -226,14 +342,16 @@ User-defined fields are stored alphabetically after the meta fields. The `_type`
 
 ## Example use cases
 
-**Product catalogue** — define fields like `name`, `price`, `sku`, `images`, `category`, `published`. Query via `/api/flex/products` in your theme templates.
+**Product catalogue** — fields: `name`, `price`, `sku`, `category`, `published`. Use `@flex: products` in a collection to render a paginated product listing page, and `/flex/products/{id}` for detail pages.
 
-**Team members** — fields for `name`, `role`, `bio`, `photo`, `linkedin`. Render a team page by fetching `/api/flex/team`.
+**Team members** — fields: `name`, `role`, `bio`, `photo`, `linkedin`. Add `@flex: team` to the About page frontmatter to embed team members inline, or create a dedicated team page template.
 
-**Events** — `title`, `date`, `location`, `description`, `capacity`, `tickets_url`. Sort by date in your theme using the response array.
+**Events** — fields: `title`, `date`, `location`, `description`, `capacity`, `tickets_url`. Order by `date: asc` in the collection definition to list upcoming events chronologically.
 
-**FAQs** — `question`, `answer` (markdown), `category`, `order`. Group by category in your template.
+**FAQs** — fields: `question`, `answer` (markdown type), `category`. Query all FAQs with `@flex: faq` in a page collection, then group by `category` in the template.
 
 ## Filtering and sorting
 
-The `/api/flex/{type}` endpoint returns all records in creation order (newest first). Filtering and sorting are done in your theme code or frontend layer after fetching the full list. For large datasets, consider using a [collection query](/reference/api#collections) if your data lives in the content tree instead.
+The `/api/flex/{type}` REST endpoint returns all records in creation order (newest first). For collection queries (`@flex`), the standard `order` and `filter` modifiers apply.
+
+Filtering by specific field values (e.g. only published products, only events in a given category) is done in your template after loading the collection items, using the `collection.filter()` chainable method or plain JavaScript array methods. For complex filtering needs on large datasets, consider storing the data as pages instead to take advantage of the full taxonomy and frontmatter filter system.
