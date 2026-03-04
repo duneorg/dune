@@ -181,9 +181,9 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Bootstrap engine
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
-  const { engine, collections, taxonomy, search, imageHandler, adminHandler } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
   const routes = duneRoutes(engine, collections);
-  const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
+  const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);

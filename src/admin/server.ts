@@ -47,6 +47,14 @@ import { markdownToBlocks, blocksToMarkdown } from "./editor/serializer.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
+import type { FlexEngine } from "../flex/engine.ts";
+import {
+  renderFlexTypeList,
+  renderFlexRecordList,
+  renderFlexEditor,
+  flexScript,
+  flexStyles,
+} from "./ui/flex-objects.ts";
 import { renderRevisionHistory, renderRevisionScripts, revisionHistoryStyles } from "./ui/revision-history.ts";
 import { renderTranslationStatus, translationStatusStyles } from "./ui/translation-status.ts";
 import { renderWorkflowPanel, workflowPanelStyles } from "./ui/workflow-panel.ts";
@@ -78,6 +86,7 @@ export interface AdminServerConfig {
   scheduler?: Scheduler;
   history?: HistoryEngine;
   submissions?: SubmissionManager;
+  flex?: FlexEngine;
 }
 
 // === In-memory rate limiter ===
@@ -135,7 +144,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -331,6 +340,29 @@ export function createAdminHandler(config: AdminServerConfig) {
       const form = decodeURIComponent(parts[2]);
       const id = parts[3];
       return handleSubmissionDelete(form, id);
+    }
+
+    // === Flex Object UI routes ===
+
+    // GET /admin/flex — Type list
+    if (adminPath === "/flex" && req.method === "GET") {
+      return handleFlexTypeListPage(authResult);
+    }
+
+    // GET /admin/flex/:type — Record list
+    if (adminPath.startsWith("/flex/") && adminPath.split("/").length === 3 && req.method === "GET") {
+      const type = decodeURIComponent(adminPath.split("/")[2]);
+      return handleFlexRecordListPage(type, authResult);
+    }
+
+    // GET /admin/flex/:type/new — Create form
+    // GET /admin/flex/:type/:id — Edit form
+    if (adminPath.startsWith("/flex/") && adminPath.split("/").length === 4 && req.method === "GET") {
+      const parts = adminPath.split("/");
+      const type = decodeURIComponent(parts[2]);
+      const idOrNew = decodeURIComponent(parts[3]);
+      const recordId = idOrNew === "new" ? null : idOrNew;
+      return handleFlexEditorPage(type, recordId, authResult);
     }
 
     return new Response("Not found", { status: 404 });
@@ -700,6 +732,45 @@ export function createAdminHandler(config: AdminServerConfig) {
       const pagePath = decodeURIComponent(parts[0]);
       const revNum = parseInt(parts[1], 10);
       return handleRestoreRevision(pagePath, revNum);
+    }
+
+    // === Flex Object API routes ===
+
+    if (adminPath.startsWith("/api/flex/")) {
+      const flexParts = adminPath.split("/"); // ["", "api", "flex", type?, id?]
+
+      // GET /admin/api/flex/:type — list records
+      if (flexParts.length === 4 && method === "GET") {
+        const type = decodeURIComponent(flexParts[3]);
+        return handleFlexApiList(type);
+      }
+
+      // GET /admin/api/flex/:type/:id — single record
+      if (flexParts.length === 5 && method === "GET") {
+        const type = decodeURIComponent(flexParts[3]);
+        const id = decodeURIComponent(flexParts[4]);
+        return handleFlexApiGet(type, id);
+      }
+
+      // POST /admin/api/flex/:type — create record
+      if (flexParts.length === 4 && method === "POST") {
+        const type = decodeURIComponent(flexParts[3]);
+        return handleFlexApiCreate(type, req);
+      }
+
+      // PUT /admin/api/flex/:type/:id — update record
+      if (flexParts.length === 5 && method === "PUT") {
+        const type = decodeURIComponent(flexParts[3]);
+        const id = decodeURIComponent(flexParts[4]);
+        return handleFlexApiUpdate(type, id, req);
+      }
+
+      // DELETE /admin/api/flex/:type/:id — delete record
+      if (flexParts.length === 5 && method === "DELETE") {
+        const type = decodeURIComponent(flexParts[3]);
+        const id = decodeURIComponent(flexParts[4]);
+        return handleFlexApiDelete(type, id);
+      }
     }
 
     return jsonResponse({ error: "Not found" }, 404);
@@ -1306,6 +1377,155 @@ export function createAdminHandler(config: AdminServerConfig) {
 </html>`);
   }
 
+  // === Flex Object handlers ===
+
+  /** Helper: wrap content in a full admin HTML page with flex styles. */
+  function renderFlexHtmlPage(
+    title: string,
+    userName: string,
+    content: string,
+    extraScript = "",
+  ): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} — Dune Admin</title>
+  <style>${baseAdminStyles()}${flexStyles()}</style>
+</head>
+<body>
+  ${adminShell(prefix, "flex", userName, content)}
+  ${extraScript}
+</body>
+</html>`;
+  }
+
+  async function handleFlexTypeListPage(authResult: AuthResult): Promise<Response> {
+    if (!flex) {
+      return htmlResponse(renderFlexHtmlPage(
+        "Flex Objects",
+        authResult.user?.name ?? "Admin",
+        `<div class="flex-empty-state"><div class="flex-empty-icon">🗂️</div><h2>Flex Objects not enabled</h2><p>Pass a <code>FlexEngine</code> to <code>createAdminHandler</code> to enable Flex Objects.</p></div>`,
+      ));
+    }
+    const schemas = await flex.loadSchemas();
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      Object.keys(schemas).map(async (type) => {
+        const records = await flex.list(type);
+        counts[type] = records.length;
+      }),
+    );
+    const userName = authResult.user?.name ?? "Admin";
+    const content = renderFlexTypeList(prefix, schemas, counts);
+    return htmlResponse(renderFlexHtmlPage("Flex Objects", userName, content));
+  }
+
+  async function handleFlexRecordListPage(type: string, authResult: AuthResult): Promise<Response> {
+    if (!flex) return htmlResponse("<h1>503</h1>", 503);
+    const schemas = await flex.loadSchemas();
+    const schema = schemas[type];
+    if (!schema) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/flex` },
+      });
+    }
+    const records = await flex.list(type);
+    const userName = authResult.user?.name ?? "Admin";
+    const content = renderFlexRecordList(prefix, type, schema, records);
+    return htmlResponse(renderFlexHtmlPage(schema.title, userName, content));
+  }
+
+  async function handleFlexEditorPage(
+    type: string,
+    recordId: string | null,
+    authResult: AuthResult,
+  ): Promise<Response> {
+    if (!flex) return htmlResponse("<h1>503</h1>", 503);
+    const schemas = await flex.loadSchemas();
+    const schema = schemas[type];
+    if (!schema) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/flex` },
+      });
+    }
+    const record = recordId ? await flex.get(type, recordId) : null;
+    if (recordId && !record) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": `${prefix}/flex/${encodeURIComponent(type)}` },
+      });
+    }
+    const userName = authResult.user?.name ?? "Admin";
+    const title = `${recordId ? "Edit" : "New"} ${schema.title}`;
+    const content = renderFlexEditor(prefix, type, schema, record);
+    const script = flexScript(prefix, type, recordId);
+    return htmlResponse(renderFlexHtmlPage(title, userName, content, script));
+  }
+
+  async function handleFlexApiList(type: string): Promise<Response> {
+    if (!flex) return jsonResponse({ error: "Flex Objects not enabled" }, 501);
+    const schemas = await flex.loadSchemas();
+    if (!schemas[type]) return jsonResponse({ error: "Unknown type" }, 404);
+    const records = await flex.list(type);
+    return jsonResponse({ items: records, total: records.length });
+  }
+
+  async function handleFlexApiGet(type: string, id: string): Promise<Response> {
+    if (!flex) return jsonResponse({ error: "Flex Objects not enabled" }, 501);
+    const schemas = await flex.loadSchemas();
+    if (!schemas[type]) return jsonResponse({ error: "Unknown type" }, 404);
+    const record = await flex.get(type, id);
+    if (!record) return jsonResponse({ error: "Record not found" }, 404);
+    return jsonResponse(record);
+  }
+
+  async function handleFlexApiCreate(type: string, req: Request): Promise<Response> {
+    if (!flex) return jsonResponse({ error: "Flex Objects not enabled" }, 501);
+    const schemas = await flex.loadSchemas();
+    const schema = schemas[type];
+    if (!schema) return jsonResponse({ error: "Unknown type" }, 404);
+    try {
+      const body = await req.json() as Record<string, unknown>;
+      const record = await flex.create(type, schema, body);
+      return jsonResponse({ record }, 201);
+    } catch (err) {
+      if (Array.isArray(err)) {
+        return jsonResponse({ error: "Validation failed", validationErrors: err }, 422);
+      }
+      throw err;
+    }
+  }
+
+  async function handleFlexApiUpdate(type: string, id: string, req: Request): Promise<Response> {
+    if (!flex) return jsonResponse({ error: "Flex Objects not enabled" }, 501);
+    const schemas = await flex.loadSchemas();
+    const schema = schemas[type];
+    if (!schema) return jsonResponse({ error: "Unknown type" }, 404);
+    try {
+      const body = await req.json() as Record<string, unknown>;
+      const record = await flex.update(type, id, schema, body);
+      if (!record) return jsonResponse({ error: "Record not found" }, 404);
+      return jsonResponse({ record });
+    } catch (err) {
+      if (Array.isArray(err)) {
+        return jsonResponse({ error: "Validation failed", validationErrors: err }, 422);
+      }
+      throw err;
+    }
+  }
+
+  async function handleFlexApiDelete(type: string, id: string): Promise<Response> {
+    if (!flex) return jsonResponse({ error: "Flex Objects not enabled" }, 501);
+    const schemas = await flex.loadSchemas();
+    if (!schemas[type]) return jsonResponse({ error: "Unknown type" }, 404);
+    await flex.delete(type, id);
+    return jsonResponse({ deleted: true });
+  }
+
   // === Contact form submission handler (public) ===
 
   async function handleContactSubmission(req: Request): Promise<Response> {
@@ -1818,6 +2038,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "pages", label: "Pages", icon: "📄", href: `${prefix}/pages` },
     { id: "media", label: "Media", icon: "🖼️", href: `${prefix}/media` },
     { id: "i18n", label: "Translations", icon: "🌐", href: `${prefix}/i18n` },
+    { id: "flex", label: "Flex Objects", icon: "🗃️", href: `${prefix}/flex` },
     { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
     { id: "config", label: "Configuration", icon: "⚙️", href: `${prefix}/config` },

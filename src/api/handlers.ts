@@ -19,19 +19,22 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
+import type { FlexEngine } from "../flex/engine.ts";
 
 export interface ApiHandlerOptions {
   engine: DuneEngine;
   collections: CollectionEngine;
   taxonomy: TaxonomyEngine;
   search: SearchEngine;
+  /** Optional Flex Object engine for public GET /api/flex/:type endpoints. */
+  flex?: FlexEngine;
 }
 
 /**
  * Create the full API request handler.
  */
 export function createApiHandler(options: ApiHandlerOptions) {
-  const { engine, collections, taxonomy, search } = options;
+  const { engine, collections, taxonomy, search, flex } = options;
 
   return async function handleApiRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
@@ -77,7 +80,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     }
 
     try {
-      const result = await routeApiRequest(path, url, engine, collections, taxonomy, search);
+      const result = await routeApiRequest(path, url, engine, collections, taxonomy, search, flex);
       if (!result) {
         return jsonResponse({ error: "Not found" }, 404, corsHeaders);
       }
@@ -96,6 +99,7 @@ async function routeApiRequest(
   collections: CollectionEngine,
   taxonomy: TaxonomyEngine,
   search: SearchEngine,
+  flex?: FlexEngine,
 ): Promise<unknown> {
   // GET /api/nav — navigation tree
   if (path === "/api/nav") {
@@ -203,6 +207,32 @@ async function routeApiRequest(
   if (path.startsWith("/api/pages/")) {
     const pageRoute = path.replace("/api/pages", "");
     return handleSinglePage(pageRoute, engine);
+  }
+
+  // === Flex Object public API ===
+  // Read-only access to Flex Object records (same CORS rules as other /api/* routes).
+
+  if (flex && path.startsWith("/api/flex/")) {
+    const parts = path.split("/"); // ["", "api", "flex", type?, id?]
+
+    // GET /api/flex/:type — list all records for a type
+    if (parts.length === 4) {
+      const type = decodeURIComponent(parts[3]);
+      const schemas = await flex.loadSchemas();
+      if (!schemas[type]) return null;
+      const records = await flex.list(type);
+      return { items: records, total: records.length };
+    }
+
+    // GET /api/flex/:type/:id — get single record
+    if (parts.length === 5) {
+      const type = decodeURIComponent(parts[3]);
+      const id = decodeURIComponent(parts[4]);
+      const schemas = await flex.loadSchemas();
+      if (!schemas[type]) return null;
+      const record = await flex.get(type, id);
+      return record ?? null;
+    }
   }
 
   return null;
