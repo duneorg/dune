@@ -170,6 +170,83 @@ Deno.test("resolver: top-level + path redirects correctly", () => {
   assertEquals(match?.redirectTo, "/hello-world");
 });
 
+// --- Percent-encoded + (%2B / %2b) ---
+
+Deno.test("resolver: %2B (uppercase percent-encoded +) redirects to dashed page", () => {
+  const pages = [
+    mockPage({
+      sourcePath: "mochazone/antville-summer-of-code-2007/default.md",
+      route: "/mochazone/antville-summer-of-code-2007",
+    }),
+  ];
+
+  const resolver = createRouteResolver({
+    pages,
+    site: mockSiteConfig(),
+    homeSlug: "home",
+  });
+
+  const match = resolver.resolve("/mochazone/Antville%2BSummer%2BOf%2BCode%2B2007/");
+  assertEquals(match?.type, "redirect");
+  assertEquals(match?.redirectTo, "/mochazone/antville-summer-of-code-2007");
+});
+
+Deno.test("resolver: %2b (lowercase percent-encoded +) redirects to dashed page", () => {
+  const pages = [
+    mockPage({
+      sourcePath: "mochazone/antville-summer-of-code-2007/default.md",
+      route: "/mochazone/antville-summer-of-code-2007",
+    }),
+  ];
+
+  const resolver = createRouteResolver({
+    pages,
+    site: mockSiteConfig(),
+    homeSlug: "home",
+  });
+
+  const match = resolver.resolve("/mochazone/antville%2bsummer%2bof%2bcode%2b2007");
+  assertEquals(match?.type, "redirect");
+  assertEquals(match?.redirectTo, "/mochazone/antville-summer-of-code-2007");
+});
+
+Deno.test("resolver: mixed literal + and %2b in same path redirects correctly", () => {
+  const pages = [
+    mockPage({
+      sourcePath: "mochazone/antville-summer-of-code-2007/default.md",
+      route: "/mochazone/antville-summer-of-code-2007",
+    }),
+  ];
+
+  const resolver = createRouteResolver({
+    pages,
+    site: mockSiteConfig(),
+    homeSlug: "home",
+  });
+
+  const match = resolver.resolve("/mochazone/antville%2bsummer+of%2bcode+2007");
+  assertEquals(match?.type, "redirect");
+  assertEquals(match?.redirectTo, "/mochazone/antville-summer-of-code-2007");
+});
+
+Deno.test("resolver: %2b with no matching dashed page returns null (real 404)", () => {
+  const pages = [
+    mockPage({
+      sourcePath: "mochazone/antville-summer-of-code-2007/default.md",
+      route: "/mochazone/antville-summer-of-code-2007",
+    }),
+  ];
+
+  const resolver = createRouteResolver({
+    pages,
+    site: mockSiteConfig(),
+    homeSlug: "home",
+  });
+
+  const match = resolver.resolve("/mochazone/unknown%2bpage");
+  assertEquals(match, null);
+});
+
 // --- Priority: static redirects still take precedence ---
 
 Deno.test("resolver: explicit site.yaml redirect takes priority over + normalization", () => {

@@ -167,9 +167,13 @@ export function createRouteResolver(options: RouteResolverOptions) {
       }
 
       // 6. Legacy URL normalization: replace + with - (URLs from older CMS systems like Antville)
-      //    Only activates when + is present AND the dashed equivalent exists in the route map.
-      if (route.includes("+")) {
-        const dashed = route.replace(/\+/g, "-").replace(/-{2,}/g, "-");
+      //    Handles both literal + and percent-encoded %2b (normalizeRoute guarantees lowercase).
+      //    Only activates when the dashed equivalent exists in the route map.
+      if (route.includes("+") || route.includes("%2b")) {
+        const dashed = route
+          .replace(/%2b/g, "-")   // percent-encoded +
+          .replace(/\+/g, "-")    // literal +
+          .replace(/-{2,}/g, "-");
         const legacyMatch = isMultilingual
           ? findPage(dashed, lang)
           : routeMap.get(dashed);
