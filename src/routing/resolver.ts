@@ -166,6 +166,18 @@ export function createRouteResolver(options: RouteResolverOptions) {
         if (match) return { type: "page", page: match };
       }
 
+      // 6. Legacy URL normalization: replace + with - (URLs from older CMS systems like Antville)
+      //    Only activates when + is present AND the dashed equivalent exists in the route map.
+      if (route.includes("+")) {
+        const dashed = route.replace(/\+/g, "-").replace(/-{2,}/g, "-");
+        const legacyMatch = isMultilingual
+          ? findPage(dashed, lang)
+          : routeMap.get(dashed);
+        if (legacyMatch) {
+          return { type: "redirect", redirectTo: dashed };
+        }
+      }
+
       return null;
     },
 
