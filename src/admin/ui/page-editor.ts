@@ -6,6 +6,19 @@
  * Sidebar: Frontmatter editor (title, slug, template, taxonomy, etc.)
  */
 
+// Minimal inline types to avoid importing blueprint types into the UI module
+interface BpField {
+  type: string;
+  label: string;
+  default?: unknown;
+  required?: boolean;
+  options?: Record<string, string>;
+}
+interface ResolvedBp {
+  title: string;
+  fields: Record<string, BpField>;
+}
+
 /**
  * Render the page editor page.
  */
@@ -24,6 +37,7 @@ export function renderPageEditorPage(
     media: Array<{ name: string; url: string; type: string; size: number }>;
     taxonomies: string[];
     taxonomyValues: Record<string, string[]>;
+    blueprint: ResolvedBp | null;
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -101,6 +115,58 @@ export function renderPageEditorPage(
         }).join("")}
         ` : ""}
 
+        ${pageData.blueprint && Object.keys(pageData.blueprint.fields).length > 0 ? `
+        <h4>${escapeHtml(pageData.blueprint.title)}</h4>
+        ${Object.entries(pageData.blueprint.fields).map(([fieldName, field]) => {
+          const currentVal = pageData.frontmatter[fieldName];
+          const id = `bp-${escapeAttr(fieldName)}`;
+          const label = `${escapeHtml(field.label)}${field.required ? " <span class=\"required-mark\">*</span>" : ""}`;
+
+          let input = "";
+          if (field.type === "toggle") {
+            const checked = currentVal === true || (currentVal === undefined && field.default === true) ? "checked" : "";
+            input = `<label class="toggle-label"><input type="checkbox" id="${id}" ${checked} onchange="markDirty()"> ${escapeHtml(field.label)}</label>`;
+            return `<div class="form-group">${input}</div>`;
+          }
+          if (field.type === "select" && field.options) {
+            const opts = Object.entries(field.options).map(([val, lbl]) =>
+              `<option value="${escapeAttr(val)}"${currentVal === val ? " selected" : ""}>${escapeHtml(lbl)}</option>`
+            ).join("");
+            input = `<select id="${id}" onchange="markDirty()"><option value=""></option>${opts}</select>`;
+          } else if (field.type === "textarea" || field.type === "markdown") {
+            const val = typeof currentVal === "string" ? currentVal : (typeof field.default === "string" ? field.default : "");
+            input = `<textarea id="${id}" class="bp-textarea" rows="4" onchange="markDirty()">${escapeHtml(val)}</textarea>`;
+          } else if (field.type === "number") {
+            const val = typeof currentVal === "number" ? currentVal : (typeof field.default === "number" ? field.default : "");
+            input = `<input type="number" id="${id}" value="${escapeAttr(String(val))}" onchange="markDirty()">`;
+          } else if (field.type === "date") {
+            const val = typeof currentVal === "string" ? currentVal : (typeof field.default === "string" ? field.default : "");
+            input = `<input type="date" id="${id}" value="${escapeAttr(val)}" onchange="markDirty()">`;
+          } else if (field.type === "color") {
+            const val = typeof currentVal === "string" ? currentVal : (typeof field.default === "string" ? field.default : "#000000");
+            input = `<div class="color-row"><input type="color" id="${id}-picker" value="${escapeAttr(val)}" oninput="syncColor('${escapeAttr(fieldName)}')"><input type="text" id="${id}" value="${escapeAttr(val)}" class="color-text" oninput="syncColorText('${escapeAttr(fieldName)}')" onchange="markDirty()"></div>`;
+          } else if (field.type === "list") {
+            const items: string[] = Array.isArray(currentVal)
+              ? (currentVal as unknown[]).map(String)
+              : (Array.isArray(field.default) ? (field.default as unknown[]).map(String) : []);
+            input = `<div class="tag-input-wrapper" id="${id}-wrapper">
+              <div class="tag-chips" id="${id}-chips"></div>
+              <input type="text" class="tag-input" id="${id}-input"
+                     placeholder="Add item…" autocomplete="off"
+                     onkeydown="handleBpListKey(event,'${escapeAttr(fieldName)}')">
+            </div>`;
+            // Embed initial items as a data attribute for JS to pick up
+            return `<div class="form-group" data-bp-list="${escapeAttr(fieldName)}" data-bp-items='${JSON.stringify(items).replace(/'/g, "&#39;")}'>
+              <label>${label}</label>${input}</div>`;
+          } else {
+            // text / file / fallback
+            const val = typeof currentVal === "string" ? currentVal : (typeof field.default === "string" ? field.default : "");
+            input = `<input type="text" id="${id}" value="${escapeAttr(val)}" onchange="markDirty()">`;
+          }
+          return `<div class="form-group"><label>${label}</label>${input}</div>`;
+        }).join("")}
+        ` : ""}
+
         ${pageData.media.length > 0 ? `
         <h4>Media Files</h4>
         <div class="media-list">
@@ -160,6 +226,7 @@ function editorScript(
     format: string;
     frontmatter: Record<string, unknown>;
     taxonomies: string[];
+    blueprint: ResolvedBp | null;
   },
 ): string {
   // Pre-compute initial taxonomy state server-side for embedding
@@ -167,6 +234,21 @@ function editorScript(
   const initTaxState = Object.fromEntries(
     pageData.taxonomies.map((name) => [name, taxFm[name] ?? []]),
   );
+
+  // Blueprint: build field metadata and list-field initial state for client JS
+  const bpFields: Record<string, string> = {}; // fieldName → type
+  const bpListState: Record<string, string[]> = {}; // fieldName → items (list fields only)
+  if (pageData.blueprint) {
+    for (const [name, field] of Object.entries(pageData.blueprint.fields)) {
+      bpFields[name] = field.type;
+      if (field.type === "list") {
+        const cur = pageData.frontmatter[name];
+        bpListState[name] = Array.isArray(cur)
+          ? (cur as unknown[]).map(String)
+          : (Array.isArray(field.default) ? (field.default as unknown[]).map(String) : []);
+      }
+    }
+  }
 
   return `
     // Editor state
@@ -225,6 +307,88 @@ function editorScript(
         event.preventDefault();
         addTag(taxName, event.target.value.replace(/,\\s*$/, ''));
       }
+    }
+
+    // --- Blueprint custom fields ---
+    const bpFields = ${JSON.stringify(bpFields)};
+    const bpListState = ${JSON.stringify(bpListState)};
+
+    function initBlueprintFields() {
+      // Restore list-field chips from server-rendered data attributes
+      document.querySelectorAll('[data-bp-list]').forEach(function(el) {
+        const fieldName = el.dataset.bpList;
+        try {
+          const items = JSON.parse(el.dataset.bpItems || '[]');
+          bpListState[fieldName] = items;
+        } catch(e) {}
+        renderBpListChips(fieldName);
+      });
+      // Color fields — keep picker and text in sync on load
+      Object.keys(bpFields).forEach(function(fieldName) {
+        if (bpFields[fieldName] === 'color') {
+          const picker = document.getElementById('bp-' + fieldName + '-picker');
+          const text = document.getElementById('bp-' + fieldName);
+          if (picker && text) picker.value = text.value || '#000000';
+        }
+      });
+    }
+
+    function renderBpListChips(fieldName) {
+      const id = 'bp-' + fieldName;
+      const chips = document.getElementById(id + '-chips');
+      if (!chips) return;
+      chips.innerHTML = (bpListState[fieldName] || []).map(function(val) {
+        return '<span class="tag-chip">' + escapeHtml(String(val)) +
+          ' <button class="tag-chip-remove" data-bplist="' + escapeAttr(fieldName) +
+          '" data-val="' + escapeAttr(String(val)) +
+          '" onclick="removeBpListItem(this.dataset.bplist,this.dataset.val)" title="Remove">×</button>' +
+          '</span>';
+      }).join('');
+    }
+
+    function addBpListItem(fieldName, value) {
+      value = value.trim();
+      if (!value) return;
+      if (!bpListState[fieldName]) bpListState[fieldName] = [];
+      if (!bpListState[fieldName].includes(value)) {
+        bpListState[fieldName].push(value);
+        renderBpListChips(fieldName);
+        markDirty();
+      }
+      const input = document.getElementById('bp-' + fieldName + '-input');
+      if (input) input.value = '';
+    }
+
+    function removeBpListItem(fieldName, value) {
+      if (!bpListState[fieldName]) return;
+      const idx = bpListState[fieldName].indexOf(value);
+      if (idx !== -1) {
+        bpListState[fieldName].splice(idx, 1);
+        renderBpListChips(fieldName);
+        markDirty();
+      }
+    }
+
+    function handleBpListKey(event, fieldName) {
+      if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        addBpListItem(fieldName, event.target.value.replace(/,\\s*$/, ''));
+      }
+    }
+
+    function syncColor(fieldName) {
+      const picker = document.getElementById('bp-' + fieldName + '-picker');
+      const text = document.getElementById('bp-' + fieldName);
+      if (picker && text) { text.value = picker.value; markDirty(); }
+    }
+
+    function syncColorText(fieldName) {
+      const picker = document.getElementById('bp-' + fieldName + '-picker');
+      const text = document.getElementById('bp-' + fieldName);
+      if (picker && text && /^#[0-9a-f]{6}$/i.test(text.value)) {
+        picker.value = text.value;
+      }
+      markDirty();
     }
 
     // Block type definitions for the add menu
@@ -561,6 +725,34 @@ function editorScript(
       if (Object.keys(existingTax).length > 0) fm.taxonomy = existingTax;
       else delete fm.taxonomy;
 
+      // Collect blueprint custom fields
+      for (const [fieldName, fieldType] of Object.entries(bpFields)) {
+        const id = 'bp-' + fieldName;
+        if (fieldType === 'toggle') {
+          const el = document.getElementById(id);
+          if (el) fm[fieldName] = el.checked;
+        } else if (fieldType === 'number') {
+          const el = document.getElementById(id);
+          if (el) {
+            const n = parseFloat(el.value);
+            if (!isNaN(n)) fm[fieldName] = n;
+            else delete fm[fieldName];
+          }
+        } else if (fieldType === 'list') {
+          const vals = bpListState[fieldName] || [];
+          if (vals.length > 0) fm[fieldName] = vals;
+          else delete fm[fieldName];
+        } else {
+          // text, textarea, markdown, date, select, file, color
+          const el = document.getElementById(id);
+          if (el) {
+            const val = el.value.trim();
+            if (val) fm[fieldName] = val;
+            else delete fm[fieldName];
+          }
+        }
+      }
+
       return fm;
     }
 
@@ -611,6 +803,7 @@ function editorScript(
     // Init
     initEditor();
     initTaxonomy();
+    initBlueprintFields();
   `;
 }
 
@@ -727,6 +920,16 @@ function editorStyles(): string {
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
 
   .sidebar-section { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+
+  /* Blueprint custom fields */
+  .bp-textarea { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; resize: vertical; min-height: 80px; font-family: inherit; }
+  .bp-textarea:focus { outline: none; border-color: #c9a96e; }
+  .toggle-label { display: flex !important; align-items: center; gap: 0.4rem; flex-direction: row !important; margin-bottom: 0 !important; }
+  .toggle-label input[type="checkbox"] { width: auto; }
+  .required-mark { color: #c33; font-weight: 700; }
+  .color-row { display: flex; gap: 0.4rem; align-items: center; }
+  .color-row input[type="color"] { width: 36px; height: 28px; padding: 1px 2px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
+  .color-text { flex: 1; }
 
   /* Tag input (taxonomy) */
   .tag-input-wrapper { border: 1px solid #ddd; border-radius: 4px; padding: 0.25rem 0.3rem; min-height: 2rem; display: flex; flex-wrap: wrap; gap: 0.2rem; align-items: center; cursor: text; }

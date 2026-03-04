@@ -57,6 +57,8 @@ export interface DuneEngine {
   pages: PageIndex[];
   /** The taxonomy reverse map */
   taxonomyMap: Record<string, Record<string, string[]>>;
+  /** Loaded blueprint definitions (template name → definition) */
+  blueprints: BlueprintMap;
   /** Route resolver */
   router: RouteResolver;
   /** Theme loader */
@@ -101,6 +103,7 @@ export async function createDuneEngine(
   // State
   let pages: PageIndex[] = [];
   let taxonomyMap: Record<string, Record<string, string[]>> = {};
+  let blueprints: BlueprintMap = {};
   let router: RouteResolver;
   let themes: ThemeLoader;
 
@@ -150,7 +153,6 @@ export async function createDuneEngine(
    */
   async function init(): Promise<void> {
     // Load blueprints (best-effort — missing blueprints dir is not an error)
-    let blueprints: BlueprintMap | undefined;
     if (blueprintsDir !== null) {
       blueprints = await loadBlueprints(storage, blueprintsDir);
       if (config.system.debug && Object.keys(blueprints).length > 0) {
@@ -258,7 +260,6 @@ export async function createDuneEngine(
       themes.clearCache();
 
       // Reload blueprints in case any changed on disk
-      let blueprints: BlueprintMap | undefined;
       if (blueprintsDir !== null) {
         blueprints = await loadBlueprints(storage, blueprintsDir);
       }
@@ -289,6 +290,7 @@ export async function createDuneEngine(
     site: config.site,
     pages: [],
     taxonomyMap: {},
+    blueprints: {},
     router: undefined as unknown as RouteResolver,
     themes: undefined as unknown as ThemeLoader,
 
@@ -297,6 +299,7 @@ export async function createDuneEngine(
       // Sync closure state to engine properties
       engine.pages = pages;
       engine.taxonomyMap = taxonomyMap;
+      engine.blueprints = blueprints ?? {};
       engine.router = router;
       engine.themes = themes;
     },
@@ -310,6 +313,7 @@ export async function createDuneEngine(
       // Sync closure state after rebuild
       engine.pages = pages;
       engine.taxonomyMap = taxonomyMap;
+      engine.blueprints = blueprints ?? {};
     },
   };
 

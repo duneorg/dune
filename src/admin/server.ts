@@ -55,6 +55,8 @@ import {
   renderSubmissionDetail,
   submissionStyles,
 } from "./ui/submissions.ts";
+import { resolveBlueprint } from "../blueprints/validator.ts";
+import type { ResolvedBlueprint } from "../blueprints/types.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -375,6 +377,12 @@ export function createAdminHandler(config: AdminServerConfig) {
         taxonomyValues[taxName] = Object.keys(engine.taxonomyMap[taxName] ?? {});
       }
 
+      // Resolve the blueprint for this page's template (null if none defined)
+      const blueprintDef = engine.blueprints[page.template];
+      const resolvedBlueprint: ResolvedBlueprint | null = blueprintDef
+        ? resolveBlueprint(page.template, blueprintDef, engine.blueprints, 0)
+        : null;
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -392,6 +400,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         })),
         taxonomies: configuredTaxonomies,
         taxonomyValues,
+        blueprint: resolvedBlueprint,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
