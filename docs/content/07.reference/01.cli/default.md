@@ -45,6 +45,15 @@ All commands are run with `dune` (or `deno task dune`).
 | `dune content:check` | Validate all content: broken links, missing templates, orphaned media. |
 | `dune content:i18n-status` | Report translation coverage across all configured languages. |
 
+## Plugins
+
+| Command | Description |
+|---------|-------------|
+| `dune plugin:list` | List all installed plugins with their registered hooks and config fields. |
+| `dune plugin:install <src>` | Add a plugin to `config/site.yaml`. |
+| `dune plugin:remove <src\|name>` | Remove a plugin from `config/site.yaml`. |
+| `dune plugin:create [name]` | Scaffold a new plugin project at `plugins/{name}/`. |
+
 ## Scaffolding
 
 | Command | Description |

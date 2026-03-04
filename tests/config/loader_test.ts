@@ -45,6 +45,10 @@ class MemoryStorage implements StorageAdapter {
     this.files.delete(path);
   }
 
+  async rename(_oldPath: string, _newPath: string): Promise<void> {
+    return Promise.resolve();
+  }
+
   async list(path: string): Promise<StorageEntry[]> {
     return [];
   }

@@ -88,6 +88,7 @@ const stubConfig: DuneConfig = {
   },
   theme: { name: "default", custom: {} },
   plugins: {},
+  pluginList: [],
 };
 
 /**
@@ -102,6 +103,7 @@ function makeEngine(
     config: stubConfig,
     site: stubSite,
     pages,
+    blueprints: {},
     taxonomyMap: {
       tag: { deno: ["01.home/default.md"] },
     },

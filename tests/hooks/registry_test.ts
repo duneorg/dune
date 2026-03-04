@@ -9,7 +9,8 @@ const stubConfig = {
   system: { content: { dir: "content", markdown: { extra: true, auto_links: true, auto_url_links: true } }, cache: { enabled: false, driver: "memory", lifetime: 0, check: "none" }, images: { default_quality: 80, cache_dir: "", allowed_sizes: [] }, languages: { supported: ["en"], default: "en", include_default_in_url: false }, debug: false, timezone: "UTC" },
   theme: { name: "default", custom: {} },
   plugins: {},
-} as DuneConfig;
+  pluginList: [],
+} as unknown as DuneConfig;
 
 const stubStorage = {} as StorageAdapter;
 
