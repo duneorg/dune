@@ -29,6 +29,7 @@
  */
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
+import { dirname, basename } from "@std/path";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
 import type { UserManager } from "./auth/users.ts";
@@ -523,6 +524,12 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handleCreatePage(req);
     }
 
+    // POST /admin/api/pages/reorder — Reorder pages within their sibling group
+    if (adminPath === "/api/pages/reorder" && method === "POST") {
+      requirePermission(authResult, "pages.update");
+      return handleReorderPage(req);
+    }
+
     // PUT /admin/api/pages/* — Update a page
     if (adminPath.startsWith("/api/pages/") && method === "PUT") {
       requirePermission(authResult, "pages.update");
@@ -782,6 +789,95 @@ export function createAdminHandler(config: AdminServerConfig) {
       return jsonResponse({ deleted: true, sourcePath: page.sourcePath });
     } catch (err) {
       return serverError(err);
+    }
+  }
+
+  async function handleReorderPage(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as {
+        sourcePath: string;
+        targetPath: string | null;
+        position?: "before" | "after";
+      };
+      const { sourcePath, targetPath } = body;
+      const position = body.position ?? "before";
+
+      if (!sourcePath) return jsonResponse({ error: "sourcePath required" }, 400);
+      if (!validatePagePath(sourcePath)) return jsonResponse({ error: "Invalid sourcePath" }, 400);
+      if (targetPath && !validatePagePath(targetPath)) return jsonResponse({ error: "Invalid targetPath" }, 400);
+
+      const source = engine.pages.find((p) => p.sourcePath === sourcePath);
+      if (!source) return jsonResponse({ error: "Source page not found" }, 404);
+      if (source.order === 0) return jsonResponse({ error: "Source page has no numeric prefix and cannot be reordered" }, 400);
+
+      const target = targetPath ? engine.pages.find((p) => p.sourcePath === targetPath) : null;
+      if (targetPath && !target) return jsonResponse({ error: "Target page not found" }, 404);
+      if (target && source.parentPath !== target.parentPath) {
+        return jsonResponse({ error: "Pages must be siblings" }, 400);
+      }
+
+      // Find all ordered siblings (same parent, same depth, with numeric prefix)
+      const siblings = engine.pages
+        .filter((p) => p.parentPath === source.parentPath && p.depth === source.depth && p.order > 0)
+        .sort((a, b) => a.order - b.order);
+
+      // Compute new ordering
+      const newOrder = siblings.filter((p) => p.sourcePath !== sourcePath);
+      let insertIdx: number;
+      if (!target) {
+        insertIdx = newOrder.length;
+      } else {
+        const tgtIdx = newOrder.findIndex((p) => p.sourcePath === targetPath);
+        insertIdx = position === "after" ? tgtIdx + 1 : tgtIdx;
+      }
+      if (insertIdx < 0 || insertIdx > newOrder.length) insertIdx = newOrder.length;
+      newOrder.splice(insertIdx, 0, source);
+
+      const contentDir = config.config.system.content.dir;
+
+      // Collect all renames needed (pages whose numeric prefix changes)
+      const renames: Array<{ oldDir: string; newDir: string }> = [];
+      for (let i = 0; i < newOrder.length; i++) {
+        const page = newOrder[i];
+        const newNum = i + 1;
+        if (page.order === newNum) continue; // already in correct position
+
+        const fullPath = `${contentDir}/${page.sourcePath}`;
+        const oldDir = dirname(fullPath);
+        const folderName = basename(oldDir);
+        const match = folderName.match(/^(\d+)\.(.*)/);
+        if (!match) continue; // no numeric prefix — skip
+
+        const slug = match[2];
+        const newFolderName = String(newNum).padStart(2, "0") + "." + slug;
+        const parentDir = dirname(oldDir);
+        const newDir = `${parentDir}/${newFolderName}`;
+        renames.push({ oldDir, newDir });
+      }
+
+      if (renames.length === 0) {
+        return jsonResponse({ reordered: true }); // already in order
+      }
+
+      // Two-phase rename to avoid conflicts (e.g., 01→02 and 02→01 would collide on a
+      // case-insensitive filesystem). Phase 1: rename to temp names. Phase 2: rename to final names.
+      // Use a timestamp suffix so concurrent requests don't collide.
+      const tmpSuffix = `__reorder_${Date.now()}__`;
+      const tempRenames: Array<{ tmpDir: string; newDir: string }> = [];
+
+      for (const r of renames) {
+        const tmpDir = r.oldDir + tmpSuffix;
+        await storage.rename(r.oldDir, tmpDir);
+        tempRenames.push({ tmpDir, newDir: r.newDir });
+      }
+      for (const r of tempRenames) {
+        await storage.rename(r.tmpDir, r.newDir);
+      }
+
+      await engine.rebuild();
+      return jsonResponse({ reordered: true });
+    } catch (err) {
+      return serverError(err, "reorder-page");
     }
   }
 
@@ -1610,6 +1706,11 @@ function pageTreeStyles(): string {
   .tree-actions { display: flex; gap: 0.15rem; opacity: 0; transition: opacity 0.15s; }
   .tree-row:hover .tree-actions { opacity: 1; }
   .tree-children { }
+  .tree-drag-handle { cursor: grab; color: #ccc; font-size: 0.9rem; padding: 0 0.3rem 0 0; user-select: none; }
+  .tree-drag-handle:hover { color: #999; }
+  .tree-node.tree-dragging > .tree-row { opacity: 0.4; }
+  .tree-row.drop-before { border-top: 2px solid #c9a96e; }
+  .tree-row.drop-after { border-bottom: 2px solid #c9a96e; }
   .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1000; }
   .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
   .modal-content { position: relative; background: #fff; border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 480px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }

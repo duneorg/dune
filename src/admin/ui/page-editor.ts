@@ -492,8 +492,17 @@ function editorScript(
           content = '<div class="block-unknown">Unknown block: ' + block.type + '</div>';
       }
 
-      return '<div class="block" data-index="' + index + '" data-type="' + block.type + '">' +
-        '<div class="block-header"><span class="block-type-label">' + block.type + '</span><div class="block-controls">' + moveUp + moveDown +
+      return '<div class="block" data-index="' + index + '" data-type="' + block.type + '"' +
+        ' draggable="true"' +
+        ' ondragstart="handleBlockDragStart(event,' + index + ')"' +
+        ' ondragover="handleBlockDragOver(event,' + index + ')"' +
+        ' ondragleave="handleBlockDragLeave(event)"' +
+        ' ondrop="handleBlockDrop(event,' + index + ')"' +
+        ' ondragend="handleBlockDragEnd()">' +
+        '<div class="block-header">' +
+        '<span class="block-drag-handle" title="Drag to reorder">⠿</span>' +
+        '<span class="block-type-label">' + block.type + '</span>' +
+        '<div class="block-controls">' + moveUp + moveDown +
         '<button class="block-action block-action-delete" onclick="removeBlock(' + index + ')" title="Delete">🗑</button></div></div>' +
         '<div class="block-content">' + content + '</div>' +
         '<div class="block-add-below"><button class="btn btn-xs btn-outline" onclick="showAddMenu(' + index + ')">+</button></div></div>';
@@ -536,6 +545,64 @@ function editorScript(
       [blocks[index], blocks[newIndex]] = [blocks[newIndex], blocks[index]];
       renderBlocks();
       markDirty();
+    }
+
+    // ── Block drag-and-drop ──────────────────────────────────────────────────
+    let blockDragSrcIndex = null;
+
+    function clearBlockDragState() {
+      blockDragSrcIndex = null;
+      document.querySelectorAll('.block').forEach(b => b.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'));
+    }
+
+    function handleBlockDragStart(e, index) {
+      // Only start drag if user grabbed the drag handle
+      if (!e.target.classList.contains('block-drag-handle')) {
+        e.preventDefault();
+        return;
+      }
+      blockDragSrcIndex = index;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => {
+        const els = document.querySelectorAll('.block');
+        if (els[index]) els[index].classList.add('dragging');
+      }, 0);
+    }
+
+    function handleBlockDragOver(e, index) {
+      if (blockDragSrcIndex === null || blockDragSrcIndex === index) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isAbove = e.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll('.block').forEach(b => b.classList.remove('drag-over-top', 'drag-over-bottom'));
+      e.currentTarget.classList.add(isAbove ? 'drag-over-top' : 'drag-over-bottom');
+    }
+
+    function handleBlockDragLeave(e) {
+      if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+      e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+    }
+
+    function handleBlockDrop(e, targetIndex) {
+      e.preventDefault();
+      if (blockDragSrcIndex === null || blockDragSrcIndex === targetIndex) {
+        clearBlockDragState();
+        return;
+      }
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isAbove = e.clientY < rect.top + rect.height / 2;
+      let insertAt = isAbove ? targetIndex : targetIndex + 1;
+      const [moved] = blocks.splice(blockDragSrcIndex, 1);
+      if (insertAt > blockDragSrcIndex) insertAt--;
+      blocks.splice(insertAt, 0, moved);
+      clearBlockDragState();
+      renderBlocks();
+      markDirty();
+    }
+
+    function handleBlockDragEnd() {
+      clearBlockDragState();
     }
 
     // Field update handlers
@@ -863,8 +930,13 @@ function editorStyles(): string {
   /* Block list */
   .block { margin-bottom: 0.5rem; background: #fff; border: 1px solid #e8e8e8; border-radius: 6px; transition: border-color 0.15s; }
   .block:hover { border-color: #c9a96e; }
+  .block.dragging { opacity: 0.4; }
+  .block.drag-over-top { border-top: 2px solid #c9a96e; }
+  .block.drag-over-bottom { border-bottom: 2px solid #c9a96e; }
   .block-header { display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0.5rem; background: #fafafa; border-bottom: 1px solid #eee; border-radius: 6px 6px 0 0; }
-  .block-type-label { font-size: 0.7rem; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+  .block-drag-handle { cursor: grab; color: #ccc; font-size: 1rem; padding: 0 0.3rem 0 0; user-select: none; }
+  .block-drag-handle:hover { color: #999; }
+  .block-type-label { font-size: 0.7rem; color: #999; text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
   .block-controls { display: flex; gap: 0.15rem; }
   .block-action { background: none; border: none; cursor: pointer; padding: 0.1rem 0.3rem; font-size: 0.75rem; border-radius: 3px; color: #999; }
   .block-action:hover { background: #eee; color: #333; }

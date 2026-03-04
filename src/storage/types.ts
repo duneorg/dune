@@ -20,6 +20,14 @@ export interface StorageAdapter {
   /** Delete a file at path */
   delete(path: string): Promise<void>;
 
+  /**
+   * Atomically rename/move a file or directory.
+   * On the filesystem adapter this uses Deno.rename() — an OS-level atomic
+   * rename that works across files and whole directory trees.
+   * Throws StorageError if oldPath does not exist.
+   */
+  rename(oldPath: string, newPath: string): Promise<void>;
+
   /** List immediate children of a directory */
   list(path: string): Promise<StorageEntry[]>;
 

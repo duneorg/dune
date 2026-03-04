@@ -65,10 +65,20 @@ function renderTreeNode(node: TreeNode, prefix: string, depth = 0): string {
   const { page } = node;
   const hasChildren = node.children.length > 0;
   const indent = depth * 20;
+  // Only ordered (numeric-prefix) pages are draggable
+  const draggable = page.order > 0;
 
   return `
     <div class="tree-node" data-path="${escapeAttr(page.sourcePath)}" data-route="${escapeAttr(page.route)}" data-title="${escapeAttr(page.title)}">
-      <div class="tree-row" style="padding-left: ${indent + 8}px">
+      <div class="tree-row" style="padding-left: ${indent + 8}px"
+        ${draggable ? `draggable="true"
+          ondragstart="handleTreeDragStart(event,'${escapeAttr(page.sourcePath)}')"
+          ondragover="handleTreeDragOver(event,'${escapeAttr(page.sourcePath)}')"
+          ondragleave="handleTreeDragLeave(event)"
+          ondrop="handleTreeDrop(event,'${escapeAttr(page.sourcePath)}')"
+          ondragend="handleTreeDragEnd()"` : ""}
+      >
+        ${draggable ? `<span class="tree-drag-handle" title="Drag to reorder">⠿</span>` : `<span style="width:1rem;flex-shrink:0"></span>`}
         ${hasChildren
           ? `<button class="tree-toggle" onclick="toggleNode(this)" aria-label="Toggle">▶</button>`
           : `<span class="tree-toggle-spacer"></span>`
@@ -188,6 +198,69 @@ function pageTreeScript(prefix: string): string {
         }
       })
       .catch(err => alert('Error: ' + err.message));
+    }
+
+    // ── Page tree drag-and-drop ──────────────────────────────────────────────
+    let treeDragSrc = null;
+    let treeDragPos = 'before';
+
+    function clearTreeDragState() {
+      treeDragSrc = null;
+      document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('tree-dragging'));
+      document.querySelectorAll('.tree-row').forEach(r => r.classList.remove('drop-before', 'drop-after'));
+    }
+
+    function handleTreeDragStart(e, path) {
+      treeDragSrc = path;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', path);
+      // Defer adding class so the ghost image renders before the opacity drops
+      setTimeout(() => {
+        const node = document.querySelector('.tree-node[data-path="' + CSS.escape(path) + '"]');
+        if (node) node.classList.add('tree-dragging');
+      }, 0);
+    }
+
+    function handleTreeDragOver(e, path) {
+      if (!treeDragSrc || treeDragSrc === path) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const row = e.currentTarget;
+      const rect = row.getBoundingClientRect();
+      treeDragPos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+      document.querySelectorAll('.tree-row').forEach(r => r.classList.remove('drop-before', 'drop-after'));
+      row.classList.add(treeDragPos === 'before' ? 'drop-before' : 'drop-after');
+    }
+
+    function handleTreeDragLeave(e) {
+      if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+      e.currentTarget.classList.remove('drop-before', 'drop-after');
+    }
+
+    function handleTreeDrop(e, targetPath) {
+      e.preventDefault();
+      clearTreeDragState();
+      if (!treeDragSrc || treeDragSrc === targetPath) return;
+      const src = treeDragSrc;
+      treeDragSrc = null;
+      fetch('${prefix}/api/pages/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath: src, targetPath, position: treeDragPos }),
+      })
+      .then(r => r.json())
+      .then(result => {
+        if (result.reordered) {
+          window.location.reload();
+        } else {
+          alert('Reorder failed: ' + (result.error || 'Unknown error'));
+        }
+      })
+      .catch(err => alert('Reorder failed: ' + err.message));
+    }
+
+    function handleTreeDragEnd() {
+      clearTreeDragState();
     }
   `;
 }

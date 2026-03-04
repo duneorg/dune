@@ -75,6 +75,20 @@ export class FileSystemAdapter implements StorageAdapter {
     }
   }
 
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    try {
+      const oldFull = this.resolve(oldPath);
+      const newFull = this.resolve(newPath);
+      await ensureDir(dirname(newFull));
+      await Deno.rename(oldFull, newFull);
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) {
+        throw new StorageError(`Path not found: ${oldPath}`, oldPath);
+      }
+      throw new StorageError(`Failed to rename: ${err}`, oldPath);
+    }
+  }
+
   async list(path: string): Promise<StorageEntry[]> {
     const entries: StorageEntry[] = [];
     const fullPath = this.resolve(path);
