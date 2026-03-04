@@ -237,10 +237,12 @@ function editorScript(
 
   // Blueprint: build field metadata and list-field initial state for client JS
   const bpFields: Record<string, string> = {}; // fieldName → type
+  const bpRequiredFields: string[] = []; // fieldNames that are required (for client-side validation)
   const bpListState: Record<string, string[]> = {}; // fieldName → items (list fields only)
   if (pageData.blueprint) {
     for (const [name, field] of Object.entries(pageData.blueprint.fields)) {
       bpFields[name] = field.type;
+      if (field.required) bpRequiredFields.push(name);
       if (field.type === "list") {
         const cur = pageData.frontmatter[name];
         bpListState[name] = Array.isArray(cur)
@@ -311,7 +313,72 @@ function editorScript(
 
     // --- Blueprint custom fields ---
     const bpFields = ${JSON.stringify(bpFields)};
+    const bpRequiredFields = ${JSON.stringify(bpRequiredFields)};
     const bpListState = ${JSON.stringify(bpListState)};
+
+    // Clear all blueprint field error highlights
+    function clearBpErrors() {
+      document.querySelectorAll('.form-group.bp-field-error').forEach(function(fg) {
+        fg.classList.remove('bp-field-error');
+        const msg = fg.querySelector('.bp-field-error-msg');
+        if (msg) msg.remove();
+      });
+    }
+
+    // Highlight a single field as invalid, return the form-group element
+    function markBpFieldError(fieldName, message) {
+      const el = document.getElementById('bp-' + fieldName) ||
+                 document.getElementById('bp-' + fieldName + '-input') ||
+                 document.querySelector('[data-bp-list="' + fieldName + '"]');
+      const fg = el && el.closest('.form-group');
+      if (fg && !fg.classList.contains('bp-field-error')) {
+        fg.classList.add('bp-field-error');
+        const msg = document.createElement('p');
+        msg.className = 'bp-field-error-msg';
+        msg.textContent = message || 'This field is required';
+        fg.appendChild(msg);
+      }
+      return fg;
+    }
+
+    // Client-side required-field check before save; returns true if valid
+    function validateBpRequired() {
+      if (bpRequiredFields.length === 0) return true;
+      clearBpErrors();
+      const missing = [];
+      bpRequiredFields.forEach(function(name) {
+        const type = bpFields[name];
+        if (type === 'toggle') return; // checkboxes always have a boolean value
+        if (type === 'list') {
+          if ((bpListState[name] || []).length === 0) missing.push(name);
+        } else if (type === 'number') {
+          const el = document.getElementById('bp-' + name);
+          if (!el || el.value === '') missing.push(name);
+        } else {
+          const el = document.getElementById('bp-' + name);
+          if (!el || !el.value.trim()) missing.push(name);
+        }
+      });
+      if (missing.length === 0) return true;
+      let firstFg = null;
+      missing.forEach(function(name) {
+        const fg = markBpFieldError(name, 'This field is required');
+        if (!firstFg && fg) firstFg = fg;
+      });
+      if (firstFg) firstFg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+
+    // Show server-returned validation errors inline
+    function showBpValidationErrors(errors) {
+      clearBpErrors();
+      let firstFg = null;
+      (errors || []).forEach(function(err) {
+        const fg = markBpFieldError(err.field, err.message);
+        if (!firstFg && fg) firstFg = fg;
+      });
+      if (firstFg) firstFg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 
     function initBlueprintFields() {
       // Restore list-field chips from server-rendered data attributes
@@ -322,6 +389,19 @@ function editorScript(
           bpListState[fieldName] = items;
         } catch(e) {}
         renderBpListChips(fieldName);
+      });
+      // Auto-clear validation errors when user edits a blueprint field
+      document.querySelectorAll('[id^="bp-"]').forEach(function(el) {
+        ['input', 'change'].forEach(function(evType) {
+          el.addEventListener(evType, function() {
+            const fg = el.closest('.form-group');
+            if (fg && fg.classList.contains('bp-field-error')) {
+              fg.classList.remove('bp-field-error');
+              const msg = fg.querySelector('.bp-field-error-msg');
+              if (msg) msg.remove();
+            }
+          });
+        });
       });
       // Color fields — keep picker and text in sync on load
       Object.keys(bpFields).forEach(function(fieldName) {
@@ -825,6 +905,9 @@ function editorScript(
 
     // Save
     function savePage() {
+      // Client-side required-field check before hitting the network
+      if (!validateBpRequired()) return;
+
       const getContent = sourceMode
         ? Promise.resolve(document.getElementById('source-textarea').value)
         : fetch('${prefix}/api/editor/serialize', {
@@ -845,8 +928,11 @@ function editorScript(
       .then(result => {
         if (result.updated) {
           isDirty = false;
+          clearBpErrors();
           document.querySelector('.editor-title').style.fontStyle = 'normal';
           if (previewVisible) refreshPreview();
+        } else if (result.validationErrors && result.validationErrors.length > 0) {
+          showBpValidationErrors(result.validationErrors);
         } else {
           alert('Save failed: ' + (result.error || 'Unknown error'));
         }
@@ -999,6 +1085,12 @@ function editorStyles(): string {
   .toggle-label { display: flex !important; align-items: center; gap: 0.4rem; flex-direction: row !important; margin-bottom: 0 !important; }
   .toggle-label input[type="checkbox"] { width: auto; }
   .required-mark { color: #c33; font-weight: 700; }
+  .form-group.bp-field-error > label { color: #b91c1c; }
+  .form-group.bp-field-error input:not([type="checkbox"]),
+  .form-group.bp-field-error select,
+  .form-group.bp-field-error textarea,
+  .form-group.bp-field-error .tag-input-wrapper { border-color: #f87171 !important; background: #fff8f8; }
+  .bp-field-error-msg { color: #b91c1c; font-size: 0.78rem; margin-top: 0.2rem; }
   .color-row { display: flex; gap: 0.4rem; align-items: center; }
   .color-row input[type="color"] { width: 36px; height: 28px; padding: 1px 2px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
   .color-text { flex: 1; }

@@ -45,8 +45,18 @@ export function buildPageTree(pages: PageIndex[]): TreeNode[] {
 /**
  * Render a page tree as HTML.
  */
-export function renderPageTree(pages: PageIndex[], prefix: string): string {
+export function renderPageTree(
+  pages: PageIndex[],
+  prefix: string,
+  knownTemplates: string[] = [],
+): string {
   const tree = buildPageTree(pages);
+
+  // Build sorted, deduplicated template list: "default" first, then the rest alpha-sorted
+  const pageTemplates = pages.map((p) => p.template).filter(Boolean);
+  const allTemplates = [...new Set(["default", ...knownTemplates, ...pageTemplates])].sort(
+    (a, b) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)),
+  );
 
   return `
     <div class="page-tree-toolbar">
@@ -56,7 +66,7 @@ export function renderPageTree(pages: PageIndex[], prefix: string): string {
     <div class="page-tree" id="page-tree">
       ${tree.map((node) => renderTreeNode(node, prefix)).join("")}
     </div>
-    ${renderCreateDialog(prefix)}
+    ${renderCreateDialog(prefix, allTemplates)}
     <script>${pageTreeScript(prefix)}</script>
   `;
 }
@@ -106,7 +116,11 @@ function renderTreeNode(node: TreeNode, prefix: string, depth = 0): string {
   `;
 }
 
-function renderCreateDialog(prefix: string): string {
+function renderCreateDialog(prefix: string, templates: string[]): string {
+  const templateOptions = templates.map((t) =>
+    `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`
+  ).join("");
+
   return `
     <div id="create-dialog" class="modal" style="display:none">
       <div class="modal-backdrop" onclick="hideCreateDialog()"></div>
@@ -132,7 +146,11 @@ function renderCreateDialog(prefix: string): string {
           </div>
           <div class="form-group">
             <label for="new-template">Template</label>
-            <input type="text" id="new-template" name="template" value="default">
+            ${
+    templates.length > 1
+      ? `<select id="new-template" name="template">${templateOptions}</select>`
+      : `<input type="text" id="new-template" name="template" value="default">`
+  }
           </div>
           <div class="form-actions">
             <button type="button" class="btn btn-outline" onclick="hideCreateDialog()">Cancel</button>

@@ -56,7 +56,7 @@ import {
   renderSubmissionDetail,
   submissionStyles,
 } from "./ui/submissions.ts";
-import { resolveBlueprint } from "../blueprints/validator.ts";
+import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
 import { sendSubmissionEmail } from "./email.ts";
 import { sendWebhookNotification } from "./webhook.ts";
@@ -428,6 +428,8 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   function renderPageTreePage(pfx: string, authResult: AuthResult): string {
     const userName = authResult.user?.name ?? "Admin";
+    // Collect known templates from blueprints (keys) so the create dialog can offer them as options
+    const knownTemplates = Object.keys(engine.blueprints);
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -439,7 +441,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 <body>
   ${adminShell(pfx, "pages", userName, `
     <h2>Pages</h2>
-    ${renderPageTree(engine.pages, pfx)}
+    ${renderPageTree(engine.pages, pfx, knownTemplates)}
   `)}
 </body>
 </html>`;
@@ -769,6 +771,24 @@ export function createAdminHandler(config: AdminServerConfig) {
           ? (parseYaml(fmMatch[1]) as Record<string, unknown> ?? {})
           : {};
         const mergedFm = { ...existingFm, ...fm };
+
+        // Blueprint validation: if the page's template has a blueprint, validate
+        // the merged frontmatter and return structured errors instead of saving.
+        const template = (mergedFm.template as string) ?? page.template;
+        if (engine.blueprints[template]) {
+          const errors = validateFrontmatter(
+            mergedFm as import("../content/types.ts").PageFrontmatter,
+            template,
+            engine.blueprints,
+          );
+          if (errors.length > 0) {
+            return jsonResponse(
+              { error: "Blueprint validation failed", validationErrors: errors },
+              422,
+            );
+          }
+        }
+
         const yamlFm = stringifyYaml(mergedFm).trimEnd();
         raw = raw.replace(/^---[\s\S]*?---/, `---\n${yamlFm}\n---`);
       }
