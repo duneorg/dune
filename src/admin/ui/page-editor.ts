@@ -22,6 +22,8 @@ export function renderPageEditorPage(
     rawContent: string | null;
     frontmatter: Record<string, unknown>;
     media: Array<{ name: string; url: string; type: string; size: number }>;
+    taxonomies: string[];
+    taxonomyValues: Record<string, string[]>;
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -78,6 +80,27 @@ export function renderPageEditorPage(
           <input type="date" id="fm-date" value="${escapeAttr(String(fm.date ?? ""))}" onchange="markDirty()">
         </div>
 
+        ${pageData.taxonomies.length > 0 ? `
+        <h4>Taxonomy</h4>
+        ${pageData.taxonomies.map((taxName) => {
+          const suggVals = pageData.taxonomyValues[taxName] ?? [];
+          return `<div class="form-group">
+          <label>${escapeHtml(taxName.charAt(0).toUpperCase() + taxName.slice(1))}</label>
+          <div class="tag-input-wrapper" id="tax-${escapeAttr(taxName)}-wrapper">
+            <div class="tag-chips" id="tax-${escapeAttr(taxName)}-chips"></div>
+            <input type="text" class="tag-input" id="tax-${escapeAttr(taxName)}-input"
+                   placeholder="Add ${escapeAttr(taxName)}…"
+                   list="tax-${escapeAttr(taxName)}-list"
+                   autocomplete="off"
+                   onkeydown="handleTagKey(event,'${escapeAttr(taxName)}')">
+            <datalist id="tax-${escapeAttr(taxName)}-list">
+              ${suggVals.map((v) => `<option value="${escapeAttr(v)}">`).join("")}
+            </datalist>
+          </div>
+        </div>`;
+        }).join("")}
+        ` : ""}
+
         ${pageData.media.length > 0 ? `
         <h4>Media Files</h4>
         <div class="media-list">
@@ -131,14 +154,78 @@ export function renderPageEditorPage(
 
 function editorScript(
   prefix: string,
-  pageData: { sourcePath: string; rawContent: string | null; format: string },
+  pageData: {
+    sourcePath: string;
+    rawContent: string | null;
+    format: string;
+    frontmatter: Record<string, unknown>;
+    taxonomies: string[];
+  },
 ): string {
+  // Pre-compute initial taxonomy state server-side for embedding
+  const taxFm = (pageData.frontmatter.taxonomy as Record<string, string[]> | undefined) ?? {};
+  const initTaxState = Object.fromEntries(
+    pageData.taxonomies.map((name) => [name, taxFm[name] ?? []]),
+  );
+
   return `
     // Editor state
     let blocks = [];
     let isDirty = false;
     let sourceMode = false;
     let previewVisible = false;
+
+    // --- Taxonomy state ---
+    const taxonomyState = ${JSON.stringify(initTaxState)};
+    const configuredTaxonomies = ${JSON.stringify(pageData.taxonomies)};
+
+    function initTaxonomy() {
+      for (const taxName of configuredTaxonomies) {
+        renderTagChips(taxName);
+      }
+    }
+
+    function renderTagChips(taxName) {
+      const chips = document.getElementById('tax-' + taxName + '-chips');
+      if (!chips) return;
+      chips.innerHTML = (taxonomyState[taxName] || []).map(val =>
+        '<span class="tag-chip">' + escapeHtml(String(val)) +
+        ' <button class="tag-chip-remove" data-tax="' + escapeAttr(taxName) +
+        '" data-val="' + escapeAttr(String(val)) +
+        '" onclick="removeTag(this.dataset.tax,this.dataset.val)" title="Remove">×</button>' +
+        '</span>'
+      ).join('');
+    }
+
+    function addTag(taxName, value) {
+      value = value.trim();
+      if (!value) return;
+      if (!taxonomyState[taxName]) taxonomyState[taxName] = [];
+      if (!taxonomyState[taxName].includes(value)) {
+        taxonomyState[taxName].push(value);
+        renderTagChips(taxName);
+        markDirty();
+      }
+      const input = document.getElementById('tax-' + taxName + '-input');
+      if (input) input.value = '';
+    }
+
+    function removeTag(taxName, value) {
+      if (!taxonomyState[taxName]) return;
+      const idx = taxonomyState[taxName].indexOf(value);
+      if (idx !== -1) {
+        taxonomyState[taxName].splice(idx, 1);
+        renderTagChips(taxName);
+        markDirty();
+      }
+    }
+
+    function handleTagKey(event, taxName) {
+      if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        addTag(taxName, event.target.value.replace(/,\\s*$/, ''));
+      }
+    }
 
     // Block type definitions for the add menu
     const BLOCK_TYPES = [
@@ -462,6 +549,18 @@ function editorScript(
       fm.published = document.getElementById('fm-published').checked;
       const date = document.getElementById('fm-date').value;
       if (date) fm.date = date; else delete fm.date;
+
+      // Collect taxonomy — preserve any non-configured taxonomy keys,
+      // overlay configured ones from the tag inputs.
+      const existingTax = (fm.taxonomy && typeof fm.taxonomy === 'object') ? Object.assign({}, fm.taxonomy) : {};
+      for (const taxName of configuredTaxonomies) {
+        const vals = taxonomyState[taxName] || [];
+        if (vals.length > 0) existingTax[taxName] = vals;
+        else delete existingTax[taxName];
+      }
+      if (Object.keys(existingTax).length > 0) fm.taxonomy = existingTax;
+      else delete fm.taxonomy;
+
       return fm;
     }
 
@@ -511,6 +610,7 @@ function editorScript(
 
     // Init
     initEditor();
+    initTaxonomy();
   `;
 }
 
@@ -627,6 +727,15 @@ function editorStyles(): string {
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
 
   .sidebar-section { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+
+  /* Tag input (taxonomy) */
+  .tag-input-wrapper { border: 1px solid #ddd; border-radius: 4px; padding: 0.25rem 0.3rem; min-height: 2rem; display: flex; flex-wrap: wrap; gap: 0.2rem; align-items: center; cursor: text; }
+  .tag-input-wrapper:focus-within { border-color: #c9a96e; box-shadow: 0 0 0 2px rgba(201,169,110,0.15); }
+  .tag-chips { display: contents; }
+  .tag-chip { display: inline-flex; align-items: center; gap: 0.2rem; background: #eef2ff; color: #3b5bdb; border-radius: 3px; padding: 0.1rem 0.35rem; font-size: 0.75rem; white-space: nowrap; }
+  .tag-chip-remove { background: none; border: none; cursor: pointer; color: #3b5bdb; font-size: 1rem; line-height: 1; padding: 0 0.1rem; opacity: 0.6; }
+  .tag-chip-remove:hover { opacity: 1; color: #c33; }
+  .tag-input { border: none; outline: none; font-size: 0.82rem; padding: 0.1rem 0.2rem; min-width: 80px; flex: 1; background: transparent; }
   `;
 }
 

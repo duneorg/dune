@@ -368,6 +368,13 @@ export function createAdminHandler(config: AdminServerConfig) {
       const page = await engine.loadPage(sourcePath);
       const userName = authResult.user?.name ?? "Admin";
 
+      // Build taxonomy suggestion lists from the engine's taxonomy map
+      const configuredTaxonomies = engine.config.site.taxonomies ?? ["category", "tag"];
+      const taxonomyValues: Record<string, string[]> = {};
+      for (const taxName of configuredTaxonomies) {
+        taxonomyValues[taxName] = Object.keys(engine.taxonomyMap[taxName] ?? {});
+      }
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -383,6 +390,8 @@ export function createAdminHandler(config: AdminServerConfig) {
           type: m.type,
           size: m.size,
         })),
+        taxonomies: configuredTaxonomies,
+        taxonomyValues,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
