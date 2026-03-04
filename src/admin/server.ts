@@ -1484,13 +1484,15 @@ function adminShell(prefix: string, active: string, userName: string, content: s
 
   return `
   <div class="admin-layout">
-    <aside class="admin-sidebar">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <aside class="admin-sidebar" id="admin-sidebar">
       <div class="sidebar-brand">
         <a href="${prefix}/">🏜️ Dune</a>
+        <button class="sidebar-close" onclick="closeSidebar()" aria-label="Close menu">✕</button>
       </div>
       <nav class="sidebar-nav">
         ${navItems.map((item) => `
-        <a href="${item.href}" class="nav-item ${active === item.id ? "active" : ""}">
+        <a href="${item.href}" class="nav-item ${active === item.id ? "active" : ""}" onclick="closeSidebar()">
           <span class="nav-icon">${item.icon}</span>
           <span class="nav-label">${item.label}</span>
         </a>`).join("")}
@@ -1499,6 +1501,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     <main class="admin-main">
       <header class="admin-topbar">
         <div class="topbar-left">
+          <button class="sidebar-toggle" onclick="openSidebar()" aria-label="Open menu">☰</button>
           <a href="/" target="_blank" class="btn btn-sm">View Site →</a>
         </div>
         <div class="topbar-right">
@@ -1512,7 +1515,19 @@ function adminShell(prefix: string, active: string, userName: string, content: s
         ${content}
       </div>
     </main>
-  </div>`;
+  </div>
+  <script>
+  function openSidebar() {
+    document.getElementById('admin-sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    document.getElementById('admin-sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  </script>`;
 }
 
 function htmlResponse(html: string, status = 200): Response {
@@ -1692,5 +1707,33 @@ function baseAdminStyles(): string {
   .form-group input, .form-group select { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
   .form-group input:focus, .form-group select:focus { outline: none; border-color: #c9a96e; box-shadow: 0 0 0 3px rgba(201,169,110,0.2); }
   h2 { margin-bottom: 1rem; color: #1a1a2e; }
+
+  /* ── Mobile responsive ── */
+  .topbar-left { display: flex; align-items: center; gap: 0.5rem; }
+  .sidebar-toggle { display: none; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #333; padding: 0.25rem; line-height: 1; }
+  .sidebar-close { display: none; background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #aaa; padding: 0.25rem; line-height: 1; margin-left: auto; }
+  .sidebar-brand { display: flex; align-items: center; justify-content: space-between; }
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+  .sidebar-overlay.open { display: block; }
+
+  @media (max-width: 767px) {
+    .sidebar-toggle { display: block; }
+    .sidebar-close { display: flex; align-items: center; justify-content: center; }
+    .admin-sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100dvh;
+      width: 240px;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 100;
+    }
+    .admin-sidebar.open { transform: translateX(0); }
+    .admin-main { width: 100%; }
+    .admin-content { padding: 1rem; }
+    .admin-topbar { padding: 0.6rem 1rem; }
+    .tree-actions { opacity: 1 !important; }
+    .admin-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
   `;
 }
