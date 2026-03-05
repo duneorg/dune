@@ -40,7 +40,7 @@ import type { AdminPermission, AuthResult } from "./types.ts";
 import { toUserInfo } from "./types.ts";
 import { verifyPassword } from "./auth/passwords.ts";
 import { renderLoginPage, renderDashboardPage, renderShellPage } from "./ui/pages.ts";
-import { renderPageTree } from "./ui/page-tree.ts";
+import { renderPageTree, renderSearchResults, PAGES_PER_PAGE } from "./ui/page-tree.ts";
 import { renderPageEditorPage } from "./ui/page-editor.ts";
 import { renderMediaLibrary } from "./ui/media-library.ts";
 import { markdownToBlocks, blocksToMarkdown } from "./editor/serializer.ts";
@@ -240,9 +240,11 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handlePageEditor(url, authResult);
     }
 
-    // GET /admin/pages — Page tree
+    // GET /admin/pages — Page tree (or search results when ?q= is present)
     if (adminPath === "/pages") {
-      return htmlResponse(renderPageTreePage(prefix, authResult));
+      const q = url.searchParams.get("q")?.trim() ?? "";
+      const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+      return htmlResponse(renderPageTreePage(prefix, authResult, q, page));
     }
 
     // GET /admin/media — Media library
@@ -494,22 +496,46 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   // === Page tree page ===
 
-  function renderPageTreePage(pfx: string, authResult: AuthResult): string {
+  function renderPageTreePage(
+    pfx: string,
+    authResult: AuthResult,
+    q: string,
+    page: number,
+  ): string {
     const userName = authResult.user?.name ?? "Admin";
-    // Collect known templates from blueprints (keys) so the create dialog can offer them as options
     const knownTemplates = Object.keys(engine.blueprints);
+
+    let body: string;
+    let title: string;
+    if (q) {
+      const lower = q.toLowerCase();
+      const filtered = engine.pages.filter(
+        (p) =>
+          p.route.toLowerCase().includes(lower) ||
+          (p.title ?? "").toLowerCase().includes(lower),
+      );
+      const total = filtered.length;
+      const offset = (page - 1) * PAGES_PER_PAGE;
+      const slice = filtered.slice(offset, offset + PAGES_PER_PAGE);
+      body = renderSearchResults(slice, q, page, total, PAGES_PER_PAGE, pfx);
+      title = `Search: ${q} — Pages — Dune Admin`;
+    } else {
+      body = renderPageTree(engine.pages, pfx, knownTemplates);
+      title = "Pages — Dune Admin";
+    }
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pages — Dune Admin</title>
+  <title>${title}</title>
   <style>${pageTreeStyles()}</style>
 </head>
 <body>
   ${adminShell(pfx, "pages", userName, `
     <h2>Pages</h2>
-    ${renderPageTree(engine.pages, pfx, knownTemplates)}
+    ${body}
   `)}
 </body>
 </html>`;
@@ -2249,7 +2275,18 @@ function pageTreeStyles(): string {
   return baseAdminStyles() + `
   /* Page tree */
   .page-tree-toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
-  .tree-search { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
+  .tree-search-form { display: flex; gap: 0.4rem; align-items: center; flex: 1; }
+  .tree-search-form input { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
+  .search-summary { margin-bottom: 0.75rem; font-size: 0.9rem; color: #555; }
+  .search-empty { text-align: center; color: #888; padding: 2rem 1rem !important; }
+  .table-actions { white-space: nowrap; }
+  .pagination { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; }
+  .page-numbers { display: flex; align-items: center; gap: 0.25rem; }
+  .page-link { padding: 0.25rem 0.6rem; border-radius: 4px; border: 1px solid #ddd; font-size: 0.85rem; text-decoration: none; color: #333; }
+  .page-link:hover { background: #f0f0f0; }
+  .page-current { padding: 0.25rem 0.6rem; border-radius: 4px; background: #c9a96e; color: #fff; font-size: 0.85rem; font-weight: 600; }
+  .page-ellipsis { padding: 0 0.25rem; color: #aaa; }
+  .btn.disabled { opacity: 0.4; cursor: default; pointer-events: none; }
   .page-tree { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .tree-node { }
   .tree-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid #f0f0f0; transition: background 0.1s; }
