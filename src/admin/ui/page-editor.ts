@@ -39,6 +39,14 @@ export function renderPageEditorPage(
     taxonomyValues: Record<string, string[]>;
     blueprint: ResolvedBp | null;
     revisionCount?: number;
+    /** Current page language code (e.g. "de"). Undefined on monolingual sites. */
+    language?: string;
+    /** Default site language (e.g. "en"). Undefined on monolingual sites. */
+    defaultLanguage?: string;
+    /** All sibling language versions with their existence status. */
+    translations?: Array<{ lang: string; sourcePath: string; exists: boolean }>;
+    /** Raw content of the default-language sibling, shown as a reference panel. */
+    referenceContent?: string | null;
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -65,6 +73,7 @@ export function renderPageEditorPage(
         <button class="btn btn-sm btn-outline" onclick="toggleSource()">Source</button>
         <a href="${escapeAttr(pageData.route)}" target="_blank" class="btn btn-sm btn-outline">View →</a>
         <a href="${prefix}/pages/history?path=${encodeURIComponent(pageData.sourcePath)}" class="btn btn-sm btn-outline">History${pageData.revisionCount ? ` <span class="toolbar-rev-count">${pageData.revisionCount}</span>` : ""}</a>
+        ${pageData.referenceContent != null ? `<button class="btn btn-sm btn-outline" id="ref-toggle" onclick="toggleReference()">Reference: ${escapeHtml(pageData.defaultLanguage ?? "")}</button>` : ""}
         <button class="btn btn-sm btn-primary" onclick="savePage()">Save</button>
       </div>
     </header>
@@ -188,7 +197,33 @@ export function renderPageEditorPage(
           <div class="info-row"><span>Route:</span> <code>${escapeHtml(pageData.route)}</code></div>
           <div class="info-row"><span>Format:</span> ${pageData.format}</div>
         </div>
+
+        ${(pageData.translations?.length ?? 0) > 0 ? `
+        <div class="sidebar-section">
+          <h4>Translations</h4>
+          ${pageData.translations!.map((t) => {
+            const isCurrent = t.lang === pageData.language;
+            const langBadge = `<span class="badge-lang${isCurrent ? " badge-lang-current" : t.exists ? "" : " badge-lang-missing"}">${escapeHtml(t.lang)}</span>`;
+            if (isCurrent) {
+              return `<div class="translation-row">${langBadge} <em class="translation-editing">editing</em></div>`;
+            }
+            if (t.exists) {
+              return `<div class="translation-row">${langBadge} <a href="${prefix}/pages/edit?path=${encodeURIComponent(t.sourcePath)}" class="btn btn-xs">Edit</a></div>`;
+            }
+            return `<div class="translation-row">${langBadge} <button class="btn btn-xs btn-outline" onclick="createTranslation('${escapeAttr(pageData.sourcePath)}','${escapeAttr(t.lang)}')">Create</button></div>`;
+          }).join("")}
+        </div>` : ""}
       </aside>
+
+      ${pageData.referenceContent != null ? `
+      <!-- Reference panel — shows default-language source for translators -->
+      <div class="editor-reference" id="editor-reference" style="display:none">
+        <div class="editor-reference-header">
+          <span>Reference: ${escapeHtml(pageData.defaultLanguage ?? "")}</span>
+          <button onclick="toggleReference()" class="btn btn-xs" title="Close reference panel">✕</button>
+        </div>
+        <pre class="editor-reference-content">${escapeHtml(pageData.referenceContent)}</pre>
+      </div>` : ""}
 
       <!-- Main editor area -->
       <div class="editor-main">
@@ -955,6 +990,47 @@ function editorScript(
       if (isDirty) { e.preventDefault(); e.returnValue = ''; }
     });
 
+    // ── Translation utilities ────────────────────────────────────────────────
+
+    function toggleReference() {
+      const panel = document.getElementById('editor-reference');
+      if (!panel) return;
+      const opening = panel.style.display === 'none';
+      panel.style.display = opening ? 'block' : 'none';
+      const btn = document.getElementById('ref-toggle');
+      if (btn) {
+        btn.classList.toggle('btn-outline', !opening);
+        btn.classList.toggle('btn-primary', opening);
+      }
+    }
+
+    function createTranslation(sourcePath, lang) {
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+      fetch('${prefix}/api/pages/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath, lang }),
+      })
+      .then(r => r.json())
+      .then(result => {
+        if (result.created) {
+          window.location.href = '${prefix}/pages/edit?path=' + encodeURIComponent(result.path);
+        } else {
+          alert('Error: ' + (result.error || 'Unknown error'));
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      })
+      .catch(err => {
+        alert('Error: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      });
+    }
+
     // Init
     initEditor();
     initTaxonomy();
@@ -1106,6 +1182,19 @@ function editorStyles(): string {
   .tag-chip-remove { background: none; border: none; cursor: pointer; color: #3b5bdb; font-size: 1rem; line-height: 1; padding: 0 0.1rem; opacity: 0.6; }
   .tag-chip-remove:hover { opacity: 1; color: #c33; }
   .tag-input { border: none; outline: none; font-size: 0.82rem; padding: 0.1rem 0.2rem; min-width: 80px; flex: 1; background: transparent; }
+
+  /* Translation sidebar */
+  .badge-lang { background: #e8f4fd; color: #1a6fa8; font-size: 0.75rem; padding: 0.1rem 0.4rem; border-radius: 3px; font-weight: 600; display: inline-block; min-width: 2rem; text-align: center; }
+  .badge-lang-current { background: #1a6fa8; color: #fff; }
+  .badge-lang-missing { background: #f5f5f5; color: #aaa; }
+  .translation-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.35rem; font-size: 0.85rem; }
+  .translation-editing { font-size: 0.8rem; color: #999; }
+
+  /* Reference panel */
+  .editor-reference { border-bottom: 2px solid #e0e0e0; background: #fafafa; flex-shrink: 0; }
+  .editor-reference-header { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; color: #555; border-bottom: 1px solid #e8e8e8; background: #f0f0f0; }
+  .editor-reference-header .btn-xs { color: #666; border-color: #ccc; }
+  .editor-reference-content { margin: 0; padding: 0.75rem; max-height: 280px; overflow-y: auto; font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #333; }
   `;
 }
 

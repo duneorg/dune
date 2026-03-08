@@ -14,6 +14,7 @@
  *   GET  /admin/api/pages     → List pages (JSON)
  *   GET  /admin/api/pages/:path → Get single page (JSON)
  *   POST /admin/api/pages     → Create page
+ *   POST /admin/api/pages/translate → Create a language translation copy of a page
  *   PUT  /admin/api/pages/:path → Update page
  *   DELETE /admin/api/pages/:path → Delete page
  *   GET  /admin/api/media     → List all media (JSON)
@@ -31,6 +32,7 @@
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import { dirname, basename } from "@std/path";
+import { parseContentFilename } from "../content/path-utils.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
 import type { UserManager } from "./auth/users.ts";
@@ -470,6 +472,45 @@ export function createAdminHandler(config: AdminServerConfig) {
       // Fetch revision count for the History button badge (0 if history not enabled)
       const revisionCount = history ? await history.getRevisionCount(page.sourcePath) : 0;
 
+      // === Multilingual translation context ===
+      const supportedLangs = engine.config.config.system.languages?.supported ?? [];
+      const defaultLang = engine.config.config.system.languages?.default ?? "en";
+      const isMultilingual = supportedLangs.length > 1;
+
+      let pageLanguage = defaultLang;
+      let translations: Array<{ lang: string; sourcePath: string; exists: boolean }> = [];
+      let referenceContent: string | null = null;
+
+      if (isMultilingual) {
+        const dir = dirname(page.sourcePath);
+        const filename = basename(page.sourcePath);
+        const fileInfo = parseContentFilename(filename, supportedLangs);
+
+        if (fileInfo) {
+          pageLanguage = fileInfo.language ?? defaultLang;
+
+          // Build sibling list for every supported language
+          for (const lang of supportedLangs) {
+            const siblingPath = lang === defaultLang
+              ? `${dir}/${fileInfo.template}${fileInfo.ext}`
+              : `${dir}/${fileInfo.template}.${lang}${fileInfo.ext}`;
+            const exists = engine.pages.some((p) => p.sourcePath === siblingPath);
+            translations.push({ lang, sourcePath: siblingPath, exists });
+          }
+
+          // Load default-lang raw content as a reference when editing a translation
+          if (pageLanguage !== defaultLang) {
+            const defaultPath = `${dir}/${fileInfo.template}${fileInfo.ext}`;
+            if (engine.pages.some((p) => p.sourcePath === defaultPath)) {
+              try {
+                const refPage = await engine.loadPage(defaultPath);
+                referenceContent = refPage.rawContent ?? null;
+              } catch { /* skip if not loadable */ }
+            }
+          }
+        }
+      }
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -489,6 +530,10 @@ export function createAdminHandler(config: AdminServerConfig) {
         taxonomyValues,
         blueprint: resolvedBlueprint,
         revisionCount,
+        language: pageLanguage,
+        defaultLanguage: defaultLang,
+        translations,
+        referenceContent,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
@@ -641,6 +686,12 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath === "/api/pages/reorder" && method === "POST") {
       requirePermission(authResult, "pages.update");
       return handleReorderPage(req);
+    }
+
+    // POST /admin/api/pages/translate — Create a language translation copy of a page
+    if (adminPath === "/api/pages/translate" && method === "POST") {
+      requirePermission(authResult, "pages.create");
+      return handleCreateTranslation(req);
     }
 
     // PUT /admin/api/pages/* — Update a page
@@ -1087,6 +1138,45 @@ export function createAdminHandler(config: AdminServerConfig) {
       return jsonResponse({ reordered: true });
     } catch (err) {
       return serverError(err, "reorder-page");
+    }
+  }
+
+  // === Translation creation handler ===
+
+  async function handleCreateTranslation(req: Request): Promise<Response> {
+    try {
+      const { sourcePath, lang } = await req.json();
+      const supportedLangs = engine.config.config.system.languages?.supported ?? [];
+
+      if (!sourcePath || typeof sourcePath !== "string" || !lang || typeof lang !== "string") {
+        return jsonResponse({ error: "sourcePath and lang required" }, 400);
+      }
+      if (!supportedLangs.includes(lang)) {
+        return jsonResponse({ error: "Unsupported language" }, 400);
+      }
+
+      const dir = dirname(sourcePath);
+      const filename = basename(sourcePath);
+      const fileInfo = parseContentFilename(filename, supportedLangs);
+      if (!fileInfo) return jsonResponse({ error: "Cannot parse source path" }, 400);
+
+      const contentDir = config.config.system.content.dir;
+      const targetPath = `${dir}/${fileInfo.template}.${lang}${fileInfo.ext}`;
+
+      // Refuse to overwrite an existing translation
+      if (engine.pages.some((p) => p.sourcePath === targetPath)) {
+        return jsonResponse({ error: "Translation already exists" }, 409);
+      }
+
+      // Copy source content verbatim to the new language file
+      const sourceFullPath = `${contentDir}/${sourcePath}`;
+      const sourceBytes = await storage.read(sourceFullPath);
+      await storage.write(`${contentDir}/${targetPath}`, sourceBytes);
+      await engine.rebuild();
+
+      return jsonResponse({ created: true, path: targetPath });
+    } catch (err) {
+      return serverError(err);
     }
   }
 
