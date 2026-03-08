@@ -17,6 +17,7 @@
  *   PUT  /admin/api/pages/:path → Update page
  *   DELETE /admin/api/pages/:path → Delete page
  *   GET  /admin/api/media     → List all media (JSON)
+ *   PUT  /admin/api/media/meta → Save media sidecar metadata (focal point, etc.)
  *   GET  /admin/api/users     → List users (admin only)
  *   POST /admin/api/users     → Create user (admin only)
  *   GET  /admin/api/config    → Read config (JSON)
@@ -662,6 +663,12 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handleListMedia();
     }
 
+    // PUT /admin/api/media/meta — Save media sidecar metadata (e.g. focal point)
+    if (adminPath === "/api/media/meta" && method === "PUT") {
+      requirePermission(authResult, "media.upload");
+      return handleSaveMediaMeta(req);
+    }
+
     // POST /admin/api/editor/parse — Markdown → Blocks
     if (adminPath === "/api/editor/parse" && method === "POST") {
       return handleEditorParse(req);
@@ -1093,6 +1100,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         type: string;
         size: number;
         pagePath: string;
+        meta: Record<string, unknown>;
       }> = [];
 
       // Load media from all pages
@@ -1106,6 +1114,7 @@ export function createAdminHandler(config: AdminServerConfig) {
               type: media.type,
               size: media.size,
               pagePath: pageIndex.sourcePath,
+              meta: media.meta,
             });
           }
         } catch {
@@ -1114,6 +1123,72 @@ export function createAdminHandler(config: AdminServerConfig) {
       }
 
       return jsonResponse({ items, total: items.length });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  // === Media meta handler ===
+
+  async function handleSaveMediaMeta(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { pagePath, name, focal } = body;
+
+      if (!pagePath || typeof pagePath !== "string" || !name || typeof name !== "string") {
+        return jsonResponse({ error: "pagePath and name required" }, 400);
+      }
+
+      // Validate focal: null clears it; otherwise must be [x, y] with values 0–100
+      if (focal !== null && focal !== undefined) {
+        if (
+          !Array.isArray(focal) || focal.length !== 2 ||
+          typeof focal[0] !== "number" || typeof focal[1] !== "number" ||
+          focal[0] < 0 || focal[0] > 100 || focal[1] < 0 || focal[1] > 100
+        ) {
+          return jsonResponse({ error: "focal must be [x, y] with values 0–100 or null" }, 400);
+        }
+      }
+
+      // Derive sidecar path server-side — client never constructs paths directly
+      const contentDir = config.config.system.content.dir;
+      const sidecarPath = `${contentDir}/${dirname(pagePath)}/${name}.meta.yaml`;
+
+      if (focal === null || focal === undefined) {
+        // Clear focal: read existing meta, remove focal key
+        let existing: Record<string, unknown> = {};
+        try {
+          const raw = await storage.read(sidecarPath);
+          existing = (parseYaml(new TextDecoder().decode(raw)) as Record<string, unknown>) ?? {};
+        } catch {
+          // Sidecar doesn't exist — nothing to clear
+          return jsonResponse({ ok: true });
+        }
+        delete existing.focal;
+        if (Object.keys(existing).length === 0) {
+          // No remaining meta — remove sidecar entirely
+          try {
+            await storage.delete(sidecarPath);
+          } catch {
+            // Already gone — fine
+          }
+        } else {
+          await storage.write(sidecarPath, new TextEncoder().encode(stringifyYaml(existing)));
+        }
+      } else {
+        // Merge focal into existing meta (preserves other fields)
+        let existing: Record<string, unknown> = {};
+        try {
+          const raw = await storage.read(sidecarPath);
+          existing = (parseYaml(new TextDecoder().decode(raw)) as Record<string, unknown>) ?? {};
+        } catch {
+          // Sidecar doesn't exist — start fresh
+        }
+        existing.focal = focal;
+        await storage.write(sidecarPath, new TextEncoder().encode(stringifyYaml(existing)));
+      }
+
+      return jsonResponse({ ok: true });
     } catch (err) {
       return serverError(err);
     }
@@ -2341,6 +2416,14 @@ function mediaLibraryStyles(): string {
   .media-detail-info h4 { margin-bottom: 0.5rem; }
   .detail-row { font-size: 0.85rem; color: #666; margin-bottom: 0.25rem; }
   .detail-row code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.8rem; }
+  .focal-picker-wrap { position:relative; cursor:crosshair; user-select:none; }
+  .focal-picker-wrap img { width:100%; display:block; }
+  .focal-dot { position:absolute; width:20px; height:20px; border-radius:50%; background:rgba(201,169,110,0.9); border:2px solid #fff; transform:translate(-50%,-50%); pointer-events:none; box-shadow:0 0 0 1px rgba(0,0,0,0.4); }
+  .focal-coords { font-size:0.8rem; color:#666; margin:0.25rem 0 0.5rem; }
+  .focal-previews { display:flex; gap:0.75rem; margin-bottom:0.75rem; }
+  .focal-preview { overflow:hidden; border-radius:4px; border:1px solid #ddd; }
+  .focal-preview img { width:100%; height:100%; object-fit:cover; display:block; }
+  .focal-preview-label { font-size:0.7rem; color:#888; text-align:center; margin-top:0.2rem; }
   .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1000; }
   .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
   .modal-content { position: relative; background: #fff; border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 640px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }

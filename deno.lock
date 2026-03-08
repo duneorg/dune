@@ -12,6 +12,7 @@
     "npm:gray-matter@4": "4.0.3",
     "npm:marked@*": "15.0.12",
     "npm:marked@15": "15.0.12",
+    "npm:nodemailer@6": "6.10.1",
     "npm:preact-render-to-string@6": "6.6.5_preact@10.28.3",
     "npm:preact@10": "10.28.3",
     "npm:preact@10.28.3": "10.28.3",
@@ -891,6 +892,9 @@
     },
     "ms@2.1.3": {
       "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="
+    },
+    "nodemailer@6.10.1": {
+      "integrity": "sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA=="
     },
     "parse-entities@4.0.2": {
       "integrity": "sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw==",

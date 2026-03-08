@@ -38,6 +38,32 @@ function mediaDetailModal(): string {
           <div class="media-detail-preview" id="detail-preview"></div>
           <div class="media-detail-info" id="detail-info"></div>
         </div>
+        <div id="focal-section" style="display:none">
+          <h5 style="margin:0.75rem 0 0.5rem">Focal Point</h5>
+          <div class="focal-picker-wrap" id="focal-picker" onclick="handleFocalClick(event)">
+            <img id="focal-img" src="" alt="">
+            <div class="focal-dot" id="focal-dot"></div>
+          </div>
+          <div class="focal-coords" id="focal-coords">50%, 50%</div>
+          <div class="focal-previews">
+            <div>
+              <div class="focal-preview" style="width:160px;height:90px">
+                <img id="focal-preview-16-9" src="" alt="">
+              </div>
+              <div class="focal-preview-label">16:9</div>
+            </div>
+            <div>
+              <div class="focal-preview" style="width:90px;height:90px">
+                <img id="focal-preview-1-1" src="" alt="">
+              </div>
+              <div class="focal-preview-label">1:1</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn btn-sm btn-primary" onclick="saveFocalPoint()">Save focal point</button>
+            <button class="btn btn-sm btn-outline" onclick="clearFocalPoint()">Clear</button>
+          </div>
+        </div>
         <div class="form-actions">
           <button class="btn btn-outline" onclick="hideMediaDetail()">Close</button>
           <button class="btn btn-primary" onclick="copyMediaUrl()">Copy URL</button>
@@ -148,7 +174,126 @@ function mediaLibraryScript(prefix: string): string {
         '<div class="detail-row"><span>URL:</span> <code>' + escapeHtml(item.url) + '</code></div>' +
         '<div class="detail-row"><span>Markdown:</span> <code>![' + escapeHtml(item.name) + '](' + escapeHtml(item.name) + ')</code></div>';
 
+      // Show focal picker for images
+      if (item.type.startsWith('image/') && safeUrl) {
+        initFocalPicker(item, safeUrl);
+      } else {
+        document.getElementById('focal-section').style.display = 'none';
+      }
+
       document.getElementById('media-detail-modal').style.display = 'flex';
+    }
+
+    // ── Focal point picker ────────────────────────────────────────────────────
+
+    let focalX = 50;
+    let focalY = 50;
+
+    function initFocalPicker(item, safeUrl) {
+      const section = document.getElementById('focal-section');
+      section.style.display = 'block';
+
+      // Pre-populate from saved meta
+      const saved = item.meta && Array.isArray(item.meta.focal) ? item.meta.focal : [50, 50];
+      focalX = typeof saved[0] === 'number' ? saved[0] : 50;
+      focalY = typeof saved[1] === 'number' ? saved[1] : 50;
+
+      // Wire up picker image
+      const focalImg = document.getElementById('focal-img');
+      focalImg.src = safeUrl;
+
+      // Wire up preview images
+      document.getElementById('focal-preview-16-9').src = safeUrl;
+      document.getElementById('focal-preview-1-1').src = safeUrl;
+
+      setFocalPoint(focalX, focalY);
+    }
+
+    function setFocalPoint(x, y) {
+      focalX = Math.max(0, Math.min(100, Math.round(x)));
+      focalY = Math.max(0, Math.min(100, Math.round(y)));
+
+      // Move crosshair dot
+      const dot = document.getElementById('focal-dot');
+      dot.style.left = focalX + '%';
+      dot.style.top = focalY + '%';
+
+      // Update coordinate label
+      document.getElementById('focal-coords').textContent = focalX + '%, ' + focalY + '%';
+
+      // Update preview crops via object-position
+      const pos = focalX + '% ' + focalY + '%';
+      document.getElementById('focal-preview-16-9').style.objectPosition = pos;
+      document.getElementById('focal-preview-1-1').style.objectPosition = pos;
+    }
+
+    function handleFocalClick(e) {
+      const wrap = document.getElementById('focal-picker');
+      const rect = wrap.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setFocalPoint(x, y);
+    }
+
+    function saveFocalPoint() {
+      if (!selectedMedia) return;
+      const btn = event.target;
+      btn.textContent = 'Saving…';
+      btn.disabled = true;
+      fetch('${prefix}/api/media/meta', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagePath: selectedMedia.pagePath, name: selectedMedia.name, focal: [focalX, focalY] }),
+      })
+      .then(r => r.json())
+      .then(result => {
+        if (result.ok) {
+          // Persist focal into the in-memory item so re-opening shows the saved value
+          if (!selectedMedia.meta) selectedMedia.meta = {};
+          selectedMedia.meta.focal = [focalX, focalY];
+          btn.textContent = 'Saved!';
+          setTimeout(() => { btn.textContent = 'Save focal point'; btn.disabled = false; }, 1500);
+        } else {
+          alert('Error: ' + (result.error || 'Unknown error'));
+          btn.textContent = 'Save focal point';
+          btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        alert('Error: ' + err.message);
+        btn.textContent = 'Save focal point';
+        btn.disabled = false;
+      });
+    }
+
+    function clearFocalPoint() {
+      if (!selectedMedia) return;
+      const btn = event.target;
+      btn.textContent = 'Clearing…';
+      btn.disabled = true;
+      fetch('${prefix}/api/media/meta', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagePath: selectedMedia.pagePath, name: selectedMedia.name, focal: null }),
+      })
+      .then(r => r.json())
+      .then(result => {
+        if (result.ok) {
+          if (selectedMedia.meta) delete selectedMedia.meta.focal;
+          setFocalPoint(50, 50);
+          btn.textContent = 'Clear';
+          btn.disabled = false;
+        } else {
+          alert('Error: ' + (result.error || 'Unknown error'));
+          btn.textContent = 'Clear';
+          btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        alert('Error: ' + err.message);
+        btn.textContent = 'Clear';
+        btn.disabled = false;
+      });
     }
 
     function hideMediaDetail() {
