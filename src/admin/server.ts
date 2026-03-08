@@ -84,7 +84,7 @@ import {
   submissionStyles,
 } from "./ui/submissions.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
-import { renderConfigEditor, configEditorStyles } from "./ui/config-editor.ts";
+import { renderConfigEditor, configEditorStyles, type ConfigEditorThemeData } from "./ui/config-editor.ts";
 import { renderPluginsPage, pluginStyles } from "./ui/plugins.ts";
 import { validateConfig } from "../config/validator.ts";
 import { renderUsersPage, userStyles, type UsersPageData } from "./ui/users.ts";
@@ -315,7 +315,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!auth.hasPermission(authResult, "config.read")) {
         return htmlResponse("<h1>403 Forbidden</h1>", 403);
       }
-      return htmlResponse(renderConfigPage(prefix, authResult));
+      return htmlResponse(await renderConfigPage(prefix, authResult));
     }
 
     // PUT /admin/api/config — Save config
@@ -839,6 +839,90 @@ export function createAdminHandler(config: AdminServerConfig) {
       return jsonResponse({ title, description, url: siteUrl, author, metadata, taxonomies });
     }
 
+    // === Theme API routes ===
+
+    // GET /admin/api/config/themes — List available themes + current theme
+    if (adminPath === "/api/config/themes" && method === "GET") {
+      requirePermission(authResult, "config.read");
+      const themes = await engine.getAvailableThemes();
+      return jsonResponse({ themes, current: engine.config.theme.name });
+    }
+
+    // PUT /admin/api/config/theme — Switch active theme
+    if (adminPath === "/api/config/theme" && method === "PUT") {
+      requirePermission(authResult, "config.update");
+      try {
+        const body = await req.json() as { name?: string };
+        if (!body.name || typeof body.name !== "string") {
+          return jsonResponse({ error: "Theme name required" }, 400);
+        }
+        const available = await engine.getAvailableThemes();
+        if (!available.includes(body.name)) {
+          return jsonResponse({ error: `Theme "${body.name}" not found` }, 404);
+        }
+        await engine.switchTheme(body.name);
+        return jsonResponse({ switched: true, theme: body.name });
+      } catch (err) {
+        return serverError(err);
+      }
+    }
+
+    // GET /admin/api/config/theme-config — Read theme config + schema
+    if (adminPath === "/api/config/theme-config" && method === "GET") {
+      requirePermission(authResult, "config.read");
+      const manifest = engine.themes.theme.manifest;
+      return jsonResponse({
+        themeName: engine.config.theme.name,
+        schema: manifest.configSchema ?? {},
+        config: engine.themeConfig,
+      });
+    }
+
+    // PUT /admin/api/config/theme-config — Save theme config
+    if (adminPath === "/api/config/theme-config" && method === "PUT") {
+      requirePermission(authResult, "config.update");
+      try {
+        const body = await req.json() as Record<string, unknown>;
+        const manifest = engine.themes.theme.manifest;
+        const schema = manifest.configSchema;
+
+        // Validate and coerce against configSchema if present
+        if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+          const schemaRecord = schema as Record<string, import("../blueprints/types.ts").BlueprintField>;
+          const errors: string[] = [];
+          for (const [key, field] of Object.entries(schemaRecord)) {
+            if (field.type === "number" && body[key] !== undefined && body[key] !== null) {
+              const n = Number(body[key]);
+              body[key] = isNaN(n) ? body[key] : n;
+            } else if (field.type === "toggle") {
+              body[key] = body[key] === true || body[key] === "true";
+            }
+            if (field.required && (body[key] === undefined || body[key] === null || body[key] === "")) {
+              errors.push(field.label ?? key);
+            }
+          }
+          if (errors.length > 0) {
+            return jsonResponse({ error: `Missing required fields: ${errors.join(", ")}` }, 422);
+          }
+        }
+
+        const dataDir = config.config.admin?.dataDir ?? "data";
+        const themeConfigPath = `${dataDir}/theme-config.json`;
+        await storage.write(themeConfigPath, new TextEncoder().encode(JSON.stringify(body, null, 2)));
+
+        // Update engine's in-memory themeConfig
+        Object.assign(engine.themeConfig, body);
+        // Remove any keys no longer in body (full replace semantics)
+        for (const key of Object.keys(engine.themeConfig)) {
+          if (!(key in body)) delete engine.themeConfig[key];
+        }
+
+        return jsonResponse({ saved: true });
+      } catch (err) {
+        return serverError(err);
+      }
+    }
+
     // === Plugin API routes ===
 
     // GET /admin/api/plugins — List registered plugins and their configs
@@ -860,6 +944,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
     // PUT /admin/api/plugins/:name/config — Save plugin config
     if (adminPath.startsWith("/api/plugins/") && adminPath.endsWith("/config") && method === "PUT") {
+      requirePermission(authResult, "config.update");
       const pluginName = decodeURIComponent(
         adminPath.slice("/api/plugins/".length, -"/config".length),
       );
@@ -2474,8 +2559,24 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   // === Config editor ===
 
-  function renderConfigPage(pfx: string, authResult: AuthResult): string {
+  async function renderConfigPage(pfx: string, authResult: AuthResult): Promise<string> {
     const userName = authResult.user?.name ?? "Admin";
+
+    // Build theme data for the Theme tab (best-effort — failures return empty data)
+    let themeData: ConfigEditorThemeData | undefined;
+    try {
+      const availableThemes = await engine.getAvailableThemes();
+      const manifest = engine.themes.theme.manifest;
+      themeData = {
+        availableThemes,
+        currentTheme: engine.config.theme.name,
+        themeSchema: (manifest.configSchema ?? {}) as Record<string, import("../blueprints/types.ts").BlueprintField>,
+        themeConfig: engine.themeConfig,
+      };
+    } catch {
+      // Theme data unavailable — omit the Theme tab content
+    }
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2485,7 +2586,7 @@ export function createAdminHandler(config: AdminServerConfig) {
   <style>${baseAdminStyles()}${configEditorStyles()}</style>
 </head>
 <body>
-  ${adminShell(pfx, "config", userName, renderConfigEditor(pfx, config.config))}
+  ${adminShell(pfx, "config", userName, renderConfigEditor(pfx, config.config, themeData))}
 </body>
 </html>`;
   }
@@ -2551,6 +2652,9 @@ export function createAdminHandler(config: AdminServerConfig) {
   /**
    * Save plugin-specific config to data/plugins/{name}.json.
    * The saved values are merged over site.yaml static config at next startup.
+   *
+   * Performs type coercion (number, toggle) and required-field validation
+   * based on the plugin's configSchema before persisting.
    */
   async function handleSavePluginConfig(
     req: Request,
@@ -2560,16 +2664,36 @@ export function createAdminHandler(config: AdminServerConfig) {
     try {
       const body = await req.json() as Record<string, unknown>;
 
-      // Validate against schema if present
+      // Validate and coerce values against schema if present
       if (configSchema && typeof configSchema === "object" && !Array.isArray(configSchema)) {
         const schema = configSchema as Record<string, import("../blueprints/types.ts").BlueprintField>;
+        const errors: string[] = [];
+
         for (const [key, field] of Object.entries(schema)) {
           const val = body[key];
-          if (field.required && (val === undefined || val === null || val === "")) {
-            return jsonResponse({
-              error: `Missing required field: ${field.label ?? key}`,
-            }, 422);
+
+          // Type coercion: convert wire values to their proper types
+          if (field.type === "number" && val !== undefined && val !== null) {
+            const n = Number(val);
+            body[key] = isNaN(n) ? val : n;
+          } else if (field.type === "toggle") {
+            body[key] = val === true || val === "true";
           }
+
+          // Required check (after coercion)
+          const coerced = body[key];
+          if (
+            field.required &&
+            (coerced === undefined || coerced === null || coerced === "")
+          ) {
+            errors.push(field.label ?? key);
+          }
+        }
+
+        if (errors.length > 0) {
+          return jsonResponse({
+            error: `Missing required fields: ${errors.join(", ")}`,
+          }, 422);
         }
       }
 

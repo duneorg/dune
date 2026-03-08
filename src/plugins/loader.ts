@@ -39,7 +39,46 @@ export interface PluginLoaderOptions {
 }
 
 /**
- * Load and register all plugins declared in config.pluginList.
+ * Scan `{root}/plugins/` for `.ts` files not starting with `_` and return
+ * synthetic `PluginEntry[]` for those not already listed in `existing`.
+ *
+ * This allows themes/sites to drop plugin files into a `plugins/` directory
+ * without explicitly listing them in `site.yaml`.
+ */
+async function discoverLocalPlugins(
+  root: string,
+  storage: StorageAdapter,
+  existing: PluginEntry[],
+): Promise<PluginEntry[]> {
+  const pluginsDir = `${root}/plugins`;
+  const dirExists = await storage.exists(pluginsDir);
+  if (!dirExists) return [];
+
+  let entries: Awaited<ReturnType<StorageAdapter["list"]>>;
+  try {
+    entries = await storage.list(pluginsDir);
+  } catch {
+    return [];
+  }
+
+  // Normalise the set of already-configured local sources so we can dedup.
+  const existingSrcs = new Set(existing.map((e) => e.src));
+
+  const discovered: PluginEntry[] = [];
+  for (const entry of entries) {
+    if (!entry.name.endsWith(".ts") || entry.name.startsWith("_")) continue;
+    const src = `./plugins/${entry.name}`;
+    if (!existingSrcs.has(src)) {
+      discovered.push({ src });
+    }
+  }
+
+  return discovered;
+}
+
+/**
+ * Load and register all plugins declared in config.pluginList, plus any
+ * plugins auto-discovered in the site's `plugins/` directory.
  *
  * For each plugin entry:
  *  1. Resolve the import URL (local → file://, registry → pass-through)
@@ -50,11 +89,16 @@ export interface PluginLoaderOptions {
  *  6. Call hooks.registerPlugin(plugin)
  */
 export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
-  const { config, hooks, root } = options;
+  const { config, hooks, root, storage } = options;
 
-  if (!config.pluginList || config.pluginList.length === 0) return;
+  const configured = config.pluginList ?? [];
+  const discovered = await discoverLocalPlugins(root, storage, configured);
 
-  for (const entry of config.pluginList) {
+  // Discovered plugins load first (lowest priority) so explicit config wins.
+  const allEntries = [...discovered, ...configured];
+  if (allEntries.length === 0) return;
+
+  for (const entry of allEntries) {
     try {
       const importUrl = resolvePluginUrl(entry.src, root);
       const mod = await import(importUrl);

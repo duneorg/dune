@@ -237,6 +237,17 @@ export interface TemplateProps {
   /** Dynamically loaded layout component (use for hot-reload compatibility) */
   Layout?: TemplateComponent;
   collection?: Collection;
+  /**
+   * User-controlled theme settings from `data/theme-config.json`.
+   * Populated when the active theme declares a `config_schema` in `theme.yaml`.
+   * Templates can use these values for colours, feature flags, etc.
+   *
+   * @example
+   * ```tsx
+   * const primaryColor = props.themeConfig?.primary_color ?? "#c9a96e";
+   * ```
+   */
+  themeConfig?: Record<string, unknown>;
   children?: unknown;
 }
 

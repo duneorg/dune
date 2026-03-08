@@ -322,12 +322,24 @@ async function loadThemeManifest(
       const parsed = parse(text);
       if (parsed && typeof parsed === "object") {
         const data = parsed as Record<string, unknown>;
+
+        // Parse config_schema if present (must be a plain object, not an array)
+        let configSchema: Record<string, import("../blueprints/types.ts").BlueprintField> | undefined;
+        if (
+          data.config_schema &&
+          typeof data.config_schema === "object" &&
+          !Array.isArray(data.config_schema)
+        ) {
+          configSchema = data.config_schema as Record<string, import("../blueprints/types.ts").BlueprintField>;
+        }
+
         return {
           name: (data.name as string) ?? fallbackName,
           parent: data.parent as string | undefined,
           description: data.description as string | undefined,
           author: data.author as string | undefined,
           version: data.version as string | undefined,
+          configSchema,
         };
       }
     }

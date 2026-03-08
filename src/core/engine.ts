@@ -28,6 +28,8 @@ import { createRouteResolver } from "../routing/resolver.ts";
 import type { RouteResolver, RouteMatch } from "../routing/resolver.ts";
 import { createThemeLoader } from "../themes/loader.ts";
 import type { ThemeLoader } from "../themes/loader.ts";
+import type { HookRegistry } from "../hooks/types.ts";
+import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 
 export interface DuneEngineOptions {
   /** Storage adapter (filesystem or KV) */
@@ -46,6 +48,11 @@ export interface DuneEngineOptions {
    * Set to null to disable blueprint loading entirely.
    */
   blueprintsDir?: string | null;
+  /**
+   * Hook registry — when provided, the engine fires lifecycle events
+   * (`onRebuild`, `onThemeSwitch`) so plugins can react to them.
+   */
+  hooks?: HookRegistry;
 }
 
 export interface DuneEngine {
@@ -64,6 +71,12 @@ export interface DuneEngine {
   /** Theme loader */
   themes: ThemeLoader;
 
+  /**
+   * User-controlled theme settings loaded from `data/theme-config.json`.
+   * Empty object when no theme config file exists or the theme has no schema.
+   */
+  themeConfig: Record<string, unknown>;
+
   /** Initialize the engine (build index, set up routing) */
   init(): Promise<void>;
   /** Resolve a URL pathname to a page (or redirect) */
@@ -74,6 +87,18 @@ export interface DuneEngine {
   serveMedia(mediaPath: string): Promise<MediaResponse | null>;
   /** Rebuild the content index (for dev mode / after changes) */
   rebuild(): Promise<void>;
+  /**
+   * List available theme names (subdirectory names under `themesDir`).
+   * Used by the admin theme-switcher.
+   */
+  getAvailableThemes(): Promise<string[]>;
+  /**
+   * Switch the active theme, persist the change to `config/site.yaml`,
+   * reload theme config, and rebuild the content index.
+   *
+   * Fires the `onThemeSwitch` hook if a hook registry was supplied.
+   */
+  switchTheme(name: string): Promise<void>;
 }
 
 export interface ResolveResult {
@@ -95,10 +120,13 @@ export async function createDuneEngine(
   options: DuneEngineOptions,
 ): Promise<DuneEngine> {
   const { storage, config, formats } = options;
+  const hooks = options.hooks;
   const themesDir = options.themesDir ?? "themes";
   const contentDir = config.system.content.dir;
   const storageRoot = options.storageRoot;
   const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
+  const dataDir = config.admin?.dataDir ?? "data";
+  const themeConfigPath = `${dataDir}/theme-config.json`;
 
   // State
   let pages: PageIndex[] = [];
@@ -106,9 +134,78 @@ export async function createDuneEngine(
   let blueprints: BlueprintMap = {};
   let router: RouteResolver;
   let themes: ThemeLoader;
+  let themeConfig: Record<string, unknown> = {};
 
   // Page cache (sourcePath → Page)
   const pageCache = new Map<string, Page>();
+
+  /**
+   * Load `data/theme-config.json` into the `themeConfig` closure variable.
+   * Silently ignores missing or malformed files.
+   */
+  async function loadThemeConfig(): Promise<void> {
+    try {
+      const raw = await storage.readText(themeConfigPath);
+      themeConfig = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      themeConfig = {};
+    }
+  }
+
+  /**
+   * List available theme names by scanning the themes directory.
+   */
+  async function getAvailableThemes(): Promise<string[]> {
+    try {
+      const entries = await storage.list(themesDir);
+      return entries.filter((e) => !e.isFile).map((e) => e.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Switch the active theme, persist to site.yaml, and rebuild.
+   */
+  async function switchTheme(name: string): Promise<void> {
+    const oldName = config.theme.name;
+
+    // Re-create the theme loader for the new theme
+    themes = await createThemeLoader({
+      storage,
+      themesDir,
+      themeName: name,
+      rootDir: storageRoot,
+    });
+
+    // Update in-memory config
+    config.theme.name = name;
+
+    // Persist to config/site.yaml (read → mutate → write)
+    try {
+      const existingRaw = await storage.readText("config/site.yaml").catch(() => "");
+      const existing = ((parseYaml(existingRaw || "") ?? {}) as Record<string, unknown>);
+      const themeKey = existing.theme as Record<string, unknown> | undefined;
+      existing.theme = { ...(themeKey ?? {}), name };
+      await storage.write(
+        "config/site.yaml",
+        new TextEncoder().encode(stringifyYaml(existing).trimEnd() + "\n"),
+      );
+    } catch (err) {
+      console.warn("[dune] switchTheme: could not persist to site.yaml:", err);
+    }
+
+    // Reload theme config for the new theme
+    await loadThemeConfig();
+
+    // Fire hook so plugins can react
+    if (hooks) {
+      await hooks.fire("onThemeSwitch", { from: oldName, to: name });
+    }
+
+    // Rebuild content index
+    await rebuild();
+  }
 
   // Rebuild guard — prevents concurrent rebuilds from interleaving their
   // mutations to pages/taxonomyMap/router, which would expose partial state.
@@ -190,6 +287,9 @@ export async function createDuneEngine(
       defaultLanguage: config.system.languages?.default,
       includeDefaultInUrl: config.system.languages?.include_default_in_url,
     });
+
+    // Load theme user config (best-effort)
+    await loadThemeConfig();
 
     // Create theme loader
     themes = await createThemeLoader({
@@ -280,6 +380,10 @@ export async function createDuneEngine(
       if (config.system.debug) {
         console.log(`[dune] Rebuilt index: ${result.indexed} pages in ${result.duration}ms`);
       }
+
+      if (hooks) {
+        await hooks.fire("onRebuild", {});
+      }
     });
     return rebuildChain;
   }
@@ -291,6 +395,7 @@ export async function createDuneEngine(
     pages: [],
     taxonomyMap: {},
     blueprints: {},
+    themeConfig: {},
     router: undefined as unknown as RouteResolver,
     themes: undefined as unknown as ThemeLoader,
 
@@ -302,6 +407,7 @@ export async function createDuneEngine(
       engine.blueprints = blueprints ?? {};
       engine.router = router;
       engine.themes = themes;
+      engine.themeConfig = themeConfig;
     },
 
     resolve,
@@ -314,6 +420,14 @@ export async function createDuneEngine(
       engine.pages = pages;
       engine.taxonomyMap = taxonomyMap;
       engine.blueprints = blueprints ?? {};
+    },
+
+    getAvailableThemes,
+
+    async switchTheme(name: string) {
+      await switchTheme(name);
+      engine.themes = themes;
+      engine.themeConfig = themeConfig;
     },
   };
 

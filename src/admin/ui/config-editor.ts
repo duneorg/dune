@@ -8,6 +8,7 @@
  */
 
 import type { DuneConfig } from "../../config/types.ts";
+import type { BlueprintField } from "../../blueprints/types.ts";
 
 function escapeHtml(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(
@@ -20,8 +21,20 @@ function escapeAttr(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/** Data required for theme UI in the config editor. */
+export interface ConfigEditorThemeData {
+  availableThemes: string[];
+  currentTheme: string;
+  themeSchema: Record<string, BlueprintField>;
+  themeConfig: Record<string, unknown>;
+}
+
 /** Render the full config editor page (shell not included — caller wraps it). */
-export function renderConfigEditor(prefix: string, cfg: DuneConfig): string {
+export function renderConfigEditor(
+  prefix: string,
+  cfg: DuneConfig,
+  themeData?: ConfigEditorThemeData,
+): string {
   const { site, system } = cfg;
 
   // Pre-serialize list state for JS init
@@ -64,6 +77,7 @@ export function renderConfigEditor(prefix: string, cfg: DuneConfig): string {
 <div class="cfg-tabs" role="tablist">
   <button class="cfg-tab active" role="tab" onclick="switchTab('site',this)">Site</button>
   <button class="cfg-tab" role="tab" onclick="switchTab('system',this)">System</button>
+  <button class="cfg-tab" role="tab" onclick="switchTab('theme',this)">Theme</button>
 </div>
 
 <!-- ── Site tab ── -->
@@ -229,10 +243,91 @@ export function renderConfigEditor(prefix: string, cfg: DuneConfig): string {
 
 </div><!-- /tab-system -->
 
+<!-- ── Theme tab ── -->
+<div class="cfg-section" id="tab-theme" style="display:none">
+
+  <div class="cfg-group">
+    <h3>Active Theme</h3>
+    <div class="form-row-auto" style="align-items:flex-end">
+      <div class="form-group">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select" onchange="markThemeDirty()">
+          ${(themeData?.availableThemes ?? []).map((t) =>
+            `<option value="${escapeAttr(t)}"${t === (themeData?.currentTheme ?? "") ? " selected" : ""}>${escapeHtml(t)}</option>`
+          ).join("")}
+        </select>
+      </div>
+      <div class="form-group">
+        <button class="btn btn-primary btn-sm" onclick="switchTheme()" id="theme-switch-btn">Switch theme</button>
+        <span id="theme-switch-status" class="cfg-status"></span>
+      </div>
+    </div>
+  </div>
+
+  ${themeData && Object.keys(themeData.themeSchema).length > 0 ? `
+  <div class="cfg-group">
+    <h3>Theme Settings</h3>
+    <p class="cfg-hint">These settings are defined by the active theme.</p>
+    <div id="theme-config-fields">
+      ${renderThemeConfigFields(themeData.themeSchema, themeData.themeConfig)}
+    </div>
+    <div class="form-group" style="margin-top:1rem">
+      <button class="btn btn-primary btn-sm" onclick="saveThemeConfig()">Save theme settings</button>
+      <span id="theme-config-status" class="cfg-status"></span>
+    </div>
+  </div>` : ""}
+
+</div><!-- /tab-theme -->
+
 <script>
-${configEditorScript(prefix, initState)}
+${configEditorScript(prefix, initState, themeData)}
 </script>
 `;
+}
+
+/**
+ * Render blueprint-driven config fields for the active theme's configSchema.
+ * Mirrors the pattern from plugins.ts `renderConfigFields()`.
+ */
+function renderThemeConfigFields(
+  schema: Record<string, BlueprintField>,
+  current: Record<string, unknown>,
+): string {
+  return Object.entries(schema).map(([key, field]) => {
+    const value = current[key] ?? field.default ?? "";
+    const id = `theme-cfg-${escapeAttr(key)}`;
+
+    let input: string;
+    if (field.type === "toggle") {
+      const checked = value === true ? "checked" : "";
+      input = `<input type="checkbox" id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" data-type="toggle" ${checked}>`;
+    } else if (field.type === "select" && field.options) {
+      const opts = Object.entries(field.options)
+        .map(([v, label]) =>
+          `<option value="${escapeAttr(v)}"${value === v ? " selected" : ""}>${escapeHtml(label)}</option>`,
+        )
+        .join("");
+      input = `<select id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}">${opts}</select>`;
+    } else if (field.type === "textarea" || field.type === "markdown") {
+      input = `<textarea id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" rows="4">${escapeHtml(String(value))}</textarea>`;
+    } else if (field.type === "number") {
+      const min = field.validate?.min !== undefined ? `min="${field.validate.min}"` : "";
+      const max = field.validate?.max !== undefined ? `max="${field.validate.max}"` : "";
+      input = `<input type="number" id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" value="${escapeAttr(String(value))}" ${min} ${max}>`;
+    } else if (field.type === "color") {
+      input = `<input type="color" id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" value="${escapeAttr(String(value))}">`;
+    } else if (field.type === "date") {
+      input = `<input type="date" id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" value="${escapeAttr(String(value))}">`;
+    } else {
+      input = `<input type="text" id="${id}" name="${escapeAttr(key)}" data-tcfg="${escapeAttr(key)}" value="${escapeAttr(String(value))}">`;
+    }
+
+    const required = field.required ? ' <span style="color:#c00">*</span>' : "";
+    return `<div class="form-group">
+      <label for="${id}">${escapeHtml(field.label)}${required}</label>
+      ${input}
+    </div>`;
+  }).join("\n");
 }
 
 function configEditorScript(
@@ -243,6 +338,7 @@ function configEditorScript(
     supportedLangs: string[];
     allowedSizes: string[];
   },
+  themeData?: ConfigEditorThemeData,
 ): string {
   return `
   // ── State ──────────────────────────────────────────────────────────────────
@@ -408,6 +504,66 @@ function configEditorScript(
     const el = document.getElementById('cfg-notice');
     el.style.display = 'none';
     el.innerHTML = '';
+  }
+
+  // ── Theme selector ─────────────────────────────────────────────────────────
+  let themeSwitchDirty = false;
+  function markThemeDirty() { themeSwitchDirty = true; }
+
+  async function switchTheme() {
+    const sel = document.getElementById('theme-select');
+    if (!sel) return;
+    const name = sel.value;
+    const btn = document.getElementById('theme-switch-btn');
+    const status = document.getElementById('theme-switch-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = 'Switching…';
+    try {
+      const resp = await fetch('${prefix}/api/config/theme', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const result = await resp.json();
+      if (result.switched) {
+        if (status) status.textContent = '✓ Theme switched — page will reload';
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        if (status) status.textContent = '✗ ' + escapeHtml(result.error || 'Error');
+      }
+    } catch (err) {
+      if (status) status.textContent = '✗ Network error';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ── Theme config save ──────────────────────────────────────────────────────
+  async function saveThemeConfig() {
+    const fields = document.querySelectorAll('[data-tcfg]');
+    const cfg = {};
+    fields.forEach(el => {
+      const key = el.dataset.tcfg;
+      if (el.dataset.type === 'toggle') {
+        cfg[key] = el.checked;
+      } else {
+        cfg[key] = el.value;
+      }
+    });
+    const status = document.getElementById('theme-config-status');
+    if (status) status.textContent = 'Saving…';
+    try {
+      const resp = await fetch('${prefix}/api/config/theme-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      });
+      const result = await resp.json();
+      if (status) status.textContent = result.saved ? '✓ Saved' : '✗ ' + escapeHtml(result.error || 'Error');
+      setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+    } catch {
+      if (status) status.textContent = '✗ Network error';
+    }
   }
 
   // ── Warn on unsaved leave ──────────────────────────────────────────────────

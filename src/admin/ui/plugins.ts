@@ -252,11 +252,15 @@ function adminShellPartial(
   ];
 
   return `<div class="admin-layout">
-    <aside class="admin-sidebar">
-      <div class="sidebar-brand"><a href="${prefix}/">🏜️ Dune</a></div>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <div class="sidebar-brand">
+        <a href="${prefix}/">🏜️ Dune</a>
+        <button class="sidebar-close" onclick="closeSidebar()" aria-label="Close menu">✕</button>
+      </div>
       <nav class="sidebar-nav">
         ${navItems.map((item) => `
-        <a href="${item.href}" class="nav-item ${active === item.id ? "active" : ""}">
+        <a href="${item.href}" class="nav-item ${active === item.id ? "active" : ""}" onclick="closeSidebar()">
           <span class="nav-icon">${item.icon}</span>
           <span class="nav-label">${item.label}</span>
         </a>`).join("")}
@@ -265,6 +269,7 @@ function adminShellPartial(
     <main class="admin-main">
       <header class="admin-topbar">
         <div class="topbar-left">
+          <button class="sidebar-toggle" onclick="openSidebar()" aria-label="Open menu">☰</button>
           <a href="/" target="_blank" class="btn btn-sm">View Site →</a>
         </div>
         <div class="topbar-right">
@@ -276,7 +281,19 @@ function adminShellPartial(
       </header>
       <div class="admin-content">${content}</div>
     </main>
-  </div>`;
+  </div>
+  <script>
+  function openSidebar() {
+    document.getElementById('admin-sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    document.getElementById('admin-sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  </script>`;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -329,6 +346,33 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sa
 .required-mark { color: #c00; }
 .form-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
 .save-status { font-size: 0.85rem; color: #555; }
+
+/* ── Mobile responsive ── */
+.topbar-left { display: flex; align-items: center; gap: 0.5rem; }
+.sidebar-toggle { display: none; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #333; padding: 0.25rem; line-height: 1; }
+.sidebar-close { display: none; background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #aaa; padding: 0.25rem; line-height: 1; margin-left: auto; }
+.sidebar-brand { display: flex; align-items: center; justify-content: space-between; }
+.sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+.sidebar-overlay.open { display: block; }
+
+@media (max-width: 767px) {
+  .sidebar-toggle { display: block; }
+  .sidebar-close { display: flex; align-items: center; justify-content: center; }
+  .admin-sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 100dvh;
+    width: 220px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 100;
+  }
+  .admin-sidebar.open { transform: translateX(0); }
+  .admin-main { width: 100%; }
+  .admin-content { padding: 1rem; }
+  .admin-topbar { padding: 0.6rem 1rem; }
+  .plugins-header h2 { font-size: 1.1rem; }
+}
 `;
 }
 

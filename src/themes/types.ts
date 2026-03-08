@@ -3,6 +3,7 @@
  */
 
 import type { TemplateComponent } from "../content/types.ts";
+import type { BlueprintField } from "../blueprints/types.ts";
 
 /** Theme manifest loaded from theme.yaml */
 export interface ThemeManifest {
@@ -16,6 +17,20 @@ export interface ThemeManifest {
   author?: string;
   /** Theme version */
   version?: string;
+  /**
+   * User-configurable theme settings declared in `theme.yaml` under
+   * `config_schema`.  Admin UI renders a form for these fields and persists
+   * the values to `data/theme-config.json`.
+   *
+   * @example
+   * ```yaml
+   * # theme.yaml
+   * config_schema:
+   *   primary_color: { type: color, label: "Primary Colour", default: "#c9a96e" }
+   *   show_author:   { type: toggle, label: "Show post author", default: true }
+   * ```
+   */
+  configSchema?: Record<string, BlueprintField>;
 }
 
 /** A resolved theme with all its templates, components, and layouts */

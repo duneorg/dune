@@ -34,7 +34,11 @@ export type HookEvent =
 
   // API
   | "onApiRequest"
-  | "onApiResponse";
+  | "onApiResponse"
+
+  // Engine lifecycle
+  | "onRebuild"      // fired at the end of a successful engine.rebuild()
+  | "onThemeSwitch"; // fired when the active theme changes
 
 /** Hook handler signature */
 export type HookHandler<T = unknown> = (context: HookContext<T>) => Promise<void> | void;
