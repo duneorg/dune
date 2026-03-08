@@ -47,6 +47,8 @@ export function renderPageEditorPage(
     translations?: Array<{ lang: string; sourcePath: string; exists: boolean }>;
     /** Raw content of the default-language sibling, shown as a reference panel. */
     referenceContent?: string | null;
+    /** Translation Memory suggestions — source/target pairs matched from reference segments. */
+    tmSuggestions?: Array<{ source: string; target: string }>;
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -212,6 +214,20 @@ export function renderPageEditorPage(
             }
             return `<div class="translation-row">${langBadge} <button class="btn btn-xs btn-outline" onclick="createTranslation('${escapeAttr(pageData.sourcePath)}','${escapeAttr(t.lang)}')">Create</button></div>`;
           }).join("")}
+        </div>` : ""}
+
+        ${(pageData.tmSuggestions?.length ?? 0) > 0 ? `
+        <div class="sidebar-section tm-suggestions-section">
+          <h4>TM Suggestions <span class="tm-badge">${pageData.tmSuggestions!.length}</span></h4>
+          <p class="tm-hint">Matched segments from the translation memory. Click to copy the translation.</p>
+          <div class="tm-suggestion-list">
+            ${pageData.tmSuggestions!.map((s) => `
+            <div class="tm-suggestion">
+              <div class="tm-suggestion-source">${escapeHtml(s.source.length > 120 ? s.source.slice(0, 120) + "…" : s.source)}</div>
+              <div class="tm-suggestion-target">${escapeHtml(s.target.length > 120 ? s.target.slice(0, 120) + "…" : s.target)}</div>
+              <button class="btn btn-xs tm-copy-btn" onclick="copyTMSuggestion(${JSON.stringify(s.target)})" title="Copy translation to clipboard">Copy</button>
+            </div>`).join("")}
+          </div>
         </div>` : ""}
       </aside>
 
@@ -1004,6 +1020,29 @@ function editorScript(
       }
     }
 
+    function copyTMSuggestion(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      }).catch(() => {
+        // Fallback: select text in a temporary textarea
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
     function createTranslation(sourcePath, lang) {
       const btn = event.target;
       const originalText = btn.textContent;
@@ -1195,6 +1234,16 @@ function editorStyles(): string {
   .editor-reference-header { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; color: #555; border-bottom: 1px solid #e8e8e8; background: #f0f0f0; }
   .editor-reference-header .btn-xs { color: #666; border-color: #ccc; }
   .editor-reference-content { margin: 0; padding: 0.75rem; max-height: 280px; overflow-y: auto; font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #333; }
+
+  /* TM Suggestions sidebar section */
+  .tm-suggestions-section { }
+  .tm-badge { display: inline-block; background: #1a6fa8; color: #fff; font-size: 0.68rem; border-radius: 10px; padding: 0.05rem 0.4rem; margin-left: 0.25rem; vertical-align: middle; font-weight: 700; }
+  .tm-hint { font-size: 0.75rem; color: #888; margin-bottom: 0.5rem; line-height: 1.4; }
+  .tm-suggestion-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .tm-suggestion { background: #f0f7ff; border: 1px solid #c7dff7; border-radius: 4px; padding: 0.4rem 0.5rem; font-size: 0.78rem; }
+  .tm-suggestion-source { color: #555; margin-bottom: 0.2rem; line-height: 1.4; word-break: break-word; }
+  .tm-suggestion-target { color: #1a3a5c; font-weight: 500; line-height: 1.4; word-break: break-word; margin-bottom: 0.35rem; }
+  .tm-copy-btn { display: block; width: 100%; text-align: center; }
   `;
 }
 

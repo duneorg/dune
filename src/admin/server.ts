@@ -19,6 +19,11 @@
  *   DELETE /admin/api/pages/:path → Delete page
  *   GET  /admin/api/media     → List all media (JSON)
  *   PUT  /admin/api/media/meta → Save media sidecar metadata (focal point, etc.)
+ *   GET  /admin/i18n/memory   → Translation Memory admin page
+ *   GET  /admin/api/i18n/memory → List TM entries for a language pair (JSON)
+ *   POST /admin/api/i18n/memory → Add/update TM entry
+ *   DELETE /admin/api/i18n/memory → Delete TM entry
+ *   POST /admin/api/i18n/memory/rebuild → Rebuild TM from existing translations
  *   GET  /admin/api/users     → List users (admin only)
  *   POST /admin/api/users     → Create user (admin only)
  *   GET  /admin/api/config    → Read config (JSON)
@@ -60,6 +65,14 @@ import {
 } from "./ui/flex-objects.ts";
 import { renderRevisionHistory, renderRevisionScripts, revisionHistoryStyles } from "./ui/revision-history.ts";
 import { renderTranslationStatus, translationStatusStyles } from "./ui/translation-status.ts";
+import { renderTMPage, tmPageStyles, type TMPageData } from "./ui/translation-memory.ts";
+import {
+  extractSegments,
+  buildTMFromPages,
+  loadTM,
+  saveTM,
+  lookupSuggestions,
+} from "./tm.ts";
 import { renderWorkflowPanel, workflowPanelStyles } from "./ui/workflow-panel.ts";
 import type { SubmissionManager, SubmissionStatus } from "./submissions.ts";
 import {
@@ -263,6 +276,34 @@ export function createAdminHandler(config: AdminServerConfig) {
     // GET /admin/i18n — Translation status
     if (adminPath === "/i18n") {
       return htmlResponse(renderI18nPage(prefix, authResult));
+    }
+
+    // GET /admin/i18n/memory — Translation Memory admin page
+    if (adminPath === "/i18n/memory" && method === "GET") {
+      return htmlResponse(await renderTMAdminPage(prefix, url, authResult));
+    }
+
+    // GET /admin/api/i18n/memory?from=en&to=de — List TM entries
+    if (adminPath === "/api/i18n/memory" && method === "GET") {
+      return handleListTM(url);
+    }
+
+    // POST /admin/api/i18n/memory/rebuild — Rebuild TM from existing translations
+    if (adminPath === "/api/i18n/memory/rebuild" && method === "POST") {
+      requirePermission(authResult, "pages.read");
+      return handleRebuildTM(req);
+    }
+
+    // POST /admin/api/i18n/memory — Add/update a TM entry
+    if (adminPath === "/api/i18n/memory" && method === "POST") {
+      requirePermission(authResult, "pages.update");
+      return handleAddTMEntry(req);
+    }
+
+    // DELETE /admin/api/i18n/memory — Remove a TM entry
+    if (adminPath === "/api/i18n/memory" && method === "DELETE") {
+      requirePermission(authResult, "pages.update");
+      return handleDeleteTMEntry(req);
     }
 
     // GET /admin/config — Config editor
@@ -511,6 +552,19 @@ export function createAdminHandler(config: AdminServerConfig) {
         }
       }
 
+      // Load TM suggestions when editing a non-default-language page
+      let tmSuggestions: Array<{ source: string; target: string }> = [];
+      if (
+        referenceContent != null &&
+        pageLanguage !== defaultLang &&
+        defaultLang
+      ) {
+        const contentDir = config.config.system.content.dir;
+        const tm = await loadTM(storage, contentDir, defaultLang, pageLanguage);
+        const segments = extractSegments(referenceContent);
+        tmSuggestions = lookupSuggestions(tm, segments);
+      }
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -534,6 +588,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         defaultLanguage: defaultLang,
         translations,
         referenceContent,
+        tmSuggestions,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
@@ -1175,6 +1230,170 @@ export function createAdminHandler(config: AdminServerConfig) {
       await engine.rebuild();
 
       return jsonResponse({ created: true, path: targetPath });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  // === Translation Memory handlers ===
+
+  /** Validate a language code against the configured supported languages. */
+  function isValidLang(lang: unknown): lang is string {
+    const supported = config.config.system.languages?.supported ?? [];
+    return typeof lang === "string" && supported.includes(lang);
+  }
+
+  async function renderTMAdminPage(
+    pfx: string,
+    url: URL,
+    authResult: AuthResult,
+  ): Promise<string> {
+    const userName = authResult.user?.name ?? "Admin";
+    const languages = config.config.system.languages?.supported ?? [];
+    const defaultLang = config.config.system.languages?.default ?? "en";
+    const otherLangs = languages.filter((l: string) => l !== defaultLang);
+
+    // Determine which language pair to show
+    const from = url.searchParams.get("from") ?? defaultLang;
+    const to = url.searchParams.get("to") ?? otherLangs[0] ?? "";
+
+    let entries: Array<{ source: string; target: string }> = [];
+    if (from && to && isValidLang(from) && isValidLang(to)) {
+      const contentDir = config.config.system.content.dir;
+      const tm = await loadTM(storage, contentDir, from, to);
+      entries = Object.entries(tm)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([source, target]) => ({ source, target }));
+    }
+
+    const tmData: TMPageData = { languages, defaultLanguage: defaultLang, from, to, entries };
+    const content = renderTMPage(pfx, tmData);
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Translation Memory — Dune Admin</title>
+  <style>${baseAdminStyles()}${translationStatusStyles()}${tmPageStyles()}</style>
+</head>
+<body>
+  ${adminShell(pfx, "i18n", userName, `
+    <h2>Translation Memory</h2>
+    <p class="tm-intro">TM stores previously translated segments and suggests them when you translate new pages. Use <strong>Rebuild</strong> to populate from your existing translated pages.</p>
+    ${content}
+  `)}
+</body>
+</html>`;
+  }
+
+  async function handleListTM(url: URL): Promise<Response> {
+    try {
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      if (!isValidLang(from) || !isValidLang(to)) {
+        return jsonResponse({ error: "Valid from and to language codes required" }, 400);
+      }
+      const contentDir = config.config.system.content.dir;
+      const tm = await loadTM(storage, contentDir, from, to);
+      const entries = Object.entries(tm)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([source, target]) => ({ source, target }));
+      return jsonResponse({ from, to, entries });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleAddTMEntry(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { from, to, source, target } = body;
+      if (!isValidLang(from) || !isValidLang(to)) {
+        return jsonResponse({ error: "Valid from and to language codes required" }, 400);
+      }
+      if (!source || typeof source !== "string" || !target || typeof target !== "string") {
+        return jsonResponse({ error: "source and target strings required" }, 400);
+      }
+      const contentDir = config.config.system.content.dir;
+      const tm = await loadTM(storage, contentDir, from, to);
+      tm[source.trim()] = target.trim();
+      await saveTM(storage, contentDir, from, to, tm);
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleDeleteTMEntry(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { from, to, source } = body;
+      if (!isValidLang(from) || !isValidLang(to)) {
+        return jsonResponse({ error: "Valid from and to language codes required" }, 400);
+      }
+      if (!source || typeof source !== "string") {
+        return jsonResponse({ error: "source string required" }, 400);
+      }
+      const contentDir = config.config.system.content.dir;
+      const tm = await loadTM(storage, contentDir, from, to);
+      delete tm[source];
+      await saveTM(storage, contentDir, from, to, tm);
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleRebuildTM(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { from, to } = body;
+      if (!isValidLang(from) || !isValidLang(to)) {
+        return jsonResponse({ error: "Valid from and to language codes required" }, 400);
+      }
+
+      const contentDir = config.config.system.content.dir;
+      const supportedLangs = config.config.system.languages?.supported ?? [];
+
+      // Load existing TM so we can merge new pairs without losing manual entries
+      const tm = await loadTM(storage, contentDir, from, to);
+      let added = 0;
+
+      // For each default-language page, look for a target-language sibling
+      const sourceLangPages = engine.pages.filter((p) => p.language === from);
+      for (const sourcePage of sourceLangPages) {
+        const filename = basename(sourcePage.sourcePath);
+        const fileInfo = parseContentFilename(filename, supportedLangs);
+        if (!fileInfo) continue;
+
+        const dir = dirname(sourcePage.sourcePath);
+        const targetPath = `${dir}/${fileInfo.template}.${to}${fileInfo.ext}`;
+        const targetExists = engine.pages.some((p) => p.sourcePath === targetPath);
+        if (!targetExists) continue;
+
+        try {
+          const [sourceLoaded, targetLoaded] = await Promise.all([
+            engine.loadPage(sourcePage.sourcePath),
+            engine.loadPage(targetPath),
+          ]);
+
+          if (!sourceLoaded.rawContent || !targetLoaded.rawContent) continue;
+
+          const pairs = buildTMFromPages(sourceLoaded.rawContent, targetLoaded.rawContent);
+          for (const [src, tgt] of Object.entries(pairs)) {
+            if (!tm[src]) {
+              tm[src] = tgt;
+              added++;
+            }
+          }
+        } catch {
+          // Skip pages that can't be loaded
+        }
+      }
+
+      await saveTM(storage, contentDir, from, to, tm);
+      return jsonResponse({ ok: true, added });
     } catch (err) {
       return serverError(err);
     }
@@ -2124,7 +2343,10 @@ export function createAdminHandler(config: AdminServerConfig) {
 </head>
 <body>
   ${adminShell(pfx, "i18n", userName, `
-    <h2>Translations</h2>
+    <div class="i18n-page-header">
+      <h2>Translations</h2>
+      <a href="${pfx}/i18n/memory" class="btn btn-sm btn-outline">🧠 Translation Memory</a>
+    </div>
     ${content}
   `)}
 </body>

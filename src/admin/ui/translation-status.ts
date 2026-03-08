@@ -168,6 +168,8 @@ export function translationStatusStyles(): string {
   .cell-missing { color: #d1d5db; }
   .i18n-legend { display: flex; gap: 1rem; margin-top: 0.75rem; font-size: 0.8rem; color: #6b7280; }
   .legend-item { display: flex; align-items: center; gap: 0.3rem; }
+  .i18n-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .i18n-page-header h2 { margin: 0; }
   `;
 }
 
