@@ -1244,6 +1244,32 @@ function editorStyles(): string {
   .tm-suggestion-source { color: #555; margin-bottom: 0.2rem; line-height: 1.4; word-break: break-word; }
   .tm-suggestion-target { color: #1a3a5c; font-weight: 500; line-height: 1.4; word-break: break-word; margin-bottom: 0.35rem; }
   .tm-copy-btn { display: block; width: 100%; text-align: center; }
+
+  /* ── Mobile responsive ── */
+  @media (max-width: 767px) {
+    .editor-toolbar { flex-wrap: wrap; gap: 0.3rem; padding: 0.4rem 0.6rem; }
+    .toolbar-left { flex: 1; min-width: 0; }
+    .toolbar-right { flex-wrap: wrap; gap: 0.3rem; }
+    .editor-title { font-size: 0.82rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .editor-body { flex-direction: column; overflow: auto; }
+    .editor-sidebar {
+      width: 100%;
+      max-height: 40vh;
+      border-right: none;
+      border-bottom: 1px solid #e0e0e0;
+      overflow-y: auto;
+    }
+    .editor-main { flex: none; min-height: 50vh; padding: 0.5rem; }
+    .source-textarea { height: 50vh; }
+    .editor-preview {
+      width: 100%;
+      height: 40vh;
+      border-left: none;
+      border-top: 1px solid #e0e0e0;
+      flex-shrink: 0;
+    }
+    .editor-reference-content { max-height: 180px; }
+  }
   `;
 }
 

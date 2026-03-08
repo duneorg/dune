@@ -26,6 +26,9 @@
  *   POST /admin/api/i18n/memory/rebuild → Rebuild TM from existing translations
  *   GET  /admin/api/users     → List users (admin only)
  *   POST /admin/api/users     → Create user (admin only)
+ *   PUT  /admin/api/users/:id → Update user (role, name, email, enabled)
+ *   POST /admin/api/users/:id/password → Change a user's password
+ *   DELETE /admin/api/users/:id → Delete user
  *   GET  /admin/api/config    → Read config (JSON)
  *   POST /admin/api/editor/parse     → Markdown → Blocks
  *   POST /admin/api/editor/serialize → Blocks → Markdown
@@ -84,6 +87,7 @@ import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.t
 import { renderConfigEditor, configEditorStyles } from "./ui/config-editor.ts";
 import { renderPluginsPage, pluginStyles } from "./ui/plugins.ts";
 import { validateConfig } from "../config/validator.ts";
+import { renderUsersPage, userStyles, type UsersPageData } from "./ui/users.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { sendSubmissionEmail } from "./email.ts";
@@ -327,7 +331,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!auth.hasPermission(authResult, "users.read")) {
         return htmlResponse("<h1>403 Forbidden</h1>", 403);
       }
-      return htmlResponse(renderShellPage(prefix, "users", authResult));
+      return htmlResponse(await renderUsersPageHtml(prefix, authResult));
     }
 
     // GET /admin/submissions — submissions index (redirect to first form or show all forms)
@@ -805,6 +809,27 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath === "/api/users" && method === "POST") {
       requirePermission(authResult, "users.create");
       return handleCreateUser(req, authResult);
+    }
+
+    // PUT /admin/api/users/:id — Update user (role, name, email, enabled)
+    if (adminPath.startsWith("/api/users/") && !adminPath.endsWith("/password") && method === "PUT") {
+      requirePermission(authResult, "users.update");
+      const userId = adminPath.replace("/api/users/", "");
+      return handleUpdateUser(req, userId, authResult);
+    }
+
+    // POST /admin/api/users/:id/password — Change a user's password
+    if (adminPath.startsWith("/api/users/") && adminPath.endsWith("/password") && method === "POST") {
+      requirePermission(authResult, "users.update");
+      const userId = adminPath.replace("/api/users/", "").replace("/password", "");
+      return handleChangeUserPassword(req, userId);
+    }
+
+    // DELETE /admin/api/users/:id — Delete a user
+    if (adminPath.startsWith("/api/users/") && method === "DELETE") {
+      requirePermission(authResult, "users.delete");
+      const userId = adminPath.replace("/api/users/", "");
+      return handleDeleteUser(userId, authResult);
     }
 
     // GET /admin/api/config — Read site config
@@ -1618,6 +1643,100 @@ export function createAdminHandler(config: AdminServerConfig) {
     } catch (err) {
       return serverError(err);
     }
+  }
+
+  async function handleUpdateUser(req: Request, userId: string, authResult: AuthResult): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { name, email, role, enabled } = body;
+
+      // Only admins may change roles
+      if (role !== undefined && authResult.user?.role !== "admin") {
+        return jsonResponse({ error: "Only admins can change user roles" }, 403);
+      }
+      // Only admins may change another user's role to admin
+      if (role === "admin" && authResult.user?.role !== "admin") {
+        return jsonResponse({ error: "Only admins can assign admin role" }, 403);
+      }
+      // Validate role if provided
+      if (role !== undefined) {
+        const VALID_ROLES = ["admin", "editor", "author"] as const;
+        if (!VALID_ROLES.includes(role)) {
+          return jsonResponse({ error: "Invalid role" }, 400);
+        }
+      }
+
+      const updates: Partial<{ name: string; email: string; role: "admin" | "editor" | "author"; enabled: boolean }> = {};
+      if (name !== undefined) updates.name = String(name);
+      if (email !== undefined) updates.email = String(email);
+      if (role !== undefined) updates.role = role;
+      if (enabled !== undefined) updates.enabled = Boolean(enabled);
+
+      const updated = await users.update(userId, updates);
+      if (!updated) return jsonResponse({ error: "User not found" }, 404);
+      return jsonResponse({ ok: true, user: toUserInfo(updated) });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleChangeUserPassword(req: Request, userId: string): Promise<Response> {
+    try {
+      const { password } = await req.json();
+      if (!password || typeof password !== "string") {
+        return jsonResponse({ error: "password is required" }, 400);
+      }
+      const MIN_PASSWORD_LENGTH = 12;
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        return jsonResponse({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400);
+      }
+      const changed = await users.changePassword(userId, password);
+      if (!changed) return jsonResponse({ error: "User not found" }, 404);
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleDeleteUser(userId: string, authResult: AuthResult): Promise<Response> {
+    try {
+      // Prevent self-deletion
+      if (authResult.user?.id === userId) {
+        return jsonResponse({ error: "Cannot delete your own account" }, 400);
+      }
+      const deleted = await users.delete(userId);
+      if (!deleted) return jsonResponse({ error: "User not found" }, 404);
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function renderUsersPageHtml(pfx: string, authResult: AuthResult): Promise<string> {
+    const userName = authResult.user?.name ?? "Admin";
+    const isAdmin = authResult.user?.role === "admin";
+    const allUsers = await users.list();
+    const data: UsersPageData = {
+      users: allUsers.map(toUserInfo),
+      currentUserId: authResult.user?.id ?? "",
+      isAdmin,
+    };
+    const content = renderUsersPage(pfx, data);
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users — Dune Admin</title>
+  <style>${baseAdminStyles()}${userStyles()}</style>
+</head>
+<body>
+  ${adminShell(pfx, "users", userName, `
+    <h2>Users</h2>
+    ${content}
+  `)}
+</body>
+</html>`;
   }
 
   // === Workflow handlers ===
