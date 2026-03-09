@@ -33,6 +33,10 @@
  *   POST /admin/api/editor/parse     → Markdown → Blocks
  *   POST /admin/api/editor/serialize → Blocks → Markdown
  *   POST /admin/api/preview   → Render preview HTML
+ *   GET  /admin/themes        → Theme marketplace page
+ *   GET  /admin/api/theme-preview?theme=X&route=/path → Render page with preview theme
+ *   GET  /admin/api/registry/themes  → Bundled theme registry JSON
+ *   POST /admin/api/themes/install   → Download + extract theme ZIP
  *
  * Public routes (no admin auth):
  *   POST /api/contact         → Accept contact form submissions
@@ -86,6 +90,10 @@ import {
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
 import { renderConfigEditor, configEditorStyles, type ConfigEditorThemeData } from "./ui/config-editor.ts";
 import { renderPluginsPage, pluginStyles } from "./ui/plugins.ts";
+import { renderThemesPage, type ThemeRegistry, type InstalledThemeInfo } from "./ui/themes.ts";
+import { h, type ComponentType } from "preact";
+import { render as renderJsxToString } from "preact-render-to-string";
+import { buildPageTitle } from "../content/types.ts";
 import { validateConfig } from "../config/validator.ts";
 import { renderUsersPage, userStyles, type UsersPageData } from "./ui/users.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
@@ -180,6 +188,7 @@ export function createAdminHandler(config: AdminServerConfig) {
   return async function handleAdminRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
     const path = url.pathname;
+    const method = req.method;
 
     // === Public contact form endpoint ===
     // POST /api/contact — accepts contact form data, no admin auth required
@@ -406,6 +415,14 @@ export function createAdminHandler(config: AdminServerConfig) {
       );
     }
 
+    // GET /admin/themes — Theme marketplace
+    if (adminPath === "/themes" && req.method === "GET") {
+      if (!auth.hasPermission(authResult, "config.read")) {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      return htmlResponse(await renderThemesPageHtml(prefix, authResult));
+    }
+
     // === Flex Object UI routes ===
 
     // GET /admin/flex — Type list
@@ -518,8 +535,8 @@ export function createAdminHandler(config: AdminServerConfig) {
       const revisionCount = history ? await history.getRevisionCount(page.sourcePath) : 0;
 
       // === Multilingual translation context ===
-      const supportedLangs = engine.config.config.system.languages?.supported ?? [];
-      const defaultLang = engine.config.config.system.languages?.default ?? "en";
+      const supportedLangs = engine.config.system.languages?.supported ?? [];
+      const defaultLang = engine.config.system.languages?.default ?? "en";
       const isMultilingual = supportedLangs.length > 1;
 
       let pageLanguage = defaultLang;
@@ -923,6 +940,24 @@ export function createAdminHandler(config: AdminServerConfig) {
       }
     }
 
+    // GET /admin/api/theme-preview — Render a page using a preview theme (does not switch)
+    if (adminPath === "/api/theme-preview" && method === "GET") {
+      requirePermission(authResult, "config.read");
+      return handleThemePreview(new URL(req.url));
+    }
+
+    // GET /admin/api/registry/themes — Return the bundled theme registry JSON
+    if (adminPath === "/api/registry/themes" && method === "GET") {
+      requirePermission(authResult, "config.read");
+      return handleThemeRegistry();
+    }
+
+    // POST /admin/api/themes/install — Download + extract a theme ZIP from a registry URL
+    if (adminPath === "/api/themes/install" && method === "POST") {
+      requirePermission(authResult, "config.update");
+      return handleThemeInstall(req);
+    }
+
     // === Plugin API routes ===
 
     // GET /admin/api/plugins — List registered plugins and their configs
@@ -1311,7 +1346,7 @@ export function createAdminHandler(config: AdminServerConfig) {
   async function handleCreateTranslation(req: Request): Promise<Response> {
     try {
       const { sourcePath, lang } = await req.json();
-      const supportedLangs = engine.config.config.system.languages?.supported ?? [];
+      const supportedLangs = engine.config.system.languages?.supported ?? [];
 
       if (!sourcePath || typeof sourcePath !== "string" || !lang || typeof lang !== "string") {
         return jsonResponse({ error: "sourcePath and lang required" }, 400);
@@ -2572,6 +2607,8 @@ export function createAdminHandler(config: AdminServerConfig) {
         currentTheme: engine.config.theme.name,
         themeSchema: (manifest.configSchema ?? {}) as Record<string, import("../blueprints/types.ts").BlueprintField>,
         themeConfig: engine.themeConfig,
+        navRoutes: engine.router.getTopNavigation("en")
+          .map((p) => ({ route: p.route, title: p.navTitle || p.title || p.route })),
       };
     } catch {
       // Theme data unavailable — omit the Theme tab content
@@ -2646,6 +2683,207 @@ export function createAdminHandler(config: AdminServerConfig) {
       return jsonResponse({ updated: true, restartRequired: true });
     } catch (err) {
       return serverError(err);
+    }
+  }
+
+  // === Theme marketplace page ===
+
+  async function renderThemesPageHtml(pfx: string, authResult: AuthResult): Promise<string> {
+    // Load installed themes with their manifests
+    const installedNames = await engine.getAvailableThemes();
+    const installed: InstalledThemeInfo[] = await Promise.all(
+      installedNames.map(async (slug) => {
+        try {
+          const loader = await engine.createPreviewTheme(slug);
+          return { slug, manifest: loader.theme.manifest };
+        } catch {
+          return { slug, manifest: { name: slug } };
+        }
+      }),
+    );
+
+    // Load the bundled registry (best-effort; fallback to empty if missing)
+    let registry: ThemeRegistry = { version: 1, themes: [] };
+    try {
+      const registryUrl = new URL("./registry/themes.json", import.meta.url);
+      const registryText = await Deno.readTextFile(registryUrl);
+      registry = JSON.parse(registryText) as ThemeRegistry;
+    } catch { /* leave empty */ }
+
+    return renderThemesPage(pfx, installed, engine.config.theme.name, registry, authResult);
+  }
+
+  // === Theme preview handler ===
+
+  async function handleThemePreview(url: URL): Promise<Response> {
+    const themeName = url.searchParams.get("theme") ?? "";
+    const route = url.searchParams.get("route") || "/";
+
+    // Validate the requested theme
+    const available = await engine.getAvailableThemes();
+    if (!available.includes(themeName)) {
+      return htmlResponse(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Theme Not Found</title></head>
+<body style="font-family:system-ui;padding:2rem;color:#555">
+  <p>⚠ Theme <code>${escapeHtml(themeName)}</code> not found. Available: ${available.map(escapeHtml).join(", ") || "none"}.</p>
+</body></html>`,
+        404,
+      );
+    }
+
+    // Find the page by route
+    const pageIndex = engine.pages.find((p) => p.route === route && p.published && p.routable);
+    if (!pageIndex) {
+      return htmlResponse(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Route Not Found</title></head>
+<body style="font-family:system-ui;padding:2rem;color:#555">
+  <p>⚠ No published page at route <code>${escapeHtml(route)}</code>.</p>
+</body></html>`,
+        404,
+      );
+    }
+
+    try {
+      // TSX pages render themselves — we can't easily swap their layout from here.
+      // Show a helpful note rather than silently rendering with the wrong theme.
+      if (pageIndex.format === "tsx") {
+        return htmlResponse(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TSX Page Preview</title></head>
+<body style="font-family:system-ui;padding:2rem;color:#555;max-width:600px;margin:2rem auto">
+  <p>ℹ TSX pages are self-rendering and cannot be previewed with a different theme in this panel.</p>
+  <p>Switch the active theme to see TSX pages with the new theme.</p>
+</body></html>`,
+        );
+      }
+
+      // Load the page and create a temporary preview theme loader
+      const [page, previewLoader] = await Promise.all([
+        engine.loadPage(pageIndex.sourcePath),
+        engine.createPreviewTheme(themeName),
+      ]);
+
+      // Render HTML content from the page
+      const html = await page.html();
+
+      // Try to load the appropriate template from the preview theme
+      const templateName = previewLoader.resolveTemplateName(page) ?? "default";
+      const template = await previewLoader.loadTemplate(templateName);
+
+      if (!template) {
+        // Fallback: minimal shell without theme styles
+        const pageTitle = buildPageTitle(page, engine.site.title);
+        return htmlResponse(`<!DOCTYPE html><html><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeHtml(pageTitle)}</title>
+  <style>body{font-family:system-ui;max-width:800px;margin:2rem auto;padding:0 1rem;line-height:1.6}img{max-width:100%}</style>
+</head><body>
+  <h1>${escapeHtml(page.frontmatter.title ?? "")}</h1>
+  <div>${html}</div>
+</body></html>`);
+      }
+
+      // Full render through the preview theme template + layout
+      const layout = await previewLoader.loadLayout("layout");
+      const strings = await previewLoader.loadLocale(pageIndex.language ?? "en");
+      const t = (key: string) => (strings[key] ?? key) as string;
+
+      const rendered = renderJsxToString(
+        h((template.component as unknown) as ComponentType<Record<string, unknown>>, {
+          page,
+          pageTitle: buildPageTitle(page, engine.site.title),
+          site: engine.site,
+          config: engine.config,
+          nav: engine.router.getTopNavigation(pageIndex.language),
+          pathname: route,
+          search: "",
+          Layout: layout ?? undefined,
+          themeConfig: engine.themeConfig,
+          t,
+          children: h("div", { dangerouslySetInnerHTML: { __html: html } }),
+        }),
+      );
+
+      return htmlResponse(`<!DOCTYPE html>${rendered}`);
+    } catch (err) {
+      return serverErrorHtml(err, "theme-preview");
+    }
+  }
+
+  // === Theme registry handler ===
+
+  async function handleThemeRegistry(): Promise<Response> {
+    try {
+      const registryUrl = new URL("./registry/themes.json", import.meta.url);
+      const registryText = await Deno.readTextFile(registryUrl);
+      const registry = JSON.parse(registryText) as ThemeRegistry;
+      return jsonResponse(registry);
+    } catch {
+      return jsonResponse({ version: 1, themes: [] });
+    }
+  }
+
+  // === Theme install handler ===
+
+  async function handleThemeInstall(req: Request): Promise<Response> {
+    try {
+      const { slug, downloadUrl } = await req.json() as { slug?: string; downloadUrl?: string };
+
+      if (!slug || typeof slug !== "string" || !/^[a-z0-9][a-z0-9_-]*$/.test(slug)) {
+        return jsonResponse({ error: "Invalid slug — must match [a-z0-9][a-z0-9_-]*" }, 400);
+      }
+      if (!downloadUrl || typeof downloadUrl !== "string") {
+        return jsonResponse({ error: "downloadUrl required" }, 400);
+      }
+
+      // Only allow https:// to prevent SSRF against local services
+      if (!downloadUrl.startsWith("https://")) {
+        return jsonResponse({ error: "downloadUrl must be an https:// URL" }, 400);
+      }
+
+      // Fetch the ZIP
+      const fetchResp = await fetch(downloadUrl, {
+        headers: { "User-Agent": "Dune-CMS/0.3 theme-installer" },
+      });
+      if (!fetchResp.ok) {
+        return jsonResponse(
+          { error: `Failed to fetch theme ZIP: HTTP ${fetchResp.status}` },
+          502,
+        );
+      }
+
+      const zipBytes = new Uint8Array(await fetchResp.arrayBuffer());
+
+      // Extract using @zip-js/zip-js
+      const { ZipReader, Uint8ArrayReader, Uint8ArrayWriter } = await import("@zip-js/zip-js");
+      const zipReader = new ZipReader(new Uint8ArrayReader(zipBytes));
+      const entries = await zipReader.getEntries();
+
+      const themesDir = engine.config.system?.content?.dir
+        ? "themes"
+        : "themes"; // always "themes/"
+      const destPrefix = `${themesDir}/${slug}/`;
+
+      let filesWritten = 0;
+      for (const entry of entries) {
+        if (entry.directory) continue;
+
+        // Strip any leading path component (e.g. "theme-name/templates/..." → "templates/...")
+        let filename = entry.filename.replace(/^[^/]+\//, "");
+
+        // Security: reject path traversal
+        if (filename.includes("..") || filename.startsWith("/")) continue;
+
+        const data = await entry.getData!(new Uint8ArrayWriter());
+        await storage.write(`${destPrefix}${filename}`, data);
+        filesWritten++;
+      }
+
+      await zipReader.close();
+
+      console.log(`  📦 Installed theme "${slug}" (${filesWritten} files) from ${downloadUrl}`);
+      return jsonResponse({ success: true, slug, filesWritten });
+    } catch (err) {
+      return serverError(err, "theme-install");
     }
   }
 
@@ -2789,6 +3027,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "flex", label: "Flex Objects", icon: "🗃️", href: `${prefix}/flex` },
     { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
+    { id: "themes", label: "Themes", icon: "🎨", href: `${prefix}/themes` },
     { id: "config", label: "Configuration", icon: "⚙️", href: `${prefix}/config` },
   ];
 

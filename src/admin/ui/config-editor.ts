@@ -27,6 +27,8 @@ export interface ConfigEditorThemeData {
   currentTheme: string;
   themeSchema: Record<string, BlueprintField>;
   themeConfig: Record<string, unknown>;
+  /** Top-level nav routes for the preview route picker. */
+  navRoutes: Array<{ route: string; title: string }>;
 }
 
 /** Render the full config editor page (shell not included — caller wraps it). */
@@ -257,11 +259,33 @@ export function renderConfigEditor(
           ).join("")}
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" onclick="switchTheme()" id="theme-switch-btn">Switch theme</button>
+        <button class="btn btn-secondary btn-sm" onclick="openThemePreview()">Preview</button>
         <span id="theme-switch-status" class="cfg-status"></span>
       </div>
     </div>
+  </div>
+
+  <!-- ── Theme preview panel ── -->
+  <div id="theme-preview-panel" class="theme-preview-panel" style="display:none">
+    <div class="theme-preview-toolbar">
+      <label for="preview-route-select">Route</label>
+      <select id="preview-route-select" onchange="refreshThemePreview()">
+        <option value="/">/ (home)</option>
+        ${(themeData?.navRoutes ?? []).map((r) =>
+          `<option value="${escapeAttr(r.route)}">${escapeHtml(r.title)} (${escapeAttr(r.route)})</option>`
+        ).join("")}
+      </select>
+      <input type="text" id="preview-route-input" placeholder="or type a path…"
+             style="width:150px" oninput="refreshThemePreview()">
+      <button class="btn btn-secondary btn-sm" onclick="refreshThemePreview()">↻ Refresh</button>
+      <button class="btn btn-primary btn-sm" onclick="applyPreviewTheme()">Apply this theme</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeThemePreview()"
+              style="margin-left:auto">× Close</button>
+    </div>
+    <iframe id="theme-preview-frame" class="theme-preview-frame" src="about:blank"
+            title="Theme preview"></iframe>
   </div>
 
   ${themeData && Object.keys(themeData.themeSchema).length > 0 ? `
@@ -276,6 +300,10 @@ export function renderConfigEditor(
       <span id="theme-config-status" class="cfg-status"></span>
     </div>
   </div>` : ""}
+
+  <div class="cfg-group" style="padding:0.75rem 1.5rem">
+    <a href="${prefix}/themes" class="theme-browse-link">🎨 Browse more themes →</a>
+  </div>
 
 </div><!-- /tab-theme -->
 
@@ -538,6 +566,37 @@ function configEditorScript(
     }
   }
 
+  // ── Theme preview ──────────────────────────────────────────────────────────
+  function openThemePreview() {
+    const panel = document.getElementById('theme-preview-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    refreshThemePreview();
+  }
+
+  function closeThemePreview() {
+    const panel = document.getElementById('theme-preview-panel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  function refreshThemePreview() {
+    const theme = (document.getElementById('theme-select') || {}).value;
+    if (!theme) return;
+    const routeInput = (document.getElementById('preview-route-input') || {}).value || '';
+    const routeSelect = (document.getElementById('preview-route-select') || {}).value || '/';
+    const route = routeInput.trim() || routeSelect;
+    const frame = document.getElementById('theme-preview-frame');
+    if (frame) {
+      frame.src = '${prefix}/api/theme-preview?theme=' + encodeURIComponent(theme) +
+                  '&route=' + encodeURIComponent(route);
+    }
+  }
+
+  function applyPreviewTheme() {
+    closeThemePreview();
+    switchTheme();
+  }
+
   // ── Theme config save ──────────────────────────────────────────────────────
   async function saveThemeConfig() {
     const fields = document.querySelectorAll('[data-tcfg]');
@@ -574,6 +633,27 @@ function configEditorScript(
   // ── Init ───────────────────────────────────────────────────────────────────
   (function init() {
     ['taxonomies','corsOrigins','supportedLangs','allowedSizes'].forEach(renderListChips);
+
+    // Handle ?preview_theme=X and ?switch_theme=X query params (from themes page buttons)
+    const qp = new URLSearchParams(location.search);
+    const previewTheme = qp.get('preview_theme');
+    const switchThemeQP = qp.get('switch_theme');
+    const themeQP = previewTheme || switchThemeQP;
+    if (themeQP) {
+      // Activate theme tab
+      document.querySelectorAll('.cfg-section').forEach(s => s.style.display = 'none');
+      document.querySelectorAll('.cfg-tab').forEach(t => {
+        t.classList.remove('active');
+        if (t.textContent && t.textContent.trim() === 'Theme') t.classList.add('active');
+      });
+      const themeSection = document.getElementById('tab-theme');
+      if (themeSection) themeSection.style.display = '';
+      // Pre-select the theme
+      const sel = document.getElementById('theme-select');
+      if (sel) sel.value = themeQP;
+      // Auto-open preview if requested
+      if (previewTheme) openThemePreview();
+    }
   })();
   `;
 }
@@ -602,5 +682,13 @@ export function configEditorStyles(): string {
   .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .form-row-auto { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
   @media (max-width: 600px) { .form-row-2 { grid-template-columns: 1fr; } }
+  .theme-preview-panel { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-top: 1.25rem; max-width: 860px; }
+  .theme-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.65rem 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+  .theme-preview-toolbar label { font-size: 0.82rem; color: #666; white-space: nowrap; }
+  .theme-preview-toolbar select { font-size: 0.82rem; padding: 0.25rem 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; max-width: 240px; }
+  .theme-preview-toolbar input[type="text"] { font-size: 0.82rem; padding: 0.25rem 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; }
+  .theme-preview-frame { display: block; width: 100%; height: 600px; border: none; background: #f5f5f5; }
+  .theme-browse-link { font-size: 0.875rem; color: #c9a96e; text-decoration: none; font-weight: 500; }
+  .theme-browse-link:hover { text-decoration: underline; }
   `;
 }

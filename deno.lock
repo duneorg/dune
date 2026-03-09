@@ -7,6 +7,7 @@
     "jsr:@std/path@1": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/yaml@1": "1.0.11",
+    "jsr:@zip-js/zip-js@2": "2.8.24",
     "npm:@mdx-js/mdx@3": "3.1.1_acorn@8.15.0",
     "npm:@types/nodemailer@6": "6.4.23",
     "npm:gray-matter@4": "4.0.3",
@@ -40,6 +41,9 @@
     },
     "@std/yaml@1.0.11": {
       "integrity": "bd139ce77f2d06cbed3713c8b26d301d2a2e12ecc7986130a268107e212143ee"
+    },
+    "@zip-js/zip-js@2.8.24": {
+      "integrity": "3e5744893e2b08f82ec3706ffad05398ee03ab2628457d805e449efda354994b"
     }
   },
   "npm": {
@@ -1225,6 +1229,7 @@
       "jsr:@std/fs@1",
       "jsr:@std/path@1",
       "jsr:@std/yaml@1",
+      "jsr:@zip-js/zip-js@2",
       "npm:@mdx-js/mdx@3",
       "npm:gray-matter@4",
       "npm:marked@15",

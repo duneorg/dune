@@ -99,6 +99,13 @@ export interface DuneEngine {
    * Fires the `onThemeSwitch` hook if a hook registry was supplied.
    */
   switchTheme(name: string): Promise<void>;
+  /**
+   * Create a temporary theme loader for preview purposes.
+   * Does NOT switch the active theme — the engine continues serving with the
+   * current theme. Use the returned loader to render pages with an alternative
+   * theme for display in the admin preview panel.
+   */
+  createPreviewTheme(name: string): Promise<ThemeLoader>;
 }
 
 export interface ResolveResult {
@@ -428,6 +435,10 @@ export async function createDuneEngine(
       await switchTheme(name);
       engine.themes = themes;
       engine.themeConfig = themeConfig;
+    },
+
+    createPreviewTheme(name: string) {
+      return createThemeLoader({ storage, themesDir, themeName: name, rootDir: storageRoot });
     },
   };
 

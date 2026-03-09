@@ -128,6 +128,7 @@ function makeEngine(
     themeConfig: {},
     getAvailableThemes: () => Promise.resolve([]),
     switchTheme: (_name: string) => Promise.resolve(),
+    createPreviewTheme: (_name: string) => Promise.reject(new Error("not implemented")),
   };
 }
 

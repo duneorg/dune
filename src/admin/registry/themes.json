@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-09",
+  "themes": [
+    {
+      "slug": "minimal",
+      "name": "Minimal",
+      "description": "Clean, minimal blog theme with system fonts and no dependencies. Perfect for text-focused sites and personal blogs.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["blog", "minimal", "light"],
+      "demoUrl": "https://minimal.dune-cms.dev",
+      "screenshotUrl": "https://cdn.dune-cms.dev/themes/minimal/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/minimal-v1.0.0/minimal.zip"
+    },
+    {
+      "slug": "docs",
+      "name": "Docs",
+      "description": "Documentation theme with collapsible sidebar navigation, breadcrumbs, search integration, and a responsive two-column layout.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["docs", "sidebar", "search"],
+      "demoUrl": "https://docs.dune-cms.dev",
+      "screenshotUrl": "https://cdn.dune-cms.dev/themes/docs/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/docs-v1.0.0/docs.zip"
+    },
+    {
+      "slug": "magazine",
+      "name": "Magazine",
+      "description": "Bold magazine-style theme with featured hero, category grids, and taxonomy-driven section pages. Great for news and editorial sites.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["magazine", "blog", "grid", "news"],
+      "demoUrl": "https://magazine.dune-cms.dev",
+      "screenshotUrl": "https://cdn.dune-cms.dev/themes/magazine/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/magazine-v1.0.0/magazine.zip"
+    }
+  ]
+}

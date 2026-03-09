@@ -68,6 +68,7 @@ On first startup, a default `admin` account is created automatically. Delete the
 | **Revision history** | Browse and restore previous versions of any page. Up to `admin.maxRevisions` (default 50) saved per page. The current revision count is shown in the editor toolbar. |
 | **Flex Objects** | Create, edit, and delete records for schema-driven custom data types (products, team members, events, etc.). Schemas defined in `flex-objects/{type}.yaml`. See [Flex Objects](/flex-objects). |
 | **Configuration editor** | Edit `config/site.yaml` and `config/system.yaml` through a form UI without touching files directly (admin role only). |
+| **Themes** | Browse installed and registry themes, preview any theme before switching, and install new themes from the marketplace. See `/admin/themes`. |
 | **Media library** | Upload, browse, and delete media files co-located with content pages. |
 | **Form submissions** | View submissions collected from contact forms or other form integrations. |
 | **User management** | Create, edit, enable/disable admin users (admin role only). |
@@ -77,6 +78,12 @@ On first startup, a default `admin` account is created automatically. Delete the
 The configuration editor (admin role only) lets you edit `config/site.yaml` and `config/system.yaml` through a form UI at `/admin/config`. Fields are rendered based on the schema for each config file — no need to know the YAML syntax.
 
 Changes are written back to the config files and take effect on next request (for system config) or after a content rebuild (for site config). The editor shows all recognised fields with their current values and inline help text.
+
+## Themes
+
+The **Theme tab** of the configuration editor lets you switch the active theme and preview alternatives before committing. Select a theme from the dropdown and click **Preview** to see an iframe rendering of your site in that theme; click **Apply this theme** to make the switch.
+
+For a full theme browser, go to `/admin/themes` (also linked from the bottom of the Theme tab). The marketplace shows your installed themes and a curated registry of community themes. You can install a theme directly from the registry — no restart required. See [Theme Preview & Marketplace](/themes/preview-and-marketplace) for details.
 
 ## Revision history
 
