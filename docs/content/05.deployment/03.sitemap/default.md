@@ -60,6 +60,17 @@ Each URL includes a `<changefreq>` hint derived from its depth:
 
 This is a hint to crawlers and is not guaranteed to reflect actual update frequency.
 
+Override the default for specific routes via `config/site.yaml`. The longest matching prefix wins:
+
+```yaml
+sitemap:
+  changefreq:
+    "/": "hourly"        # home page
+    "/blog": "daily"     # /blog and all children unless more specific key matches
+```
+
+Valid values: `always` · `hourly` · `daily` · `weekly` · `monthly` · `yearly` · `never`
+
 ## Last modified date
 
 Each URL's `<lastmod>` is the file modification time of the content file, formatted as `YYYY-MM-DD`.
@@ -81,6 +92,45 @@ For sites with more than one language configured (see [Multilingual Content](/co
 ```
 
 Every language variant of a page is grouped by its source content path (with the language suffix stripped). Each variant gets the full set of `hreflang` alternates, and an `x-default` entry always points to the default-language URL.
+
+## Excluding routes
+
+To omit routes from the sitemap, add a `sitemap.exclude` list to `config/site.yaml`. Both exact matches and prefix matches are supported:
+
+```yaml
+sitemap:
+  exclude:
+    - "/private"    # excludes /private and /private/anything
+    - "/members"
+```
+
+Pages whose routes start with any listed prefix are silently omitted.
+
+## Cover images
+
+If a page has an `image` frontmatter field set to a co-located image filename, the sitemap includes an `<image:image>` entry for that page:
+
+```yaml
+---
+title: "My Post"
+date: 2026-03-09
+image: cover.jpg
+---
+```
+
+This produces:
+
+```xml
+<url>
+  <loc>https://example.com/blog/my-post</loc>
+  ...
+  <image:image>
+    <image:loc>https://example.com/content-media/02.blog/01.my-post/cover.jpg</image:loc>
+  </image:image>
+</url>
+```
+
+The `xmlns:image` namespace attribute is added to `<urlset>` automatically when any image entries are present. See [Frontmatter Reference](/content/frontmatter#media) for the `image` field.
 
 ## Generation timing
 

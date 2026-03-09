@@ -56,6 +56,8 @@ export default function PostTemplate({ page, pageTitle, site, config, nav, Layou
 | `Layout` | `Component?` | Dynamically loaded layout component (see below) |
 | `collection` | `Collection?` | Collection results if page defines one |
 | `children` | `Element?` | Pre-rendered content (HTML wrapped in a div) |
+| `searchQuery` | `string?` | Set when rendering the `/search` page. The raw query string from `?q=`. |
+| `searchResults` | `SearchResult[]?` | Set when rendering the `/search` page. Ranked results from the search engine. |
 
 ### Using the Layout prop
 
@@ -108,6 +110,16 @@ Override with the `template` frontmatter field:
 ```yaml
 template: landing   # uses templates/landing.tsx instead
 ```
+
+### Reserved template names
+
+The following template names are used by Dune's built-in routes:
+
+| Template | Route | When rendered |
+|----------|-------|---------------|
+| `search` | `/search` | When a visitor submits a search query. Receives `searchQuery` and `searchResults` in props. If not present, Dune falls back to a built-in standalone page. |
+
+See [Search](/reference/search#search-ui) for a full example.
 
 ## Blog listing template example
 

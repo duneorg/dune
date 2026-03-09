@@ -108,3 +108,61 @@ await search.build();  // required before calling search.search()
 - **No field-specific queries** — cannot restrict search to title-only or taxonomy-only
 - **Published pages only** — unpublished pages are excluded from the index
 - **No stemming** — "running" and "run" are distinct terms; prefix matching partially compensates
+
+## Search UI
+
+Dune also serves a public `/search` page that renders search results server-side. This lets visitors use search without JavaScript.
+
+### How it works
+
+1. A visitor opens `/search?q=deno`
+2. Dune checks whether your active theme has a `templates/search.tsx` template
+3. **If found** — the search template is rendered with the results injected as `searchQuery` and `searchResults` in `TemplateProps` (see [Templates](/themes/templates))
+4. **If not found** — Dune falls back to a built-in standalone page with minimal styling
+
+The standalone fallback includes inline JavaScript that debounces queries against `/api/search` and updates the result list live as the user types, without a full page reload.
+
+### Theme integration
+
+Add a `templates/search.tsx` to your theme to control the layout:
+
+```tsx
+import type { TemplateProps } from "dune/types";
+
+export default function SearchTemplate({ searchQuery, searchResults, site, Layout, ...props }: TemplateProps) {
+  return (
+    <Layout {...props} site={site}>
+      <h1>Search</h1>
+      <form action="/search" method="get">
+        <input name="q" type="search" value={searchQuery ?? ""} />
+        <button type="submit">Search</button>
+      </form>
+
+      {searchQuery && searchResults?.length === 0 && (
+        <p>No results for "{searchQuery}".</p>
+      )}
+
+      <ul>
+        {searchResults?.map((r) => (
+          <li key={r.route}>
+            <a href={r.route}>{r.title}</a>
+            <p>{r.excerpt}</p>
+          </li>
+        ))}
+      </ul>
+    </Layout>
+  );
+}
+```
+
+### `getSearchUrl` helper
+
+The [Theme SDK](/themes/theme-sdk) provides `getSearchUrl` to build links to the search page:
+
+```ts
+import { getSearchUrl } from "dune/theme-helpers";
+
+getSearchUrl("deno")               // → "/search?q=deno"
+getSearchUrl("hello world")        // → "/search?q=hello%20world"
+getSearchUrl("deno", "/en/search") // → "/en/search?q=deno"  (multilingual sites)
+```

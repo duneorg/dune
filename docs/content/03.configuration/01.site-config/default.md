@@ -55,6 +55,21 @@ home: "welcome"
 # Additional CORS origins for the REST API (optional)
 cors_origins:
   - "https://app.example.com"
+
+# RSS & Atom feed settings (optional)
+feed:
+  enabled: true        # Set to false to disable /feed.xml and /atom.xml
+  items: 20            # Number of most-recent dated pages to include
+  content: "summary"   # "summary" (excerpt) or "full" (full HTML)
+
+# Sitemap settings (optional)
+sitemap:
+  exclude:             # Route prefixes to omit from /sitemap.xml
+    - "/private"
+    - "/members"
+  changefreq:          # Per-route changefreq overrides (longest prefix wins)
+    "/": "hourly"
+    "/blog": "daily"
 ```
 
 ## Key fields
@@ -94,6 +109,25 @@ cors_origins:
 ```
 
 Without this list, API requests from other domains will be blocked by the browser (CORS policy).
+
+### `feed`
+
+Controls RSS 2.0 and Atom 1.0 feed generation. See [RSS & Atom Feeds](/deployment/feeds) for full details.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Set to `false` to disable both feeds and hide `<link>` discovery tags |
+| `items` | `20` | Number of most-recent dated pages to include |
+| `content` | `"summary"` | `"summary"` (auto-generated excerpt) or `"full"` (fully rendered HTML) |
+
+### `sitemap`
+
+Controls sitemap generation. See [Sitemap](/deployment/sitemap) for full details.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `exclude` | `[]` | Route prefixes to omit from `/sitemap.xml`. Exact and prefix match. |
+| `changefreq` | `{}` | Per-route `<changefreq>` overrides. Longest matching prefix wins. |
 
 ### `routes` and `redirects`
 

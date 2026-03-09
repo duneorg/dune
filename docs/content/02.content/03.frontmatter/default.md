@@ -7,7 +7,7 @@ taxonomy:
   difficulty: [beginner]
   topic: [content, reference]
 metadata:
-  description: "Complete reference for all frontmatter fields"
+  description: "Complete reference for all frontmatter fields including image, date, taxonomy, and collection"
 ---
 
 # Frontmatter
@@ -121,6 +121,28 @@ collection:
 ```
 
 Declarative content queries. See the [Collections](../04.collections) page for full details.
+
+### Media
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `image` | string | — | Cover image filename (co-located with the content file) |
+
+The `image` field names a file in the same directory as the content file. It is used in three places:
+
+- **RSS & Atom feeds** — included as the feed item's cover image (`<enclosure>` / `<media:content>`)
+- **XML Sitemap** — generates a `<image:image>` entry for the page
+- **Templates** — accessible as `page.frontmatter.image`; use with the image processing API for responsive images
+
+```yaml
+---
+title: "My Post"
+date: 2026-03-09
+image: cover.jpg
+---
+```
+
+The image must be a bare filename, not a path or URL. The generated URL follows the pattern `/content-media/{content-dir}/{image}`.
 
 ### Custom data
 

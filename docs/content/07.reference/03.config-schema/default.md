@@ -36,6 +36,16 @@ routes: {}                       # Record<string, string> — Route aliases
 redirects: {}                    # Record<string, string> — 301 redirects
 home: null                       # string | null — Home page slug. Auto-detected if null.
 cors_origins: []                 # string[] — Extra origins allowed for cross-origin API requests
+
+feed:
+  enabled: true                  # boolean — Generate /feed.xml and /atom.xml (default: true)
+  items: 20                      # number  — Most-recent dated pages to include (default: 20)
+  content: "summary"             # "summary" | "full" — Feed item body (default: "summary")
+
+sitemap:
+  exclude: []                    # string[] — Route prefixes to omit from /sitemap.xml
+  changefreq: {}                 # Record<string, changefreq> — Per-route overrides (longest prefix wins)
+  # Valid changefreq values: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never"
 ```
 
 ## system.yaml
