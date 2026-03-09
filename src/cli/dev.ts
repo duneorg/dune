@@ -17,6 +17,7 @@ import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
+import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
 
 export interface DevOptions {
   port?: number;
@@ -182,9 +183,75 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
   const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
-  const routes = duneRoutes(engine, collections, flexEngine);
+  const routes = duneRoutes(engine, collections, flexEngine, search);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
+  const feedEnabled = ctx.config.site.feed?.enabled !== false;
+
+  /** Build feed items from the current content index (on-demand in dev mode). */
+  async function buildFeedItems(): Promise<FeedItem[]> {
+    const feedConfig = ctx.config.site.feed;
+    const count = feedConfig?.items ?? 20;
+    const contentMode = feedConfig?.content ?? "summary";
+    const siteBase = ctx.config.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
+
+    const candidates = engine.pages
+      .filter((p) => p.published && p.routable && p.date !== null)
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+      .slice(0, count);
+
+    const items: FeedItem[] = [];
+    for (const pageIndex of candidates) {
+      try {
+        const result = await engine.resolve(pageIndex.route);
+        if (result.type !== "page" || !result.page) continue;
+        const page = result.page;
+        const description = contentMode === "full"
+          ? await page.html()
+          : await page.summary();
+        items.push({
+          title: page.frontmatter.title || pageIndex.title,
+          link: `${siteBase}${pageIndex.route}`,
+          guid: `${siteBase}${pageIndex.route}`,
+          pubDate: pageIndex.date ? new Date(pageIndex.date) : null,
+          description,
+        });
+      } catch {
+        // Skip pages that fail to load
+      }
+    }
+    return items;
+  }
+
+  /** Inject feed discovery <link> tags before </head> in HTML responses. */
+  function injectFeedLinks(response: Response): Response {
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (!contentType.includes("text/html")) return response;
+
+    const links =
+      `<link rel="alternate" type="application/rss+xml" title="${engine.site.title}" href="/feed.xml">` +
+      `\n  <link rel="alternate" type="application/atom+xml" title="${engine.site.title}" href="/atom.xml">`;
+
+    return new Response(
+      response.body
+        ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              const text = new TextDecoder().decode(chunk);
+              const injected = text.includes("</head>")
+                ? text.replace("</head>", `${links}\n</head>`)
+                : text;
+              controller.enqueue(new TextEncoder().encode(injected));
+            },
+          }))
+        : null,
+      {
+        status: response.status,
+        headers: new Headers(
+          [...response.headers.entries()].filter(([k]) => k.toLowerCase() !== "content-length"),
+        ),
+      },
+    );
+  }
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🏷️  ${taxonomy.names().length} taxonomies`);
@@ -318,6 +385,31 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           { status: 404, headers: { "Content-Type": "application/json" } },
         );
       }
+      // Feed routes (on-demand in dev mode)
+      else if (feedEnabled && (url.pathname === "/feed.xml" || url.pathname === "/atom.xml")) {
+        const items = await buildFeedItems();
+        const siteBase = ctx.config.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
+        const feedOpts: FeedOptions = {
+          title: engine.site.title,
+          description: engine.site.description || "",
+          siteUrl: siteBase,
+          feedUrl: `${siteBase}${url.pathname}`,
+          items,
+          language: ctx.config.system.languages?.default ?? "en",
+          author: engine.site.author
+            ? { name: engine.site.author.name, email: engine.site.author.email }
+            : undefined,
+        };
+        const feedXml = url.pathname === "/feed.xml"
+          ? generateRss(feedOpts)
+          : generateAtom(feedOpts);
+        const feedContentType = url.pathname === "/feed.xml"
+          ? "application/rss+xml; charset=utf-8"
+          : "application/atom+xml; charset=utf-8";
+        response = new Response(feedXml, {
+          headers: { "Content-Type": feedContentType, "Cache-Control": "no-cache" },
+        });
+      }
       // Dynamic sitemap (generated from content index)
       else if (url.pathname === "/sitemap.xml") {
         const siteUrl = ctx.config.site.url || `http://localhost:${port}`;
@@ -328,6 +420,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           defaultLanguage: ctx.config.system.languages?.default,
           includeDefaultInUrl: ctx.config.system.languages?.include_default_in_url,
           homeSlug,
+          exclude: ctx.config.site.sitemap?.exclude,
+          changefreqOverrides: ctx.config.site.sitemap?.changefreq,
         });
         response = new Response(sitemapXml, {
           headers: {
@@ -354,8 +448,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
         response = await routes.contentHandler(req, renderJsx);
       }
 
-      // Inject live-reload script into HTML responses (except admin)
+      // Inject feed discovery links and live-reload script into HTML responses (except admin)
       if (!url.pathname.startsWith(adminPrefix) && !url.pathname.startsWith("/api/")) {
+        if (feedEnabled) {
+          response = injectFeedLinks(response);
+        }
         response = injectLiveReload(response);
       }
     } catch (err) {

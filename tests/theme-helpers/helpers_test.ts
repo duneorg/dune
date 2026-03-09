@@ -7,6 +7,7 @@ import {
   buildPageTitle,
   formatDate,
   getCanonicalUrl,
+  getSearchUrl,
   groupByYear,
   paginate,
   sortPages,
@@ -229,4 +230,26 @@ Deno.test("truncate: exact length returns original", () => {
 Deno.test("truncate: very short limit", () => {
   const result = truncate("Hello world", 1);
   assertEquals(result, "…");
+});
+
+// === getSearchUrl ===
+
+Deno.test("getSearchUrl: encodes query and returns /search URL", () => {
+  assertEquals(getSearchUrl("deno"), "/search?q=deno");
+});
+
+Deno.test("getSearchUrl: encodes spaces in query", () => {
+  assertEquals(getSearchUrl("hello world"), "/search?q=hello%20world");
+});
+
+Deno.test("getSearchUrl: uses custom base path", () => {
+  assertEquals(getSearchUrl("deno", "/en/search"), "/en/search?q=deno");
+});
+
+Deno.test("getSearchUrl: empty query produces empty q param", () => {
+  assertEquals(getSearchUrl(""), "/search?q=");
+});
+
+Deno.test("getSearchUrl: encodes special characters", () => {
+  assertEquals(getSearchUrl("a&b=c"), "/search?q=a%26b%3Dc");
 });

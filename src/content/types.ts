@@ -155,6 +155,13 @@ export interface PageIndex {
   mtime: number;
   /** Hash of frontmatter — for change detection */
   hash: string;
+  /**
+   * URL path to the cover/featured image for this page.
+   * Derived from `frontmatter.image` at index time.
+   * E.g. "/content-media/02.blog/01.post/cover.jpg"
+   * Used by the sitemap generator for `<image:image>` entries.
+   */
+  coverImage?: string;
 }
 
 // === Collections ===
@@ -248,6 +255,18 @@ export interface TemplateProps {
    * ```
    */
   themeConfig?: Record<string, unknown>;
+  /**
+   * Present when rendering the built-in `/search` page.
+   * The raw query string submitted by the user (decoded).
+   */
+  searchQuery?: string;
+  /**
+   * Present when rendering the built-in `/search` page.
+   * Ranked results from the full-text search engine.
+   * Themes can use this to render a custom search results page
+   * instead of the built-in fallback by providing a "search" template.
+   */
+  searchResults?: Array<{ route: string; title: string; excerpt: string; score: number }>;
   children?: unknown;
 }
 

@@ -19,6 +19,7 @@ import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
+import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -224,11 +225,78 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
-  const routes = duneRoutes(engine, collections, flexEngine);
+  const routes = duneRoutes(engine, collections, flexEngine, search);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
   const siteName = engine.site.title;
   const startTime = Date.now();
+
+  const feedEnabled = ctx.config.site.feed?.enabled !== false;
+
+  /** Build feed items (called once at startup). */
+  async function buildFeedItems(): Promise<FeedItem[]> {
+    const feedConfig = ctx.config.site.feed;
+    const count = feedConfig?.items ?? 20;
+    const contentMode = feedConfig?.content ?? "summary";
+    const siteBase = engine.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
+
+    const candidates = engine.pages
+      .filter((p) => p.published && p.routable && p.date !== null)
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+      .slice(0, count);
+
+    const items: FeedItem[] = [];
+    for (const pageIndex of candidates) {
+      try {
+        const result = await engine.resolve(pageIndex.route);
+        if (result.type !== "page" || !result.page) continue;
+        const page = result.page;
+        const description = contentMode === "full"
+          ? await page.html()
+          : await page.summary();
+        items.push({
+          title: page.frontmatter.title || pageIndex.title,
+          link: `${siteBase}${pageIndex.route}`,
+          guid: `${siteBase}${pageIndex.route}`,
+          pubDate: pageIndex.date ? new Date(pageIndex.date) : null,
+          description,
+        });
+      } catch {
+        // Skip pages that fail to load
+      }
+    }
+    return items;
+  }
+
+  /** Inject feed discovery <link> tags before </head> in HTML responses. */
+  function injectFeedLinks(response: Response): Response {
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (!contentType.includes("text/html")) return response;
+
+    const links =
+      `<link rel="alternate" type="application/rss+xml" title="${siteName}" href="/feed.xml">` +
+      `\n  <link rel="alternate" type="application/atom+xml" title="${siteName}" href="/atom.xml">`;
+
+    return new Response(
+      response.body
+        ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              const text = new TextDecoder().decode(chunk);
+              const injected = text.includes("</head>")
+                ? text.replace("</head>", `${links}\n</head>`)
+                : text;
+              controller.enqueue(new TextEncoder().encode(injected));
+            },
+          }))
+        : null,
+      {
+        status: response.status,
+        headers: new Headers(
+          [...response.headers.entries()].filter(([k]) => k.toLowerCase() !== "content-length"),
+        ),
+      },
+    );
+  }
 
   // Generate sitemap at startup
   const siteUrl = engine.site.url || `http://localhost:${port}`;
@@ -239,10 +307,37 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     defaultLanguage: ctx.config.system.languages?.default,
     includeDefaultInUrl: ctx.config.system.languages?.include_default_in_url,
     homeSlug,
+    exclude: ctx.config.site.sitemap?.exclude,
+    changefreqOverrides: ctx.config.site.sitemap?.changefreq,
   });
+
+  // Generate feeds at startup
+  const siteBase = engine.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
+  const feedAuthor = engine.site.author
+    ? { name: engine.site.author.name, email: engine.site.author.email }
+    : undefined;
+  const feedLang = ctx.config.system.languages?.default ?? "en";
+
+  let rssFeed = "";
+  let atomFeed = "";
+  if (feedEnabled) {
+    const feedItems = await buildFeedItems();
+    const baseFeedOpts: FeedOptions = {
+      title: engine.site.title,
+      description: engine.site.description || "",
+      siteUrl: siteBase,
+      feedUrl: `${siteBase}/feed.xml`,
+      items: feedItems,
+      language: feedLang,
+      author: feedAuthor,
+    };
+    rssFeed = generateRss(baseFeedOpts);
+    atomFeed = generateAtom({ ...baseFeedOpts, feedUrl: `${siteBase}/atom.xml` });
+  }
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🗺️  Sitemap generated`);
+  if (feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
 
   const renderJsx = (jsx: unknown, statusCode = 200) => {
     const html = render(jsx as any);
@@ -275,6 +370,25 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         return maybeCompress(req, new Response(sitemapXml, {
           headers: {
             "Content-Type": "application/xml; charset=utf-8",
+            "Cache-Control": "public, max-age=3600, must-revalidate",
+          },
+        }));
+      }
+
+      // Feed routes (cached at startup)
+      if (feedEnabled && url.pathname === "/feed.xml") {
+        return maybeCompress(req, new Response(rssFeed, {
+          headers: {
+            "Content-Type": "application/rss+xml; charset=utf-8",
+            "Cache-Control": "public, max-age=3600, must-revalidate",
+          },
+        }));
+      }
+
+      if (feedEnabled && url.pathname === "/atom.xml") {
+        return maybeCompress(req, new Response(atomFeed, {
+          headers: {
+            "Content-Type": "application/atom+xml; charset=utf-8",
             "Cache-Control": "public, max-age=3600, must-revalidate",
           },
         }));
@@ -316,8 +430,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
       }
 
       // Content routes
-      const response = await routes.contentHandler(req, renderJsx);
-      return maybeCompress(req, withSecurityHeaders(response));
+      let contentResponse = await routes.contentHandler(req, renderJsx);
+      if (feedEnabled) {
+        contentResponse = injectFeedLinks(contentResponse);
+      }
+      return maybeCompress(req, withSecurityHeaders(contentResponse));
     } catch (err) {
       if (debug) {
         console.error(`✗ Error serving ${url.pathname}:`, err);

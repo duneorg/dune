@@ -21,6 +21,14 @@ export interface SitemapOptions {
   includeDefaultInUrl?: boolean;
   /** Home page slug (e.g. "efficiency") — route "/efficiency" maps to "/" for default lang */
   homeSlug?: string;
+  /** Route prefixes or exact paths to exclude from the sitemap. Prefix-match. */
+  exclude?: string[];
+  /**
+   * Per-route changefreq overrides. Longest matching prefix key wins.
+   * Overrides the depth-based heuristic (depth 0→daily, 1→weekly, 2+→monthly).
+   * @example { "/": "hourly", "/blog": "daily" }
+   */
+  changefreqOverrides?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
 }
 
 /**
@@ -85,7 +93,8 @@ export function generateSitemap(
 
   const urlEntries = pages
     .filter((p) =>
-      p.published && p.routable && !p.isModule && !hasUnpublishedAncestor(p),
+      p.published && p.routable && !p.isModule && !hasUnpublishedAncestor(p) &&
+      !isExcluded(p.route, options.exclude ?? []),
     )
     .map((p) => {
       const loc = escapeXml(pageToUrl(p));
@@ -113,8 +122,13 @@ export function generateSitemap(
         }
       }
 
-      // changefreq: depth-based heuristic — shallower pages update more often
-      const changefreq = p.depth === 0 ? "daily" : p.depth === 1 ? "weekly" : "monthly";
+      // changefreq: override map wins, then depth-based heuristic
+      const changefreq = resolveChangefreq(p.route, options.changefreqOverrides ?? {}, p.depth);
+
+      // Add cover image entry when present
+      if (p.coverImage) {
+        entry += `\n    <image:image>\n      <image:loc>${escapeXml(base + p.coverImage)}</image:loc>\n    </image:image>`;
+      }
 
       if (lastmod) entry += `\n    <lastmod>${lastmod}</lastmod>`;
       entry += `\n    <changefreq>${changefreq}</changefreq>`;
@@ -123,9 +137,12 @@ export function generateSitemap(
       return entry;
     });
 
+  const hasImages = pages.some((p) => p.published && p.routable && !p.isModule && p.coverImage &&
+    !isExcluded(p.route, options.exclude ?? []));
   const urlsetAttrs = [
     'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
     ...(isMultilingual ? ['xmlns:xhtml="http://www.w3.org/1999/xhtml"'] : []),
+    ...(hasImages ? ['xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'] : []),
   ].join(" ");
 
   return [
@@ -151,6 +168,37 @@ function getTranslationGroupKey(
     if (langSuffix) base = base.slice(0, -langSuffix.length - 1);
   }
   return base;
+}
+
+/** Check if a route should be excluded based on prefix patterns. */
+function isExcluded(route: string, patterns: string[]): boolean {
+  return patterns.some((p) => route === p || route.startsWith(p === "/" ? p : p + "/"));
+}
+
+type ChangeFreq = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+
+/**
+ * Resolve changefreq for a route.
+ * Checks overrides (longest matching prefix wins), falls back to depth heuristic.
+ */
+function resolveChangefreq(
+  route: string,
+  overrides: Record<string, ChangeFreq>,
+  depth: number,
+): ChangeFreq {
+  // Find the longest matching prefix key
+  let bestKey = "";
+  let bestFreq: ChangeFreq | null = null;
+  for (const [key, freq] of Object.entries(overrides)) {
+    const matches = route === key || route.startsWith(key === "/" ? key : key + "/");
+    if (matches && key.length > bestKey.length) {
+      bestKey = key;
+      bestFreq = freq;
+    }
+  }
+  if (bestFreq) return bestFreq;
+  // Depth-based default
+  return depth === 0 ? "daily" : depth === 1 ? "weekly" : "monthly";
 }
 
 function escapeXml(s: string): string {

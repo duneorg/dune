@@ -169,6 +169,40 @@ export interface SiteConfig {
    * @example ["https://app.example.com", "https://staging.example.com"]
    */
   cors_origins?: string[];
+  /**
+   * RSS / Atom feed generation settings.
+   * Feeds are served at /feed.xml (RSS 2.0) and /atom.xml (Atom 1.0).
+   */
+  feed?: {
+    /** Whether to generate feeds (default: true) */
+    enabled?: boolean;
+    /** Number of items per feed, newest-first (default: 20) */
+    items?: number;
+    /**
+     * Item body content mode:
+     *   "summary" — auto-generated excerpt (default, faster, smaller payload)
+     *   "full"    — fully rendered HTML content
+     */
+    content?: "summary" | "full";
+  };
+  /**
+   * XML sitemap generation settings.
+   * The sitemap is served at /sitemap.xml.
+   */
+  sitemap?: {
+    /**
+     * Route prefixes or exact paths to exclude from the sitemap.
+     * Prefix match — any route that equals or starts with a pattern is excluded.
+     * @example ["/private", "/members"]
+     */
+    exclude?: string[];
+    /**
+     * Per-route changefreq overrides. Longest matching prefix wins.
+     * Overrides the depth-based default (depth 0 → daily, 1 → weekly, 2+ → monthly).
+     * @example { "/": "hourly", "/blog": "daily" }
+     */
+    changefreq?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
+  };
 }
 
 /** System-level configuration (engine behavior) */

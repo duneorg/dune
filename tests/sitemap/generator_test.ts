@@ -164,3 +164,100 @@ Deno.test("generateSitemap: adds hreflang alternates for multilingual pages", ()
   assertEquals(xml.includes("https://example.com/de/webapps"), true);
   assertEquals(xml.includes("https://example.com/fr/webapps"), true);
 });
+
+// ─── Item 3 enhancements ───────────────────────────────────────────────────
+
+Deno.test("generateSitemap: excludes exact route match", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+    makePage({ route: "/private", sourcePath: "02.private/default.md" }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", exclude: ["/private"] });
+
+  assertEquals(xml.includes("/home</loc>"), true);
+  assertEquals(xml.includes("/private</loc>"), false);
+});
+
+Deno.test("generateSitemap: excludes pages whose route starts with excluded prefix", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+    makePage({ route: "/private/doc", sourcePath: "02.private/01.doc/default.md", depth: 1 }),
+    makePage({ route: "/private/doc/sub", sourcePath: "02.private/01.doc/01.sub/default.md", depth: 2 }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", exclude: ["/private"] });
+
+  assertEquals(xml.includes("/home</loc>"), true);
+  assertEquals(xml.includes("/private"), false);
+});
+
+Deno.test("generateSitemap: non-excluded pages are unaffected by exclude list", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+    makePage({ route: "/about", sourcePath: "02.about/default.md" }),
+    makePage({ route: "/secret", sourcePath: "03.secret/default.md" }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", exclude: ["/secret"] });
+
+  assertEquals(xml.includes("/home</loc>"), true);
+  assertEquals(xml.includes("/about</loc>"), true);
+  assertEquals(xml.includes("/secret</loc>"), false);
+});
+
+Deno.test("generateSitemap: changefreq override for exact route", () => {
+  const pages = [
+    makePage({ route: "/", depth: 0 }),
+  ];
+  const xml = generateSitemap(pages, {
+    siteUrl: "https://example.com",
+    changefreqOverrides: { "/": "hourly" },
+  });
+
+  assertEquals(xml.includes("<changefreq>hourly</changefreq>"), true);
+  assertEquals(xml.includes("<changefreq>daily</changefreq>"), false);
+});
+
+Deno.test("generateSitemap: changefreq override uses longest matching prefix", () => {
+  const pages = [
+    makePage({ route: "/blog", depth: 1, sourcePath: "02.blog/default.md" }),
+    makePage({ route: "/blog/post", depth: 2, sourcePath: "02.blog/01.post/default.md" }),
+  ];
+  const xml = generateSitemap(pages, {
+    siteUrl: "https://example.com",
+    changefreqOverrides: { "/blog": "daily", "/blog/post": "weekly" },
+  });
+
+  // /blog/post matches /blog/post (longer key) → weekly
+  // /blog matches /blog → daily
+  const blogPostIdx = xml.indexOf("/blog/post</loc>");
+  const blogIdx = xml.indexOf("/blog</loc>");
+  // Extract the changefreq near each URL
+  assertEquals(xml.includes("<changefreq>daily</changefreq>"), true);
+  assertEquals(xml.includes("<changefreq>weekly</changefreq>"), true);
+  // Verify /blog/post comes before /blog in the output (sorted by route)
+  assertEquals(blogPostIdx > blogIdx, true);
+});
+
+Deno.test("generateSitemap: image:image entry emitted when coverImage is set", () => {
+  const pages = [
+    makePage({
+      route: "/blog/post",
+      sourcePath: "02.blog/01.post/default.md",
+      coverImage: "/content-media/02.blog/01.post/cover.jpg",
+    }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com" });
+
+  assertEquals(xml.includes("<image:image>"), true);
+  assertEquals(xml.includes("<image:loc>https://example.com/content-media/02.blog/01.post/cover.jpg</image:loc>"), true);
+  assertEquals(xml.includes('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'), true);
+});
+
+Deno.test("generateSitemap: no image:image entry when coverImage is not set", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com" });
+
+  assertEquals(xml.includes("<image:image>"), false);
+  assertEquals(xml.includes("xmlns:image"), false);
+});

@@ -393,6 +393,7 @@ function buildPageIndex(
     taxonomy: frontmatter.taxonomy ?? {},
     mtime,
     hash,
+    coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),
   };
 }
 
@@ -463,6 +464,25 @@ export function detectHomeSlug(pages: PageIndex[]): string {
 
   // Fallback for backward compatibility
   return "home";
+}
+
+/**
+ * Derive the cover image URL from the page's `image` frontmatter field.
+ *
+ * The image field is expected to be a filename (e.g. "cover.jpg") co-located
+ * with the content file. The URL is built from the content-media serving prefix
+ * and the page's directory path.
+ *
+ * @example
+ *   sourcePath: "02.blog/01.post/default.md"
+ *   image: "cover.jpg"
+ *   → "/content-media/02.blog/01.post/cover.jpg"
+ */
+function buildCoverImageUrl(sourcePath: string, image: string | undefined): string | undefined {
+  if (!image || typeof image !== "string") return undefined;
+  const dir = sourcePath.split("/").slice(0, -1).join("/");
+  if (!dir) return undefined;
+  return `/content-media/${dir}/${image}`;
 }
 
 /** Compute a simple hash of a string for change detection. */

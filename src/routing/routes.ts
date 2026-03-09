@@ -19,6 +19,8 @@ import { buildPageTitle } from "../content/types.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
+import type { SearchEngine } from "../search/engine.ts";
+import { generateSearchPage } from "../search/page.ts";
 
 /**
  * Props passed to a flex type list template.
@@ -62,6 +64,7 @@ export function duneRoutes(
   engine: DuneEngine,
   collections?: CollectionEngine,
   flex?: FlexEngine,
+  search?: SearchEngine,
 ) {
   return {
     /**
@@ -184,6 +187,56 @@ export function duneRoutes(
       renderJsx: (jsx: unknown, status?: number) => Response,
     ): Promise<Response> => {
       const url = new URL(req.url);
+
+      // ── Search route ──────────────────────────────────────────────────────
+      // Intercept /search before content resolution so it is always served,
+      // even when there is no content file at that path.
+      if (url.pathname === "/search") {
+        const q = url.searchParams.get("q") ?? "";
+        const rawResults = search ? search.search(q, 20) : [];
+        const results = rawResults.map((r) => ({
+          route: r.page.route,
+          title: r.page.title,
+          excerpt: r.excerpt,
+          score: r.score,
+        }));
+
+        // Try theme's "search" template first
+        const searchTemplate = await engine.themes.loadTemplate("search");
+        if (searchTemplate) {
+          const layout = await engine.themes.loadLayout("layout");
+          const strings = await engine.themes.loadLocale("en");
+          const t = (key: string) => (strings[key] ?? key) as string;
+          return renderJsx(
+            h(searchTemplate.component as ComponentType<any>, {
+              page: null,
+              pageTitle: `Search${q ? `: ${q}` : ""} | ${engine.site.title}`,
+              site: engine.site,
+              config: engine.config,
+              nav: engine.router.getTopNavigation("en"),
+              pathname: url.pathname,
+              search: url.search,
+              Layout: layout ?? undefined,
+              themeConfig: engine.themeConfig,
+              t,
+              searchQuery: q,
+              searchResults: results,
+            }),
+          );
+        }
+
+        // Fallback: standalone search page (no theme template available)
+        const html = generateSearchPage({
+          query: q,
+          results,
+          site: engine.site,
+          siteUrl: engine.site.url || "",
+        });
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // ── Flex Object public routes ─────────────────────────────────────────
       // /flex/{type}       → list view   (template: flex/{type}-list or flex/list)

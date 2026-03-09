@@ -137,6 +137,23 @@ export function getCanonicalUrl(siteUrl: string, pathname: string): string {
   return `${base}${path}`;
 }
 
+/**
+ * Build a URL to the built-in /search page with the query pre-filled.
+ *
+ * @param query Search query string.
+ * @param base  Base path for the search page (defaults to `"/search"`).
+ *
+ * @example
+ * ```ts
+ * getSearchUrl("deno")               // → "/search?q=deno"
+ * getSearchUrl("hello world")        // → "/search?q=hello%20world"
+ * getSearchUrl("deno", "/en/search") // → "/en/search?q=deno"
+ * ```
+ */
+export function getSearchUrl(query: string, base?: string): string {
+  return `${base ?? "/search"}?q=${encodeURIComponent(query)}`;
+}
+
 // ─── Sorting ──────────────────────────────────────────────────────────────────
 
 import type { PageIndex } from "../content/types.ts";
