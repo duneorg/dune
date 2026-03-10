@@ -261,3 +261,27 @@ Deno.test("generateSitemap: no image:image entry when coverImage is not set", ()
   assertEquals(xml.includes("<image:image>"), false);
   assertEquals(xml.includes("xmlns:image"), false);
 });
+
+Deno.test("generateSitemap: escapes hreflang language codes in xhtml:link", () => {
+  const pages = [
+    makePage({ route: "/page", sourcePath: "01.page/default.md", language: "en" }),
+    makePage({ route: "/page", sourcePath: "01.page/default.de.md", language: 'de"malicious' }),
+  ];
+  const xml = generateSitemap(pages, {
+    siteUrl: "https://example.com",
+    supportedLanguages: ["en", "de"],
+    defaultLanguage: "en",
+  });
+  // Language with quote must be escaped to produce valid XML
+  assertEquals(xml.includes('hreflang="de&quot;malicious"'), true);
+  assertEquals(xml.includes('hreflang="de"malicious"'), false);
+});
+
+Deno.test("generateSitemap: strips control characters from URLs", () => {
+  const pages = [makePage({ route: "/path\x00with\x07control" })];
+  const xml = generateSitemap(pages, "https://example.com");
+  // Control chars should be stripped; XML must be valid
+  assertEquals(xml.includes("\x00"), false);
+  assertEquals(xml.includes("\x07"), false);
+  assertEquals(xml.includes("/pathwithcontrol"), true);
+});

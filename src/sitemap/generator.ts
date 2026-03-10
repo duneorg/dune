@@ -114,7 +114,7 @@ export function generateSitemap(
           const defaultHref = defaultPage ? escapeXml(pageToUrl(defaultPage)) : null;
           for (const [, altPage] of group) {
             const href = escapeXml(pageToUrl(altPage));
-            entry += `\n    <xhtml:link rel="alternate" hreflang="${altPage.language}" href="${href}"/>`;
+            entry += `\n    <xhtml:link rel="alternate" hreflang="${escapeXml(altPage.language)}" href="${href}"/>`;
           }
           if (defaultHref) {
             entry += `\n    <xhtml:link rel="alternate" hreflang="x-default" href="${defaultHref}"/>`;
@@ -202,7 +202,9 @@ function resolveChangefreq(
 }
 
 function escapeXml(s: string): string {
-  return s
+  // Strip control chars (XML 1.0 forbids most) before escaping
+  const cleaned = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  return cleaned
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
