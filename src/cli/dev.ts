@@ -16,6 +16,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
+import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
 
@@ -408,6 +409,15 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           : "application/atom+xml; charset=utf-8";
         response = new Response(feedXml, {
           headers: { "Content-Type": feedContentType, "Cache-Control": "no-cache" },
+        });
+      }
+      // Sitemap XSL stylesheet (browser display)
+      else if (url.pathname === "/sitemap.xsl") {
+        response = new Response(SITEMAP_XSL, {
+          headers: {
+            "Content-Type": "text/xsl; charset=utf-8",
+            "Cache-Control": "no-cache",
+          },
         });
       }
       // Dynamic sitemap (generated from content index)

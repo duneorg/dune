@@ -18,6 +18,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
+import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
 
@@ -61,32 +62,33 @@ async function maybeCompress(req: Request, response: Response): Promise<Response
   const contentType = response.headers.get("Content-Type") ?? "";
   if (!COMPRESSIBLE_TYPES.test(contentType)) return response;
 
-  const accept = req.headers.get("Accept-Encoding") ?? "";
-  if (!accept.includes("gzip")) return response;
-
   if (!response.body) return response;
 
+  // Always buffer the body so we can set Content-Length.
+  // Without Content-Length, HTTP/1.1 reverse proxies (e.g. LiteSpeed) may
+  // truncate the response body when using chunked transfer encoding.
   const body = await response.arrayBuffer();
-  // Don't compress tiny responses — overhead isn't worth it
-  if (body.byteLength < 256) {
-    return new Response(body, {
+  const headers = new Headers(response.headers);
+  headers.set("Vary", "Accept-Encoding");
+
+  const accept = req.headers.get("Accept-Encoding") ?? "";
+  if (accept.includes("gzip") && body.byteLength >= 256) {
+    const compressed = new Response(
+      new Blob([body]).stream().pipeThrough(new CompressionStream("gzip")),
+    );
+    const compressedBody = await compressed.arrayBuffer();
+    headers.set("Content-Encoding", "gzip");
+    headers.set("Content-Length", String(compressedBody.byteLength));
+    return new Response(compressedBody, {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers,
     });
   }
 
-  const compressed = new Response(
-    new Blob([body]).stream().pipeThrough(new CompressionStream("gzip")),
-  );
-  const compressedBody = await compressed.arrayBuffer();
-
-  const headers = new Headers(response.headers);
-  headers.set("Content-Encoding", "gzip");
-  headers.set("Content-Length", String(compressedBody.byteLength));
-  headers.set("Vary", "Accept-Encoding");
-
-  return new Response(compressedBody, {
+  // No compression — serve raw body with explicit Content-Length.
+  headers.set("Content-Length", String(body.byteLength));
+  return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers,
@@ -373,6 +375,16 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
             "Cache-Control": "public, max-age=3600, must-revalidate",
           },
         }));
+      }
+
+      // Sitemap XSL stylesheet (browser display)
+      if (url.pathname === "/sitemap.xsl") {
+        return new Response(SITEMAP_XSL, {
+          headers: {
+            "Content-Type": "text/xsl; charset=utf-8",
+            "Cache-Control": "public, max-age=86400",
+          },
+        });
       }
 
       // Feed routes (cached at startup)
