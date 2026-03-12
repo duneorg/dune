@@ -300,7 +300,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     );
   }
 
-  // Generate sitemap at startup
+  // Generate sitemap at startup and pre-compress.
+  // Always serve gzip: OLS (and similar reverse proxies) strip Accept-Encoding
+  // from backend requests and Content-Length from backend responses, causing
+  // HTTP/1.1 responses >~88KB to be truncated. At ~8KB gzip vs ~126KB raw,
+  // the compressed sitemap is safely under any proxy buffer limit.
   const siteUrl = engine.site.url || `http://localhost:${port}`;
   const homeSlug = ctx.config.site.home ?? detectHomeSlug(engine.pages);
   const sitemapXml = generateSitemap(engine.pages, {
@@ -312,6 +316,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     exclude: ctx.config.site.sitemap?.exclude,
     changefreqOverrides: ctx.config.site.sitemap?.changefreq,
   });
+  const sitemapBytes = new TextEncoder().encode(sitemapXml);
+  const sitemapGzip = await new Response(
+    new Blob([sitemapBytes]).stream().pipeThrough(new CompressionStream("gzip")),
+  ).arrayBuffer();
 
   // Generate feeds at startup
   const siteBase = engine.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
@@ -367,14 +375,20 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         });
       }
 
-      // Dynamic sitemap
+      // Sitemap — always serve pre-compressed gzip with explicit Content-Length.
+      // OLS strips Accept-Encoding from backend requests and Content-Length from
+      // backend responses, causing HTTP/1.1 proxying to truncate responses >~88KB.
+      // At ~8KB gzip vs ~126KB raw, the compressed sitemap avoids that limit.
       if (url.pathname === "/sitemap.xml") {
-        return maybeCompress(req, new Response(sitemapXml, {
+        return new Response(sitemapGzip, {
           headers: {
             "Content-Type": "application/xml; charset=utf-8",
+            "Content-Encoding": "gzip",
+            "Content-Length": String(sitemapGzip.byteLength),
             "Cache-Control": "public, max-age=3600, must-revalidate",
+            "Vary": "Accept-Encoding",
           },
-        }));
+        });
       }
 
       // Sitemap XSL stylesheet (browser display)
