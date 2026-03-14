@@ -39,7 +39,15 @@
  *   POST /admin/api/themes/install   → Download + extract theme ZIP
  *
  * Public routes (no admin auth):
- *   POST /api/contact         → Accept contact form submissions
+ *   POST /api/contact             → Accept contact form submissions
+ *   GET  /api/forms/:name         → Return form schema as JSON (blueprint-driven forms)
+ *   POST /api/forms/:name         → Accept and validate a blueprint-driven form submission
+ *
+ * Staging (draft preview before publish):
+ *   POST   /admin/api/staging/:path         → Upsert draft + return preview token
+ *   GET    /admin/api/staging/:path         → Get current draft metadata
+ *   DELETE /admin/api/staging/:path         → Discard draft
+ *   POST   /admin/api/staging/:path/publish → Publish draft to live file
  */
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
@@ -102,6 +110,9 @@ import { sendSubmissionEmail } from "./email.ts";
 import { sendWebhookNotification } from "./webhook.ts";
 import type { SubmissionFile } from "./submissions.ts";
 import { encodeHex } from "@std/encoding/hex";
+import { loadForm } from "../forms/loader.ts";
+import { validateFormSubmission } from "../forms/validator.ts";
+import type { StagingEngine } from "../staging/engine.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -119,6 +130,8 @@ export interface AdminServerConfig {
   flex?: FlexEngine;
   /** Hook registry — exposes registered plugins to the admin panel */
   hooks?: HookRegistry;
+  /** Staging engine — draft preview before publishing */
+  staging?: StagingEngine;
 }
 
 // === In-memory rate limiter ===
@@ -176,7 +189,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -194,6 +207,17 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /api/contact — accepts contact form data, no admin auth required
     if (path === "/api/contact" && req.method === "POST") {
       return handleContactSubmission(req);
+    }
+
+    // === Blueprint-driven form endpoints (public) ===
+    // GET  /api/forms/:name — return form schema as JSON
+    // POST /api/forms/:name — accept and validate a form submission
+    const formsMatch = path.match(/^\/api\/forms\/([a-zA-Z0-9_-]+)$/);
+    if (formsMatch) {
+      const formName = formsMatch[1];
+      if (req.method === "GET") return handleFormSchema(formName);
+      if (req.method === "POST") return handleFormSubmission(req, formName);
+      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, POST" } });
     }
 
     // Only handle admin routes
@@ -1065,6 +1089,40 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handleRestoreRevision(pagePath, revNum);
     }
 
+    // === Staging API routes ===
+
+    if (adminPath.startsWith("/api/staging/")) {
+      const stagingRest = adminPath.replace("/api/staging/", "");
+
+      // POST /admin/api/staging/:path/publish
+      if (method === "POST" && stagingRest.endsWith("/publish")) {
+        requirePermission(authResult, "pages.update");
+        const pagePath = decodeURIComponent(stagingRest.replace("/publish", ""));
+        return handleStagingPublish(pagePath, authResult);
+      }
+
+      // POST /admin/api/staging/:path — upsert draft
+      if (method === "POST") {
+        requirePermission(authResult, "pages.update");
+        const pagePath = decodeURIComponent(stagingRest);
+        return handleStagingUpsert(req, pagePath, authResult);
+      }
+
+      // GET /admin/api/staging/:path — get draft
+      if (method === "GET") {
+        requirePermission(authResult, "pages.read");
+        const pagePath = decodeURIComponent(stagingRest);
+        return handleStagingGet(pagePath);
+      }
+
+      // DELETE /admin/api/staging/:path — discard draft
+      if (method === "DELETE") {
+        requirePermission(authResult, "pages.update");
+        const pagePath = decodeURIComponent(stagingRest);
+        return handleStagingDiscard(pagePath);
+      }
+    }
+
     // === Flex Object API routes ===
 
     if (adminPath.startsWith("/api/flex/")) {
@@ -1167,6 +1225,30 @@ export function createAdminHandler(config: AdminServerConfig) {
     }
   }
 
+  /**
+   * Run `git add <file> && git commit -m "..."` after a page save.
+   * Fire-and-forget: errors are logged but never surfaced to the client.
+   * Only runs when `admin.git_commit: true` in site.yaml and git is available.
+   */
+  async function maybeGitCommit(filePath: string, sourcePath: string, author?: string): Promise<void> {
+    if (!config.config.admin?.git_commit) return;
+    try {
+      const msg = author
+        ? `Admin: update ${sourcePath} (by ${author})`
+        : `Admin: update ${sourcePath}`;
+      const add = new Deno.Command("git", { args: ["add", filePath], stderr: "inherit" });
+      await add.output();
+      const commit = new Deno.Command("git", {
+        args: ["commit", "-m", msg],
+        stderr: "inherit",
+        stdout: "null",
+      });
+      await commit.output();
+    } catch (err) {
+      console.warn(`[dune] git commit failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   async function handleUpdatePage(req: Request, pagePath: string): Promise<Response> {
     try {
       const body = await req.json();
@@ -1226,6 +1308,9 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       await storage.write(filePath, new TextEncoder().encode(raw));
       await engine.rebuild();
+
+      // Git auto-commit if enabled
+      await maybeGitCommit(filePath, pagePath, undefined);
 
       return jsonResponse({ updated: true, sourcePath: page.sourcePath });
     } catch (err) {
@@ -2031,6 +2116,91 @@ export function createAdminHandler(config: AdminServerConfig) {
     }
   }
 
+  // === Staging handlers ===
+
+  async function handleStagingUpsert(req: Request, pagePath: string, authResult: AuthResult): Promise<Response> {
+    if (!staging) return jsonResponse({ error: "Staging not enabled" }, 501);
+    try {
+      const body = await req.json() as { content?: string; frontmatter?: Record<string, unknown> };
+      const { content = "", frontmatter = {} } = body;
+
+      const draft = await staging.upsert({
+        sourcePath: pagePath,
+        content,
+        frontmatter,
+        createdBy: authResult.user?.name,
+      });
+
+      const previewUrl = `/__preview?path=${encodeURIComponent(pagePath)}&token=${draft.token}`;
+      return jsonResponse({ ok: true, token: draft.token, previewUrl, updatedAt: draft.updatedAt });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleStagingGet(pagePath: string): Promise<Response> {
+    if (!staging) return jsonResponse({ error: "Staging not enabled" }, 501);
+    const draft = await staging.get(pagePath);
+    if (!draft) return jsonResponse({ draft: null });
+    const previewUrl = `/__preview?path=${encodeURIComponent(pagePath)}&token=${draft.token}`;
+    return jsonResponse({
+      draft: {
+        sourcePath: draft.sourcePath,
+        token: draft.token,
+        updatedAt: draft.updatedAt,
+        createdBy: draft.createdBy,
+        previewUrl,
+      },
+    });
+  }
+
+  async function handleStagingDiscard(pagePath: string): Promise<Response> {
+    if (!staging) return jsonResponse({ error: "Staging not enabled" }, 501);
+    await staging.discard(pagePath);
+    return jsonResponse({ discarded: true });
+  }
+
+  async function handleStagingPublish(pagePath: string, authResult: AuthResult): Promise<Response> {
+    if (!staging) return jsonResponse({ error: "Staging not enabled" }, 501);
+    try {
+      const draft = await staging.get(pagePath);
+      if (!draft) return jsonResponse({ error: "No draft found for this page" }, 404);
+
+      const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
+      if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
+
+      const contentDir = config.config.system.content.dir;
+      const filePath = `${contentDir}/${pageIndex.sourcePath}`;
+
+      // Write draft content to the live file (same format as restore)
+      const fmYaml = stringifyYaml(draft.frontmatter as Record<string, unknown>).trimEnd();
+      const fullContent = `---\n${fmYaml}\n---\n\n${draft.content}`;
+      await storage.write(filePath, new TextEncoder().encode(fullContent));
+
+      // Record revision for the publish action
+      if (history) {
+        await history.record({
+          sourcePath: pagePath,
+          content: draft.content,
+          frontmatter: draft.frontmatter,
+          author: authResult.user?.name,
+          message: "Published from staging",
+        });
+      }
+
+      // Git auto-commit if enabled
+      await maybeGitCommit(filePath, pagePath, authResult.user?.name);
+
+      // Discard the draft and rebuild
+      await staging.discard(pagePath);
+      await engine.rebuild();
+
+      return jsonResponse({ published: true, sourcePath: pagePath });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
   // === Revision history page ===
 
   async function handleRevisionHistoryPage(url: URL, authResult: AuthResult): Promise<Response> {
@@ -2220,6 +2390,164 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (!schemas[type]) return jsonResponse({ error: "Unknown type" }, 404);
     await flex.delete(type, id);
     return jsonResponse({ deleted: true });
+  }
+
+  // === Blueprint-driven form handlers (public) ===
+
+  /** GET /api/forms/:name — return the form schema as JSON. */
+  async function handleFormSchema(formName: string): Promise<Response> {
+    const form = await loadForm(storage, "forms", formName);
+    if (!form) {
+      return jsonResponse({ error: `Form "${formName}" not found` }, 404);
+    }
+    // Return the public schema — omit internal server-side config (emails, webhooks)
+    return jsonResponse({
+      name: formName,
+      title: form.title,
+      success_url: form.success_url ?? "/",
+      fields: form.fields,
+      // Expose honeypot field name so the front-end can render the hidden input
+      honeypot: form.honeypot ?? config.config.admin?.honeypot ?? "_hp",
+    });
+  }
+
+  /** POST /api/forms/:name — validate and store a blueprint-driven form submission. */
+  async function handleFormSubmission(req: Request, formName: string): Promise<Response> {
+    if (!submissions) {
+      return jsonResponse({ error: "Submissions not enabled" }, 501);
+    }
+
+    const form = await loadForm(storage, "forms", formName);
+    if (!form) {
+      return jsonResponse({ error: `Form "${formName}" not found` }, 404);
+    }
+
+    try {
+      // Rate limit by IP
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+        ?? req.headers.get("x-real-ip")
+        ?? "unknown";
+      if (!contactRateLimiter.check(ip)) {
+        const retryAfter = contactRateLimiter.retryAfter(ip);
+        return new Response(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+        });
+      }
+
+      // Parse body
+      const contentType = req.headers.get("content-type") ?? "";
+      let fields: Record<string, string> = {};
+      const uploadedFiles: Array<{ key: string; file: File }> = [];
+
+      if (contentType.includes("application/json")) {
+        const body = await req.json();
+        for (const [k, v] of Object.entries(body)) {
+          if (typeof v === "string") fields[k] = v;
+        }
+      } else {
+        const formData = await req.formData();
+        for (const [k, v] of formData.entries()) {
+          if (typeof v === "string") {
+            fields[k] = v;
+          } else if (v instanceof File && v.size > 0) {
+            uploadedFiles.push({ key: k, file: v });
+          }
+        }
+      }
+
+      // Honeypot anti-spam
+      const honeypotField = form.honeypot ?? config.config.admin?.honeypot ?? "_hp";
+      if (fields[honeypotField]) {
+        const acceptsJson = req.headers.get("accept")?.includes("application/json");
+        if (acceptsJson) return jsonResponse({ ok: true });
+        return new Response(null, { status: 302, headers: { Location: form.success_url ?? "/" } });
+      }
+      delete fields[honeypotField];
+
+      // Schema validation
+      const validationErrors = validateFormSubmission(form, fields);
+      if (validationErrors.length > 0) {
+        const acceptsJson = req.headers.get("accept")?.includes("application/json");
+        if (acceptsJson) {
+          return jsonResponse({ error: "Validation failed", errors: validationErrors }, 422);
+        }
+        // For regular form POST, redirect back with error indicator
+        const requestOrigin = new URL(req.url).origin;
+        const referer = req.headers.get("referer");
+        let redirectPath = "/";
+        if (referer) {
+          try {
+            const u = new URL(referer);
+            if (u.origin === requestOrigin) {
+              u.searchParams.set("form_error", "1");
+              redirectPath = u.pathname + u.search;
+            }
+          } catch { /* bad referer */ }
+        }
+        return new Response(null, { status: 302, headers: { Location: redirectPath } });
+      }
+
+      // File uploads
+      const submissionId = encodeHex(crypto.getRandomValues(new Uint8Array(6)));
+      const storedFiles: SubmissionFile[] = [];
+      if (uploadedFiles.length > 0) {
+        const dataDir = config.config.admin?.dataDir ?? "data";
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        const MAX_FILES = 5;
+        for (const { file } of uploadedFiles.slice(0, MAX_FILES)) {
+          if (file.size > MAX_FILE_SIZE) continue;
+          const safeName = file.name
+            .replace(/[/\\:*?"<>|]/g, "_")
+            .replace(/\s+/g, "_")
+            .replace(/_{2,}/g, "_")
+            .slice(0, 200);
+          if (!safeName) continue;
+          const storagePath = `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
+          await storage.write(storagePath, new Uint8Array(await file.arrayBuffer()));
+          storedFiles.push({
+            name: safeName,
+            contentType: file.type || "application/octet-stream",
+            size: file.size,
+            storagePath,
+          });
+        }
+      }
+
+      const submission = await submissions.create(formName, fields, {
+        ip: ip === "unknown" ? undefined : ip,
+        language: req.headers.get("accept-language") ?? undefined,
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      }, { id: submissionId, files: storedFiles });
+
+      // Notifications — use global SMTP/webhook config as the base; per-form
+      // overrides only replace the destination (to address / webhook URL).
+      const globalNotif = config.config.admin?.notifications;
+      if (globalNotif?.email) {
+        // Per-form email override replaces the `to` address; SMTP credentials stay global.
+        const emailCfg = form.notifications?.email
+          ? { ...globalNotif.email, to: form.notifications.email }
+          : globalNotif.email;
+        sendSubmissionEmail(emailCfg, submission)
+          .catch((err: Error) => console.error(`[dune] Email notification failed: ${err.message}`));
+      }
+      if (globalNotif?.webhook || form.notifications?.webhook) {
+        // Per-form webhook override replaces the URL; keep global secret/headers if any.
+        const webhookCfg = form.notifications?.webhook
+          ? { ...(globalNotif?.webhook ?? {}), url: form.notifications.webhook } as import("../config/types.ts").WebhookNotificationConfig
+          : globalNotif!.webhook!;
+        sendWebhookNotification(webhookCfg, submission)
+          .catch((err: Error) => console.error(`[dune] Webhook notification failed: ${err.message}`));
+      }
+
+      const acceptsJson = req.headers.get("accept")?.includes("application/json");
+      if (acceptsJson) return jsonResponse({ ok: true });
+
+      const successUrl = form.success_url ?? "/";
+      return new Response(null, { status: 302, headers: { Location: successUrl } });
+    } catch (err) {
+      return serverError(err);
+    }
   }
 
   // === Contact form submission handler (public) ===

@@ -19,6 +19,7 @@ import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
+import { serveStagedPreview } from "../staging/preview.ts";
 
 export interface DevOptions {
   port?: number;
@@ -183,7 +184,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Bootstrap engine
   const ctx = await bootstrap(root, { debug, buildSearch: true });
 
-  const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine, pluginAssetDirs, stagingEngine } = ctx;
   const routes = duneRoutes(engine, collections, flexEngine, search);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
@@ -373,6 +374,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       if (url.pathname === "/__dune_reload") {
         return handleSSE();
       }
+      // Staged draft preview: GET /__preview?path=...&token=...
+      else if (url.pathname === "/__preview" && req.method === "GET") {
+        const previewResult = await serveStagedPreview(url, engine, stagingEngine);
+        response = previewResult ?? new Response("Preview not found or token invalid.", { status: 404 });
+      }
       // Admin routes (must come before content routes)
       else if (url.pathname.startsWith(adminPrefix)) {
         const adminResult = await adminHandler(req);
@@ -447,6 +453,28 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       // Static files (must come before content routes)
       else if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
         response = await serveStaticFile(root, url.pathname, ctx.config.theme.name);
+      }
+      // Plugin assets: /plugins/{name}/...
+      else if (url.pathname.startsWith("/plugins/")) {
+        const pluginMatch = url.pathname.match(/^\/plugins\/([^/]+)\/(.+)$/);
+        if (pluginMatch) {
+          const [, pluginName, filePath] = pluginMatch;
+          const assetDir = pluginAssetDirs.get(pluginName);
+          if (assetDir && !filePath.includes("..") && !filePath.startsWith("/")) {
+            try {
+              const fullPath = join(assetDir, filePath);
+              const file = await Deno.readFile(fullPath);
+              const stat = await Deno.stat(fullPath);
+              response = createFileResponse(file, stat.size, fullPath);
+            } catch {
+              response = new Response("Not found", { status: 404 });
+            }
+          } else {
+            response = new Response("Not found", { status: 404 });
+          }
+        } else {
+          response = new Response("Not found", { status: 404 });
+        }
       }
       // Media routes (image processing first, then raw media)
       else if (url.pathname.startsWith("/content-media/")) {

@@ -16,6 +16,9 @@
  *   dune plugin:install <src>  — Add a plugin to site.yaml
  *   dune plugin:remove <src>   — Remove a plugin from site.yaml
  *   dune plugin:create [name]  — Scaffold a new plugin
+ *   dune plugin:publish [name] — Publish plugin to JSR
+ *   dune plugin:search <query> — Search JSR for plugins
+ *   dune plugin:update [name]  — Update JSR plugins to latest versions
  */
 
 import { devCommand } from "./cli/dev.ts";
@@ -54,6 +57,9 @@ Commands:
   plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name")
   plugin:remove       Remove a plugin from site.yaml
   plugin:create       Scaffold a new plugin project
+  plugin:publish      Publish plugin to JSR (runs deno publish in plugin dir)
+  plugin:search       Search JSR for Dune plugins
+  plugin:update       Update JSR plugins to their latest versions
 
 Options:
   --port <n>          Server port (default: 3000)
@@ -153,6 +159,18 @@ async function main() {
 
       case "plugin:create":
         await pluginCommands.create(root, options.positional as string);
+        break;
+
+      case "plugin:publish":
+        await pluginCommands.publish(root, options.positional as string);
+        break;
+
+      case "plugin:search":
+        await pluginCommands.search(root, options.positional as string);
+        break;
+
+      case "plugin:update":
+        await pluginCommands.update(root, options.positional as string);
         break;
 
       default:

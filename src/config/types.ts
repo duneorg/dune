@@ -92,6 +92,13 @@ export interface AdminConfig {
   honeypot?: string;
   /** Outbound notifications fired after each form submission is saved. */
   notifications?: AdminNotificationsConfig;
+  /**
+   * Automatically create a git commit after every page save via the admin panel.
+   * Requires the site directory to be a git repository.
+   * Commit message: "Admin: update {sourcePath}"
+   * Default: false
+   */
+  git_commit?: boolean;
 }
 
 /** Notifications sent after a form submission is accepted. */

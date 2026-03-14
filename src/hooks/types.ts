@@ -96,6 +96,24 @@ export interface DunePlugin {
    * validating config, seeding data).
    */
   setup?: (api: PluginApi) => Promise<void> | void;
+  /**
+   * Absolute path to the plugin's static assets directory (assets/).
+   * Set automatically by the plugin loader for local plugins that have an
+   * assets/ subdirectory. Assets are served at /plugins/{name}/*.
+   */
+  assetDir?: string;
+  /**
+   * Absolute path to the plugin's templates directory (templates/).
+   * Set automatically by the plugin loader for local plugins that have a
+   * templates/ subdirectory. Templates are used as fallbacks after the
+   * active theme chain is exhausted.
+   */
+  templateDir?: string;
+  /**
+   * Names of other plugins this plugin depends on.
+   * The loader emits a warning (non-fatal) if any dependency is not installed.
+   */
+  dependencies?: string[];
 }
 
 /** Hook registry interface */

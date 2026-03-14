@@ -106,6 +106,12 @@ export interface DuneEngine {
    * theme for display in the admin preview panel.
    */
   createPreviewTheme(name: string): Promise<ThemeLoader>;
+  /**
+   * Register additional template directories from plugins.
+   * Must be called after plugin loading (bootstrap step 5a) so that plugin
+   * templates are available before the first request is served.
+   */
+  setPluginTemplateDirs(dirs: string[]): void;
 }
 
 export interface ResolveResult {
@@ -439,6 +445,10 @@ export async function createDuneEngine(
 
     createPreviewTheme(name: string) {
       return createThemeLoader({ storage, themesDir, themeName: name, rootDir: storageRoot });
+    },
+
+    setPluginTemplateDirs(dirs: string[]) {
+      themes.addTemplateDirs(dirs);
     },
   };
 

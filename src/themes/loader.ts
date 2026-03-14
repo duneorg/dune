@@ -36,6 +36,12 @@ export interface ThemeLoaderOptions {
   themeName: string;
   /** Root directory for resolving absolute paths (optional, defaults to cwd) */
   rootDir?: string;
+  /**
+   * Additional template directories (e.g. from plugins) searched after the
+   * full theme inheritance chain. Absolute paths to directories containing
+   * .tsx template files.
+   */
+  extraTemplateDirs?: string[];
 }
 
 /**
@@ -46,6 +52,9 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
 
   // Resolve the theme chain (child → parent → grandparent...)
   const theme = await resolveTheme(storage, themesDir, themeName);
+
+  // Mutable list of extra template dirs (populated after plugin loading).
+  const extraTemplateDirs: string[] = [...(options.extraTemplateDirs ?? [])];
 
   // Template component cache (lazy-loaded on first use)
   const templateCache = new Map<string, TemplateComponent>();
@@ -133,6 +142,25 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
           // Template file exists but failed to load — continue to parent
         }
         current = current.parent;
+      }
+
+      // Fallback: check plugin template directories (lowest priority)
+      for (const dir of extraTemplateDirs) {
+        const templatePath = join(dir, `${name}.tsx`);
+        try {
+          const stat = await Deno.stat(templatePath);
+          if (stat.isFile) {
+            const fileUrl = getImportUrl(templatePath);
+            const mod = await import(fileUrl);
+            const component = mod.default as TemplateComponent;
+            if (component) {
+              templateCache.set(name, component);
+              return { name, component, fromTheme: "(plugin)" };
+            }
+          }
+        } catch {
+          // Not in this plugin dir — continue
+        }
       }
 
       return null;
@@ -234,6 +262,20 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
       layoutCache.clear();
       localeCache.clear();
       importVersion++;
+    },
+
+    /**
+     * Add extra template directories (e.g. from plugins loaded after the
+     * theme loader was created). Clears the template cache so the new dirs
+     * are searched on the next template load.
+     */
+    addTemplateDirs(dirs: string[]) {
+      for (const dir of dirs) {
+        if (!extraTemplateDirs.includes(dir)) {
+          extraTemplateDirs.push(dir);
+        }
+      }
+      templateCache.clear();
     },
   };
 }

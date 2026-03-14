@@ -28,6 +28,7 @@ import { createHistoryEngine } from "../history/engine.ts";
 import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
 import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
+import { createStagingEngine } from "../staging/engine.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -44,6 +45,7 @@ import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { SubmissionManager } from "../admin/submissions.ts";
 import type { FlexEngine } from "../flex/engine.ts";
+import type { StagingEngine } from "../staging/engine.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -68,6 +70,9 @@ export interface BootstrapResult {
   history: HistoryEngine;
   submissionManager: SubmissionManager;
   flexEngine: FlexEngine;
+  stagingEngine: StagingEngine;
+  /** Map of plugin name → absolute asset directory path */
+  pluginAssetDirs: Map<string, string>;
 }
 
 export interface BootstrapOptions {
@@ -157,6 +162,20 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
+  // Collect plugin asset and template dirs after all plugins have loaded.
+  const pluginAssetDirs = new Map<string, string>();
+  const pluginTemplateDirs: string[] = [];
+  for (const plugin of hooks.plugins()) {
+    if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
+    if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
+  }
+
+  // Register plugin template dirs with the engine so plugins can provide
+  // additional templates that themes can fall back to.
+  if (pluginTemplateDirs.length > 0) {
+    engine.setPluginTemplateDirs(pluginTemplateDirs);
+  }
+
   await hooks.fire("onConfigLoaded", config);
   await hooks.fire("onStorageReady", storage);
   await hooks.fire("onContentIndexReady", engine.pages);
@@ -235,6 +254,11 @@ export async function bootstrap(
     maxRevisions: adminConfig.maxRevisions ?? 50,
   });
 
+  const stagingEngine = createStagingEngine({
+    storage,
+    runtimeDir,
+  });
+
   // 11. Admin panel
   const users = createUserManager({
     storage,
@@ -287,6 +311,7 @@ export async function bootstrap(
         submissions: submissionManager,
         flex: flexEngine,
         hooks,
+        staging: stagingEngine,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -307,5 +332,7 @@ export async function bootstrap(
     workflow, scheduler, history,
     submissionManager,
     flexEngine,
+    stagingEngine,
+    pluginAssetDirs,
   };
 }

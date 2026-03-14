@@ -134,6 +134,23 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
         continue;
       }
 
+      // Auto-detect assets/ and templates/ subdirs for local plugins.
+      // Registry/HTTPS plugins don't have a known filesystem path, so we
+      // only do this for local "./plugins/..." sources.
+      if (entry.src.startsWith(".") || entry.src.startsWith("/")) {
+        const pluginDir = join(root, entry.src.replace(/\/mod\.ts$/, "").replace(/\.ts$/, ""));
+        const assetsDir = join(pluginDir, "assets");
+        const templatesDir = join(pluginDir, "templates");
+        try {
+          const assetsStat = await Deno.stat(assetsDir);
+          if (assetsStat.isDirectory) plugin.assetDir = assetsDir;
+        } catch { /* no assets dir */ }
+        try {
+          const templatesStat = await Deno.stat(templatesDir);
+          if (templatesStat.isDirectory) plugin.templateDir = templatesDir;
+        } catch { /* no templates dir */ }
+      }
+
       // Merge the static entry config into config.plugins[name] so it's
       // accessible inside hook handlers via ctx.config.plugins[name].
       if (entry.config && Object.keys(entry.config).length > 0) {
@@ -148,6 +165,19 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[dune] Failed to load plugin "${entry.src}": ${message}`);
       // Non-fatal — continue loading remaining plugins
+    }
+  }
+
+  // Validate plugin dependencies — warn (non-fatal) for missing deps.
+  const loadedNames = new Set(hooks.plugins().map((p) => p.name));
+  for (const plugin of hooks.plugins()) {
+    if (!plugin.dependencies || plugin.dependencies.length === 0) continue;
+    for (const dep of plugin.dependencies) {
+      if (!loadedNames.has(dep)) {
+        console.warn(
+          `[dune] Plugin "${plugin.name}" depends on "${dep}", which is not installed.`,
+        );
+      }
     }
   }
 }

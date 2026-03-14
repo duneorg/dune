@@ -21,6 +21,7 @@ import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
+import { serveStagedPreview } from "../staging/preview.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -188,6 +189,37 @@ async function serveStaticFile(root: string, pathname: string): Promise<Response
   }
 }
 
+// === Plugin Asset Serving ===
+
+/**
+ * Serve a static file from a plugin's assets/ directory.
+ * URL format: /plugins/{pluginName}/{...path}
+ */
+async function servePluginAsset(
+  pluginAssetDirs: Map<string, string>,
+  pathname: string,
+): Promise<Response | null> {
+  // pathname = /plugins/{name}/path/to/file
+  const match = pathname.match(/^\/plugins\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+
+  const [, pluginName, filePath] = match;
+  const assetDir = pluginAssetDirs.get(pluginName);
+  if (!assetDir) return null;
+
+  // Security: prevent directory traversal
+  if (filePath.includes("..") || filePath.startsWith("/")) return null;
+
+  const fullPath = join(assetDir, filePath);
+  try {
+    const file = await Deno.readFile(fullPath);
+    const stat = await Deno.stat(fullPath);
+    return createFileResponse(file, stat.size, fullPath);
+  } catch {
+    return null;
+  }
+}
+
 // === Error Pages ===
 
 function renderErrorPage(status: number, title: string, message: string, siteName: string): Response {
@@ -226,7 +258,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine } = ctx;
+  const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine, pluginAssetDirs, stagingEngine } = ctx;
   const routes = duneRoutes(engine, collections, flexEngine, search);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
@@ -426,6 +458,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         return withSecurityHeaders(staticResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName));
       }
 
+      // Staged draft preview: GET /__preview?path=...&token=...
+      if (url.pathname === "/__preview" && req.method === "GET") {
+        const previewResult = await serveStagedPreview(url, engine, stagingEngine);
+        return previewResult ?? withSecurityHeaders(renderErrorPage(404, "Not Found", "Preview not found or token invalid.", siteName));
+      }
+
       // Admin routes
       if (url.pathname.startsWith(adminPrefix)) {
         const adminResult = await adminHandler(req);
@@ -447,6 +485,13 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
       if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
         const staticResult = await serveStaticFile(root, url.pathname);
         return staticResult ?? withSecurityHeaders(renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName));
+      }
+
+      // Plugin assets: /plugins/{name}/...
+      if (url.pathname.startsWith("/plugins/")) {
+        const pluginAssetResponse = await servePluginAsset(pluginAssetDirs, url.pathname);
+        if (pluginAssetResponse) return withSecurityHeaders(pluginAssetResponse);
+        return withSecurityHeaders(renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName));
       }
 
       // Media routes (image processing first, then raw media)
