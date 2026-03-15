@@ -78,6 +78,52 @@ publish_date: "2025-12-01T09:00:00Z"    # Auto-publish at this time
 unpublish_date: "2026-01-01T00:00:00Z"  # Auto-unpublish at this time
 ```
 
+## Draft preview
+
+Before publishing, editors can preview how a draft will look on the live site — with the active theme, layout, and styles applied — without making the page public.
+
+### Creating a preview
+
+From the page editor, save a draft and click **Preview Draft**. This generates a secure, shareable preview URL:
+
+```
+https://example.com/__preview?path=content%2Fblog%2Fmy-post%2Fdefault.md&token=abc123…
+```
+
+The URL can be shared with reviewers who don't have admin access — no login required.
+
+### How it works
+
+- Draft content (frontmatter + body) is saved to the staging area in `admin.runtimeDir` (default `.dune/admin/staging/`).
+- A random opaque token is generated and tied to the draft. The token is preserved across subsequent saves so shared links remain valid.
+- `GET /__preview` verifies the token and renders the draft through the active theme, with an orange "Draft preview" banner injected so viewers know the page is not live.
+- Staging files are ephemeral — they live in `runtimeDir` and are not committed to version control.
+
+### Publishing a staged draft
+
+Clicking **Publish** in the panel writes the staged draft to the content files, records a revision, and optionally creates a git commit (see [Git auto-commit](#git-auto-commit) below). The staging file is removed after a successful publish.
+
+### Git auto-commit
+
+When `admin.git_commit: true` is set in your config, every page save and staged publish triggers a `git add` + `git commit` automatically:
+
+```yaml
+# dune.config.ts
+export default {
+  admin: {
+    git_commit: true,
+  },
+};
+```
+
+The commit message includes the page path and the editor's username:
+
+```
+Admin: update content/blog/my-post/default.md (by jane)
+```
+
+Git must be available in the server's PATH. Commit failures are logged as warnings and do not block the save.
+
 ## Revision history
 
 Every time a page is saved through the admin panel, a revision is recorded. Revisions store:

@@ -125,6 +125,68 @@ export default function createAnalytics(config: AnalyticsConfig = {}): DunePlugi
 | `hooks` | ✅ | Map of hook event names to handler functions (can be empty `{}`) |
 | `configSchema` | — | Blueprint-style field definitions for admin-driven config UI |
 | `setup` | — | One-time initialization function called when the plugin is registered |
+| `dependencies` | — | Names of other plugins this plugin requires (soft warning at startup) |
+
+## Static assets
+
+If your plugin needs to serve CSS, JavaScript, images, or other static files, place them in an `assets/` subdirectory next to your plugin's `mod.ts`:
+
+```
+plugins/my-plugin/
+  mod.ts
+  assets/
+    widget.css
+    widget.js
+    logo.svg
+```
+
+Dune detects the `assets/` directory automatically at startup and serves its contents at `/__plugins/{name}/`. No config required.
+
+```html
+<!-- Reference plugin assets from your theme templates -->
+<link rel="stylesheet" href="/__plugins/my-plugin/widget.css">
+<script src="/__plugins/my-plugin/widget.js" defer></script>
+```
+
+Assets are served directly — no bundling or transformation.
+
+## Plugin templates
+
+Plugins can contribute Preact/JSX template components by placing them in a `templates/` subdirectory:
+
+```
+plugins/my-plugin/
+  mod.ts
+  templates/
+    landing.tsx
+    newsletter-confirm.tsx
+```
+
+Plugin templates are appended to the end of the theme resolution chain, after the active theme and all its parents. This means themes can override plugin templates — if the active theme has its own `landing.tsx`, it takes precedence over the plugin's version.
+
+## Plugin dependencies
+
+Declare soft dependencies with the `dependencies` field. If a named plugin is not installed, Dune logs a warning at startup but continues loading:
+
+```typescript
+export default {
+  name: "dune-comments",
+  version: "1.0.0",
+  dependencies: ["dune-auth"],   // warns if dune-auth is not installed
+  hooks: { ... },
+} satisfies DunePlugin;
+```
+
+For hard requirements (your plugin cannot function without them), check in `setup()` and throw with a clear message:
+
+```typescript
+setup: ({ hooks }) => {
+  const installed = hooks.plugins().map((p) => p.name);
+  if (!installed.includes("dune-auth")) {
+    throw new Error("[dune-comments] Requires the dune-auth plugin — install it first.");
+  }
+},
+```
 
 ## Config schema
 
@@ -257,6 +319,9 @@ hooks: {
 | `dune plugin:install <src>` | Add a plugin to `config/site.yaml` |
 | `dune plugin:remove <src\|name>` | Remove a plugin from `config/site.yaml` |
 | `dune plugin:create [name]` | Scaffold a new plugin project in `plugins/{name}/` |
+| `dune plugin:publish [name]` | Publish a local plugin to JSR |
+| `dune plugin:search <query>` | Search JSR for Dune-compatible plugins |
+| `dune plugin:update [name]` | Update a JSR or npm plugin to the latest version |
 
 ### `dune plugin:create`
 
@@ -291,6 +356,53 @@ Installed plugins (2):
   analytics@0.2.0
     hooks: onAfterRender
 ```
+
+### `dune plugin:publish`
+
+Publish a local plugin to JSR. Run this from your plugin directory — it validates that `jsr.json` (or `deno.json`) is present, then delegates to `deno publish`:
+
+```bash
+cd plugins/my-plugin
+dune plugin:publish
+
+# Or by name from the site root:
+dune plugin:publish my-plugin
+```
+
+Before publishing, make sure your `jsr.json` has a `name` in the `@scope/package` format, a `version`, and an `exports` field pointing to your `mod.ts`.
+
+### `dune plugin:search`
+
+Search JSR for Dune-compatible plugins:
+
+```bash
+dune plugin:search analytics
+
+# Results:
+#   @dune/analytics-plausible@1.2.0
+#     Privacy-focused Plausible analytics integration
+#     dune plugin:install jsr:@dune/analytics-plausible
+#
+#   @janedev/dune-umami@0.8.1
+#     Umami analytics for Dune CMS
+#     dune plugin:install jsr:@janedev/dune-umami
+```
+
+Results are fetched from the JSR search API filtered to the `@dune` scope and packages tagged with `dune-plugin`.
+
+### `dune plugin:update`
+
+Update a JSR or npm plugin to its latest published version and patch `site.yaml`:
+
+```bash
+# Update a specific plugin
+dune plugin:update dune-seo
+
+# Update all JSR/npm plugins
+dune plugin:update
+```
+
+The command fetches the latest version from the registry, updates the `src:` value in `config/site.yaml`, and prints what changed. Local path plugins (`./plugins/…`) are skipped.
 
 ## Admin panel
 

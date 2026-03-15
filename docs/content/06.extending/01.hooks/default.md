@@ -59,6 +59,13 @@ Hooks let you run code at specific points in Dune's lifecycle — when a page lo
 | `onApiRequest` | Before API request is handled | Auth, rate limiting, request logging |
 | `onApiResponse` | After API response is built | Response transformation, headers |
 
+### Engine lifecycle hooks
+
+| Hook | When it fires | Use case |
+|------|--------------|----------|
+| `onRebuild` | After a successful `engine.rebuild()` | Clear downstream caches, notify search index |
+| `onThemeSwitch` | When the active theme changes | Purge theme-specific caches, notify CDN |
+
 ## Registering hooks
 
 ```typescript
@@ -162,7 +169,14 @@ The `data` field in `HookContext` is typed per event. Here is what each hook rec
 | `onApiRequest` | `{ req: Request }` | Before API request is handled |
 | `onApiResponse` | `{ req: Request, response: unknown }` | After API response is built |
 
-> **Note:** The startup hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`) are fired automatically when Dune boots. The remaining hooks are defined in the type system and can be fired by custom server code using `hooks.fire(event, data)` when integrating Dune into a custom server.
+### Engine lifecycle hooks
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onRebuild` | `{}` | Fired at the end of a successful `engine.rebuild()` |
+| `onThemeSwitch` | `{ from: string, to: string }` | Fired when the active theme changes (old and new theme names) |
+
+> **Note:** The startup hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`) and engine lifecycle hooks (`onRebuild`, `onThemeSwitch`) are fired automatically by Dune. The request and API hooks can also be fired by custom server code using `hooks.fire(event, data)` when integrating Dune into a custom server.
 
 ## Hook execution order
 

@@ -96,11 +96,12 @@ admin:
   path: "/admin"                 # string — URL prefix for the admin panel
   sessionLifetime: 86400         # number — Session lifetime in seconds (default: 86400 = 24 h)
   dataDir: "data"                # string — Persistent data directory (users, submissions). Git-tracked.
-  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks, revisions). Not git-tracked.
+  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks, revisions, staging). Not git-tracked.
   maxRevisions: 50               # number — Maximum revisions retained per page (default: 50)
+  git_commit: false              # boolean — Auto-commit to git after every page save/publish (default: false)
 ```
 
-`dataDir` contains user accounts and form submissions and should be committed to version control. `runtimeDir` contains ephemeral session data and should be in `.gitignore`.
+`dataDir` contains user accounts and form submissions and should be committed to version control. `runtimeDir` contains ephemeral session, revision, and staging data and should be in `.gitignore`.
 
 ## theme config
 

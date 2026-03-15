@@ -53,6 +53,9 @@ All commands are run with `dune` (or `deno task dune`).
 | `dune plugin:install <src>` | Add a plugin to `config/site.yaml`. |
 | `dune plugin:remove <src\|name>` | Remove a plugin from `config/site.yaml`. |
 | `dune plugin:create [name]` | Scaffold a new plugin project at `plugins/{name}/`. |
+| `dune plugin:publish [name]` | Publish a local plugin to JSR (runs `deno publish`). |
+| `dune plugin:search <query>` | Search JSR for Dune-compatible plugins. |
+| `dune plugin:update [name]` | Update a JSR or npm plugin to its latest version. Omit name to update all. |
 
 ## Scaffolding
 
