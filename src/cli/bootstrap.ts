@@ -30,6 +30,7 @@ import { createFlexEngine } from "../flex/engine.ts";
 import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
+import { createCollabManager } from "../collab/mod.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -47,6 +48,7 @@ import type { HistoryEngine } from "../history/engine.ts";
 import type { SubmissionManager } from "../admin/submissions.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { StagingEngine } from "../staging/engine.ts";
+import type { CollabManager } from "../collab/mod.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -72,6 +74,8 @@ export interface BootstrapResult {
   submissionManager: SubmissionManager;
   flexEngine: FlexEngine;
   stagingEngine: StagingEngine;
+  /** Real-time collaboration manager */
+  collabManager: CollabManager;
   /** Map of plugin name → absolute asset directory path */
   pluginAssetDirs: Map<string, string>;
 }
@@ -269,7 +273,15 @@ export async function bootstrap(
 
   const commentManager = createCommentManager({ dataDir, runtimeDir });
 
-  // 11. Admin panel
+  // 11. Real-time collaboration
+  const collabManager = createCollabManager({
+    storage,
+    engine,
+    history,
+    contentDir: config.system.content.dir,
+  });
+
+  // 12. Admin panel
   const users = createUserManager({
     storage,
     usersDir: `${dataDir}/users`,
@@ -323,6 +335,7 @@ export async function bootstrap(
         hooks,
         staging: stagingEngine,
         comments: commentManager,
+        collab: collabManager,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -344,6 +357,7 @@ export async function bootstrap(
     submissionManager,
     flexEngine,
     stagingEngine,
+    collabManager,
     pluginAssetDirs,
   };
 }

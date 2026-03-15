@@ -116,6 +116,7 @@ import type { StagingEngine } from "../staging/engine.ts";
 import { fireContentWebhooks, listDeliveryLogs } from "./webhooks.ts";
 import { createSearchAnalytics } from "../search/analytics.ts";
 import type { CommentManager } from "./comments.ts";
+import type { CollabManager } from "../collab/mod.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -137,6 +138,8 @@ export interface AdminServerConfig {
   staging?: StagingEngine;
   /** Comment manager — page annotations and editorial comments */
   comments?: CommentManager;
+  /** Real-time collaboration WebSocket manager */
+  collab?: CollabManager;
 }
 
 // === In-memory rate limiter ===
@@ -194,7 +197,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -230,6 +233,23 @@ export function createAdminHandler(config: AdminServerConfig) {
 
     // Strip prefix to get the admin-relative path
     const adminPath = path.slice(prefix.length) || "/";
+
+    // === Real-time collaboration WebSocket endpoint ===
+    // GET /admin/collab/ws?docId=... (Upgrade: websocket)
+    // Auth is required; the upgrade must happen before any async logic.
+    if (
+      adminPath === "/collab/ws" &&
+      req.headers.get("upgrade")?.toLowerCase() === "websocket"
+    ) {
+      const authResult = await auth.authenticate(req);
+      if (!authResult.authenticated || !authResult.user) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      if (!collab) {
+        return new Response("Collaboration not enabled", { status: 501 });
+      }
+      return collab.handleUpgrade(req, authResult.user);
+    }
 
     // === Public routes (no auth required) ===
 
