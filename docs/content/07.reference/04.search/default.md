@@ -7,7 +7,7 @@ taxonomy:
   difficulty: [beginner]
   topic: [reference, api]
 metadata:
-  description: "Full-text search index, query syntax, and API endpoint"
+  description: "Full-text search index, query syntax, autocomplete, faceted search, and analytics"
 ---
 
 # Search
@@ -22,8 +22,24 @@ Search uses an in-memory inverted index built from:
 - Page **taxonomy values** (boosted 2×)
 - Page **body text** (stripped of Markdown/HTML syntax)
 - Page **template** name
+- Any **custom frontmatter fields** you add via `system.search.customFields`
 
 The index is built once at startup (`dune serve`) or rebuilt on each content change in dev mode (`dune dev`). It is not persisted to disk — a restart triggers a full rebuild.
+
+## Custom indexed fields
+
+By default only the fields above are indexed. To make additional frontmatter fields searchable, list them in your system config:
+
+```yaml
+# config/system.yaml
+search:
+  customFields:
+    - summary
+    - author
+    - series
+```
+
+Custom field values are extracted during index build alongside the page body — no extra file I/O. String values and arrays of strings are both supported.
 
 ## Query syntax
 
@@ -52,16 +68,29 @@ Each result is assigned a score. Higher scores rank first.
 
 ## REST API
 
+### Full-text search (with filters)
+
 ```
-GET /api/search?q={query}&limit={n}
+GET /api/search
 ```
 
 Query parameters:
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `q` | string | — | Search query (required) |
-| `limit` | number | 20 | Maximum results to return |
+| `q` | string | `""` | Search query |
+| `template` | string | — | Filter by template name |
+| `published` | `"true"` \| `"false"` | — | Filter by publish status |
+| `lang` | string | — | Filter by language code |
+| `from` | string (`YYYY-MM-DD`) | — | Filter pages with `date ≥ from` |
+| `to` | string (`YYYY-MM-DD`) | — | Filter pages with `date ≤ to` |
+| `taxonomy[{name}][]` | string | — | Filter by taxonomy value — repeatable |
+| `limit` | number | 20 (max 100) | Maximum results to return |
+
+Taxonomy filters use bracket notation and can be repeated:
+```
+GET /api/search?q=deno&taxonomy[tag][]=deno&taxonomy[tag][]=fresh&taxonomy[category][]=tutorial
+```
 
 Response:
 
@@ -71,26 +100,90 @@ Response:
     {
       "route": "/blog/hello-world",
       "title": "Hello World",
-      "date": "2025-06-15",
       "template": "post",
-      "format": "md",
-      "published": true,
-      "taxonomy": { "tag": ["deno"] },
+      "date": "2025-06-15",
+      "taxonomy": { "tag": ["deno", "fresh"] },
       "score": 8.5,
       "excerpt": "...the Deno runtime makes it easy to..."
     }
   ],
-  "meta": {
-    "total": 3,
-    "query": "deno",
-    "limit": 20
+  "total": 3,
+  "query": "deno",
+  "filters": {
+    "template": null,
+    "taxonomy": { "tag": ["deno"] }
   }
 }
 ```
 
 The `excerpt` field is a 120-character window around the first term match in the page body.
 
-An empty query (`q=`) returns an empty `items` array — it does not return all pages.
+An empty query (`q=`) with no filters returns an empty `items` array — it does not return all pages.
+
+### Autocomplete suggestions
+
+```
+GET /api/search/suggest?q={prefix}
+```
+
+Returns up to 10 completion suggestions for the given prefix. Scans the inverted index terms and page titles for prefix matches.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Prefix typed by the user (minimum 2 characters) |
+
+Response:
+
+```json
+{
+  "suggestions": ["deno", "deploy", "dependencies", "Dune CMS", "dark mode"]
+}
+```
+
+Use this to build a live autocomplete dropdown as the user types:
+
+```js
+let debounce;
+input.addEventListener("input", () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(async () => {
+    const q = input.value.trim();
+    if (q.length < 2) return clearSuggestions();
+    const { suggestions } = await fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`).then(r => r.json());
+    renderSuggestions(suggestions);
+  }, 150);
+});
+```
+
+## Query analytics
+
+Every search against `GET /api/search` is recorded fire-and-forget to a JSONL file at `{admin.runtimeDir}/search-analytics.jsonl`. The admin panel exposes aggregated statistics at:
+
+```
+GET /admin/api/search/analytics
+```
+
+Requires authentication with `pages.read` permission.
+
+Response:
+
+```json
+{
+  "totalSearches": 1842,
+  "topQueries": [
+    { "query": "deno", "count": 142, "avgResults": 7 },
+    { "query": "forms", "count": 88, "avgResults": 3 }
+  ],
+  "zeroResultQueries": [
+    { "query": "stripe integration", "count": 12 },
+    { "query": "ecommerce", "count": 7 }
+  ]
+}
+```
+
+`zeroResultQueries` lists queries that returned no results on average — useful for discovering missing content.
+
+The analytics file is machine-local and not git-tracked (it lives in `runtimeDir`). It is not pruned automatically — trim or rotate the file periodically on high-traffic sites.
 
 ## Build requirement
 
@@ -98,14 +191,23 @@ The search index is not built automatically in all contexts. In the standard `du
 
 ```ts
 const search = createSearchEngine({ pages, storage, contentDir, formats });
-await search.build();  // required before calling search.search()
+await search.build();  // required before calling search.search() or search.suggest()
+```
+
+Pass `customFields` to index additional frontmatter:
+
+```ts
+const search = createSearchEngine({
+  pages, storage, contentDir, formats,
+  customFields: ["summary", "author"],
+});
+await search.build();
 ```
 
 ## Limitations
 
 - **In-memory only** — index is lost on restart and rebuilt fresh each time
 - **No phrase matching** — `"hello world"` is treated as two separate terms
-- **No field-specific queries** — cannot restrict search to title-only or taxonomy-only
 - **Published pages only** — unpublished pages are excluded from the index
 - **No stemming** — "running" and "run" are distinct terms; prefix matching partially compensates
 

@@ -84,6 +84,10 @@ languages:
 typography:
   orphan_protection: true        # boolean — Insert &nbsp; before last word in paragraphs
 
+search:
+  customFields: []               # string[] — Extra frontmatter field names to include in search index
+                                 #   e.g. ["summary", "author", "series"]
+
 debug: false                     # boolean
 timezone: "UTC"                  # string — IANA timezone
 ```
@@ -95,13 +99,27 @@ admin:
   enabled: true                  # boolean — Enable admin panel (default: true)
   path: "/admin"                 # string — URL prefix for the admin panel
   sessionLifetime: 86400         # number — Session lifetime in seconds (default: 86400 = 24 h)
-  dataDir: "data"                # string — Persistent data directory (users, submissions). Git-tracked.
-  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, locks, revisions, staging). Not git-tracked.
+  dataDir: "data"                # string — Persistent data directory (users, submissions, comments). Git-tracked.
+  runtimeDir: ".dune/admin"      # string — Runtime data directory (sessions, revisions, staging, analytics). Not git-tracked.
   maxRevisions: 50               # number — Maximum revisions retained per page (default: 50)
   git_commit: false              # boolean — Auto-commit to git after every page save/publish (default: false)
+
+  # Outbound webhooks — fired on content mutation events
+  webhooks:
+    - url: "https://hooks.example.com/content"
+      secret: "$WEBHOOK_SECRET"   # string — HMAC-SHA256 signing secret ("$ENV_VAR" expansion supported)
+      label: "My integration"     # string — Human-readable label for delivery logs (optional)
+      enabled: true               # boolean — Disable without removing (default: true)
+      events:                     # WebhookContentEvent[] — which events trigger this endpoint
+        - onPageCreate
+        - onPageUpdate
+        - onPageDelete
+        - onWorkflowChange
 ```
 
-`dataDir` contains user accounts and form submissions and should be committed to version control. `runtimeDir` contains ephemeral session, revision, and staging data and should be in `.gitignore`.
+Valid `events` values: `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`. See [Webhooks](/webhooks) for full documentation.
+
+`dataDir` contains user accounts, form submissions, and editorial comments — should be committed to version control. `runtimeDir` contains ephemeral session, revision, staging, and analytics data — should be in `.gitignore`.
 
 ## theme config
 

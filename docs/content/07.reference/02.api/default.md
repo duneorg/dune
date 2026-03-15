@@ -257,35 +257,64 @@ Returns all pages with a specific taxonomy value.
 ### Full-text search
 
 ```
-GET /api/search?q={query}
+GET /api/search
 ```
 
 Query parameters:
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `q` | string | Search query (required) |
-| `limit` | number | Maximum results (default: 20) |
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `q` | string | `""` | Search query |
+| `template` | string | — | Filter by template name |
+| `published` | `"true"` \| `"false"` | — | Filter by publish status |
+| `lang` | string | — | Filter by language code |
+| `from` | string | — | Min date (`YYYY-MM-DD`) |
+| `to` | string | — | Max date (`YYYY-MM-DD`) |
+| `taxonomy[{name}][]` | string | — | Filter by taxonomy value (repeatable) |
+| `limit` | number | 20 (max 100) | Maximum results |
 
 Response:
 ```json
 {
-  "query": "deno fresh",
+  "query": "deno",
+  "total": 3,
   "items": [
     {
       "route": "/blog/hello-world",
       "title": "Hello World",
-      "excerpt": "...built with deno and fresh...",
-      "score": 0.95,
       "template": "post",
-      "format": "md"
+      "date": "2025-06-15",
+      "taxonomy": { "tag": ["deno"] },
+      "excerpt": "...built with deno and fresh...",
+      "score": 8.5
     }
   ],
-  "total": 3
+  "filters": {
+    "taxonomy": { "tag": ["deno"] }
+  }
 }
 ```
 
 Returns an empty `items` array (not a 404) if no results are found or `q` is omitted.
+
+### Autocomplete suggestions
+
+```
+GET /api/search/suggest?q={prefix}
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Prefix text (minimum 2 characters) |
+
+Response:
+```json
+{
+  "suggestions": ["deno", "deploy", "Dune CMS"]
+}
+```
+
+Returns up to 10 suggestions matching indexed terms and page titles. Returns an empty array for prefixes shorter than 2 characters.
 
 ## Site Configuration
 

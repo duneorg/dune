@@ -66,6 +66,17 @@ Hooks let you run code at specific points in Dune's lifecycle — when a page lo
 | `onRebuild` | After a successful `engine.rebuild()` | Clear downstream caches, notify search index |
 | `onThemeSwitch` | When the active theme changes | Purge theme-specific caches, notify CDN |
 
+### Content mutation hooks
+
+Fired by the admin panel after CRUD operations. Useful for triggering external systems (CDN purges, search re-indexing, notifications) without using outbound [webhooks](/webhooks).
+
+| Hook | When it fires | Use case |
+|------|--------------|----------|
+| `onPageCreate` | New page created and index rebuilt | Notify external search, invalidate CDN |
+| `onPageUpdate` | Page saved and index rebuilt | Notify external search, invalidate CDN |
+| `onPageDelete` | Page deleted and index rebuilt | Remove from external search, purge CDN |
+| `onWorkflowChange` | Page workflow status changed | Trigger review notifications, update CMS |
+
 ## Registering hooks
 
 ```typescript
@@ -175,6 +186,19 @@ The `data` field in `HookContext` is typed per event. Here is what each hook rec
 |------|--------------|-------------|
 | `onRebuild` | `{}` | Fired at the end of a successful `engine.rebuild()` |
 | `onThemeSwitch` | `{ from: string, to: string }` | Fired when the active theme changes (old and new theme names) |
+
+### Content mutation hooks
+
+| Hook | `data` shape | Description |
+|------|--------------|-------------|
+| `onPageCreate` | `{ sourcePath: string, title: string }` | Fired after a new page is created via the admin panel |
+| `onPageUpdate` | `{ sourcePath: string, title: string }` | Fired after a page is saved via the admin panel |
+| `onPageDelete` | `{ sourcePath: string }` | Fired after a page is deleted via the admin panel |
+| `onWorkflowChange` | `{ sourcePath: string, from: WorkflowStatus, to: WorkflowStatus }` | Fired after a page's workflow status changes |
+
+`WorkflowStatus` is `"draft" | "in_review" | "published" | "archived"`.
+
+These same events also trigger [outbound webhooks](/webhooks) when `admin.webhooks` is configured — hooks and webhooks fire in parallel.
 
 > **Note:** The startup hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`) and engine lifecycle hooks (`onRebuild`, `onThemeSwitch`) are fired automatically by Dune. The request and API hooks can also be fired by custom server code using `hooks.fire(event, data)` when integrating Dune into a custom server.
 

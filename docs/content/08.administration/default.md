@@ -67,6 +67,8 @@ On first startup, a default `admin` account is created automatically. Delete the
 | **Workflow** | Move pages through `draft → in_review → published → archived` states. |
 | **Scheduled actions** | Set a date/time for automatic publish or unpublish. |
 | **Revision history** | Browse and restore previous versions of any page. Up to `admin.maxRevisions` (default 50) saved per page. The current revision count is shown in the editor toolbar. |
+| **Comments & annotations** | Leave threaded comments on pages with @mention support and a resolve workflow for editorial sign-off. See [Comments](/comments). |
+| **Webhooks** | Fire outbound HTTP POST requests when pages are created, updated, deleted, or workflow status changes. See [Webhooks](/webhooks). |
 | **Flex Objects** | Create, edit, and delete records for schema-driven custom data types (products, team members, events, etc.). Schemas defined in `flex-objects/{type}.yaml`. See [Flex Objects](/flex-objects). |
 | **Configuration editor** | Edit `config/site.yaml` and `config/system.yaml` through a form UI without touching files directly (admin role only). |
 | **Themes** | Browse installed and registry themes, preview any theme before switching, and install new themes from the marketplace. See `/admin/themes`. |
