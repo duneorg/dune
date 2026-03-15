@@ -42,13 +42,41 @@ export interface ThemeLoaderOptions {
    * .tsx template files.
    */
   extraTemplateDirs?: string[];
+  /**
+   * Absolute path to a shared themes directory (multi-site setups).
+   * When the active theme is not found in the site's own `themesDir`, the
+   * loader checks here before throwing. All file operations for a shared
+   * theme use an independent storage adapter rooted at this directory.
+   *
+   * Note: a site-local child theme that inherits from a shared parent theme
+   * is not supported — both themes in an inheritance chain must reside in
+   * the same location (site-local or shared).
+   */
+  sharedThemesDir?: string;
 }
 
 /**
  * Create a theme loader that discovers and loads theme templates.
  */
 export async function createThemeLoader(options: ThemeLoaderOptions) {
-  const { storage, themesDir, themeName, rootDir } = options;
+  let { storage, themesDir, themeName, rootDir } = options;
+  const { sharedThemesDir } = options;
+
+  // When the theme doesn't exist in the site's own themes/ directory,
+  // fall back to the shared themes directory (multi-site setups only).
+  if (sharedThemesDir) {
+    const localThemeDir = join(themesDir, themeName);
+    const localExists = await storage.exists(localThemeDir);
+    if (!localExists) {
+      const { createStorage } = await import("../storage/mod.ts");
+      const sharedStorage = createStorage({ rootDir: sharedThemesDir });
+      if (await sharedStorage.exists(themeName)) {
+        storage = sharedStorage;
+        themesDir = "";
+        rootDir = sharedThemesDir;
+      }
+    }
+  }
 
   // Resolve the theme chain (child → parent → grandparent...)
   const theme = await resolveTheme(storage, themesDir, themeName);

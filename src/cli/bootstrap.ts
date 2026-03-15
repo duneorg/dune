@@ -79,6 +79,12 @@ export interface BootstrapResult {
 export interface BootstrapOptions {
   debug?: boolean;
   buildSearch?: boolean;
+  /**
+   * Absolute path to a shared themes directory (multi-site setups).
+   * Passed through to the engine so shared themes can be resolved when
+   * the active theme is not found in the site's own `themes/` directory.
+   */
+  sharedThemesDir?: string;
 }
 
 /**
@@ -88,7 +94,7 @@ export async function bootstrap(
   root: string,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  const { debug = false, buildSearch = false } = options;
+  const { debug = false, buildSearch = false, sharedThemesDir } = options;
 
   // 1. Storage
   const storage = createStorage({ rootDir: root });
@@ -149,6 +155,7 @@ export async function bootstrap(
     config,
     formats,
     storageRoot: root,
+    sharedThemesDir,
   });
 
   await engine.init();

@@ -36,6 +36,13 @@ export interface CollectionEngineOptions {
    * Required when any collection definition uses `{ "@flex": "type" }`.
    */
   flex?: FlexEngine;
+  /**
+   * Cross-site collection registry (multi-site setups).
+   * Maps site IDs to their respective collection engines.
+   * Required when using `{ "@site.children": "siteId:/route" }` sources.
+   * Set via `setSiteRegistry()` after all sites have been bootstrapped.
+   */
+  siteRegistry?: Map<string, CollectionEngine>;
 }
 
 export interface CollectionEngine {
@@ -58,6 +65,25 @@ export interface CollectionEngine {
    * Rebuild with new data (after content index changes).
    */
   rebuild(pages: PageIndex[], taxonomyMap: TaxonomyMap): void;
+
+  /**
+   * Return the direct children of the page at the given route.
+   * Used by `@site.children` cross-site collection sources.
+   */
+  getPagesAtRoute(route: string): PageIndex[];
+
+  /**
+   * Return all descendants of the page at the given route.
+   * Used by `@site.descendants` cross-site collection sources.
+   */
+  getPageDescendants(route: string): PageIndex[];
+
+  /**
+   * Register the cross-site collection registry.
+   * Called by MultisiteManager after all sites have been bootstrapped
+   * so that `@site.*` collection sources can resolve pages from peer sites.
+   */
+  setSiteRegistry(registry: Map<string, CollectionEngine>): void;
 }
 
 /**
@@ -68,6 +94,7 @@ export function createCollectionEngine(
 ): CollectionEngine {
   let { pages, taxonomyMap, loadPage } = options;
   const flex = options.flex;
+  let siteRegistry = options.siteRegistry;
 
   function resolveSource(
     source: CollectionSource,
@@ -107,6 +134,24 @@ export function createCollectionEngine(
     if ("@taxonomy" in source) {
       const criteria = (source as { "@taxonomy": Record<string, string | string[]> })["@taxonomy"];
       return findByMultipleTaxonomies(criteria);
+    }
+
+    if ("@site.children" in source) {
+      const spec = (source as { "@site.children": string })["@site.children"];
+      const colonIdx = spec.indexOf(":");
+      if (colonIdx === -1) return [];
+      const siteId = spec.slice(0, colonIdx);
+      const route = spec.slice(colonIdx + 1);
+      return siteRegistry?.get(siteId)?.getPagesAtRoute(route) ?? [];
+    }
+
+    if ("@site.descendants" in source) {
+      const spec = (source as { "@site.descendants": string })["@site.descendants"];
+      const colonIdx = spec.indexOf(":");
+      if (colonIdx === -1) return [];
+      const siteId = spec.slice(0, colonIdx);
+      const route = spec.slice(colonIdx + 1);
+      return siteRegistry?.get(siteId)?.getPageDescendants(route) ?? [];
     }
 
     return [];
@@ -415,6 +460,20 @@ export function createCollectionEngine(
     rebuild(newPages: PageIndex[], newTaxonomyMap: TaxonomyMap): void {
       pages = newPages;
       taxonomyMap = newTaxonomyMap;
+    },
+
+    getPagesAtRoute(route: string): PageIndex[] {
+      const target = findPageByRoute(route);
+      return target ? getChildren(target) : [];
+    },
+
+    getPageDescendants(route: string): PageIndex[] {
+      const target = findPageByRoute(route);
+      return target ? getDescendants(target) : [];
+    },
+
+    setSiteRegistry(registry: Map<string, CollectionEngine>): void {
+      siteRegistry = registry;
     },
   };
 }

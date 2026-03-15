@@ -309,3 +309,59 @@ export interface ConfigSource {
   value: unknown;
   source: string; // e.g., "config/site.yaml:3" or "default"
 }
+
+// ── Multi-site ───────────────────────────────────────────────────────────────
+
+/**
+ * One site entry in `config/sites.yaml`.
+ * A single Dune installation can serve multiple independent sites.
+ */
+export interface SiteEntry {
+  /** Unique identifier used in logs and cross-site collection queries */
+  id: string;
+  /**
+   * Path to the site root directory.
+   * Resolved relative to the directory containing `config/sites.yaml`.
+   * Stored as an absolute path after loading.
+   */
+  root: string;
+  /**
+   * Hostname-based routing: requests whose `Host` header equals this value
+   * are dispatched to this site (e.g. `"example.com"`).
+   * Mutually exclusive with `pathPrefix`.
+   */
+  hostname?: string;
+  /**
+   * Path-prefix-based routing: requests whose pathname starts with this
+   * prefix are dispatched to this site (e.g. `"/docs"`).
+   * The prefix is stripped from the request URL before forwarding.
+   * Mutually exclusive with `hostname`.
+   */
+  pathPrefix?: string;
+  /**
+   * Catch-all fallback site.
+   * Receives requests that match no other entry.
+   * If none is marked default, the first entry is used.
+   */
+  default?: boolean;
+}
+
+/**
+ * Top-level structure of `config/sites.yaml`.
+ * Present only when running in multi-site mode.
+ */
+export interface MultisiteConfig {
+  sites: SiteEntry[];
+  /**
+   * Absolute path to a shared themes directory.
+   * Sites check their own `themes/` first, then this directory.
+   * @example "./shared/themes"
+   */
+  sharedThemesDir?: string;
+  /**
+   * Absolute path to a shared plugins directory (informational).
+   * Sites reference shared plugins via relative paths in their `site.yaml`.
+   * @example "./shared/plugins"
+   */
+  sharedPluginsDir?: string;
+}

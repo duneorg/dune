@@ -53,6 +53,12 @@ export interface DuneEngineOptions {
    * (`onRebuild`, `onThemeSwitch`) so plugins can react to them.
    */
   hooks?: HookRegistry;
+  /**
+   * Absolute path to a shared themes directory (multi-site setups).
+   * Passed through to the theme loader as a fallback when the active theme
+   * is not found in the site's own `themes/` directory.
+   */
+  sharedThemesDir?: string;
 }
 
 export interface DuneEngine {
@@ -137,6 +143,7 @@ export async function createDuneEngine(
   const themesDir = options.themesDir ?? "themes";
   const contentDir = config.system.content.dir;
   const storageRoot = options.storageRoot;
+  const sharedThemesDir = options.sharedThemesDir;
   const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
   const dataDir = config.admin?.dataDir ?? "data";
   const themeConfigPath = `${dataDir}/theme-config.json`;
@@ -189,6 +196,7 @@ export async function createDuneEngine(
       themesDir,
       themeName: name,
       rootDir: storageRoot,
+      sharedThemesDir,
     });
 
     // Update in-memory config
@@ -310,6 +318,7 @@ export async function createDuneEngine(
       themesDir,
       themeName: config.theme.name,
       rootDir: storageRoot,
+      sharedThemesDir,
     });
   }
 
@@ -444,7 +453,7 @@ export async function createDuneEngine(
     },
 
     createPreviewTheme(name: string) {
-      return createThemeLoader({ storage, themesDir, themeName: name, rootDir: storageRoot });
+      return createThemeLoader({ storage, themesDir, themeName: name, rootDir: storageRoot, sharedThemesDir });
     },
 
     setPluginTemplateDirs(dirs: string[]) {
