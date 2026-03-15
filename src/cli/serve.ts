@@ -259,7 +259,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, collections, taxonomy, search, imageHandler, adminHandler, flexEngine, pluginAssetDirs, stagingEngine } = ctx;
-  const routes = duneRoutes(engine, collections, flexEngine, search);
+  const searchAnalyticsPath = join(ctx.config.admin?.runtimeDir ?? ".dune/admin", "search-analytics.jsonl");
+  const routes = duneRoutes(engine, collections, flexEngine, search, searchAnalyticsPath);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = ctx.config.admin?.path ?? "/admin";
   const siteName = engine.site.title;

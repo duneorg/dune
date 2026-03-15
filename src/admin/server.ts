@@ -51,7 +51,7 @@
  */
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
-import { dirname, basename } from "@std/path";
+import { dirname, basename, join } from "@std/path";
 import { parseContentFilename } from "../content/path-utils.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
@@ -113,6 +113,9 @@ import { encodeHex } from "@std/encoding/hex";
 import { loadForm } from "../forms/loader.ts";
 import { validateFormSubmission } from "../forms/validator.ts";
 import type { StagingEngine } from "../staging/engine.ts";
+import { fireContentWebhooks, listDeliveryLogs } from "./webhooks.ts";
+import { createSearchAnalytics } from "../search/analytics.ts";
+import type { CommentManager } from "./comments.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -132,6 +135,8 @@ export interface AdminServerConfig {
   hooks?: HookRegistry;
   /** Staging engine — draft preview before publishing */
   staging?: StagingEngine;
+  /** Comment manager — page annotations and editorial comments */
+  comments?: CommentManager;
 }
 
 // === In-memory rate limiter ===
@@ -189,7 +194,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -769,6 +774,104 @@ export function createAdminHandler(config: AdminServerConfig) {
       });
     }
 
+    // === Comments API ===
+    // NOTE: These routes must appear BEFORE the generic /api/pages/:path catch-alls
+    // because comment paths also start with /api/pages/.
+
+    // GET /admin/api/comments/mentions — list @mentions for current user
+    if (adminPath === "/api/comments/mentions" && method === "GET") {
+      requirePermission(authResult, "pages.read");
+      if (!comments || !authResult.user) return jsonResponse([]);
+      const mentions = await comments.listMentions(authResult.user.username);
+      return jsonResponse(mentions);
+    }
+
+    // POST /admin/api/comments/mentions/read — mark mentions as read
+    if (adminPath === "/api/comments/mentions/read" && method === "POST") {
+      requirePermission(authResult, "pages.read");
+      if (!comments || !authResult.user) return jsonResponse({ ok: true });
+      const readBody = await req.json().catch(() => ({})) as { ids?: unknown };
+      const ids: string[] = Array.isArray(readBody.ids) ? readBody.ids as string[] : [];
+      await comments.markRead(authResult.user.username, ids);
+      return jsonResponse({ ok: true });
+    }
+
+    // POST /admin/api/pages/{path}/comments/{id}/resolve — resolve comment thread
+    const commentResolveMatch = adminPath.match(
+      /^\/api\/pages\/(.+)\/comments\/([a-f0-9]+)\/resolve$/,
+    );
+    if (commentResolveMatch && method === "POST") {
+      requirePermission(authResult, "pages.read");
+      if (!comments || !authResult.user) {
+        return jsonResponse({ error: "Comments not available" }, 503);
+      }
+      const resolvePagePath = decodeURIComponent(commentResolveMatch[1]);
+      const resolveCommentId = commentResolveMatch[2];
+      const resolved = await comments.resolve(resolvePagePath, resolveCommentId, authResult.user.username);
+      if (!resolved) return jsonResponse({ error: "Comment not found" }, 404);
+      return jsonResponse(resolved);
+    }
+
+    // PATCH|DELETE /admin/api/pages/{path}/comments/{id} — edit or delete comment
+    const commentIdMatch = adminPath.match(
+      /^\/api\/pages\/(.+)\/comments\/([a-f0-9]+)$/,
+    );
+    if (commentIdMatch && (method === "PATCH" || method === "DELETE")) {
+      requirePermission(authResult, "pages.read");
+      if (!comments) return jsonResponse({ error: "Comments not available" }, 503);
+      const editPagePath = decodeURIComponent(commentIdMatch[1]);
+      const editCommentId = commentIdMatch[2];
+      const existing = await comments.get(editPagePath, editCommentId);
+      if (!existing) return jsonResponse({ error: "Comment not found" }, 404);
+      // Ownership check: own comment OR pages.delete permission
+      const canModify = existing.authorUsername === authResult.user?.username ||
+        auth.hasPermission(authResult, "pages.delete");
+      if (!canModify) return jsonResponse({ error: "Forbidden" }, 403);
+
+      if (method === "PATCH") {
+        const patchBody = await req.json().catch(() => ({})) as { body?: unknown };
+        if (!patchBody.body || typeof patchBody.body !== "string") {
+          return jsonResponse({ error: "Missing body" }, 400);
+        }
+        const updated = await comments.update(editPagePath, editCommentId, patchBody.body);
+        return jsonResponse(updated);
+      }
+
+      // DELETE
+      await comments.delete(editPagePath, editCommentId);
+      return jsonResponse({ ok: true });
+    }
+
+    // GET|POST /admin/api/pages/{path}/comments — list or create comments
+    const commentBaseMatch = adminPath.match(/^\/api\/pages\/(.+)\/comments$/);
+    if (commentBaseMatch) {
+      requirePermission(authResult, "pages.read");
+      if (!comments) return jsonResponse({ error: "Comments not available" }, 503);
+      const commentPagePath = decodeURIComponent(commentBaseMatch[1]);
+
+      if (method === "GET") {
+        const list = await comments.list(commentPagePath);
+        return jsonResponse({ items: list, total: list.length });
+      }
+
+      if (method === "POST") {
+        if (!authResult.user) return jsonResponse({ error: "Unauthorized" }, 401);
+        const postBody = await req.json().catch(() => ({})) as { body?: unknown; parentId?: unknown };
+        if (!postBody.body || typeof postBody.body !== "string") {
+          return jsonResponse({ error: "Missing body" }, 400);
+        }
+        const newComment = await comments.create(
+          commentPagePath,
+          {
+            body: postBody.body,
+            parentId: typeof postBody.parentId === "string" ? postBody.parentId : undefined,
+          },
+          authResult.user,
+        );
+        return jsonResponse(newComment, 201);
+      }
+    }
+
     // GET /admin/api/pages/:path — Get single page with content
     if (adminPath.startsWith("/api/pages/") && method === "GET") {
       requirePermission(authResult, "pages.read");
@@ -1162,6 +1265,27 @@ export function createAdminHandler(config: AdminServerConfig) {
       }
     }
 
+    // === Webhook delivery logs ===
+
+    // GET /admin/api/webhooks/deliveries
+    if (adminPath === "/api/webhooks/deliveries" && method === "GET") {
+      requirePermission(authResult, "pages.read");
+      const runtimeDir = config.config.admin?.runtimeDir ?? ".dune/admin";
+      const logs = await listDeliveryLogs(runtimeDir);
+      return jsonResponse({ items: logs, total: logs.length });
+    }
+
+    // === Search analytics ===
+
+    // GET /admin/api/search/analytics
+    if (adminPath === "/api/search/analytics" && method === "GET") {
+      requirePermission(authResult, "pages.read");
+      const runtimeDir = config.config.admin?.runtimeDir ?? ".dune/admin";
+      const analyticsPath = join(runtimeDir, "search-analytics.jsonl");
+      const summary = await createSearchAnalytics(analyticsPath).summarize();
+      return jsonResponse(summary);
+    }
+
     return jsonResponse({ error: "Not found" }, 404);
   }
 
@@ -1218,6 +1342,14 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       // Rebuild the engine
       await engine.rebuild();
+
+      // Fire content hooks + outbound webhooks (fire-and-forget)
+      const webhookEndpoints = config.config.admin?.webhooks ?? [];
+      const runtimeDir = config.config.admin?.runtimeDir ?? ".dune/admin";
+      if (hooks) {
+        hooks.fire("onPageCreate", { sourcePath: `${pagePath}/default${ext}`, title }).catch(() => {});
+      }
+      fireContentWebhooks(webhookEndpoints, "onPageCreate", { sourcePath: `${pagePath}/default${ext}`, title }, runtimeDir);
 
       return jsonResponse({ created: true, path: pagePath, file: filePath }, 201);
     } catch (err) {
@@ -1312,6 +1444,14 @@ export function createAdminHandler(config: AdminServerConfig) {
       // Git auto-commit if enabled
       await maybeGitCommit(filePath, pagePath, undefined);
 
+      // Fire content hooks + outbound webhooks (fire-and-forget)
+      const webhookEndpoints = config.config.admin?.webhooks ?? [];
+      const runtimeDir = config.config.admin?.runtimeDir ?? ".dune/admin";
+      if (hooks) {
+        hooks.fire("onPageUpdate", { sourcePath: page.sourcePath }).catch(() => {});
+      }
+      fireContentWebhooks(webhookEndpoints, "onPageUpdate", { sourcePath: page.sourcePath }, runtimeDir);
+
       return jsonResponse({ updated: true, sourcePath: page.sourcePath });
     } catch (err) {
       return serverError(err);
@@ -1330,6 +1470,14 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       await storage.delete(filePath);
       await engine.rebuild();
+
+      // Fire content hooks + outbound webhooks (fire-and-forget)
+      const webhookEndpointsDel = config.config.admin?.webhooks ?? [];
+      const runtimeDirDel = config.config.admin?.runtimeDir ?? ".dune/admin";
+      if (hooks) {
+        hooks.fire("onPageDelete", { sourcePath: page.sourcePath }).catch(() => {});
+      }
+      fireContentWebhooks(webhookEndpointsDel, "onPageDelete", { sourcePath: page.sourcePath }, runtimeDirDel);
 
       return jsonResponse({ deleted: true, sourcePath: page.sourcePath });
     } catch (err) {
@@ -1989,6 +2137,14 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       await storage.write(filePath, new TextEncoder().encode(updated));
       await engine.rebuild();
+
+      // Fire content hooks + outbound webhooks (fire-and-forget)
+      const webhookEndpointsWf = config.config.admin?.webhooks ?? [];
+      const runtimeDirWf = config.config.admin?.runtimeDir ?? ".dune/admin";
+      if (hooks) {
+        hooks.fire("onWorkflowChange", { sourcePath, from: currentStatus, to: newStatus }).catch(() => {});
+      }
+      fireContentWebhooks(webhookEndpointsWf, "onWorkflowChange", { sourcePath, from: currentStatus, to: newStatus }, runtimeDirWf);
 
       return jsonResponse({ transitioned: true, from: currentStatus, to: newStatus });
     } catch (err) {

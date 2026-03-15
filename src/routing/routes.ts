@@ -20,6 +20,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import type { SearchEngine } from "../search/engine.ts";
+import { createSearchAnalytics } from "../search/analytics.ts";
 import { generateSearchPage } from "../search/page.ts";
 
 /**
@@ -65,7 +66,10 @@ export function duneRoutes(
   collections?: CollectionEngine,
   flex?: FlexEngine,
   search?: SearchEngine,
+  analyticsPath?: string,
 ) {
+  // Analytics recorder — only created when a path is provided
+  const analytics = analyticsPath ? createSearchAnalytics(analyticsPath) : null;
   return {
     /**
      * Register media serving route.
@@ -154,6 +158,90 @@ export function duneRoutes(
             url: m.url,
             type: m.type,
           })),
+        });
+      }
+
+      // GET /api/search/suggest — autocomplete suggestions
+      if (path === "/api/search/suggest") {
+        const q = url.searchParams.get("q") ?? "";
+        const suggestions = search ? search.suggest(q, 10) : [];
+        return Response.json({ suggestions });
+      }
+
+      // GET /api/search — faceted full-text search
+      if (path === "/api/search") {
+        if (!search) {
+          return Response.json({ items: [], total: 0, query: "", filters: {} });
+        }
+
+        const q = url.searchParams.get("q") ?? "";
+        const filterTemplate = url.searchParams.get("template");
+        const filterPublished = url.searchParams.get("published");
+        const filterLang = url.searchParams.get("lang");
+        const filterFrom = url.searchParams.get("from");
+        const filterTo = url.searchParams.get("to");
+        const limit = Math.min(
+          parseInt(url.searchParams.get("limit") ?? "20"),
+          100,
+        );
+
+        // Collect taxonomy filters: taxonomy[category][]=news&taxonomy[tag][]=deno
+        const taxonomyFilters: Record<string, string[]> = {};
+        for (const [key, value] of url.searchParams.entries()) {
+          const match = key.match(/^taxonomy\[([^\]]+)\]\[\]$/);
+          if (match) {
+            const taxName = match[1];
+            if (!taxonomyFilters[taxName]) taxonomyFilters[taxName] = [];
+            taxonomyFilters[taxName].push(value);
+          }
+        }
+
+        // Fetch a larger candidate set then filter down
+        const raw = search.search(q, 200);
+
+        const filtered = raw.filter(({ page: p }) => {
+          if (filterTemplate && p.template !== filterTemplate) return false;
+          if (filterPublished !== null && String(p.published) !== filterPublished) return false;
+          if (filterLang && p.language !== filterLang) return false;
+          if (filterFrom && p.date && p.date < filterFrom) return false;
+          if (filterTo && p.date && p.date > filterTo) return false;
+          for (const [taxName, vals] of Object.entries(taxonomyFilters)) {
+            const pageVals = p.taxonomy[taxName] ?? [];
+            if (!vals.some((v) => pageVals.includes(v))) return false;
+          }
+          return true;
+        });
+
+        const resultCount = filtered.length;
+        const items = filtered.slice(0, limit).map(({ page: p, score, excerpt }) => ({
+          route: p.route,
+          title: p.title,
+          template: p.template,
+          date: p.date,
+          taxonomy: p.taxonomy,
+          score,
+          excerpt,
+        }));
+
+        // Fire-and-forget analytics recording
+        if (analytics && q.trim()) {
+          analytics.record({ query: q.trim(), resultCount, timestamp: Date.now() }).catch(
+            () => {},
+          );
+        }
+
+        return Response.json({
+          items,
+          total: resultCount,
+          query: q,
+          filters: {
+            template: filterTemplate ?? undefined,
+            published: filterPublished ?? undefined,
+            lang: filterLang ?? undefined,
+            from: filterFrom ?? undefined,
+            to: filterTo ?? undefined,
+            taxonomy: Object.keys(taxonomyFilters).length ? taxonomyFilters : undefined,
+          },
         });
       }
 

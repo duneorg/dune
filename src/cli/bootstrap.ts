@@ -29,6 +29,7 @@ import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
 import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
+import { createCommentManager } from "../admin/comments.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -259,6 +260,8 @@ export async function bootstrap(
     runtimeDir,
   });
 
+  const commentManager = createCommentManager({ dataDir, runtimeDir });
+
   // 11. Admin panel
   const users = createUserManager({
     storage,
@@ -312,6 +315,7 @@ export async function bootstrap(
         flex: flexEngine,
         hooks,
         staging: stagingEngine,
+        comments: commentManager,
       })
     : async (_req: Request) => null as Response | null;
 

@@ -99,6 +99,12 @@ export interface AdminConfig {
    * Default: false
    */
   git_commit?: boolean;
+  /**
+   * Outbound webhook endpoints fired on content mutation events
+   * (page create, update, delete, workflow state change).
+   * Multiple endpoints can be configured; each has independent event filtering.
+   */
+  webhooks?: WebhookEndpointConfig[];
 }
 
 /** Notifications sent after a form submission is accepted. */
@@ -146,6 +152,40 @@ export interface WebhookNotificationConfig {
    * Supports "$ENV_VAR" expansion.
    */
   secret?: string;
+}
+
+/**
+ * Content event types that can trigger outbound webhooks.
+ * Each corresponds to a hook fired by the admin panel after a CRUD operation.
+ */
+export type WebhookContentEvent =
+  | "onPageCreate"
+  | "onPageUpdate"
+  | "onPageDelete"
+  | "onWorkflowChange";
+
+/**
+ * A single outbound webhook endpoint configuration.
+ * Multiple endpoints can be configured under `admin.webhooks`.
+ */
+export interface WebhookEndpointConfig {
+  /** URL to POST the event payload to. */
+  url: string;
+  /**
+   * Secret used to sign the request body (HMAC-SHA256).
+   * Adds X-Dune-Signature: sha256=<hex> header.
+   * Supports "$ENV_VAR" expansion.
+   */
+  secret?: string;
+  /**
+   * Which content events should trigger this endpoint.
+   * @example ["onPageCreate", "onPageUpdate"]
+   */
+  events: WebhookContentEvent[];
+  /** Whether this endpoint is active (default: true). */
+  enabled?: boolean;
+  /** Optional human-readable label shown in delivery logs. */
+  label?: string;
 }
 
 /** Site-level configuration (content, identity, metadata) */
@@ -242,6 +282,16 @@ export interface SystemConfig {
   typography?: {
     /** Insert &nbsp; before last word of paragraphs to avoid orphans (default: true) */
     orphan_protection?: boolean;
+  };
+  /** Full-text search configuration. */
+  search?: {
+    /**
+     * Additional frontmatter field names to include in the full-text index.
+     * By default only title, body, and taxonomy values are indexed.
+     * Add field names here to make custom frontmatter searchable.
+     * @example ["summary", "tags", "author"]
+     */
+    customFields?: string[];
   };
   debug: boolean;
   timezone: string;

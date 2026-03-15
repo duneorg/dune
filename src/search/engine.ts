@@ -21,6 +21,13 @@ export interface SearchEngineOptions {
   contentDir: string;
   /** Format handlers for extracting body text */
   formats: FormatRegistry;
+  /**
+   * Additional frontmatter field names to include in the full-text index.
+   * By default only title, template, taxonomy values, and body text are indexed.
+   * Specify extra field names here to make custom frontmatter fields searchable.
+   * @example ["summary", "author", "tags"]
+   */
+  customFields?: string[];
 }
 
 export interface SearchResult {
@@ -39,6 +46,17 @@ export interface SearchEngine {
   search(query: string, limit?: number): SearchResult[];
   /** Rebuild index (after content changes) */
   rebuild(pages: PageIndex[]): Promise<void>;
+  /**
+   * Return autocomplete suggestions for a given prefix string.
+   *
+   * Scans indexed terms and page titles for entries that begin with
+   * the normalised prefix. Returns up to `limit` unique strings,
+   * short-circuiting as soon as the limit is reached.
+   *
+   * @param prefix - The text the user has typed so far
+   * @param limit  - Maximum number of suggestions (default: 10)
+   */
+  suggest(prefix: string, limit?: number): string[];
 }
 
 /** Internal document representation for the index */
@@ -116,7 +134,8 @@ export function createSearchEngine(
       parts.push(...values);
     }
 
-    // Try to read the content file for body text
+    // Try to read the content file for body text and custom frontmatter fields.
+    // Both extractions share a single file read.
     try {
       const filePath = `${contentDir}/${page.sourcePath}`;
       const raw = await storage.readText(filePath);
@@ -140,6 +159,22 @@ export function createSearchEngine(
             .replace(/---+/g, "")              // Horizontal rules
             .replace(/\n{2,}/g, "\n");
           parts.push(plain);
+        }
+
+        // Extract custom frontmatter fields (same raw file, no extra I/O)
+        const customFields = options.customFields;
+        if (customFields?.length) {
+          const fm = await handler.extractFrontmatter(raw, filePath);
+          for (const field of customFields) {
+            const val = fm[field];
+            if (typeof val === "string") {
+              parts.push(val);
+            } else if (Array.isArray(val)) {
+              for (const item of val) {
+                if (typeof item === "string") parts.push(item);
+              }
+            }
+          }
         }
       }
     } catch {
@@ -277,6 +312,45 @@ export function createSearchEngine(
     async rebuild(newPages: PageIndex[]): Promise<void> {
       pages = newPages;
       await this.build();
+    },
+
+    suggest(prefix: string, limit: number = 10): string[] {
+      if (!prefix) return [];
+      const normalized = prefix.toLowerCase().trim();
+      if (normalized.length < 2) return [];
+
+      const seen = new Set<string>();
+
+      // Scan inverted index terms for prefix matches (fast path)
+      for (const term of invertedIndex.keys()) {
+        if (term.startsWith(normalized)) {
+          seen.add(term);
+          if (seen.size >= limit) return [...seen];
+        }
+      }
+
+      // Scan page titles — add the full title and also individual words
+      for (const doc of documents.values()) {
+        if (seen.size >= limit) break;
+
+        const titleLower = doc.title.toLowerCase();
+        if (titleLower.startsWith(normalized)) {
+          seen.add(doc.title);
+          if (seen.size >= limit) break;
+        }
+
+        // Individual words within the title (e.g. prefix="dun" matches "Dune CMS")
+        if (seen.size < limit) {
+          for (const word of tokenize(doc.title)) {
+            if (word.startsWith(normalized)) {
+              seen.add(word);
+              if (seen.size >= limit) break;
+            }
+          }
+        }
+      }
+
+      return [...seen].slice(0, limit);
     },
   };
 }

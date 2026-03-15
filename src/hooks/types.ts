@@ -38,7 +38,13 @@ export type HookEvent =
 
   // Engine lifecycle
   | "onRebuild"      // fired at the end of a successful engine.rebuild()
-  | "onThemeSwitch"; // fired when the active theme changes
+  | "onThemeSwitch"  // fired when the active theme changes
+
+  // Content mutation (fired by admin CRUD operations)
+  | "onPageCreate"       // page file created via admin panel
+  | "onPageUpdate"       // page file updated via admin panel
+  | "onPageDelete"       // page file deleted via admin panel
+  | "onWorkflowChange";  // page workflow status changed
 
 /** Hook handler signature */
 export type HookHandler<T = unknown> = (context: HookContext<T>) => Promise<void> | void;
