@@ -89,6 +89,12 @@ export interface BootstrapOptions {
    * the active theme is not found in the site's own `themes/` directory.
    */
   sharedThemesDir?: string;
+  /**
+   * When true, disables the Secure cookie flag so session cookies work over
+   * plain HTTP in local dev. Defaults to false (production-safe).
+   * Also honoured when DUNE_ENV=dev is set in the environment.
+   */
+  dev?: boolean;
 }
 
 /**
@@ -98,7 +104,7 @@ export async function bootstrap(
   root: string,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  const { debug = false, buildSearch = false, sharedThemesDir } = options;
+  const { debug = false, buildSearch = false, sharedThemesDir, dev = false } = options;
 
   // 1. Storage
   const storage = createStorage({ rootDir: root });
@@ -309,8 +315,8 @@ export async function bootstrap(
   // Set Secure cookie flag unless running in a local dev environment.
   // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
   // (except on localhost in most browsers, where the browser grants an exception).
-  // Default to true (production-safe); disable only when DUNE_ENV=dev.
-  const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
+  // Default to true (production-safe); disable via the dev option or DUNE_ENV=dev.
+  const secureCookies = !dev && Deno.env.get("DUNE_ENV") !== "dev";
   const auth = createAuthMiddleware({ sessions, users, secure: secureCookies });
 
   const submissionManager = createSubmissionManager({

@@ -66,6 +66,7 @@ export class MultisiteManager {
 
       const ctx = await bootstrap(siteRoot, {
         debug,
+        dev,
         buildSearch: true,
         sharedThemesDir,
       });
