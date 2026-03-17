@@ -78,6 +78,8 @@ export interface BootstrapResult {
   collabManager: CollabManager;
   /** Map of plugin name → absolute asset directory path */
   pluginAssetDirs: Map<string, string>;
+  /** Absolute path to shared themes dir (multisite only), for static file serving */
+  sharedThemesDir?: string;
 }
 
 export interface BootstrapOptions {
@@ -365,5 +367,6 @@ export async function bootstrap(
     stagingEngine,
     collabManager,
     pluginAssetDirs,
+    sharedThemesDir,
   };
 }

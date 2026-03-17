@@ -138,15 +138,19 @@ export function createFileResponse(
 
 /**
  * Serve static files from a site's `static/` or theme `static/` directories.
+ * In multisite setups, pass `sharedThemesDir` so theme assets stored outside
+ * the individual site root (e.g. a top-level `themes/` directory) are found.
  * Returns `null` for paths that don't resolve to a readable file.
  */
 export async function serveStaticFile(
   root: string,
   pathname: string,
   devMode = false,
+  sharedThemesDir?: string,
 ): Promise<Response | null> {
   let filePath: string;
   let fullPath: string;
+  let sharedPath: string | undefined;
 
   if (pathname.startsWith("/themes/") && pathname.includes("/static/")) {
     const themeMatch = pathname.match(/^\/themes\/([^/]+)\/static\/(.+)$/);
@@ -154,6 +158,9 @@ export async function serveStaticFile(
     const [, theme, path] = themeMatch;
     filePath = path;
     fullPath = `${root}/themes/${theme}/static/${path}`;
+    if (sharedThemesDir) {
+      sharedPath = `${sharedThemesDir}/${theme}/static/${path}`;
+    }
   } else if (/^\/(favicon\.(ico|svg)|robots\.txt|sitemap\.xml)$/.test(pathname)) {
     filePath = pathname.slice(1);
     fullPath = `${root}/static/${filePath}`;
@@ -165,13 +172,16 @@ export async function serveStaticFile(
   // Security: prevent directory traversal
   if (filePath.includes("..") || filePath.startsWith("/")) return null;
 
-  try {
-    const file = await Deno.readFile(fullPath);
-    const stat = await Deno.stat(fullPath);
-    return createFileResponse(file, stat.size, fullPath, devMode);
-  } catch {
-    return null;
+  // Try site-local path first, then shared themes dir.
+  for (const candidate of [fullPath, sharedPath]) {
+    if (!candidate) continue;
+    try {
+      const file = await Deno.readFile(candidate);
+      const stat = await Deno.stat(candidate);
+      return createFileResponse(file, stat.size, candidate, devMode);
+    } catch { /* try next */ }
   }
+  return null;
 }
 
 /**

@@ -51,11 +51,11 @@ export class MultisiteManager {
         ? entry.root
         : resolve(configDir, entry.root);
 
-      // Resolve sharedThemesDir relative to installRoot if relative
+      // Resolve sharedThemesDir relative to configDir (same convention as site roots)
       const sharedThemesDir = cfg.sharedThemesDir
         ? (isAbsolute(cfg.sharedThemesDir)
           ? cfg.sharedThemesDir
-          : resolve(installRoot, cfg.sharedThemesDir))
+          : resolve(configDir, cfg.sharedThemesDir))
         : undefined;
 
       if (debug) {

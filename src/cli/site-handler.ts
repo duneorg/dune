@@ -132,6 +132,7 @@ export function createProductionSiteHandler(
   const {
     engine, collections, taxonomy, search, imageHandler,
     adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
+    sharedThemesDir,
   } = ctx;
   const searchAnalyticsPath = join(
     config.admin?.runtimeDir ?? ".dune/admin",
@@ -242,7 +243,7 @@ export function createProductionSiteHandler(
 
       // Theme / site static files
       if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
-        const staticResult = await serveStaticFile(root, url.pathname);
+        const staticResult = await serveStaticFile(root, url.pathname, false, sharedThemesDir);
         return staticResult ?? withSecurityHeaders(
           renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
         );
@@ -306,6 +307,7 @@ export function createDevSiteContext(
   const {
     engine, collections, taxonomy, search, imageHandler,
     adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
+    sharedThemesDir,
   } = ctx;
   const searchAnalyticsPath = join(
     config.admin?.runtimeDir ?? ".dune/admin",
@@ -457,7 +459,7 @@ export function createDevSiteContext(
         response = await serveStaticFile(root, url.pathname, true) ??
           new Response("Not found", { status: 404 });
       } else if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
-        response = await serveStaticFile(root, url.pathname, true) ??
+        response = await serveStaticFile(root, url.pathname, true, sharedThemesDir) ??
           new Response("Not found", { status: 404 });
       } else if (url.pathname.startsWith("/plugins/")) {
         response = await servePluginAsset(pluginAssetDirs, url.pathname, true) ??
