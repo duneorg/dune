@@ -351,7 +351,20 @@ export async function createDuneEngine(
   async function serveMedia(
     mediaPath: string,
   ): Promise<MediaResponse | null> {
-    const fullPath = join(contentDir, mediaPath);
+    // url.pathname preserves percent-encoding; decode before filesystem lookup
+    // so filenames with spaces or non-ASCII characters are found correctly.
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(mediaPath);
+    } catch {
+      return null; // malformed percent-encoding
+    }
+
+    // Guard against path traversal: resolved path must stay inside contentDir.
+    const fullPath = join(contentDir, decoded);
+    if (!fullPath.startsWith(contentDir + "/") && fullPath !== contentDir) {
+      return null;
+    }
 
     try {
       if (!(await storage.exists(fullPath))) {
