@@ -21,6 +21,7 @@ import type {
 } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
+import { parseFolderName } from "../content/path-utils.ts";
 import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
 import { loadBlueprints } from "../blueprints/loader.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
@@ -360,27 +361,75 @@ export async function createDuneEngine(
       return null; // malformed percent-encoding
     }
 
-    // Guard against path traversal: resolved path must stay inside contentDir.
-    const fullPath = join(contentDir, decoded);
-    if (!fullPath.startsWith(contentDir + "/") && fullPath !== contentDir) {
-      return null;
-    }
+    // Resolve the media path to an actual filesystem path.
+    // Directory segments may be either:
+    //   - literal prefixed names ("04.einstieg") — backward compat
+    //   - clean slugs ("einstieg") — canonical going forward
+    // The filename (last segment) is always matched literally.
+    const resolved = await resolveMediaPath(decoded);
+    if (!resolved) return null;
 
     try {
-      if (!(await storage.exists(fullPath))) {
-        return null;
-      }
-
-      const data = await storage.read(fullPath);
-      const stat = await storage.stat(fullPath);
+      const data = await storage.read(resolved);
+      const stat = await storage.stat(resolved);
       return {
         data,
-        contentType: getMimeType(fullPath),
+        contentType: getMimeType(resolved),
         size: stat.size,
       };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Resolve a media path to an absolute filesystem path, accepting both
+   * numeric-prefixed directory names ("04.einstieg") and clean slugs
+   * ("einstieg"). The filename segment is matched literally. Returns null
+   * if the file cannot be located.
+   */
+  async function resolveMediaPath(decoded: string): Promise<string | null> {
+    // Guard against path traversal before any resolution.
+    const naive = join(contentDir, decoded);
+    if (!naive.startsWith(contentDir + "/") && naive !== contentDir) {
+      return null;
+    }
+
+    const segments = decoded.split("/").filter(Boolean);
+    let current = contentDir;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const isLast = i === segments.length - 1;
+      const candidate = join(current, segment);
+
+      // Fast path: exact match (handles prefixed paths and plain filenames).
+      if (await storage.exists(candidate)) {
+        current = candidate;
+        continue;
+      }
+
+      // For directory segments only: scan for a numeric-prefixed entry whose
+      // slug matches the clean segment name ("einstieg" → "04.einstieg").
+      if (!isLast) {
+        try {
+          const entries = await storage.list(current);
+          const match = entries.find(
+            (e) => e.isDirectory && parseFolderName(e.name).slug === segment,
+          );
+          if (match) {
+            current = join(current, match.name);
+            continue;
+          }
+        } catch {
+          // current directory doesn't exist or isn't listable
+        }
+      }
+
+      return null; // segment not found
+    }
+
+    return current === contentDir ? null : current;
   }
 
   /**
