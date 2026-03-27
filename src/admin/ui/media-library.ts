@@ -158,6 +158,7 @@ function mediaLibraryScript(prefix: string): string {
       grid.innerHTML = items.map((item, index) => {
         const isImage = item.type.startsWith('image/');
         const safeUrl = isSafeUrl(item.url) ? item.url : '';
+        const kind = fileKind(item.type);
         return '<div class="media-card" data-index="' + index + '">' +
           (isImage && safeUrl
             ? '<div class="media-card-preview"><img src="' + escapeAttr(safeUrl) + '?width=200" alt="' + escapeAttr(item.name) + '" loading="lazy"></div>'
@@ -165,7 +166,7 @@ function mediaLibraryScript(prefix: string): string {
           ) +
           '<div class="media-card-info">' +
             '<span class="media-card-name" title="' + escapeAttr(item.name) + '">' + escapeHtml(item.name) + '</span>' +
-            '<span class="media-card-meta">' + formatSize(item.size) + '</span>' +
+            '<span class="media-card-meta">' + formatSize(item.size) + ' &middot; <span class="media-kind-badge media-kind-' + kind + '">' + kind + '</span></span>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -219,7 +220,7 @@ function mediaLibraryScript(prefix: string): string {
         '<div class="detail-row"><span>Size:</span> ' + formatSize(item.size) + '</div>' +
         '<div class="detail-row"><span>Page:</span> <code>' + escapeHtml(item.pagePath) + '</code></div>' +
         '<div class="detail-row"><span>URL:</span> <code>' + escapeHtml(item.url) + '</code></div>' +
-        '<div class="detail-row"><span>Markdown:</span> <code>![' + escapeHtml(item.name) + '](' + escapeHtml(item.name) + ')</code></div>';
+        '<div class="detail-row"><span>Markdown:</span> <code>' + (item.type.startsWith('image/') ? '![' + escapeHtml(item.name) + '](' + escapeHtml(item.name) + ')' : '[' + escapeHtml(item.name) + '](' + escapeHtml(item.name) + ')') + '</code></div>';
 
       // Show focal picker for images
       if (item.type.startsWith('image/') && safeUrl) {
@@ -462,8 +463,16 @@ function mediaLibraryScript(prefix: string): string {
       if (type.startsWith('audio/')) return '🎵';
       if (type.includes('pdf')) return '📕';
       if (type.includes('zip') || type.includes('archive')) return '📦';
-      if (type.includes('text')) return '📝';
+      if (type.includes('csv') || type.includes('spreadsheet')) return '📊';
+      if (type.includes('text') || type.includes('json')) return '📝';
       return '📎';
+    }
+
+    function fileKind(type) {
+      if (type.startsWith('image/')) return 'embed';
+      if (type.startsWith('video/')) return 'embed';
+      if (type.startsWith('audio/')) return 'embed';
+      return 'link';
     }
 
     function formatSize(bytes) {

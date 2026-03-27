@@ -188,13 +188,16 @@ export function renderPageEditorPage(
           </label>
         </div>
         <div class="media-list" id="page-media-list">
-          ${pageData.media.length === 0 ? `<p class="media-empty-hint">No media files yet.</p>` : pageData.media.map((m) => `
+          ${pageData.media.length === 0 ? `<p class="media-empty-hint">No media files yet.</p>` : pageData.media.map((m) => {
+            const icon = m.type.startsWith("video/") ? "🎬" : m.type.startsWith("audio/") ? "🎵" : m.type.includes("pdf") ? "📕" : m.type.includes("zip") || m.type.includes("archive") ? "📦" : "📎";
+            const insertTitle = m.type.startsWith("image/") ? "Insert as image" : m.type.startsWith("video/") || m.type.startsWith("audio/") ? "Insert as player" : "Insert as link";
+            return `
             <div class="media-item">
-              ${m.type.startsWith("image/") ? `<img src="${escapeAttr(m.url)}" alt="${escapeAttr(m.name)}" class="media-thumb">` : `<span class="media-file-icon">📎</span>`}
+              ${m.type.startsWith("image/") ? `<img src="${escapeAttr(m.url)}" alt="${escapeAttr(m.name)}" class="media-thumb">` : `<span class="media-file-icon">${icon}</span>`}
               <span class="media-name" title="${escapeAttr(m.name)}">${escapeHtml(m.name)}</span>
-              <button class="btn btn-xs" onclick="insertMedia('${escapeAttr(m.name)}', '${escapeAttr(m.url)}')" title="Insert into editor">+</button>
-            </div>
-          `).join("")}
+              <button class="btn btn-xs" onclick="insertMedia('${escapeAttr(m.name)}', '${escapeAttr(m.url)}', '${escapeAttr(m.type)}')" title="${escapeAttr(insertTitle)}">+</button>
+            </div>`;
+          }).join("")}
         </div>
 
         <div class="sidebar-section">
@@ -818,22 +821,45 @@ function editorScript(
 
     // Add block menu
     function showAddMenu(afterIndex) {
+      // Remove any already-open menu
+      document.querySelectorAll('.add-block-menu').forEach(m => m.remove());
+
       const menu = document.createElement('div');
       menu.className = 'add-block-menu';
       menu.innerHTML = BLOCK_TYPES.map(bt =>
-        '<button class="add-block-option" onclick="addBlock(\\'' + bt.type + '\\',' + afterIndex + ');this.parentElement.remove()">' +
+        '<button class="add-block-option" onclick="addBlock(\\'' + bt.type + '\\',' + afterIndex + ');document.querySelectorAll(\\'.add-block-menu\\').forEach(function(m){m.remove()})">' +
         '<span class="add-icon">' + bt.icon + '</span> ' + bt.label + '</button>'
       ).join('');
-      const btn = event.target;
-      btn.parentElement.appendChild(menu);
+
+      // Position fixed relative to the clicked button so it always appears on-screen
+      const btn = event.target.closest('button') || event.target;
+      const rect = btn.getBoundingClientRect();
+      menu.style.position = 'fixed';
+      menu.style.top = (rect.bottom + 4) + 'px';
+      menu.style.left = Math.min(rect.left, window.innerWidth - 296) + 'px';
+      menu.style.zIndex = '1000';
+      document.body.appendChild(menu);
+
       setTimeout(() => document.addEventListener('click', function close(e) {
         if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close); }
       }), 0);
     }
 
     // Insert media from sidebar
-    function insertMedia(name, url) {
-      const block = { id: genId(), type: 'image', src: name, alt: name.replace(/\\.[^.]+$/, '') };
+    function insertMedia(name, url, mimeType) {
+      let block;
+      if (mimeType && mimeType.startsWith('image/')) {
+        block = { id: genId(), type: 'image', src: name, alt: name.replace(/\\.[^.]+$/, '') };
+      } else if (mimeType && mimeType.startsWith('video/')) {
+        // No dedicated video block — insert as HTML
+        block = { id: genId(), type: 'html', html: '<video src="' + name + '" controls></video>' };
+      } else if (mimeType && mimeType.startsWith('audio/')) {
+        block = { id: genId(), type: 'html', html: '<audio src="' + name + '" controls></audio>' };
+      } else {
+        // PDF, ZIP, CSV, etc. — insert as a download link paragraph
+        const label = name.replace(/\\.[^.]+$/, '');
+        block = { id: genId(), type: 'paragraph', text: '[' + label + '](' + name + ')' };
+      }
       blocks.push(block);
       renderBlocks();
       markDirty();
@@ -867,7 +893,7 @@ function editorScript(
               ? '<img src="' + item.url + '" alt="' + item.name + '" class="media-thumb">'
               : '<span class="media-file-icon">📎</span>') +
               '<span class="media-name" title="' + item.name + '">' + item.name + '</span>' +
-              '<button class="btn btn-xs" onclick="insertMedia(' + JSON.stringify(item.name) + ',' + JSON.stringify(item.url) + ')" title="Insert into editor">+</button>';
+              '<button class="btn btn-xs" onclick="insertMedia(' + JSON.stringify(item.name) + ',' + JSON.stringify(item.url) + ',' + JSON.stringify(item.type) + ')" title="Insert into editor">+</button>';
             list.appendChild(div);
           } else {
             alert('Upload failed: ' + (result.error || 'Unknown error'));

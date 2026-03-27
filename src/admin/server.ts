@@ -3853,6 +3853,9 @@ function mediaLibraryStyles(): string {
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
   .btn-danger { background: #dc2626; color: #fff; border: none; }
   .btn-danger:hover { background: #b91c1c; }
+  .media-kind-badge { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.1rem 0.3rem; border-radius: 3px; font-weight: 600; }
+  .media-kind-embed { background: #dbeafe; color: #1d4ed8; }
+  .media-kind-link { background: #fef3c7; color: #92400e; }
   .upload-drop-zone { border: 2px dashed #ddd; border-radius: 6px; padding: 2rem; text-align: center; background: #fafafa; }
   .upload-drop-zone p { margin: 0.25rem 0; color: #666; font-size: 0.9rem; }
   .upload-drop-zone.drag-over { border-color: #c9a96e; background: #fdf8f0; }
