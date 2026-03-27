@@ -751,11 +751,28 @@ export function createAdminHandler(config: AdminServerConfig) {
     // Requests with no Origin header (e.g. direct API calls or same-origin form
     // POSTs in some browsers) are allowed — SameSite=Lax on the session cookie
     // provides the second layer of protection.
+    //
+    // We compare only the HOST (hostname + port), not the full origin, so the
+    // check stays valid when a TLS-terminating reverse proxy (e.g. OLS/nginx)
+    // forwards requests over plain HTTP.  The browser sends
+    //   Origin: https://yoursite.com
+    // while Deno sees
+    //   req.url = http://yoursite.com/...  (HTTP, post-proxy)
+    // Comparing full origins would always fail (https ≠ http).  Comparing hosts
+    // is still safe: a CSRF attacker at evil.com cannot spoof a matching host.
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-      const requestOrigin = new URL(req.url).origin;
+      const requestHost = new URL(req.url).host;
       const origin = req.headers.get("origin");
-      if (origin !== null && origin !== requestOrigin) {
-        return jsonResponse({ error: "Forbidden: cross-origin request rejected" }, 403);
+      if (origin !== null) {
+        let originHost: string;
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          return jsonResponse({ error: "Forbidden: cross-origin request rejected" }, 403);
+        }
+        if (originHost !== requestHost) {
+          return jsonResponse({ error: "Forbidden: cross-origin request rejected" }, 403);
+        }
       }
     }
 
