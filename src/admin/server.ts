@@ -1373,7 +1373,7 @@ export function createAdminHandler(config: AdminServerConfig) {
   async function handleCreatePage(req: Request): Promise<Response> {
     try {
       const body = await req.json();
-      const { path: pagePath, title, content, template, format } = body;
+      const { path: pagePath, title, content, template, format, file, file_url } = body;
 
       if (!pagePath || !title) {
         return jsonResponse({ error: "path and title are required" }, 400);
@@ -1384,8 +1384,19 @@ export function createAdminHandler(config: AdminServerConfig) {
       }
 
       const ext = format === "mdx" ? ".mdx" : format === "tsx" ? ".tsx" : ".md";
-      const frontmatter = `---\ntitle: "${title}"\ntemplate: ${template ?? "default"}\npublished: true\n---\n`;
-      const fullContent = frontmatter + "\n" + (content ?? "");
+
+      // Build frontmatter — include file/file_url when this is a file-type page
+      let fm = `---\ntitle: "${title}"\ntemplate: ${template ?? "default"}\npublished: true\n`;
+      if (file && typeof file === "string") fm += `file: "${file}"\n`;
+      if (file_url && typeof file_url === "string") fm += `file_url: "${file_url}"\n`;
+      fm += `---\n`;
+
+      // Default content: for file pages embed a download link; otherwise blank
+      const defaultContent = (file_url && typeof file_url === "string")
+        ? `[⬇ ${title}](${file_url})\n`
+        : (content ?? "");
+
+      const fullContent = fm + "\n" + defaultContent;
 
       const contentDir = config.config.system.content.dir;
       const filePath = `${contentDir}/${pagePath}/default${ext}`;
@@ -3810,6 +3821,11 @@ function pageTreeStyles(): string {
   .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
   small { display: block; margin-top: 0.15rem; color: #999; font-size: 0.75rem; }
+  .page-type-toggle { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .page-type-btn { flex: 1; padding: 0.5rem; border: 2px solid #e0e0e0; background: #fafafa; border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: #555; transition: all 0.15s; }
+  .page-type-btn.active { border-color: #c9a96e; background: #fdf8f0; color: #92400e; font-weight: 600; }
+  .upload-drop-zone { border: 2px dashed #ddd; border-radius: 6px; padding: 1.5rem; text-align: center; background: #fafafa; }
+  .upload-drop-zone p { margin: 0.25rem 0; color: #666; font-size: 0.85rem; }
   `;
 }
 

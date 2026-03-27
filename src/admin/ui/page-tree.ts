@@ -133,7 +133,13 @@ function renderCreateDialog(prefix: string, templates: string[]): string {
     <div id="create-dialog" class="modal" style="display:none">
       <div class="modal-backdrop" onclick="hideCreateDialog()"></div>
       <div class="modal-content">
-        <h3>Create New Page</h3>
+        <h3 id="create-dialog-title">Create New Page</h3>
+
+        <div class="page-type-toggle">
+          <button type="button" class="page-type-btn active" id="type-btn-page" onclick="setCreateType('page')">📄 Page</button>
+          <button type="button" class="page-type-btn" id="type-btn-file" onclick="setCreateType('file')">📎 File</button>
+        </div>
+
         <form id="create-form" onsubmit="createPage(event)">
           <div class="form-group">
             <label for="new-title">Title</label>
@@ -142,27 +148,46 @@ function renderCreateDialog(prefix: string, templates: string[]): string {
           <div class="form-group">
             <label for="new-path">Path</label>
             <input type="text" id="new-path" name="path" placeholder="parent/page-slug" required>
-            <small>Relative to content root, e.g. "02.blog/03.new-post"</small>
+            <small id="new-path-hint">Relative to content root, e.g. "02.blog/03.new-post"</small>
           </div>
-          <div class="form-group">
-            <label for="new-format">Format</label>
-            <select id="new-format" name="format">
-              <option value="md">Markdown (.md)</option>
-              <option value="mdx">MDX (.mdx)</option>
-              <option value="tsx">TSX (.tsx)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="new-template">Template</label>
-            ${
+
+          <div id="page-only-fields">
+            <div class="form-group">
+              <label for="new-format">Format</label>
+              <select id="new-format" name="format">
+                <option value="md">Markdown (.md)</option>
+                <option value="mdx">MDX (.mdx)</option>
+                <option value="tsx">TSX (.tsx)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="new-template">Template</label>
+              ${
     templates.length > 1
       ? `<select id="new-template" name="template">${templateOptions}</select>`
       : `<input type="text" id="new-template" name="template" value="default">`
   }
+            </div>
           </div>
+
+          <div id="file-only-fields" style="display:none">
+            <div class="form-group">
+              <label>File <span style="color:#999;font-size:0.8rem">(uploaded to the page folder)</span></label>
+              <div id="file-drop-zone" class="upload-drop-zone" ondragover="event.preventDefault()" ondrop="handleCreateFileDrop(event)">
+                <p>Drag &amp; drop a file here, or</p>
+                <label class="btn btn-outline" style="cursor:pointer">
+                  Choose file
+                  <input type="file" id="create-file-input" style="display:none" accept="image/*,video/*,audio/*,.pdf,.zip,.csv,.json" onchange="handleCreateFileSelect(event)">
+                </label>
+                <p id="create-file-name" style="font-size:0.85rem;color:#666;margin-top:0.5rem"></p>
+              </div>
+            </div>
+          </div>
+
+          <div id="create-error" style="display:none;color:#c00;font-size:0.85rem;margin-bottom:0.5rem"></div>
           <div class="form-actions">
             <button type="button" class="btn btn-outline" onclick="hideCreateDialog()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create</button>
+            <button type="submit" class="btn btn-primary" id="create-submit-btn">Create</button>
           </div>
         </form>
       </div>
@@ -182,7 +207,41 @@ function pageTreeScript(prefix: string): string {
       }
     }
 
+    let createType = 'page';
+    let createFile = null;
+
+    function setCreateType(type) {
+      createType = type;
+      document.getElementById('type-btn-page').classList.toggle('active', type === 'page');
+      document.getElementById('type-btn-file').classList.toggle('active', type === 'file');
+      document.getElementById('page-only-fields').style.display = type === 'page' ? '' : 'none';
+      document.getElementById('file-only-fields').style.display = type === 'file' ? '' : 'none';
+      document.getElementById('create-dialog-title').textContent = type === 'file' ? 'Create File Page' : 'Create New Page';
+      document.getElementById('new-path-hint').textContent = type === 'file'
+        ? 'Folder for this file in the content tree, e.g. "02.docs/01.my-report"'
+        : 'Relative to content root, e.g. "02.blog/03.new-post"';
+    }
+
+    function handleCreateFileSelect(e) {
+      createFile = e.target.files[0] || null;
+      document.getElementById('create-file-name').textContent = createFile ? createFile.name : '';
+    }
+
+    function handleCreateFileDrop(e) {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      createFile = file;
+      document.getElementById('create-file-name').textContent = file.name;
+    }
+
     function showCreateDialog() {
+      createType = 'page';
+      createFile = null;
+      document.getElementById('create-file-name').textContent = '';
+      document.getElementById('create-file-input').value = '';
+      document.getElementById('create-error').style.display = 'none';
+      setCreateType('page');
       document.getElementById('create-dialog').style.display = 'flex';
     }
 
@@ -193,26 +252,84 @@ function pageTreeScript(prefix: string): string {
     function createPage(e) {
       e.preventDefault();
       const form = e.target;
-      const data = {
-        title: form.title.value,
-        path: form.path.value,
-        format: form.format.value,
-        template: form.template.value,
-      };
-      fetch('${prefix}/api/pages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      .then(r => r.json())
-      .then(result => {
-        if (result.created) {
-          window.location.reload();
-        } else {
-          alert('Error: ' + (result.error || 'Unknown error'));
+      const errEl = document.getElementById('create-error');
+      errEl.style.display = 'none';
+      const btn = document.getElementById('create-submit-btn');
+
+      if (createType === 'file') {
+        if (!createFile) {
+          errEl.textContent = 'Please choose a file to upload.';
+          errEl.style.display = 'block';
+          return;
         }
-      })
-      .catch(err => alert('Error: ' + err.message));
+        btn.disabled = true;
+        btn.textContent = 'Uploading…';
+
+        const pagePath = form.path.value.trim();
+        const fd = new FormData();
+        fd.append('file', createFile);
+        fd.append('pagePath', pagePath + '/default.md');
+
+        fetch('${prefix}/api/media/upload', { method: 'POST', body: fd })
+          .then(r => r.json())
+          .then(upload => {
+            if (!upload.ok) throw new Error(upload.error || 'Upload failed');
+            btn.textContent = 'Creating…';
+            return fetch('${prefix}/api/pages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: form.title.value,
+                path: pagePath,
+                format: 'md',
+                template: 'default',
+                file: upload.item.name,
+                file_url: upload.item.url,
+              }),
+            });
+          })
+          .then(r => r.json())
+          .then(result => {
+            if (result.created) {
+              window.location.reload();
+            } else {
+              throw new Error(result.error || 'Unknown error');
+            }
+          })
+          .catch(err => {
+            btn.disabled = false;
+            btn.textContent = 'Create';
+            errEl.textContent = 'Error: ' + err.message;
+            errEl.style.display = 'block';
+          });
+      } else {
+        btn.disabled = true;
+        fetch('${prefix}/api/pages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: form.title.value,
+            path: form.path.value,
+            format: form.format.value,
+            template: form.template.value,
+          }),
+        })
+        .then(r => r.json())
+        .then(result => {
+          if (result.created) {
+            window.location.reload();
+          } else {
+            btn.disabled = false;
+            errEl.textContent = 'Error: ' + (result.error || 'Unknown error');
+            errEl.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          errEl.textContent = 'Error: ' + err.message;
+          errEl.style.display = 'block';
+        });
+      }
     }
 
     // ── Page tree drag-and-drop ──────────────────────────────────────────────
