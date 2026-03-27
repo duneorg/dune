@@ -394,6 +394,7 @@ function buildPageIndex(
     mtime,
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),
+    fileUrl: buildFileUrl(sourcePath, frontmatter.file as string | undefined, frontmatter.file_url as string | undefined),
   };
 }
 
@@ -483,6 +484,31 @@ function buildCoverImageUrl(sourcePath: string, image: string | undefined): stri
   const dir = sourcePath.split("/").slice(0, -1).join("/");
   if (!dir) return undefined;
   return `/content-media/${dir}/${image}`;
+}
+
+/**
+ * Derive the file redirect URL for a file-type page.
+ *
+ * Accepts either:
+ *   - `file` frontmatter (filename only) → auto-computes `/content-media/{dir}/{file}`
+ *   - `file_url` frontmatter (explicit URL) → used as-is (backward compat)
+ *
+ * `file` takes precedence over `file_url` when both are present.
+ */
+function buildFileUrl(
+  sourcePath: string,
+  file: string | undefined,
+  fileUrl: string | undefined,
+): string | undefined {
+  if (file && typeof file === "string") {
+    const dir = sourcePath.split("/").slice(0, -1).join("/");
+    if (!dir) return undefined;
+    return `/content-media/${dir}/${file}`;
+  }
+  if (fileUrl && typeof fileUrl === "string") {
+    return fileUrl;
+  }
+  return undefined;
 }
 
 /** Compute a simple hash of a string for change detection. */

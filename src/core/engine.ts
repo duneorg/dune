@@ -338,6 +338,11 @@ export async function createDuneEngine(
     }
 
     if (match.page) {
+      // File-type pages redirect directly to their co-located file —
+      // templates don't need to handle this case.
+      if (match.page.fileUrl) {
+        return { type: "redirect", redirectTo: match.page.fileUrl };
+      }
       const page = await loadPage(match.page.sourcePath);
       return { type: "page", page };
     }

@@ -162,6 +162,14 @@ export interface PageIndex {
    * Used by the sitemap generator for `<image:image>` entries.
    */
   coverImage?: string;
+  /**
+   * When set, visiting this page's route redirects directly to this URL
+   * (typically a `/content-media/…` file URL). Derived at index time from
+   * `frontmatter.file` (filename → auto-computed URL) or the explicit
+   * `frontmatter.file_url` override. Templates do not need to handle this
+   * case — the routing layer issues the redirect transparently.
+   */
+  fileUrl?: string;
 }
 
 // === Collections ===
