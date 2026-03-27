@@ -8,9 +8,11 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v0.1 — Core Engine (CLI-Driven Flat-File CMS)
+## v0.1 — Core Engine (CLI-Driven Flat-File CMS) ✅
 
 **Theme:** "The engine that works"
+
+**Status:** Complete
 
 **Target:** Developers who want a programmable flat-file CMS for Deno Fresh. Content authored in editors/IDEs, managed via CLI.
 
@@ -42,9 +44,11 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v0.2 — Admin Panel & Visual Editing
+## v0.2 — Admin Panel & Visual Editing ✅
 
 **Theme:** "Content editors can use this"
+
+**Status:** Complete
 
 **Target:** Non-technical content editors. Agencies building sites for clients.
 
@@ -105,9 +109,11 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v0.3 — Plugin Ecosystem & Custom Types
+## v0.3 — Plugin Ecosystem & Custom Types ✅
 
 **Theme:** "Extensible and composable"
+
+**Status:** Complete
 
 **Target:** Plugin developers, agencies building custom solutions, power users.
 
@@ -156,48 +162,56 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v0.4 — Collaboration & Advanced Features
+## v0.4 — Collaboration & Advanced Features ✅
 
 **Theme:** "Team-ready"
+
+**Status:** Complete
 
 **Target:** Teams, organizations, multi-author publications.
 
 ### Deliverables
 
-#### Real-Time Collaboration
+#### Real-Time Collaboration ✅
 - WebSocket-based concurrent editing
-- Presence indicators (who is editing what)
-- Conflict resolution (operational transform or CRDT)
-- Change attribution (who changed what, when)
+- Presence indicators (who is editing what, per-user color slots)
+- Conflict resolution via Operational Transform (Quill Delta format)
+- Change attribution (author recorded on auto-save to revision history)
 
-#### Advanced Search
+#### Advanced Search ✅
 - Faceted search (filter by taxonomy, date range, content type)
 - Search suggestions / autocomplete
-- Search analytics (what are users searching for?)
+- Search analytics (query logging, popular terms dashboard)
 - Custom field indexing configuration
 
-#### Webhooks & Integrations
+#### Webhooks & Integrations ✅
 - Outbound webhooks on content events (create, update, publish, delete)
 - Configurable webhook endpoints per event type
-- Integration templates (Slack notifications, deployment triggers, etc.)
-- Incoming webhooks for external content updates
+- Delivery log with retry tracking
+- _(Incoming webhooks deferred to v0.5)_
 
-#### Comments & Annotations
+#### Comments & Annotations ✅
 - Internal comments on pages (team discussion, not public)
-- Inline annotations on specific content blocks
-- Mention system (@user notifications)
 - Comment threads with resolution status
+- _(Inline block annotations and @mention notifications deferred to v0.5)_
 
-#### Multi-Site Management
+#### Multi-Site Management ✅
 - Single Dune installation serving multiple sites
 - Shared theme and plugin pool
 - Per-site configuration, content, and user management
-- Cross-site content sharing (reference content from another site)
+- Cross-site collection queries (`@site.children`, `@site.descendants`)
+
+#### Media Management ✅ _(beyond original plan)_
+- Media upload directly from admin (media library and page editor sidebar)
+- Media delete with sidecar cleanup
+- File-type pages: pages with `file:` frontmatter redirect to their co-located
+  file at the routing layer — templates need no special handling
+- Page creation dialog supports a "File" mode (upload + create in one step)
 
 ### Success Criteria
-- Two editors can edit the same page simultaneously without conflicts
-- Webhook fires within 1 second of content event
-- Multi-site setup serves 3+ sites from one installation
+- ✅ Two editors can edit the same page simultaneously without conflicts
+- ✅ Webhook fires within 1 second of content event
+- ✅ Multi-site setup serves 3+ sites from one installation
 
 ---
 
