@@ -17,8 +17,10 @@
  *   POST /admin/api/pages/translate → Create a language translation copy of a page
  *   PUT  /admin/api/pages/:path → Update page
  *   DELETE /admin/api/pages/:path → Delete page
- *   GET  /admin/api/media     → List all media (JSON)
- *   PUT  /admin/api/media/meta → Save media sidecar metadata (focal point, etc.)
+ *   GET    /admin/api/media        → List all media (JSON)
+ *   POST   /admin/api/media/upload → Upload a media file (multipart/form-data)
+ *   DELETE /admin/api/media        → Delete a media file
+ *   PUT    /admin/api/media/meta   → Save media sidecar metadata (focal point, etc.)
  *   GET  /admin/i18n/memory   → Translation Memory admin page
  *   GET  /admin/api/i18n/memory → List TM entries for a language pair (JSON)
  *   POST /admin/api/i18n/memory → Add/update TM entry
@@ -52,7 +54,8 @@
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import { dirname, basename, join } from "@std/path";
-import { parseContentFilename } from "../content/path-utils.ts";
+import { parseContentFilename, isMediaFile } from "../content/path-utils.ts";
+import { getMimeType } from "../content/page-loader.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
 import type { UserManager } from "./auth/users.ts";
@@ -935,6 +938,18 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath === "/api/media" && method === "GET") {
       requirePermission(authResult, "media.read");
       return handleListMedia();
+    }
+
+    // POST /admin/api/media/upload — Upload a media file co-located with a page
+    if (adminPath === "/api/media/upload" && method === "POST") {
+      requirePermission(authResult, "media.upload");
+      return handleUploadMedia(req);
+    }
+
+    // DELETE /admin/api/media — Delete a media file
+    if (adminPath === "/api/media" && method === "DELETE") {
+      requirePermission(authResult, "media.delete");
+      return handleDeleteMedia(req);
     }
 
     // PUT /admin/api/media/meta — Save media sidecar metadata (e.g. focal point)
@@ -1894,6 +1909,97 @@ export function createAdminHandler(config: AdminServerConfig) {
         existing.focal = focal;
         await storage.write(sidecarPath, new TextEncoder().encode(stringifyYaml(existing)));
       }
+
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  // === Media upload handler ===
+
+  async function handleUploadMedia(req: Request): Promise<Response> {
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+    try {
+      const formData = await req.formData();
+      const file = formData.get("file");
+      const pagePath = formData.get("pagePath");
+
+      if (!file || !(file instanceof File)) {
+        return jsonResponse({ error: "file required" }, 400);
+      }
+      if (!pagePath || typeof pagePath !== "string") {
+        return jsonResponse({ error: "pagePath required" }, 400);
+      }
+
+      // Sanitize filename — strip path components, replace unsafe chars
+      const rawName = file.name;
+      const safeName = rawName
+        .replace(/[/\\:*?"<>|]/g, "_")
+        .replace(/\s+/g, "_")
+        .replace(/_{2,}/g, "_")
+        .replace(/^\.+/, "")
+        .slice(0, 200);
+
+      if (!safeName || !isMediaFile(safeName)) {
+        return jsonResponse({ error: "unsupported file type" }, 400);
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        return jsonResponse({ error: "file too large (max 50 MB)" }, 400);
+      }
+
+      // Validate pagePath — must not escape content dir
+      const contentDir = config.config.system.content.dir;
+      const pageDir = dirname(pagePath);
+      if (pageDir.includes("..") || pagePath.includes("..")) {
+        return jsonResponse({ error: "invalid pagePath" }, 400);
+      }
+
+      const destPath = `${contentDir}/${pageDir}/${safeName}`;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await storage.write(destPath, bytes);
+
+      const url = `/content-media/${pageDir}/${safeName}`;
+      const mimeType = getMimeType(safeName);
+      return jsonResponse({
+        ok: true,
+        item: { name: safeName, url, type: mimeType, size: bytes.length, pagePath },
+      });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  // === Media delete handler ===
+
+  async function handleDeleteMedia(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { pagePath, name } = body;
+
+      if (!pagePath || typeof pagePath !== "string" || !name || typeof name !== "string") {
+        return jsonResponse({ error: "pagePath and name required" }, 400);
+      }
+      if (pagePath.includes("..") || name.includes("..") || name.includes("/") || name.includes("\\")) {
+        return jsonResponse({ error: "invalid path" }, 400);
+      }
+      if (!isMediaFile(name)) {
+        return jsonResponse({ error: "not a media file" }, 400);
+      }
+
+      const contentDir = config.config.system.content.dir;
+      const pageDir = dirname(pagePath);
+      const filePath = `${contentDir}/${pageDir}/${name}`;
+
+      await storage.delete(filePath);
+
+      // Remove sidecar if present
+      const sidecarPath = `${filePath}.meta.yaml`;
+      try {
+        if (await storage.exists(sidecarPath)) {
+          await storage.delete(sidecarPath);
+        }
+      } catch { /* ignore */ }
 
       return jsonResponse({ ok: true });
     } catch (err) {
@@ -3728,6 +3834,11 @@ function mediaLibraryStyles(): string {
   .modal-wide { max-width: 640px; }
   .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
   .form-actions .btn-outline { color: #666; border-color: #ddd; }
+  .btn-danger { background: #dc2626; color: #fff; border: none; }
+  .btn-danger:hover { background: #b91c1c; }
+  .upload-drop-zone { border: 2px dashed #ddd; border-radius: 6px; padding: 2rem; text-align: center; background: #fafafa; }
+  .upload-drop-zone p { margin: 0.25rem 0; color: #666; font-size: 0.9rem; }
+  .upload-drop-zone.drag-over { border-color: #c9a96e; background: #fdf8f0; }
   `;
 }
 

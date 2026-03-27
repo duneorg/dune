@@ -20,11 +20,13 @@ export function renderMediaLibrary(prefix: string): string {
         <option value="document">Documents</option>
       </select>
       <span class="media-count" id="media-count">Loading...</span>
+      <button class="btn btn-sm btn-primary" onclick="openUploadDialog()">Upload</button>
     </div>
     <div class="media-grid" id="media-grid">
       <p>Loading media files...</p>
     </div>
     ${mediaDetailModal()}
+    ${uploadDialog()}
     <script>${mediaLibraryScript(prefix)}</script>
   `;
 }
@@ -66,7 +68,41 @@ function mediaDetailModal(): string {
         </div>
         <div class="form-actions">
           <button class="btn btn-outline" onclick="hideMediaDetail()">Close</button>
+          <button class="btn btn-danger" id="detail-delete-btn" onclick="deleteMedia()">Delete</button>
           <button class="btn btn-primary" onclick="copyMediaUrl()">Copy URL</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function uploadDialog(): string {
+  return `
+    <div id="upload-dialog" class="modal" style="display:none">
+      <div class="modal-backdrop" onclick="closeUploadDialog()"></div>
+      <div class="modal-content">
+        <h3 style="margin:0 0 1rem">Upload Media</h3>
+        <div id="upload-drop-zone" class="upload-drop-zone" ondragover="event.preventDefault()" ondrop="handleUploadDrop(event)">
+          <p>Drag &amp; drop files here, or</p>
+          <label class="btn btn-outline" style="cursor:pointer">
+            Choose file
+            <input type="file" id="upload-file-input" style="display:none" accept="image/*,video/*,audio/*,.pdf,.zip,.csv,.json" onchange="handleFileSelect(event)">
+          </label>
+          <p id="upload-filename" style="font-size:0.85rem;color:#666;margin-top:0.5rem"></p>
+        </div>
+        <div class="form-group" style="margin-top:1rem">
+          <label for="upload-page-path">Page path <span style="color:#999;font-size:0.8rem">(the page folder to place this file in)</span></label>
+          <input type="text" id="upload-page-path" list="upload-page-list" placeholder="e.g. blog/my-post/default.md" style="width:100%">
+          <datalist id="upload-page-list"></datalist>
+        </div>
+        <div id="upload-progress" style="display:none;margin-top:0.5rem">
+          <progress id="upload-progress-bar" style="width:100%"></progress>
+          <span id="upload-progress-label" style="font-size:0.8rem;color:#666"></span>
+        </div>
+        <div id="upload-error" style="display:none;color:#c00;font-size:0.85rem;margin-top:0.5rem"></div>
+        <div class="form-actions" style="margin-top:1rem">
+          <button class="btn btn-outline" onclick="closeUploadDialog()">Cancel</button>
+          <button class="btn btn-primary" id="upload-submit-btn" onclick="submitUpload()">Upload</button>
         </div>
       </div>
     </div>
@@ -77,17 +113,28 @@ function mediaLibraryScript(prefix: string): string {
   return `
     let allMedia = [];
     let selectedMedia = null;
+    let uploadFile = null;
+
+    function loadMedia() {
+      fetch('${prefix}/api/media')
+        .then(r => r.json())
+        .then(data => {
+          allMedia = data.items || [];
+          renderMediaGrid(allMedia);
+          // Populate page path datalist
+          const list = document.getElementById('upload-page-list');
+          if (list) {
+            const paths = [...new Set(allMedia.map(m => m.pagePath))].sort();
+            list.innerHTML = paths.map(p => '<option value="' + escapeAttr(p) + '">').join('');
+          }
+        })
+        .catch(() => {
+          document.getElementById('media-grid').innerHTML = '<p>Error loading media.</p>';
+        });
+    }
 
     // Load media from all pages
-    fetch('${prefix}/api/media')
-      .then(r => r.json())
-      .then(data => {
-        allMedia = data.items || [];
-        renderMediaGrid(allMedia);
-      })
-      .catch(() => {
-        document.getElementById('media-grid').innerHTML = '<p>Error loading media.</p>';
-      });
+    loadMedia();
 
     // Validate a URL is a safe relative or same-origin URL (not javascript: or data:)
     function isSafeUrl(url) {
@@ -299,6 +346,105 @@ function mediaLibraryScript(prefix: string): string {
     function hideMediaDetail() {
       document.getElementById('media-detail-modal').style.display = 'none';
       selectedMedia = null;
+    }
+
+    // ── Upload ────────────────────────────────────────────────────────────────
+
+    function openUploadDialog() {
+      uploadFile = null;
+      document.getElementById('upload-filename').textContent = '';
+      document.getElementById('upload-file-input').value = '';
+      document.getElementById('upload-page-path').value = '';
+      document.getElementById('upload-error').style.display = 'none';
+      document.getElementById('upload-progress').style.display = 'none';
+      document.getElementById('upload-dialog').style.display = 'flex';
+    }
+
+    function closeUploadDialog() {
+      document.getElementById('upload-dialog').style.display = 'none';
+      uploadFile = null;
+    }
+
+    function handleFileSelect(e) {
+      uploadFile = e.target.files[0] || null;
+      document.getElementById('upload-filename').textContent = uploadFile ? uploadFile.name : '';
+    }
+
+    function handleUploadDrop(e) {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      uploadFile = file;
+      document.getElementById('upload-filename').textContent = file.name;
+    }
+
+    function submitUpload() {
+      const pagePath = document.getElementById('upload-page-path').value.trim();
+      const errEl = document.getElementById('upload-error');
+      errEl.style.display = 'none';
+
+      if (!uploadFile) { errEl.textContent = 'Please choose a file.'; errEl.style.display = 'block'; return; }
+      if (!pagePath) { errEl.textContent = 'Please enter a page path.'; errEl.style.display = 'block'; return; }
+
+      const fd = new FormData();
+      fd.append('file', uploadFile);
+      fd.append('pagePath', pagePath);
+
+      const btn = document.getElementById('upload-submit-btn');
+      btn.disabled = true;
+      document.getElementById('upload-progress').style.display = 'block';
+      document.getElementById('upload-progress-label').textContent = 'Uploading…';
+
+      fetch('${prefix}/api/media/upload', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(result => {
+          btn.disabled = false;
+          document.getElementById('upload-progress').style.display = 'none';
+          if (result.ok) {
+            closeUploadDialog();
+            loadMedia();
+          } else {
+            errEl.textContent = result.error || 'Upload failed.';
+            errEl.style.display = 'block';
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          document.getElementById('upload-progress').style.display = 'none';
+          errEl.textContent = 'Upload error: ' + err.message;
+          errEl.style.display = 'block';
+        });
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+
+    function deleteMedia() {
+      if (!selectedMedia) return;
+      if (!confirm('Delete "' + selectedMedia.name + '"? This cannot be undone.')) return;
+      const btn = document.getElementById('detail-delete-btn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      fetch('${prefix}/api/media', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagePath: selectedMedia.pagePath, name: selectedMedia.name }),
+      })
+        .then(r => r.json())
+        .then(result => {
+          if (result.ok) {
+            hideMediaDetail();
+            loadMedia();
+          } else {
+            alert('Error: ' + (result.error || 'Delete failed.'));
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+          }
+        })
+        .catch(err => {
+          alert('Error: ' + err.message);
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+        });
     }
 
     function copyMediaUrl() {

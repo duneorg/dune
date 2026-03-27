@@ -180,18 +180,22 @@ export function renderPageEditorPage(
         }).join("")}
         ` : ""}
 
-        ${pageData.media.length > 0 ? `
-        <h4>Media Files</h4>
-        <div class="media-list">
-          ${pageData.media.map((m) => `
+        <div class="media-section-header">
+          <h4 style="margin:0">Media Files</h4>
+          <label class="btn btn-xs btn-outline" style="cursor:pointer" title="Upload a file to this page's folder">
+            Upload
+            <input type="file" id="page-media-upload" style="display:none" accept="image/*,video/*,audio/*,.pdf,.zip,.csv,.json" onchange="uploadPageMedia(event)">
+          </label>
+        </div>
+        <div class="media-list" id="page-media-list">
+          ${pageData.media.length === 0 ? `<p class="media-empty-hint">No media files yet.</p>` : pageData.media.map((m) => `
             <div class="media-item">
               ${m.type.startsWith("image/") ? `<img src="${escapeAttr(m.url)}" alt="${escapeAttr(m.name)}" class="media-thumb">` : `<span class="media-file-icon">📎</span>`}
               <span class="media-name" title="${escapeAttr(m.name)}">${escapeHtml(m.name)}</span>
-              <button class="btn btn-xs" onclick="insertMedia('${escapeAttr(m.name)}', '${escapeAttr(m.url)}')" title="Insert">+</button>
+              <button class="btn btn-xs" onclick="insertMedia('${escapeAttr(m.name)}', '${escapeAttr(m.url)}')" title="Insert into editor">+</button>
             </div>
           `).join("")}
         </div>
-        ` : ""}
 
         <div class="sidebar-section">
           <h4>Info</h4>
@@ -835,6 +839,48 @@ function editorScript(
       markDirty();
     }
 
+    // Upload a file co-located with this page
+    function uploadPageMedia(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const input = e.target;
+      const label = input.closest('label');
+      if (label) { label.textContent = 'Uploading…'; label.style.pointerEvents = 'none'; }
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('pagePath', ${JSON.stringify(pageData.sourcePath)});
+
+      fetch('${prefix}/api/media/upload', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(result => {
+          if (label) { label.innerHTML = 'Upload<input type="file" id="page-media-upload" style="display:none" accept="image/*,video/*,audio/*,.pdf,.zip,.csv,.json" onchange="uploadPageMedia(event)">'; label.style.pointerEvents = ''; }
+          if (result.ok) {
+            const item = result.item;
+            const list = document.getElementById('page-media-list');
+            const hint = list.querySelector('.media-empty-hint');
+            if (hint) hint.remove();
+            const div = document.createElement('div');
+            div.className = 'media-item';
+            const isImage = item.type.startsWith('image/');
+            div.innerHTML = (isImage
+              ? '<img src="' + item.url + '" alt="' + item.name + '" class="media-thumb">'
+              : '<span class="media-file-icon">📎</span>') +
+              '<span class="media-name" title="' + item.name + '">' + item.name + '</span>' +
+              '<button class="btn btn-xs" onclick="insertMedia(' + JSON.stringify(item.name) + ',' + JSON.stringify(item.url) + ')" title="Insert into editor">+</button>';
+            list.appendChild(div);
+          } else {
+            alert('Upload failed: ' + (result.error || 'Unknown error'));
+          }
+          input.value = '';
+        })
+        .catch(err => {
+          if (label) { label.innerHTML = 'Upload<input type="file" id="page-media-upload" style="display:none" accept="image/*,video/*,audio/*,.pdf,.zip,.csv,.json" onchange="uploadPageMedia(event)">'; label.style.pointerEvents = ''; }
+          alert('Upload error: ' + err.message);
+          input.value = '';
+        });
+    }
+
     // Source/preview toggle
     function toggleSource() {
       sourceMode = !sourceMode;
@@ -1120,7 +1166,9 @@ function editorStyles(): string {
   .info-row code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 2px; font-size: 0.75rem; }
 
   /* Media list */
-  .media-list { display: flex; flex-direction: column; gap: 0.25rem; }
+  .media-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+  .media-empty-hint { font-size: 0.8rem; color: #999; margin: 0.25rem 0; }
+  .media-list { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
   .media-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border-radius: 4px; }
   .media-item:hover { background: #f5f5f5; }
   .media-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 3px; }
