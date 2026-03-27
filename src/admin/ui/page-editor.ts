@@ -252,7 +252,7 @@ export function renderPageEditorPage(
           <div class="block-list" id="block-list">
             <!-- Blocks populated by JS -->
           </div>
-          <button class="btn btn-sm btn-outline add-block-btn" onclick="addBlock('paragraph')">+ Add Block</button>
+          <button class="btn btn-sm btn-outline add-block-btn" onclick="showAddMenu()">+ Add Block</button>
         </div>
 
         <!-- Source editor view (hidden by default) -->
