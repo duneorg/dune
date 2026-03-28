@@ -125,6 +125,22 @@ export interface AdminConfig {
     /** Permitted actions for this token */
     actions: Array<"rebuild" | "purge-cache">;
   }>;
+  /**
+   * Audit log configuration.
+   * Records admin panel actions with actor, timestamp, IP, and outcome.
+   */
+  audit?: {
+    /**
+     * Enable audit logging (default: true).
+     */
+    enabled?: boolean;
+    /**
+     * Path to the JSONL audit log file.
+     * Relative to runtimeDir, or absolute.
+     * Default: "{runtimeDir}/audit.log"
+     */
+    logFile?: string;
+  };
 }
 
 /** Notifications sent after a form submission is accepted. */

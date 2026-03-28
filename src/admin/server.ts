@@ -122,6 +122,7 @@ import { createSearchAnalytics } from "../search/analytics.ts";
 import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";
 import type { ImageCache } from "../images/cache.ts";
+import type { AuditLogger } from "../audit/mod.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -147,6 +148,8 @@ export interface AdminServerConfig {
   collab?: CollabManager;
   /** Image cache — used by the purge-cache incoming webhook action */
   imageCache?: ImageCache;
+  /** Audit logger — records admin panel actions */
+  auditLogger?: AuditLogger;
 }
 
 // === In-memory rate limiter ===
@@ -204,8 +207,30 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger } = config;
   const adminConfig = config.config.admin!;
+
+  /** Extract IP address from a request, checking proxy headers first. */
+  function getRequestIp(req: Request): string | null {
+    return req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+      ?? req.headers.get("x-real-ip")
+      ?? null;
+  }
+
+  /** Extract User-Agent from a request. */
+  function getRequestUa(req: Request): string | null {
+    return req.headers.get("user-agent");
+  }
+
+  /** Build an AuditActor from an AuthResult, or null if not authenticated. */
+  function actorFromAuth(authResult: { user?: { id: string; username: string; name: string } | null }): import("../audit/mod.ts").AuditActor | null {
+    if (!authResult.user) return null;
+    return {
+      userId: authResult.user.id,
+      username: authResult.user.username,
+      name: authResult.user.name,
+    };
+  }
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
   // causes path.startsWith(prefix) to match unintended routes or fail silently.
@@ -284,6 +309,15 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (authResult.session) {
         await sessions.revoke(authResult.session.id);
       }
+      void auditLogger?.log({
+        event: "auth.logout",
+        actor: actorFromAuth(authResult),
+        ip: getRequestIp(req),
+        userAgent: getRequestUa(req),
+        target: null,
+        detail: {},
+        outcome: "success",
+      }).catch(() => {});
       return new Response(null, {
         status: 302,
         headers: {
@@ -394,7 +428,19 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!auth.hasPermission(authResult, "config.update")) {
         return jsonResponse({ error: "Forbidden" }, 403);
       }
-      return handleConfigSave(req);
+      const cfgResp = await handleConfigSave(req);
+      if (cfgResp.status === 200) {
+        void auditLogger?.log({
+          event: "config.update",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "config" },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return cfgResp;
     }
 
     // GET /admin/users — User management
@@ -508,6 +554,14 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handleFlexEditorPage(type, recordId, authResult);
     }
 
+    // GET /admin/audit — Audit log viewer (admin only)
+    if (adminPath === "/audit" && req.method === "GET") {
+      if (authResult.user?.role !== "admin") {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      return handleAuditPage(url, authResult);
+    }
+
     return new Response("Not found", { status: 404 });
   };
 
@@ -543,6 +597,15 @@ export function createAdminHandler(config: AdminServerConfig) {
       const hashToVerify = user?.passwordHash ?? DUMMY_HASH;
       const valid = await verifyPassword(password, hashToVerify);
       if (!user || !user.enabled || !valid) {
+        void auditLogger?.log({
+          event: "auth.login_failed",
+          actor: null,
+          ip: ip === "unknown" ? null : ip,
+          userAgent: req.headers.get("user-agent"),
+          target: null,
+          detail: { username },
+          outcome: "failure",
+        }).catch(() => {});
         return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
       }
 
@@ -552,6 +615,16 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       // Create session (reuse ip from rate limiting above)
       const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
+
+      void auditLogger?.log({
+        event: "auth.login",
+        actor: { userId: user.id, username: user.username, name: user.name },
+        ip: ip === "unknown" ? null : ip,
+        userAgent: req.headers.get("user-agent"),
+        target: null,
+        detail: {},
+        outcome: "success",
+      }).catch(() => {});
 
       return new Response(null, {
         status: 302,
@@ -938,7 +1011,20 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /admin/api/pages — Create a new page
     if (adminPath === "/api/pages" && method === "POST") {
       requirePermission(authResult, "pages.create");
-      return handleCreatePage(req);
+      const createResp = await handleCreatePage(req);
+      if (createResp.status === 201) {
+        const createBody = await createResp.clone().json().catch(() => ({})) as { file?: string };
+        void auditLogger?.log({
+          event: "page.create",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "page", id: createBody.file },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return createResp;
     }
 
     // POST /admin/api/pages/reorder — Reorder pages within their sibling group
@@ -957,14 +1043,38 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath.startsWith("/api/pages/") && method === "PUT") {
       requirePermission(authResult, "pages.update");
       const pagePath = decodeURIComponent(adminPath.replace("/api/pages/", ""));
-      return handleUpdatePage(req, pagePath);
+      const updateResp = await handleUpdatePage(req, pagePath);
+      if (updateResp.status === 200) {
+        void auditLogger?.log({
+          event: "page.update",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "page", id: pagePath },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return updateResp;
     }
 
     // DELETE /admin/api/pages/* — Delete a page
     if (adminPath.startsWith("/api/pages/") && method === "DELETE") {
       requirePermission(authResult, "pages.delete");
       const pagePath = decodeURIComponent(adminPath.replace("/api/pages/", ""));
-      return handleDeletePage(pagePath);
+      const deleteResp = await handleDeletePage(pagePath);
+      if (deleteResp.status === 200) {
+        void auditLogger?.log({
+          event: "page.delete",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "page", id: pagePath },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return deleteResp;
     }
 
     // GET /admin/api/media — List all media files across all pages
@@ -976,13 +1086,41 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /admin/api/media/upload — Upload a media file co-located with a page
     if (adminPath === "/api/media/upload" && method === "POST") {
       requirePermission(authResult, "media.upload");
-      return handleUploadMedia(req);
+      const upResp = await handleUploadMedia(req);
+      if (upResp.status === 200) {
+        const upBody = await upResp.clone().json().catch(() => ({})) as { item?: { name?: string } };
+        void auditLogger?.log({
+          event: "media.upload",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "media", id: upBody.item?.name },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return upResp;
     }
 
     // DELETE /admin/api/media — Delete a media file
     if (adminPath === "/api/media" && method === "DELETE") {
       requirePermission(authResult, "media.delete");
-      return handleDeleteMedia(req);
+      // Clone req body to extract filename for audit before it's consumed
+      const delMediaReq = req.clone();
+      const dmResp = await handleDeleteMedia(req);
+      if (dmResp.status === 200) {
+        const dmBody = await delMediaReq.json().catch(() => ({})) as { name?: string };
+        void auditLogger?.log({
+          event: "media.delete",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "media", id: dmBody.name },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return dmResp;
     }
 
     // PUT /admin/api/media/meta — Save media sidecar metadata (e.g. focal point)
@@ -1020,28 +1158,77 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /admin/api/users — Create user
     if (adminPath === "/api/users" && method === "POST") {
       requirePermission(authResult, "users.create");
-      return handleCreateUser(req, authResult);
+      const cuResp = await handleCreateUser(req, authResult);
+      if (cuResp.status === 201) {
+        const cuBody = await cuResp.clone().json().catch(() => ({})) as { user?: { id?: string } };
+        void auditLogger?.log({
+          event: "user.create",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "user", id: cuBody.user?.id },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return cuResp;
     }
 
     // PUT /admin/api/users/:id — Update user (role, name, email, enabled)
     if (adminPath.startsWith("/api/users/") && !adminPath.endsWith("/password") && method === "PUT") {
       requirePermission(authResult, "users.update");
       const userId = adminPath.replace("/api/users/", "");
-      return handleUpdateUser(req, userId, authResult);
+      const uuResp = await handleUpdateUser(req, userId, authResult);
+      if (uuResp.status === 200) {
+        void auditLogger?.log({
+          event: "user.update",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "user", id: userId },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return uuResp;
     }
 
     // POST /admin/api/users/:id/password — Change a user's password
     if (adminPath.startsWith("/api/users/") && adminPath.endsWith("/password") && method === "POST") {
       requirePermission(authResult, "users.update");
       const userId = adminPath.replace("/api/users/", "").replace("/password", "");
-      return handleChangeUserPassword(req, userId);
+      const pwResp = await handleChangeUserPassword(req, userId);
+      if (pwResp.status === 200) {
+        void auditLogger?.log({
+          event: "user.password",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "user", id: userId },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return pwResp;
     }
 
     // DELETE /admin/api/users/:id — Delete a user
     if (adminPath.startsWith("/api/users/") && method === "DELETE") {
       requirePermission(authResult, "users.delete");
       const userId = adminPath.replace("/api/users/", "");
-      return handleDeleteUser(userId, authResult);
+      const duResp = await handleDeleteUser(userId, authResult);
+      if (duResp.status === 200) {
+        void auditLogger?.log({
+          event: "user.delete",
+          actor: actorFromAuth(authResult),
+          ip: getRequestIp(req),
+          userAgent: getRequestUa(req),
+          target: { type: "user", id: userId },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+      return duResp;
     }
 
     // GET /admin/api/config — Read site config
@@ -1352,6 +1539,38 @@ export function createAdminHandler(config: AdminServerConfig) {
       const analyticsPath = join(runtimeDir, "search-analytics.jsonl");
       const summary = await createSearchAnalytics(analyticsPath).summarize();
       return jsonResponse(summary);
+    }
+
+    // === Audit log API ===
+
+    // GET /admin/api/audit — Query audit log (admin only)
+    if (adminPath === "/api/audit" && method === "GET") {
+      if (authResult.user?.role !== "admin") {
+        return jsonResponse({ error: "Forbidden" }, 403);
+      }
+      if (!auditLogger) {
+        return jsonResponse({ error: "Audit logging not enabled" }, 501);
+      }
+      const auditUrl = new URL(req.url);
+      const auditQuery: import("../audit/mod.ts").AuditQuery = {};
+      const limitParam = auditUrl.searchParams.get("limit");
+      const offsetParam = auditUrl.searchParams.get("offset");
+      const eventParam = auditUrl.searchParams.get("event");
+      const actorIdParam = auditUrl.searchParams.get("actorId");
+      const fromParam = auditUrl.searchParams.get("from");
+      const toParam = auditUrl.searchParams.get("to");
+      const outcomeParam = auditUrl.searchParams.get("outcome");
+      if (limitParam) auditQuery.limit = parseInt(limitParam, 10);
+      if (offsetParam) auditQuery.offset = parseInt(offsetParam, 10);
+      if (eventParam) auditQuery.event = eventParam as import("../audit/mod.ts").AuditEventType;
+      if (actorIdParam) auditQuery.actorId = actorIdParam;
+      if (fromParam) auditQuery.from = fromParam;
+      if (toParam) auditQuery.to = toParam;
+      if (outcomeParam && (outcomeParam === "success" || outcomeParam === "failure")) {
+        auditQuery.outcome = outcomeParam;
+      }
+      const result = await auditLogger.query(auditQuery);
+      return jsonResponse(result);
     }
 
     return jsonResponse({ error: "Not found" }, 404);
@@ -2262,6 +2481,107 @@ export function createAdminHandler(config: AdminServerConfig) {
 </html>`;
   }
 
+  // === Audit log page handler ===
+
+  async function handleAuditPage(url: URL, authResult: AuthResult): Promise<Response> {
+    const userName = authResult.user?.name ?? "Admin";
+    const eventFilter = url.searchParams.get("event") ?? "";
+    const actorIdFilter = url.searchParams.get("actorId") ?? "";
+
+    if (!auditLogger) {
+      return htmlResponse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit Log — Dune Admin</title>
+  <style>${baseAdminStyles()}</style>
+</head>
+<body>
+  ${adminShell(prefix, "audit", userName, `
+    <h2>Audit Log</h2>
+    <p style="color:#888;padding:2rem 0">Audit logging is not enabled.</p>
+  `)}
+</body>
+</html>`);
+    }
+
+    const q: import("../audit/mod.ts").AuditQuery = { limit: 50 };
+    if (eventFilter) q.event = eventFilter as import("../audit/mod.ts").AuditEventType;
+    if (actorIdFilter) q.actorId = actorIdFilter;
+    const result = await auditLogger.query(q);
+
+    const eventOptions: string[] = [
+      "auth.login", "auth.logout", "auth.login_failed",
+      "page.create", "page.update", "page.delete", "page.publish", "page.workflow",
+      "config.update",
+      "user.create", "user.update", "user.delete", "user.password",
+      "media.upload", "media.delete",
+      "plugin.config_update",
+      "flex.create", "flex.update", "flex.delete",
+      "system.rebuild", "system.cache_purge",
+    ];
+
+    const rows = result.entries.map((e) => `
+    <tr>
+      <td style="white-space:nowrap;font-size:0.8rem;color:#666">${escapeHtml(e.ts.replace("T", " ").slice(0, 19))}</td>
+      <td><span class="badge badge-event">${escapeHtml(e.event)}</span></td>
+      <td>${e.actor ? escapeHtml(e.actor.username) : '<span style="color:#aaa">—</span>'}</td>
+      <td>${e.target ? escapeHtml([e.target.type, e.target.id].filter(Boolean).join(": ")) : '<span style="color:#aaa">—</span>'}</td>
+      <td style="font-size:0.8rem;color:#666">${e.ip ? escapeHtml(e.ip) : '<span style="color:#aaa">—</span>'}</td>
+      <td><span class="badge ${e.outcome === "success" ? "badge-success" : "badge-failure"}">${escapeHtml(e.outcome)}</span></td>
+    </tr>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit Log — Dune Admin</title>
+  <style>${baseAdminStyles()}
+  .audit-filters { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; }
+  .audit-filters select, .audit-filters input { padding:0.4rem 0.6rem; border:1px solid #ddd; border-radius:4px; font-size:0.85rem; }
+  .badge-event { background:#e8f0fe; color:#1a56db; font-size:0.75rem; }
+  .badge-success { background:#d1fae5; color:#065f46; }
+  .badge-failure { background:#fee2e2; color:#991b1b; }
+  .audit-count { font-size:0.85rem; color:#666; margin-bottom:0.5rem; }
+  </style>
+</head>
+<body>
+  ${adminShell(prefix, "audit", userName, `
+    <h2>Audit Log</h2>
+    <form method="GET" action="${prefix}/audit" class="audit-filters">
+      <select name="event">
+        <option value="">All events</option>
+        ${eventOptions.map((ev) => `<option value="${escapeHtml(ev)}"${eventFilter === ev ? " selected" : ""}>${escapeHtml(ev)}</option>`).join("")}
+      </select>
+      <input type="text" name="actorId" placeholder="Actor user ID" value="${escapeHtml(actorIdFilter)}" style="width:220px">
+      <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+      ${(eventFilter || actorIdFilter) ? `<a href="${prefix}/audit" class="btn btn-outline btn-sm">Clear</a>` : ""}
+    </form>
+    <p class="audit-count">Showing ${result.entries.length} of ${result.total} entries</p>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Event</th>
+          <th>Actor</th>
+          <th>Target</th>
+          <th>IP</th>
+          <th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:2rem">No entries found</td></tr>'}
+      </tbody>
+    </table>
+  `)}
+</body>
+</html>`;
+
+    return htmlResponse(html);
+  }
+
   // === Workflow handlers ===
 
   async function handleWorkflowTransition(req: Request): Promise<Response> {
@@ -2952,11 +3272,29 @@ export function createAdminHandler(config: AdminServerConfig) {
         engine.rebuild().catch((err: unknown) => {
           console.error("[dune] incoming webhook rebuild error:", err);
         });
+        void auditLogger?.log({
+          event: "system.rebuild",
+          actor: null,
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? req.headers.get("x-real-ip") ?? null,
+          userAgent: req.headers.get("user-agent"),
+          target: { type: "system" },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
         executed.push("rebuild");
       } else if (action === "purge-cache") {
         if (imageCache) {
           await imageCache.clear();
         }
+        void auditLogger?.log({
+          event: "system.cache_purge",
+          actor: null,
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? req.headers.get("x-real-ip") ?? null,
+          userAgent: req.headers.get("user-agent"),
+          target: { type: "system" },
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
         executed.push("purge-cache");
       }
     }
@@ -3769,6 +4107,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
     { id: "themes", label: "Themes", icon: "🎨", href: `${prefix}/themes` },
     { id: "config", label: "Configuration", icon: "⚙️", href: `${prefix}/config` },
+    { id: "audit", label: "Audit Log", icon: "🔒", href: `${prefix}/audit` },
   ];
 
   return `

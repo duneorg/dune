@@ -31,6 +31,8 @@ import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
+import { AuditLogger } from "../audit/mod.ts";
+import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -80,6 +82,8 @@ export interface BootstrapResult {
   pluginAssetDirs: Map<string, string>;
   /** Absolute path to shared themes dir (multisite only), for static file serving */
   sharedThemesDir?: string;
+  /** Audit logger — null when admin is disabled or audit.enabled is false */
+  auditLogger: AuditLogger | null;
 }
 
 export interface BootstrapOptions {
@@ -326,6 +330,18 @@ export async function bootstrap(
     submissionsDir: `${dataDir}/submissions`,
   });
 
+  // 13. Audit logger
+  let auditLogger: AuditLogger | null = null;
+  if (adminConfig.enabled !== false && adminConfig.audit?.enabled !== false) {
+    const auditLogFile = adminConfig.audit?.logFile
+      ? (adminConfig.audit.logFile.startsWith("/")
+          ? adminConfig.audit.logFile
+          : join(root, adminConfig.audit.logFile))
+      : join(root, runtimeDir, "audit.log");
+    auditLogger = new AuditLogger({ logFile: auditLogFile });
+    await auditLogger.init();
+  }
+
   const adminHandler = adminConfig.enabled
     ? createAdminHandler({
         engine,
@@ -345,6 +361,7 @@ export async function bootstrap(
         comments: commentManager,
         collab: collabManager,
         imageCache,
+        auditLogger: auditLogger ?? undefined,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -369,5 +386,6 @@ export async function bootstrap(
     collabManager,
     pluginAssetDirs,
     sharedThemesDir,
+    auditLogger,
   };
 }
