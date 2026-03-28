@@ -638,6 +638,10 @@ export function createAdminHandler(config: AdminServerConfig) {
         tmSuggestions = lookupSuggestions(tm, segments);
       }
 
+      // Fetch username list for @mention autocomplete
+      const allUsers = await users.list();
+      const usernames = allUsers.map((u) => u.username);
+
       return htmlResponse(renderPageEditorPage(prefix, userName, {
         sourcePath: page.sourcePath,
         route: page.route,
@@ -662,6 +666,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         translations,
         referenceContent,
         tmSuggestions,
+        users: usernames,
       }));
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
@@ -896,7 +901,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       if (method === "POST") {
         if (!authResult.user) return jsonResponse({ error: "Unauthorized" }, 401);
-        const postBody = await req.json().catch(() => ({})) as { body?: unknown; parentId?: unknown };
+        const postBody = await req.json().catch(() => ({})) as { body?: unknown; parentId?: unknown; blockId?: unknown };
         if (!postBody.body || typeof postBody.body !== "string") {
           return jsonResponse({ error: "Missing body" }, 400);
         }
@@ -905,6 +910,7 @@ export function createAdminHandler(config: AdminServerConfig) {
           {
             body: postBody.body,
             parentId: typeof postBody.parentId === "string" ? postBody.parentId : undefined,
+            blockId: typeof postBody.blockId === "string" ? postBody.blockId : undefined,
           },
           authResult.user,
         );

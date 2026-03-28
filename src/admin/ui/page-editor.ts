@@ -49,6 +49,8 @@ export function renderPageEditorPage(
     referenceContent?: string | null;
     /** Translation Memory suggestions — source/target pairs matched from reference segments. */
     tmSuggestions?: Array<{ source: string; target: string }>;
+    /** List of admin usernames for @mention autocomplete. */
+    users?: string[];
   },
 ): string {
   const fm = pageData.frontmatter;
@@ -207,6 +209,18 @@ export function renderPageEditorPage(
           <div class="info-row"><span>Format:</span> ${pageData.format}</div>
         </div>
 
+        <div class="sidebar-section comments-panel" id="comments-panel">
+          <h4>Comments</h4>
+          <div id="comments-thread-list"><p class="comments-loading">Loading…</p></div>
+          <div class="comment-compose" id="comment-compose">
+            <textarea id="comment-new-body" class="comment-textarea" rows="3" placeholder="Add a comment… Use @username to mention"></textarea>
+            <div id="comment-mention-dropdown" class="mention-dropdown" style="display:none"></div>
+            <div class="comment-compose-actions">
+              <button class="btn btn-xs btn-primary" onclick="submitComment(document.getElementById('comment-new-body').value, undefined, undefined, document.getElementById('comment-new-body'))">Post</button>
+            </div>
+          </div>
+        </div>
+
         ${(pageData.translations?.length ?? 0) > 0 ? `
         <div class="sidebar-section">
           <h4>Translations</h4>
@@ -287,6 +301,7 @@ function editorScript(
     frontmatter: Record<string, unknown>;
     taxonomies: string[];
     blueprint: ResolvedBp | null;
+    users?: string[];
   },
 ): string {
   // Pre-compute initial taxonomy state server-side for embedding
@@ -632,7 +647,7 @@ function editorScript(
           content = '<div class="block-unknown">Unknown block: ' + block.type + '</div>';
       }
 
-      return '<div class="block" data-index="' + index + '" data-type="' + block.type + '"' +
+      return '<div class="block" data-index="' + index + '" data-type="' + block.type + '" data-block-id="' + escapeAttr(block.id || '') + '"' +
         ' draggable="true"' +
         ' ondragstart="handleBlockDragStart(event,' + index + ')"' +
         ' ondragover="handleBlockDragOver(event,' + index + ')"' +
@@ -643,6 +658,7 @@ function editorScript(
         '<span class="block-drag-handle" title="Drag to reorder">⠿</span>' +
         '<span class="block-type-label">' + block.type + '</span>' +
         '<div class="block-controls">' + moveUp + moveDown +
+        '<button class="block-action block-annotation-btn" id="annot-btn-' + escapeAttr(block.id || '') + '" data-block-id="' + escapeAttr(block.id || '') + '" onclick="toggleBlockAnnotations(\\'' + escapeAttr(block.id || '') + '\\')" title="Annotations">💬</button>' +
         '<button class="block-action block-action-delete" onclick="removeBlock(' + index + ')" title="Delete">🗑</button></div></div>' +
         '<div class="block-content">' + content + '</div>' +
         '<div class="block-add-below"><button class="btn btn-xs btn-outline" onclick="showAddMenu(' + index + ')">+</button></div></div>';
@@ -1142,10 +1158,267 @@ function editorScript(
       });
     }
 
+    // === Comments ===
+
+    let pageComments = [];
+    const knownUsers = ${JSON.stringify(pageData.users ?? [])};
+    const encodedSourcePath = encodeURIComponent(${JSON.stringify(pageData.sourcePath)});
+
+    function loadComments() {
+      fetch('${prefix}/api/pages/' + encodedSourcePath + '/comments')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          pageComments = data.items || [];
+          renderCommentsSidebar();
+          updateBlockAnnotationBadges();
+        })
+        .catch(function() {
+          const panel = document.getElementById('comments-thread-list');
+          if (panel) panel.innerHTML = '<p class="comments-empty">Could not load comments.</p>';
+        });
+    }
+
+    function renderCommentThread(comments, parentId) {
+      const roots = comments.filter(function(c) {
+        return (parentId ? c.parentId === parentId : !c.parentId) && !c.blockId;
+      });
+      if (roots.length === 0) return '';
+      return roots.map(function(c) {
+        const replies = comments.filter(function(r) { return r.parentId === c.id; });
+        const resolveBtn = !c.parentId
+          ? '<button class="btn btn-xs ' + (c.resolved ? 'btn-outline' : '') + '" onclick="resolveComment(' + JSON.stringify(c.id) + ',' + JSON.stringify(!c.resolved) + ')">' + (c.resolved ? 'Unresolve' : 'Resolve') + '</button>'
+          : '';
+        return '<div class="comment-item' + (c.resolved ? ' comment-resolved' : '') + '" data-id="' + escapeAttr(c.id) + '">' +
+          '<div class="comment-meta"><strong>' + escapeHtml(c.author) + '</strong> <span class="comment-time">' + new Date(c.createdAt).toLocaleString() + '</span>' + (c.resolved ? ' <span class="comment-resolved-badge">resolved</span>' : '') + '</div>' +
+          '<div class="comment-body">' + renderCommentBody(c.body) + '</div>' +
+          '<div class="comment-actions">' +
+            '<button class="btn btn-xs btn-outline" onclick="openReply(' + JSON.stringify(c.id) + ')">Reply</button>' +
+            resolveBtn +
+          '</div>' +
+          '<div class="comment-replies" id="replies-' + escapeAttr(c.id) + '">' +
+            replies.map(function(r) {
+              return '<div class="comment-item comment-reply" data-id="' + escapeAttr(r.id) + '">' +
+                '<div class="comment-meta"><strong>' + escapeHtml(r.author) + '</strong> <span class="comment-time">' + new Date(r.createdAt).toLocaleString() + '</span></div>' +
+                '<div class="comment-body">' + renderCommentBody(r.body) + '</div>' +
+                '</div>';
+            }).join('') +
+          '</div>' +
+          '<div id="reply-form-' + escapeAttr(c.id) + '" class="reply-form" style="display:none">' +
+            '<textarea id="reply-body-' + escapeAttr(c.id) + '" class="comment-textarea" rows="2" placeholder="Write a reply…"></textarea>' +
+            '<div id="reply-mention-dropdown-' + escapeAttr(c.id) + '" class="mention-dropdown" style="display:none"></div>' +
+            '<div class="comment-compose-actions">' +
+              '<button class="btn btn-xs btn-primary" onclick="submitReply(' + JSON.stringify(c.id) + ')">Reply</button>' +
+              '<button class="btn btn-xs btn-outline" onclick="closeReply(' + JSON.stringify(c.id) + ')">Cancel</button>' +
+            '</div>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    function renderCommentBody(body) {
+      return escapeHtml(body).replace(/@([a-zA-Z0-9_-]+)/g, '<span class="mention">@$1</span>');
+    }
+
+    function renderCommentsSidebar() {
+      const list = document.getElementById('comments-thread-list');
+      if (!list) return;
+      const html = renderCommentThread(pageComments, null);
+      list.innerHTML = html || '<p class="comments-empty">No comments yet.</p>';
+      // Attach mention autocomplete to comment textarea
+      attachMentionAutocomplete('comment-new-body', 'comment-mention-dropdown');
+    }
+
+    function updateBlockAnnotationBadges() {
+      document.querySelectorAll('.block-annotation-btn').forEach(function(btn) {
+        const blockId = btn.dataset.blockId;
+        if (!blockId) return;
+        const count = pageComments.filter(function(c) { return c.blockId === blockId && !c.parentId; }).length;
+        btn.classList.toggle('has-annotations', count > 0);
+        const existingBadge = btn.querySelector('.annot-badge');
+        if (existingBadge) existingBadge.remove();
+        if (count > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'annot-badge';
+          badge.textContent = String(count);
+          btn.appendChild(badge);
+        }
+      });
+    }
+
+    function submitComment(body, blockId, parentId, textarea) {
+      body = (body || '').trim();
+      if (!body) return;
+      const payload = { body: body };
+      if (blockId) payload.blockId = blockId;
+      if (parentId) payload.parentId = parentId;
+      fetch('${prefix}/api/pages/' + encodedSourcePath + '/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(c) {
+        if (c.id) {
+          pageComments.push(c);
+          if (textarea) textarea.value = '';
+          renderCommentsSidebar();
+          updateBlockAnnotationBadges();
+          // Re-render open annotation panel if applicable
+          if (blockId) {
+            const panel = document.getElementById('annot-panel-' + blockId);
+            if (panel) panel.innerHTML = renderAnnotationPanelContent(blockId);
+          }
+        } else {
+          alert('Error posting comment: ' + (c.error || 'Unknown error'));
+        }
+      })
+      .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function openReply(parentId) {
+      const form = document.getElementById('reply-form-' + parentId);
+      if (form) form.style.display = 'block';
+      const ta = document.getElementById('reply-body-' + parentId);
+      if (ta) {
+        ta.focus();
+        attachMentionAutocomplete('reply-body-' + parentId, 'reply-mention-dropdown-' + parentId);
+      }
+    }
+
+    function closeReply(parentId) {
+      const form = document.getElementById('reply-form-' + parentId);
+      if (form) form.style.display = 'none';
+    }
+
+    function submitReply(parentId) {
+      const ta = document.getElementById('reply-body-' + parentId);
+      if (!ta) return;
+      submitComment(ta.value, undefined, parentId, ta);
+      closeReply(parentId);
+    }
+
+    function resolveComment(id, resolve) {
+      fetch('${prefix}/api/pages/' + encodedSourcePath + '/comments/' + id + '/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolve: resolve }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(updated) {
+        if (updated.id) {
+          const idx = pageComments.findIndex(function(c) { return c.id === updated.id; });
+          if (idx !== -1) pageComments[idx] = updated;
+          renderCommentsSidebar();
+          updateBlockAnnotationBadges();
+        }
+      })
+      .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function toggleBlockAnnotations(blockId) {
+      const existingPanel = document.getElementById('annot-panel-' + blockId);
+      if (existingPanel) {
+        existingPanel.remove();
+        return;
+      }
+      const blockEl = document.querySelector('[data-block-id="' + blockId + '"]');
+      if (!blockEl) return;
+      const contentEl = blockEl.querySelector('.block-content');
+      if (!contentEl) return;
+      const panel = document.createElement('div');
+      panel.className = 'annotation-panel';
+      panel.id = 'annot-panel-' + blockId;
+      panel.innerHTML = renderAnnotationPanelContent(blockId);
+      contentEl.after(panel);
+    }
+
+    function renderAnnotationPanelContent(blockId) {
+      const annots = pageComments.filter(function(c) { return c.blockId === blockId && !c.parentId; });
+      const list = annots.map(function(c) {
+        const replies = pageComments.filter(function(r) { return r.parentId === c.id; });
+        return '<div class="comment-item">' +
+          '<div class="comment-meta"><strong>' + escapeHtml(c.author) + '</strong> <span class="comment-time">' + new Date(c.createdAt).toLocaleString() + '</span></div>' +
+          '<div class="comment-body">' + renderCommentBody(c.body) + '</div>' +
+          replies.map(function(r) {
+            return '<div class="comment-item comment-reply">' +
+              '<div class="comment-meta"><strong>' + escapeHtml(r.author) + '</strong></div>' +
+              '<div class="comment-body">' + renderCommentBody(r.body) + '</div>' +
+              '</div>';
+          }).join('') +
+          '</div>';
+      }).join('');
+      const composeId = 'annot-compose-' + blockId;
+      const dropdownId = 'annot-mention-' + blockId;
+      return '<div class="annotation-thread">' + (list || '<p class="comments-empty">No annotations yet.</p>') + '</div>' +
+        '<div class="comment-compose">' +
+          '<textarea id="' + composeId + '" class="comment-textarea" rows="2" placeholder="Add annotation…" oninput="handleMentionInput(this,' + JSON.stringify(dropdownId) + ')"></textarea>' +
+          '<div id="' + dropdownId + '" class="mention-dropdown" style="display:none"></div>' +
+          '<div class="comment-compose-actions">' +
+            '<button class="btn btn-xs btn-primary" onclick="submitComment(document.getElementById(' + JSON.stringify(composeId) + ').value,' + JSON.stringify(blockId) + ',undefined,document.getElementById(' + JSON.stringify(composeId) + '))">Post</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    // === @mention autocomplete ===
+
+    function attachMentionAutocomplete(textareaId, dropdownId) {
+      const ta = document.getElementById(textareaId);
+      if (!ta || ta._mentionAttached) return;
+      ta._mentionAttached = true;
+      ta.addEventListener('input', function() { handleMentionInput(ta, dropdownId); });
+      ta.addEventListener('keydown', function(e) { handleMentionKeydown(e, dropdownId); });
+      ta.addEventListener('blur', function() {
+        setTimeout(function() {
+          const dd = document.getElementById(dropdownId);
+          if (dd) dd.style.display = 'none';
+        }, 150);
+      });
+    }
+
+    function handleMentionInput(ta, dropdownId) {
+      const val = ta.value;
+      const pos = ta.selectionStart || 0;
+      const before = val.slice(0, pos);
+      const match = before.match(/@([a-zA-Z0-9_-]*)$/);
+      const dd = document.getElementById(dropdownId);
+      if (!dd) return;
+      if (!match) { dd.style.display = 'none'; return; }
+      const query = match[1].toLowerCase();
+      const filtered = knownUsers.filter(function(u) { return u.toLowerCase().startsWith(query); }).slice(0, 8);
+      if (filtered.length === 0) { dd.style.display = 'none'; return; }
+      dd.innerHTML = filtered.map(function(u) {
+        return '<div class="mention-option" onmousedown="insertMention(' + JSON.stringify(u) + ',this)">@' + escapeHtml(u) + '</div>';
+      }).join('');
+      dd.style.display = 'block';
+      dd._taId = ta.id;
+    }
+
+    function handleMentionKeydown(e, dropdownId) {
+      const dd = document.getElementById(dropdownId);
+      if (!dd || dd.style.display === 'none') return;
+      if (e.key === 'Escape') { dd.style.display = 'none'; }
+    }
+
+    function insertMention(username, optionEl) {
+      const dd = optionEl.closest('.mention-dropdown');
+      if (!dd || !dd._taId) return;
+      const ta = document.getElementById(dd._taId);
+      if (!ta) return;
+      const val = ta.value;
+      const pos = ta.selectionStart || 0;
+      const before = val.slice(0, pos);
+      const newBefore = before.replace(/@([a-zA-Z0-9_-]*)$/, '@' + username + ' ');
+      ta.value = newBefore + val.slice(pos);
+      ta.selectionStart = ta.selectionEnd = newBefore.length;
+      dd.style.display = 'none';
+      ta.focus();
+    }
+
     // Init
     initEditor();
     initTaxonomy();
     initBlueprintFields();
+    loadComments();
   `;
 }
 
@@ -1318,6 +1591,36 @@ function editorStyles(): string {
   .tm-suggestion-source { color: #555; margin-bottom: 0.2rem; line-height: 1.4; word-break: break-word; }
   .tm-suggestion-target { color: #1a3a5c; font-weight: 500; line-height: 1.4; word-break: break-word; margin-bottom: 0.35rem; }
   .tm-copy-btn { display: block; width: 100%; text-align: center; }
+
+  /* Comments panel */
+  .comments-panel { }
+  .comments-loading { font-size: 0.8rem; color: #999; }
+  .comments-empty { font-size: 0.8rem; color: #999; margin: 0.25rem 0; }
+  .comment-item { padding: 0.5rem 0; border-bottom: 1px solid #f0f0f0; }
+  .comment-item:last-child { border-bottom: none; }
+  .comment-resolved { opacity: 0.6; }
+  .comment-reply { padding-left: 0.75rem; border-left: 2px solid #eee; margin-top: 0.25rem; }
+  .comment-meta { font-size: 0.75rem; color: #666; margin-bottom: 0.15rem; display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+  .comment-time { color: #aaa; }
+  .comment-resolved-badge { background: #d1fae5; color: #065f46; border-radius: 3px; padding: 0 0.3rem; font-size: 0.7rem; }
+  .comment-body { font-size: 0.82rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .comment-actions { display: flex; gap: 0.3rem; margin-top: 0.25rem; }
+  .comment-replies { margin-top: 0.25rem; }
+  .reply-form { margin-top: 0.35rem; }
+  .comment-compose { margin-top: 0.5rem; }
+  .comment-compose-actions { display: flex; gap: 0.3rem; margin-top: 0.25rem; }
+  .comment-textarea { width: 100%; font-size: 0.82rem; font-family: inherit; padding: 0.3rem 0.4rem; border: 1px solid #ddd; border-radius: 4px; resize: vertical; }
+  .comment-textarea:focus { outline: none; border-color: #c9a96e; }
+  .mention { color: #3b5bdb; font-weight: 500; }
+  .mention-dropdown { position: absolute; background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 200; max-height: 200px; overflow-y: auto; min-width: 150px; }
+  .mention-option { padding: 0.3rem 0.6rem; font-size: 0.82rem; cursor: pointer; }
+  .mention-option:hover { background: #f0f0f0; }
+
+  /* Block annotation */
+  .annotation-panel { background: #fffdf0; border: 1px solid #f0e0a0; border-radius: 0 0 6px 6px; padding: 0.5rem; }
+  .annotation-thread { margin-bottom: 0.5rem; }
+  .block-annotation-btn.has-annotations { color: #c9a96e; }
+  .annot-badge { display: inline-block; background: #c9a96e; color: #fff; border-radius: 8px; padding: 0 0.3rem; font-size: 0.65rem; font-weight: 700; line-height: 1.4; margin-left: 0.15rem; vertical-align: middle; }
 
   /* ── Mobile responsive ── */
   @media (max-width: 767px) {

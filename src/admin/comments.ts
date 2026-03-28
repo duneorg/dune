@@ -45,6 +45,8 @@ export interface PageComment {
   resolvedAt?: number;
   /** Parent comment ID — set for replies */
   parentId?: string;
+  /** Block ID — set for inline block annotations */
+  blockId?: string;
   /** Usernames extracted from @mentions in the body */
   mentions?: string[];
 }
@@ -76,7 +78,7 @@ export interface CommentManager {
   /** Create a new comment (or reply) */
   create(
     pageSourcePath: string,
-    input: { body: string; parentId?: string },
+    input: { body: string; parentId?: string; blockId?: string },
     author: AdminUser,
   ): Promise<PageComment>;
   /** Edit the body of a comment */
@@ -193,7 +195,7 @@ export function createCommentManager(
 
     async create(
       pageSourcePath: string,
-      input: { body: string; parentId?: string },
+      input: { body: string; parentId?: string; blockId?: string },
       author: AdminUser,
     ): Promise<PageComment> {
       const filePath = commentsFilePath(pageSourcePath);
@@ -211,6 +213,7 @@ export function createCommentManager(
         resolved: false,
         mentions: extractMentions(input.body),
         ...(input.parentId ? { parentId: input.parentId } : {}),
+        ...(input.blockId ? { blockId: input.blockId } : {}),
       };
 
       file.comments.push(comment);
