@@ -123,6 +123,7 @@ import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { AuditLogger } from "../audit/mod.ts";
+import type { MetricsCollector } from "../metrics/mod.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -150,6 +151,8 @@ export interface AdminServerConfig {
   imageCache?: ImageCache;
   /** Audit logger — records admin panel actions */
   auditLogger?: AuditLogger;
+  /** In-process performance metrics collector */
+  metrics?: MetricsCollector;
 }
 
 // === In-memory rate limiter ===
@@ -207,7 +210,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics } = config;
   const adminConfig = config.config.admin!;
 
   /** Extract IP address from a request, checking proxy headers first. */
@@ -560,6 +563,25 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse("<h1>403 Forbidden</h1>", 403);
       }
       return handleAuditPage(url, authResult);
+    }
+
+    // GET /admin/api/metrics — Metrics snapshot JSON (admin only)
+    if (adminPath === "/api/metrics" && req.method === "GET") {
+      if (authResult.user?.role !== "admin") {
+        return jsonResponse({ error: "Forbidden" }, 403);
+      }
+      if (!metrics) {
+        return jsonResponse({ error: "Metrics not enabled" }, 404);
+      }
+      return jsonResponse(metrics.snapshot());
+    }
+
+    // GET /admin/metrics — Metrics dashboard page (admin only)
+    if (adminPath === "/metrics" && req.method === "GET") {
+      if (authResult.user?.role !== "admin") {
+        return htmlResponse("<h1>403 Forbidden</h1>", 403);
+      }
+      return handleMetricsPage(authResult);
     }
 
     return new Response("Not found", { status: 404 });
@@ -2582,6 +2604,174 @@ export function createAdminHandler(config: AdminServerConfig) {
     return htmlResponse(html);
   }
 
+  // === Metrics page ===
+
+  function handleMetricsPage(authResult: AuthResult): Response {
+    const userName = authResult.user?.name ?? "Admin";
+
+    if (!metrics) {
+      return htmlResponse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Performance — Dune Admin</title>
+  <style>${baseAdminStyles()}</style>
+</head>
+<body>
+  ${adminShell(prefix, "metrics", userName, `
+    <h2>Performance</h2>
+    <p style="color:#888;padding:2rem 0">Metrics collection is not enabled.</p>
+  `)}
+</body>
+</html>`);
+    }
+
+    const snap = metrics.snapshot();
+
+    const fmtMs = (v: number) => v < 1 ? `${(v * 1000).toFixed(0)}µs` : `${v.toFixed(1)}ms`;
+    const fmtMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+    const topRoutesRows = snap.topRoutes.length === 0
+      ? `<tr><td colspan="6" style="text-align:center;color:#aaa;padding:1.5rem">No requests recorded yet</td></tr>`
+      : snap.topRoutes.map((r) => `
+        <tr>
+          <td style="font-family:monospace;font-size:0.85rem">${escapeHtml(r.route)}</td>
+          <td>${r.requests}</td>
+          <td>${r.errors > 0 ? `<span style="color:#dc2626">${r.errors}</span>` : "0"}</td>
+          <td>${fmtMs(r.latency.p50)}</td>
+          <td>${fmtMs(r.latency.p95)}</td>
+          <td>${fmtMs(r.latency.p99)}</td>
+        </tr>`).join("");
+
+    const slowRows = snap.slowQueries.length === 0
+      ? `<tr><td colspan="4" style="text-align:center;color:#aaa;padding:1.5rem">No slow queries recorded</td></tr>`
+      : snap.slowQueries.slice().reverse().map((q) => `
+        <tr>
+          <td style="font-size:0.8rem;color:#666;white-space:nowrap">${escapeHtml(q.ts.replace("T", " ").slice(0, 19))}</td>
+          <td><span class="badge" style="background:#fef3c7;color:#92400e">${escapeHtml(q.type)}</span></td>
+          <td style="font-family:monospace;font-size:0.82rem;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(q.query)}</td>
+          <td style="color:#dc2626;font-weight:600">${q.durationMs.toFixed(1)}ms</td>
+        </tr>`).join("");
+
+    const pageCacheHtml = snap.pageCache
+      ? `
+        <div class="metrics-card">
+          <div class="metrics-card-title">Page Cache</div>
+          <div class="metrics-grid">
+            <div class="metrics-stat"><div class="metrics-stat-value">${snap.pageCache.entries}</div><div class="metrics-stat-label">Entries</div></div>
+            <div class="metrics-stat"><div class="metrics-stat-value">${snap.pageCache.hits}</div><div class="metrics-stat-label">Hits</div></div>
+            <div class="metrics-stat"><div class="metrics-stat-value">${snap.pageCache.misses}</div><div class="metrics-stat-label">Misses</div></div>
+            <div class="metrics-stat"><div class="metrics-stat-value">${fmtPct(snap.pageCache.hitRate)}</div><div class="metrics-stat-label">Hit Rate</div></div>
+            <div class="metrics-stat"><div class="metrics-stat-value">${snap.pageCache.evictions}</div><div class="metrics-stat-label">Evictions</div></div>
+          </div>
+        </div>`
+      : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="30">
+  <title>Performance — Dune Admin</title>
+  <style>${baseAdminStyles()}
+  .metrics-row { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .metrics-card { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:1.25rem; flex:1; min-width:240px; }
+  .metrics-card-title { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280; margin-bottom:0.75rem; }
+  .metrics-grid { display:flex; gap:1.25rem; flex-wrap:wrap; }
+  .metrics-stat { text-align:center; min-width:60px; }
+  .metrics-stat-value { font-size:1.4rem; font-weight:700; color:#111; }
+  .metrics-stat-label { font-size:0.72rem; color:#9ca3af; margin-top:0.15rem; }
+  .section-title { font-size:0.9rem; font-weight:600; color:#374151; margin:1.25rem 0 0.5rem; }
+  .metrics-refresh { font-size:0.78rem; color:#9ca3af; margin-bottom:1rem; }
+  </style>
+</head>
+<body>
+  ${adminShell(prefix, "metrics", userName, `
+    <h2>Performance</h2>
+    <p class="metrics-refresh">Snapshot taken at ${escapeHtml(snap.ts.replace("T", " ").slice(0, 19))} UTC &mdash; auto-refreshes every 30 seconds</p>
+
+    <div class="metrics-row">
+      <div class="metrics-card">
+        <div class="metrics-card-title">Uptime</div>
+        <div class="metrics-stat-value" style="font-size:1.2rem">${Math.floor(snap.uptimeSeconds / 3600)}h ${Math.floor((snap.uptimeSeconds % 3600) / 60)}m ${snap.uptimeSeconds % 60}s</div>
+      </div>
+      <div class="metrics-card">
+        <div class="metrics-card-title">Requests</div>
+        <div class="metrics-grid">
+          <div class="metrics-stat"><div class="metrics-stat-value">${snap.requests.total}</div><div class="metrics-stat-label">Total</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value" style="color:${snap.requests.errors > 0 ? "#dc2626" : "inherit"}">${snap.requests.errors}</div><div class="metrics-stat-label">Errors</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtPct(snap.requests.errorRate)}</div><div class="metrics-stat-label">Error Rate</div></div>
+        </div>
+      </div>
+      <div class="metrics-card">
+        <div class="metrics-card-title">Latency (all routes)</div>
+        <div class="metrics-grid">
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMs(snap.requests.latency.p50)}</div><div class="metrics-stat-label">p50</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMs(snap.requests.latency.p95)}</div><div class="metrics-stat-label">p95</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMs(snap.requests.latency.p99)}</div><div class="metrics-stat-label">p99</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMs(snap.requests.latency.max)}</div><div class="metrics-stat-label">max</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metrics-card">
+        <div class="metrics-card-title">Memory</div>
+        <div class="metrics-grid">
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMb(snap.memory.heapUsed)}</div><div class="metrics-stat-label">Heap Used</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMb(snap.memory.heapTotal)}</div><div class="metrics-stat-label">Heap Total</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMb(snap.memory.rss)}</div><div class="metrics-stat-label">RSS</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${fmtMb(snap.memory.external)}</div><div class="metrics-stat-label">External</div></div>
+        </div>
+      </div>
+      <div class="metrics-card">
+        <div class="metrics-card-title">Engine</div>
+        <div class="metrics-grid">
+          <div class="metrics-stat"><div class="metrics-stat-value">${snap.engine.pageCount}</div><div class="metrics-stat-label">Pages</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${snap.engine.rebuildCount}</div><div class="metrics-stat-label">Rebuilds</div></div>
+          <div class="metrics-stat"><div class="metrics-stat-value">${snap.engine.lastRebuildMs !== null ? fmtMs(snap.engine.lastRebuildMs) : "—"}</div><div class="metrics-stat-label">Last Rebuild</div></div>
+        </div>
+      </div>
+      ${pageCacheHtml}
+    </div>
+
+    <p class="section-title">Top Routes by Request Count</p>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Requests</th>
+          <th>Errors</th>
+          <th>p50</th>
+          <th>p95</th>
+          <th>p99</th>
+        </tr>
+      </thead>
+      <tbody>${topRoutesRows}</tbody>
+    </table>
+
+    <p class="section-title">Slow Queries (last ${snap.slowQueries.length > 0 ? snap.slowQueries.length : 0})</p>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Query</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody>${slowRows}</tbody>
+    </table>
+  `)}
+</body>
+</html>`;
+
+    return htmlResponse(html);
+  }
+
   // === Workflow handlers ===
 
   async function handleWorkflowTransition(req: Request): Promise<Response> {
@@ -4108,6 +4298,7 @@ function adminShell(prefix: string, active: string, userName: string, content: s
     { id: "themes", label: "Themes", icon: "🎨", href: `${prefix}/themes` },
     { id: "config", label: "Configuration", icon: "⚙️", href: `${prefix}/config` },
     { id: "audit", label: "Audit Log", icon: "🔒", href: `${prefix}/audit` },
+    { id: "metrics", label: "Performance", icon: "📈", href: `${prefix}/metrics` },
   ];
 
   return `

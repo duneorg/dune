@@ -397,6 +397,18 @@ export interface SystemConfig {
      */
     customFields?: string[];
   };
+  /** Performance metrics collection settings. */
+  metrics?: {
+    /**
+     * Enable the in-process metrics collector (default: true).
+     */
+    enabled?: boolean;
+    /**
+     * Slow query threshold in milliseconds (default: 100).
+     * Collection and search queries exceeding this are logged.
+     */
+    slowQueryThresholdMs?: number;
+  };
   debug: boolean;
   timezone: string;
 }

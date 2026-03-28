@@ -32,6 +32,7 @@ import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
 import { AuditLogger } from "../audit/mod.ts";
+import { MetricsCollector } from "../metrics/mod.ts";
 import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -84,6 +85,8 @@ export interface BootstrapResult {
   sharedThemesDir?: string;
   /** Audit logger — null when admin is disabled or audit.enabled is false */
   auditLogger: AuditLogger | null;
+  /** In-process performance metrics collector */
+  metrics: MetricsCollector;
 }
 
 export interface BootstrapOptions {
@@ -342,6 +345,19 @@ export async function bootstrap(
     await auditLogger.init();
   }
 
+  // 14. Metrics collector
+  const metricsEnabled = config.system.metrics?.enabled !== false;
+  const metrics = new MetricsCollector({
+    slowQueryThresholdMs: config.system.metrics?.slowQueryThresholdMs ?? 100,
+  });
+
+  // Record page count on every rebuild via the onRebuild hook.
+  if (metricsEnabled) {
+    hooks.on("onRebuild", async () => {
+      metrics.recordRebuild(0, engine.pages.length);
+    });
+  }
+
   const adminHandler = adminConfig.enabled
     ? createAdminHandler({
         engine,
@@ -362,6 +378,7 @@ export async function bootstrap(
         collab: collabManager,
         imageCache,
         auditLogger: auditLogger ?? undefined,
+        metrics: metricsEnabled ? metrics : undefined,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -387,5 +404,6 @@ export async function bootstrap(
     pluginAssetDirs,
     sharedThemesDir,
     auditLogger,
+    metrics,
   };
 }

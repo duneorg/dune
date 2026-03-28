@@ -235,12 +235,12 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - ~~Cache-Control + stale-while-revalidate: configurable defaults and per-route rules~~
 - ~~In-process page cache: TTL-based Map cache, FIFO eviction, cache warming, `/health` stats~~
 
-#### Performance Monitoring
-- Built-in performance dashboard
-- Page render time tracking
-- Slow query identification (collections, search)
-- Memory usage monitoring
-- Lighthouse score tracking per page
+#### ~~Performance Monitoring~~ ✅
+- ~~Built-in performance dashboard (Admin → Performance)~~
+- ~~Request latency percentiles (p50/p95/p99) per route~~
+- ~~Slow query logging (collections, search, configurable threshold)~~
+- ~~Memory usage and engine stats~~
+- ~~`GET /admin/api/metrics` JSON endpoint~~
 
 #### Enterprise Features
 - LDAP/SAML SSO integration

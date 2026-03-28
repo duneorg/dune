@@ -27,7 +27,7 @@ import {
   resolvePolicy,
   buildCacheControl,
 } from "../cache/mod.ts";
-import type { PageCache } from "../cache/mod.ts";
+import type { PageCache, ResolvedCachePolicy } from "../cache/mod.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
@@ -40,6 +40,7 @@ import {
   type FeedOptions,
 } from "../feeds/generator.ts";
 import { serveStagedPreview } from "../staging/preview.ts";
+import type { MetricsCollector } from "../metrics/mod.ts";
 
 // ── Production ────────────────────────────────────────────────────────────────
 
@@ -136,9 +137,9 @@ export function createProductionSiteHandler(
   ctx: BootstrapResult,
   prebuilt: SitePrebuilt,
   root: string,
-  options: { port: number; debug?: boolean },
+  options: { port: number; debug?: boolean; metrics?: MetricsCollector },
 ): (req: Request) => Promise<Response> {
-  const { debug = false } = options;
+  const { debug = false, metrics } = options;
   const {
     engine, collections, taxonomy, search, imageHandler,
     adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
@@ -185,12 +186,60 @@ export function createProductionSiteHandler(
     }
   }
 
+  // Attach page cache stats to the metrics collector when both are enabled.
+  if (metrics && pageCache) {
+    metrics.setPageCacheRef(() => pageCache!.stats());
+  }
+
+  // Helper: render a content response and optionally store it in the page cache.
+  // Extracted to avoid duplicating cache-store logic across the if-else tree above.
+  async function renderContentResponse(
+    req: Request,
+    url: URL,
+    etag: string | null,
+    policy: ResolvedCachePolicy,
+    cacheControlValue: string,
+  ): Promise<Response> {
+    let contentResponse = await routes.contentHandler(req, renderJsx);
+    if (feedEnabled) contentResponse = injectFeedLinks(siteName, contentResponse);
+
+    // Attach caching headers to successful HTML responses.
+    if (contentResponse.status === 200 && etag) {
+      const headers = new Headers(contentResponse.headers);
+      headers.set("ETag", etag);
+      headers.set("Cache-Control", cacheControlValue);
+      contentResponse = new Response(contentResponse.body, { status: 200, headers });
+    } else if (!policy.noStore && contentResponse.status === 200) {
+      const headers = new Headers(contentResponse.headers);
+      headers.set("Cache-Control", cacheControlValue);
+      contentResponse = new Response(contentResponse.body, { status: 200, headers });
+    }
+
+    // Store in page cache when enabled (buffer body, then reconstruct response).
+    if (pageCache && etag && contentResponse.status === 200) {
+      const bodyBuffer = await contentResponse.arrayBuffer();
+      pageCache.set(url.pathname, {
+        body: new Uint8Array(bodyBuffer),
+        etag,
+        cacheControl: cacheControlValue,
+      });
+      contentResponse = new Response(bodyBuffer, {
+        status: 200,
+        headers: contentResponse.headers,
+      });
+    }
+
+    return maybeCompress(req, withSecurityHeaders(contentResponse));
+  }
+
   return async (req: Request): Promise<Response> => {
+    const startMs = performance.now();
     const url = new URL(req.url);
+    let response: Response = new Response("Internal Server Error", { status: 500 });
     try {
       // Health check
       if (url.pathname === "/health") {
-        return new Response(JSON.stringify({
+        response = new Response(JSON.stringify({
           status: "ok",
           uptime: Math.floor((Date.now() - startTime) / 1000),
           pages: engine.pages.length,
@@ -198,11 +247,9 @@ export function createProductionSiteHandler(
         }), {
           headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
         });
-      }
-
-      // Sitemap — always serve pre-compressed to stay under proxy buffer limits
-      if (url.pathname === "/sitemap.xml") {
-        return new Response(sitemapGzip, {
+      } else if (url.pathname === "/sitemap.xml") {
+        // Sitemap — always serve pre-compressed to stay under proxy buffer limits
+        response = new Response(sitemapGzip, {
           headers: {
             "Content-Type": "application/xml; charset=utf-8",
             "Content-Encoding": "gzip",
@@ -211,182 +258,137 @@ export function createProductionSiteHandler(
             "Vary": "Accept-Encoding",
           },
         });
-      }
-
-      if (url.pathname === "/sitemap.xsl") {
-        return new Response(SITEMAP_XSL, {
+      } else if (url.pathname === "/sitemap.xsl") {
+        response = new Response(SITEMAP_XSL, {
           headers: {
             "Content-Type": "text/xsl; charset=utf-8",
             "Cache-Control": "public, max-age=86400",
           },
         });
-      }
-
-      // Feeds (pre-built at startup)
-      if (feedEnabled && url.pathname === "/feed.xml") {
-        return maybeCompress(req, new Response(rssFeed, {
+      } else if (feedEnabled && url.pathname === "/feed.xml") {
+        // Feeds (pre-built at startup)
+        response = await maybeCompress(req, new Response(rssFeed, {
           headers: {
             "Content-Type": "application/rss+xml; charset=utf-8",
             "Cache-Control": "public, max-age=3600, must-revalidate",
           },
         }));
-      }
-      if (feedEnabled && url.pathname === "/atom.xml") {
-        return maybeCompress(req, new Response(atomFeed, {
+      } else if (feedEnabled && url.pathname === "/atom.xml") {
+        response = await maybeCompress(req, new Response(atomFeed, {
           headers: {
             "Content-Type": "application/atom+xml; charset=utf-8",
             "Cache-Control": "public, max-age=3600, must-revalidate",
           },
         }));
-      }
-
-      // Root-level static assets (favicon, robots.txt)
-      if (/^\/(favicon\.(ico|svg)|robots\.txt)$/.test(url.pathname)) {
+      } else if (/^\/(favicon\.(ico|svg)|robots\.txt)$/.test(url.pathname)) {
+        // Root-level static assets (favicon, robots.txt)
         const staticResult = await serveStaticFile(root, url.pathname);
-        return withSecurityHeaders(
+        response = withSecurityHeaders(
           staticResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
         );
-      }
-
-      // Staged draft preview
-      if (url.pathname === "/__preview" && req.method === "GET") {
+      } else if (url.pathname === "/__preview" && req.method === "GET") {
+        // Staged draft preview
         const previewResult = await serveStagedPreview(url, engine, stagingEngine);
-        return previewResult ?? withSecurityHeaders(
+        response = previewResult ?? withSecurityHeaders(
           renderErrorPage(404, "Not Found", "Preview not found or token invalid.", siteName),
         );
-      }
-
-      // Admin routes
-      if (url.pathname.startsWith(adminPrefix)) {
+      } else if (url.pathname.startsWith(adminPrefix)) {
+        // Admin routes
         const adminResult = await adminHandler(req);
-        return withSecurityHeaders(
+        response = withSecurityHeaders(
           adminResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
         );
-      }
-
-      // API routes — admin handler first (covers /api/contact etc.), then core API
-      if (url.pathname.startsWith("/api/")) {
+      } else if (url.pathname.startsWith("/api/")) {
+        // API routes — admin handler first (covers /api/contact etc.), then core API
         const adminApiResult = await adminHandler(req);
-        if (adminApiResult) return adminApiResult;
-        const apiResult = await apiHandler(req);
-        return apiResult ?? new Response(
-          JSON.stringify({ error: "Not found" }),
-          { status: 404, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
-      // Theme / site static files
-      if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
-        const staticResult = await serveStaticFile(root, url.pathname, false, sharedThemesDir);
-        return staticResult ?? withSecurityHeaders(
-          renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-        );
-      }
-
-      // Plugin assets
-      if (url.pathname.startsWith("/plugins/")) {
-        const pluginAssetResponse = await servePluginAsset(pluginAssetDirs, url.pathname);
-        if (pluginAssetResponse) return withSecurityHeaders(pluginAssetResponse);
-        return withSecurityHeaders(
-          renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-        );
-      }
-
-      // Media (image processing first, then raw file)
-      if (url.pathname.startsWith("/content-media/")) {
-        const imageResult = await imageHandler(req);
-        return imageResult ?? await routes.mediaHandler(req);
-      }
-
-      // ── Content routes ──────────────────────────────────────────────────
-      // 1. Compute ETag from PageIndex (fast — no file I/O).
-      // 2. Check page cache (optional in-process cache).
-      // 3. Handle If-None-Match → 304.
-      // 4. Render and add Cache-Control + ETag headers.
-      // 5. Store rendered HTML in page cache when enabled.
-      const pageIndex = engine.pages.find((p) => p.route === url.pathname);
-      const etag = pageIndex ? await computeEtag(pageIndex) : null;
-      const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
-      const cacheControlValue = buildCacheControl(policy);
-
-      // Check in-process cache before rendering.
-      if (pageCache && etag) {
-        const cached = pageCache.get(url.pathname);
-        if (cached && cached.etag === etag) {
-          if (etagMatches(req.headers.get("If-None-Match"), etag)) {
-            return new Response(null, {
-              status: 304,
-              headers: { "ETag": etag, "Cache-Control": cacheControlValue },
-            });
-          }
-          return maybeCompress(
-            req,
-            withSecurityHeaders(new Response(cached.body as BodyInit, {
-              status: 200,
-              headers: {
-                "Content-Type": "text/html; charset=utf-8",
-                "ETag": etag,
-                "Cache-Control": cacheControlValue,
-              },
-            })),
+        if (adminApiResult) {
+          response = adminApiResult;
+        } else {
+          const apiResult = await apiHandler(req);
+          response = apiResult ?? new Response(
+            JSON.stringify({ error: "Not found" }),
+            { status: 404, headers: { "Content-Type": "application/json" } },
           );
         }
+      } else if (url.pathname.startsWith("/static/") || url.pathname.startsWith("/themes/")) {
+        // Theme / site static files
+        const staticResult = await serveStaticFile(root, url.pathname, false, sharedThemesDir);
+        response = staticResult ?? withSecurityHeaders(
+          renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
+        );
+      } else if (url.pathname.startsWith("/plugins/")) {
+        // Plugin assets
+        const pluginAssetResponse = await servePluginAsset(pluginAssetDirs, url.pathname);
+        response = pluginAssetResponse
+          ? withSecurityHeaders(pluginAssetResponse)
+          : withSecurityHeaders(
+              renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
+            );
+      } else if (url.pathname.startsWith("/content-media/")) {
+        // Media (image processing first, then raw file)
+        const imageResult = await imageHandler(req);
+        response = imageResult ?? await routes.mediaHandler(req);
+      } else {
+        // ── Content routes ────────────────────────────────────────────────
+        // 1. Compute ETag from PageIndex (fast — no file I/O).
+        // 2. Check page cache (optional in-process cache).
+        // 3. Handle If-None-Match → 304.
+        // 4. Render and add Cache-Control + ETag headers.
+        // 5. Store rendered HTML in page cache when enabled.
+        const pageIndex = engine.pages.find((p) => p.route === url.pathname);
+        const etag = pageIndex ? await computeEtag(pageIndex) : null;
+        const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
+        const cacheControlValue = buildCacheControl(policy);
+
+        // Check in-process cache before rendering.
+        if (pageCache && etag) {
+          const cached = pageCache.get(url.pathname);
+          if (cached && cached.etag === etag) {
+            if (etagMatches(req.headers.get("If-None-Match"), etag)) {
+              response = new Response(null, {
+                status: 304,
+                headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+              });
+            } else {
+              response = await maybeCompress(
+                req,
+                withSecurityHeaders(new Response(cached.body as BodyInit, {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "text/html; charset=utf-8",
+                    "ETag": etag,
+                    "Cache-Control": cacheControlValue,
+                  },
+                })),
+              );
+            }
+          } else {
+            response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
+          }
+        } else if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
+          // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
+          response = new Response(null, {
+            status: 304,
+            headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+          });
+        } else {
+          response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
+        }
+        // ──────────────────────────────────────────────────────────────────
       }
-
-      // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
-      if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
-        return new Response(null, {
-          status: 304,
-          headers: { "ETag": etag, "Cache-Control": cacheControlValue },
-        });
-      }
-
-      // Render.
-      let contentResponse = await routes.contentHandler(req, renderJsx);
-      if (feedEnabled) contentResponse = injectFeedLinks(siteName, contentResponse);
-
-      // Attach caching headers to successful HTML responses.
-      if (contentResponse.status === 200 && etag) {
-        const headers = new Headers(contentResponse.headers);
-        headers.set("ETag", etag);
-        headers.set("Cache-Control", cacheControlValue);
-        contentResponse = new Response(contentResponse.body, {
-          status: 200,
-          headers,
-        });
-      } else if (!policy.noStore && contentResponse.status === 200) {
-        // No ETag (search, flex, etc.) — still add Cache-Control.
-        const headers = new Headers(contentResponse.headers);
-        headers.set("Cache-Control", cacheControlValue);
-        contentResponse = new Response(contentResponse.body, { status: 200, headers });
-      }
-
-      // Store in page cache when enabled (buffer body, then reconstruct response).
-      if (pageCache && etag && contentResponse.status === 200) {
-        const bodyBuffer = await contentResponse.arrayBuffer();
-        pageCache.set(url.pathname, {
-          body: new Uint8Array(bodyBuffer),
-          etag,
-          cacheControl: cacheControlValue,
-        });
-        contentResponse = new Response(bodyBuffer, {
-          status: 200,
-          headers: contentResponse.headers,
-        });
-      }
-
-      return maybeCompress(req, withSecurityHeaders(contentResponse));
-      // ────────────────────────────────────────────────────────────────────
     } catch (err) {
       if (debug) {
         console.error(`✗ Error serving ${url.pathname}:`, err);
       } else {
         console.error(`✗ Error serving ${url.pathname}: ${(err as Error).message ?? err}`);
       }
-      return withSecurityHeaders(
+      response = withSecurityHeaders(
         renderErrorPage(500, "Server Error", "Something went wrong. Please try again later.", siteName),
       );
     }
+
+    metrics?.recordRequest(url.pathname, performance.now() - startMs, response.status >= 500);
+    return response;
   };
 }
 
