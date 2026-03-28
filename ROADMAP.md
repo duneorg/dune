@@ -230,12 +230,10 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - ~~Deploy to any static host (Netlify, Cloudflare Pages, S3, etc.)~~
 - ~~Hybrid mode: static pages + dynamic API endpoints~~ (`--hybrid` flag, `_routes.json` + `_redirects`)
 
-#### Advanced Caching
-- Edge caching strategies for Deno Deploy
-- Stale-while-revalidate patterns
-- Cache warming on deploy
-- Per-route cache policy configuration
-- Cache analytics (hit rates, invalidation frequency)
+#### ~~Advanced Caching~~ ✅
+- ~~ETag/304 Not Modified: SHA-256 ETag from PageIndex metadata, If-None-Match validation~~
+- ~~Cache-Control + stale-while-revalidate: configurable defaults and per-route rules~~
+- ~~In-process page cache: TTL-based Map cache, FIFO eviction, cache warming, `/health` stats~~
 
 #### Performance Monitoring
 - Built-in performance dashboard

@@ -46,6 +46,16 @@ sitemap:
   exclude: []                    # string[] — Route prefixes to omit from /sitemap.xml
   changefreq: {}                 # Record<string, changefreq> — Per-route overrides (longest prefix wins)
   # Valid changefreq values: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never"
+
+http_cache:
+  default_max_age: 0             # number — Browser max-age in seconds (0 = revalidate every time)
+  default_swr: 60                # number — Default stale-while-revalidate in seconds
+  rules:                         # Per-route overrides — longest matching prefix wins
+    - pattern: "/blog"           # string — URL prefix or exact path
+      max_age: 3600              # number — Browser max-age override
+      stale_while_revalidate: 86400  # number — SWR override
+    - pattern: "/search"
+      no_store: true             # boolean — Emit Cache-Control: no-store (disables all caching)
 ```
 
 ## system.yaml
@@ -87,6 +97,12 @@ typography:
 search:
   customFields: []               # string[] — Extra frontmatter field names to include in search index
                                  #   e.g. ["summary", "author", "series"]
+
+page_cache:
+  enabled: false                 # boolean — Enable in-process rendered HTML cache (default: false)
+  max_entries: 500               # number — Max pages held in memory; oldest evicted when full (default: 500)
+  ttl: 30                        # number — Seconds before an entry is re-rendered (default: 30)
+  warm: false                    # boolean — Pre-resolve all pages at startup (default: false)
 
 debug: false                     # boolean
 timezone: "UTC"                  # string — IANA timezone
