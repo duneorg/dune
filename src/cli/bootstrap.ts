@@ -33,6 +33,8 @@ import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
 import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
+import { createMachineTranslator } from "../mt/mod.ts";
+import type { MachineTranslator } from "../mt/mod.ts";
 import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -87,6 +89,8 @@ export interface BootstrapResult {
   auditLogger: AuditLogger | null;
   /** In-process performance metrics collector */
   metrics: MetricsCollector;
+  /** Machine translation provider — null when not configured */
+  mt: MachineTranslator | null;
 }
 
 export interface BootstrapOptions {
@@ -345,7 +349,12 @@ export async function bootstrap(
     await auditLogger.init();
   }
 
-  // 14. Metrics collector
+  // 14. Machine translation
+  const mt: MachineTranslator | null = config.site.machine_translation
+    ? createMachineTranslator(config.site.machine_translation)
+    : null;
+
+  // 15. Metrics collector
   const metricsEnabled = config.system.metrics?.enabled !== false;
   const metrics = new MetricsCollector({
     slowQueryThresholdMs: config.system.metrics?.slowQueryThresholdMs ?? 100,
@@ -379,6 +388,7 @@ export async function bootstrap(
         imageCache,
         auditLogger: auditLogger ?? undefined,
         metrics: metricsEnabled ? metrics : undefined,
+        mt: mt ?? undefined,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -405,5 +415,6 @@ export async function bootstrap(
     sharedThemesDir,
     auditLogger,
     metrics,
+    mt,
   };
 }

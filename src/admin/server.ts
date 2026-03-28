@@ -26,6 +26,9 @@
  *   POST /admin/api/i18n/memory → Add/update TM entry
  *   DELETE /admin/api/i18n/memory → Delete TM entry
  *   POST /admin/api/i18n/memory/rebuild → Rebuild TM from existing translations
+ *   GET  /admin/api/i18n/mt-status     → Machine translation availability probe
+ *   POST /admin/api/i18n/translate-page    → Machine-translate an entire page (creates file)
+ *   POST /admin/api/i18n/translate-segment → Machine-translate a single segment
  *   GET  /admin/api/users     → List users (admin only)
  *   POST /admin/api/users     → Create user (admin only)
  *   PUT  /admin/api/users/:id → Update user (role, name, email, enabled)
@@ -124,6 +127,7 @@ import type { CollabManager } from "../collab/mod.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { AuditLogger } from "../audit/mod.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
+import type { MachineTranslator } from "../mt/mod.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -153,6 +157,8 @@ export interface AdminServerConfig {
   auditLogger?: AuditLogger;
   /** In-process performance metrics collector */
   metrics?: MetricsCollector;
+  /** Machine translation provider — omit when not configured */
+  mt?: MachineTranslator | null;
 }
 
 // === In-memory rate limiter ===
@@ -210,7 +216,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics, mt } = config;
   const adminConfig = config.config.admin!;
 
   /** Extract IP address from a request, checking proxy headers first. */
@@ -416,6 +422,23 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath === "/api/i18n/memory" && method === "DELETE") {
       requirePermission(authResult, "pages.update");
       return handleDeleteTMEntry(req);
+    }
+
+    // GET /admin/api/i18n/mt-status — MT availability probe
+    if (adminPath === "/api/i18n/mt-status" && method === "GET") {
+      return handleMTStatus();
+    }
+
+    // POST /admin/api/i18n/translate-page — Machine-translate an entire page
+    if (adminPath === "/api/i18n/translate-page" && method === "POST") {
+      requirePermission(authResult, "pages.create");
+      return handleMachineTranslatePage(req);
+    }
+
+    // POST /admin/api/i18n/translate-segment — Machine-translate a single segment
+    if (adminPath === "/api/i18n/translate-segment" && method === "POST") {
+      requirePermission(authResult, "pages.read");
+      return handleMachineTranslateSegment(req);
     }
 
     // GET /admin/config — Config editor
@@ -2097,6 +2120,123 @@ export function createAdminHandler(config: AdminServerConfig) {
 
       await saveTM(storage, contentDir, from, to, tm);
       return jsonResponse({ ok: true, added });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  // === Machine Translation handlers ===
+
+  function handleMTStatus(): Response {
+    const enabled = mt != null;
+    return jsonResponse({ enabled, provider: enabled ? mt!.provider : null });
+  }
+
+  /** Split a file's content into a frontmatter block and body. */
+  function splitFrontmatter(content: string): { fm: string; body: string } {
+    if (!content.startsWith("---")) return { fm: "", body: content };
+    const end = content.indexOf("\n---", 3);
+    if (end === -1) return { fm: "", body: content };
+    return { fm: content.slice(0, end + 4), body: content.slice(end + 4) };
+  }
+
+  async function handleMachineTranslatePage(req: Request): Promise<Response> {
+    if (!mt) {
+      return jsonResponse({ error: "Machine translation not configured" }, 501);
+    }
+    try {
+      const { sourcePath, targetLang } = await req.json();
+      if (!sourcePath || typeof sourcePath !== "string" || !targetLang || typeof targetLang !== "string") {
+        return jsonResponse({ error: "sourcePath and targetLang required" }, 400);
+      }
+
+      const supportedLangs = config.config.system.languages?.supported ?? [];
+      if (!supportedLangs.includes(targetLang)) {
+        return jsonResponse({ error: "Unsupported target language" }, 400);
+      }
+
+      const defaultLang = config.config.system.languages?.default ?? "en";
+      const contentDir = config.config.system.content.dir;
+
+      // Read the source file
+      let sourceText: string;
+      try {
+        sourceText = await storage.readText(`${contentDir}/${sourcePath}`);
+      } catch {
+        return jsonResponse({ error: "Source file not found" }, 404);
+      }
+
+      const { fm, body } = splitFrontmatter(sourceText);
+
+      // Translate the body
+      let translatedBody: string;
+      try {
+        translatedBody = await mt.translate(body, defaultLang, targetLang);
+      } catch (err) {
+        return jsonResponse({ error: `Translation failed: ${err}` }, 502);
+      }
+
+      // Translate the title in frontmatter if present
+      let translatedFm = fm;
+      const titleMatch = fm.match(/^(title:\s*["']?)(.+?)(["']?\s*)$/m);
+      if (titleMatch) {
+        let translatedTitle: string;
+        try {
+          translatedTitle = await mt.translate(titleMatch[2], defaultLang, targetLang);
+        } catch (err) {
+          return jsonResponse({ error: `Title translation failed: ${err}` }, 502);
+        }
+        translatedFm = fm.replace(
+          /^(title:\s*["']?)(.+?)(["']?\s*)$/m,
+          (_: string, pre: string, _val: string, post: string) => pre + translatedTitle + post,
+        );
+      }
+
+      const newContent = translatedFm + translatedBody;
+
+      // Derive target path: replace `.md` with `.{targetLang}.md` (handle existing lang suffixes)
+      // Pattern: `file.md` → `file.{lang}.md`, `file.en.md` → `file.{lang}.md`
+      const langPattern = supportedLangs.join("|");
+      const existingLangRegex = new RegExp(`\\.(${langPattern})\\.(md|mdx|tsx)$`);
+      let targetPath: string;
+      if (existingLangRegex.test(sourcePath)) {
+        targetPath = sourcePath.replace(existingLangRegex, `.${targetLang}.$2`);
+      } else {
+        targetPath = sourcePath.replace(/\.(md|mdx|tsx)$/, `.${targetLang}.$1`);
+      }
+
+      await storage.write(`${contentDir}/${targetPath}`, new TextEncoder().encode(newContent));
+
+      // Fire-and-forget rebuild
+      engine.rebuild().catch((err: unknown) => {
+        console.error("[dune] MT translate-page rebuild error:", err);
+      });
+
+      return jsonResponse({ ok: true, targetPath });
+    } catch (err) {
+      return serverError(err);
+    }
+  }
+
+  async function handleMachineTranslateSegment(req: Request): Promise<Response> {
+    if (!mt) {
+      return jsonResponse({ error: "Machine translation not configured" }, 501);
+    }
+    try {
+      const body = await req.json();
+      const { text, from, to } = body;
+      if (!text || typeof text !== "string" || !from || typeof from !== "string" || !to || typeof to !== "string") {
+        return jsonResponse({ error: "text, from, and to are required" }, 400);
+      }
+
+      let translation: string;
+      try {
+        translation = await mt.translate(text, from, to);
+      } catch (err) {
+        return jsonResponse({ error: `Translation failed: ${err}` }, 502);
+      }
+
+      return jsonResponse({ ok: true, translation });
     } catch (err) {
       return serverError(err);
     }
@@ -3862,7 +4002,7 @@ export function createAdminHandler(config: AdminServerConfig) {
       return { sourcePath: p.sourcePath, title: p.title, route: p.route, translations };
     });
 
-    const content = renderTranslationStatus(pfx, { languages, defaultLanguage: defaultLang, pages });
+    const content = renderTranslationStatus(pfx, { languages, defaultLanguage: defaultLang, pages, mtEnabled: mt != null });
 
     return `<!DOCTYPE html>
 <html lang="en">

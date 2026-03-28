@@ -251,7 +251,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - Backup and disaster recovery tools
 
 #### Internationalization (Full)
-- Machine translation integration (optional, via API)
+- ~~Machine translation integration (optional, via API)~~ ✅ (DeepL, Google Translate, LibreTranslate)
 - Translation project management
 - Locale-specific formatting (dates, numbers, currencies)
 - RTL language support

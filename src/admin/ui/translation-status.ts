@@ -21,6 +21,8 @@ interface TranslationData {
       upToDate: boolean;
     }>;
   }>;
+  /** Whether a machine translation provider is configured */
+  mtEnabled?: boolean;
 }
 
 /**
@@ -76,11 +78,16 @@ export function renderTranslationStatus(prefix: string, data: TranslationData): 
     </div>`;
   }).join("");
 
+  const mtEnabled = data.mtEnabled ?? false;
+
   const tableRows = data.pages.map((page) => {
     const cells = otherLangs.map((lang) => {
       const t = page.translations[lang];
       if (!t || !t.exists) {
-        return `<td class="i18n-cell cell-missing" title="Missing">⊘</td>`;
+        const mtBtn = mtEnabled
+          ? ` <button onclick="machineTranslate('${escapeHtml(page.sourcePath)}', '${escapeHtml(lang)}')" class="mt-btn" title="Machine translate">🤖</button>`
+          : "";
+        return `<td class="i18n-cell cell-missing" title="Missing">⊘${mtBtn}</td>`;
       } else if (!t.upToDate) {
         return `<td class="i18n-cell cell-outdated" title="Outdated">⟳</td>`;
       } else {
@@ -99,6 +106,34 @@ export function renderTranslationStatus(prefix: string, data: TranslationData): 
       ${cells}
     </tr>`;
   }).join("");
+
+  const mtScript = mtEnabled ? `
+  <script>
+  async function machineTranslate(sourcePath, lang) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '\u23F3';
+    try {
+      const res = await fetch('/admin/api/i18n/translate-page', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ sourcePath, targetLang: lang })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        location.reload();
+      } else {
+        btn.textContent = '\u274C';
+        btn.disabled = false;
+        alert(data.error || 'Translation failed');
+      }
+    } catch (err) {
+      btn.textContent = '\u274C';
+      btn.disabled = false;
+      alert('Translation request failed: ' + err);
+    }
+  }
+  </script>` : "";
 
   return `
   <div class="i18n-dashboard">
@@ -127,9 +162,10 @@ export function renderTranslationStatus(prefix: string, data: TranslationData): 
       <span class="legend-item"><span class="cell-ok">✓</span> Translated &amp; up to date</span>
       <span class="legend-item"><span class="cell-outdated">⟳</span> Needs update</span>
       <span class="legend-item"><span class="cell-missing">⊘</span> Missing</span>
+      ${mtEnabled ? '<span class="legend-item">🤖 Machine translate</span>' : ""}
     </div>
   </div>
-  `;
+  ${mtScript}`;
 }
 
 /**
@@ -170,6 +206,9 @@ export function translationStatusStyles(): string {
   .legend-item { display: flex; align-items: center; gap: 0.3rem; }
   .i18n-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
   .i18n-page-header h2 { margin: 0; }
+  .mt-btn { background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0 0.15rem; line-height: 1; vertical-align: middle; opacity: 0.7; }
+  .mt-btn:hover { opacity: 1; }
+  .mt-btn:disabled { cursor: not-allowed; opacity: 0.4; }
   `;
 }
 
