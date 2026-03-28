@@ -5,6 +5,7 @@
  *   dune new [dir]             — Scaffold a new Dune site
  *   dune dev                   — Start dev server with file watching
  *   dune build                 — Build content index + validate config
+ *   dune build --static        — Generate a fully static site (SSG)
  *   dune serve                 — Start production server
  *   dune cache:clear           — Clear all caches
  *   dune cache:rebuild         — Rebuild content index from scratch
@@ -41,6 +42,7 @@ Commands:
   new [dir]           Create a new Dune site
   dev                 Start development server with hot-reload
   build               Build content index and validate config
+  build --static      Generate a fully static site (SSG)
   serve               Start production server
 
   cache:clear         Clear all caches
@@ -66,6 +68,15 @@ Options:
   --root <dir>        Site root directory (default: .)
   --debug             Enable debug output
   --help, -h          Show this help message
+
+Static build options (used with build --static):
+  --out <dir>         Output directory (default: dist)
+  --base-url <url>    Canonical base URL for sitemap/feeds
+  --no-incremental    Rebuild all pages (ignore change detection)
+  --concurrency <n>   Parallel renders (default: 8)
+  --hybrid            Emit _routes.json / _redirects / _headers for edge deployments
+  --include-drafts    Include unpublished pages
+  --verbose           Print each rendered route
 `;
 
 async function main() {
@@ -86,6 +97,22 @@ async function main() {
       options.root = args[++i];
     } else if (args[i] === "--debug") {
       options.debug = true;
+    } else if (args[i] === "--static") {
+      options.static = true;
+    } else if (args[i] === "--out" && args[i + 1]) {
+      options.outDir = args[++i];
+    } else if (args[i] === "--base-url" && args[i + 1]) {
+      options.baseUrl = args[++i];
+    } else if (args[i] === "--no-incremental") {
+      options.noIncremental = true;
+    } else if (args[i] === "--concurrency" && args[i + 1]) {
+      options.concurrency = args[++i];
+    } else if (args[i] === "--hybrid") {
+      options.hybrid = true;
+    } else if (args[i] === "--include-drafts") {
+      options.includeDrafts = true;
+    } else if (args[i] === "--verbose") {
+      options.verbose = true;
     } else if (!args[i].startsWith("--")) {
       options.positional = args[i];
     }
@@ -107,7 +134,17 @@ async function main() {
         break;
 
       case "build":
-        await buildCommand(root, { debug: options.debug === true });
+        await buildCommand(root, {
+          debug: options.debug === true,
+          static: options.static === true,
+          outDir: options.outDir as string | undefined,
+          baseUrl: options.baseUrl as string | undefined,
+          noIncremental: options.noIncremental === true,
+          concurrency: options.concurrency ? parseInt(options.concurrency as string) : undefined,
+          hybrid: options.hybrid === true,
+          includeDrafts: options.includeDrafts === true,
+          verbose: options.verbose === true,
+        });
         break;
 
       case "serve":
