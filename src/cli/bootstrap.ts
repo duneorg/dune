@@ -344,6 +344,7 @@ export async function bootstrap(
         staging: stagingEngine,
         comments: commentManager,
         collab: collabManager,
+        imageCache,
       })
     : async (_req: Request) => null as Response | null;
 

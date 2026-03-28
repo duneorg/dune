@@ -41,9 +41,10 @@
  *   POST /admin/api/themes/install   → Download + extract theme ZIP
  *
  * Public routes (no admin auth):
- *   POST /api/contact             → Accept contact form submissions
- *   GET  /api/forms/:name         → Return form schema as JSON (blueprint-driven forms)
- *   POST /api/forms/:name         → Accept and validate a blueprint-driven form submission
+ *   POST /api/contact                → Accept contact form submissions
+ *   GET  /api/forms/:name            → Return form schema as JSON (blueprint-driven forms)
+ *   POST /api/forms/:name            → Accept and validate a blueprint-driven form submission
+ *   POST /api/webhook/incoming       → Incoming webhook — token-authenticated action trigger
  *
  * Staging (draft preview before publish):
  *   POST   /admin/api/staging/:path         → Upsert draft + return preview token
@@ -120,6 +121,7 @@ import { fireContentWebhooks, listDeliveryLogs } from "./webhooks.ts";
 import { createSearchAnalytics } from "../search/analytics.ts";
 import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";
+import type { ImageCache } from "../images/cache.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -143,6 +145,8 @@ export interface AdminServerConfig {
   comments?: CommentManager;
   /** Real-time collaboration WebSocket manager */
   collab?: CollabManager;
+  /** Image cache — used by the purge-cache incoming webhook action */
+  imageCache?: ImageCache;
 }
 
 // === In-memory rate limiter ===
@@ -200,7 +204,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache } = config;
   const adminConfig = config.config.admin!;
 
   // Sanity-check the prefix at startup.  A prefix that doesn't start with "/"
@@ -229,6 +233,12 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (req.method === "GET") return handleFormSchema(formName);
       if (req.method === "POST") return handleFormSubmission(req, formName);
       return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, POST" } });
+    }
+
+    // === Incoming webhooks (public) ===
+    // POST /api/webhook/incoming — token-authenticated action trigger
+    if (path === "/api/webhook/incoming" && method === "POST") {
+      return handleIncomingWebhook(req);
     }
 
     // Only handle admin routes
@@ -2867,6 +2877,92 @@ export function createAdminHandler(config: AdminServerConfig) {
   }
 
   // === Contact form submission handler (public) ===
+
+  // ─── Incoming webhook handler ────────────────────────────────────────────
+  // POST /api/webhook/incoming
+  // Body: { token: string } — optional, token may also be in Authorization header
+  //   Bearer <token>  OR  body.token
+  // Matches token against config.admin.incoming_webhooks entries.
+  // Token values starting with "$" are expanded from environment variables.
+  // On match, dispatches the permitted actions requested in the body.
+  async function handleIncomingWebhook(req: Request): Promise<Response> {
+    const incomingWebhooks = config.config.admin?.incoming_webhooks;
+    if (!incomingWebhooks || incomingWebhooks.length === 0) {
+      return jsonResponse({ error: "Incoming webhooks not configured" }, 501);
+    }
+
+    // Extract token from Authorization header (Bearer) or JSON body
+    let token: string | null = null;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.slice(7).trim();
+    }
+
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.json();
+    } catch {
+      // body optional — token may be in header only
+    }
+
+    if (!token && typeof body.token === "string") {
+      token = body.token;
+    }
+
+    if (!token) {
+      return jsonResponse({ error: "Missing token" }, 401);
+    }
+
+    // Find a matching webhook config entry (expand $ENV_VAR tokens)
+    const expandToken = (t: string): string => {
+      if (t.startsWith("$")) {
+        return Deno.env.get(t.slice(1)) ?? t;
+      }
+      return t;
+    };
+
+    const matched = incomingWebhooks.find(
+      (wh) => expandToken(wh.token) === token,
+    );
+
+    if (!matched) {
+      return jsonResponse({ error: "Invalid token" }, 401);
+    }
+
+    // Determine which actions to run — request body may specify a subset
+    let requestedActions: string[];
+    if (Array.isArray(body.actions)) {
+      requestedActions = body.actions.filter(
+        (a) => typeof a === "string" && matched.actions.includes(a as "rebuild" | "purge-cache"),
+      );
+    } else {
+      // No specific action requested — run all permitted actions
+      requestedActions = matched.actions as string[];
+    }
+
+    if (requestedActions.length === 0) {
+      return jsonResponse({ error: "No permitted actions match the request" }, 400);
+    }
+
+    const executed: string[] = [];
+
+    for (const action of requestedActions) {
+      if (action === "rebuild") {
+        // Fire-and-forget — don't block the response
+        engine.rebuild().catch((err: unknown) => {
+          console.error("[dune] incoming webhook rebuild error:", err);
+        });
+        executed.push("rebuild");
+      } else if (action === "purge-cache") {
+        if (imageCache) {
+          await imageCache.clear();
+        }
+        executed.push("purge-cache");
+      }
+    }
+
+    return jsonResponse({ ok: true, executed });
+  }
 
   async function handleContactSubmission(req: Request): Promise<Response> {
     if (!submissions) {

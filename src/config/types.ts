@@ -105,6 +105,26 @@ export interface AdminConfig {
    * Multiple endpoints can be configured; each has independent event filtering.
    */
   webhooks?: WebhookEndpointConfig[];
+  /**
+   * Incoming webhook tokens — allow external systems to trigger actions
+   * (e.g. rebuild, cache purge) by POSTing to POST /api/webhook/incoming.
+   *
+   * @example
+   * ```yaml
+   * admin:
+   *   incoming_webhooks:
+   *     - token: "$DEPLOY_WEBHOOK_TOKEN"
+   *       actions: [rebuild]
+   *     - token: "$CACHE_WEBHOOK_TOKEN"
+   *       actions: [purge-cache]
+   * ```
+   */
+  incoming_webhooks?: Array<{
+    /** Secret token — supports "$ENV_VAR" expansion */
+    token: string;
+    /** Permitted actions for this token */
+    actions: Array<"rebuild" | "purge-cache">;
+  }>;
 }
 
 /** Notifications sent after a form submission is accepted. */
