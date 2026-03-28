@@ -188,12 +188,13 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - Outbound webhooks on content events (create, update, publish, delete)
 - Configurable webhook endpoints per event type
 - Delivery log with retry tracking
-- _(Incoming webhooks deferred to v0.5)_
+- Incoming webhooks: `POST /api/webhook/incoming` — token-authenticated, triggers `rebuild` or `purge-cache`
 
 #### Comments & Annotations ✅
 - Internal comments on pages (team discussion, not public)
 - Comment threads with resolution status
-- _(Inline block annotations and @mention notifications deferred to v0.5)_
+- Inline block annotations: 💬 button per block, comments anchored to specific blocks
+- @mention notifications: unread badge in admin header
 
 #### Multi-Site Management ✅
 - Single Dune installation serving multiple sites

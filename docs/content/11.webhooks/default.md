@@ -7,7 +7,7 @@ taxonomy:
   difficulty: [intermediate]
   topic: [webhooks, integrations, admin]
 metadata:
-  description: "Outbound webhooks for content mutation events — page create, update, delete, and workflow changes"
+  description: "Outbound and incoming webhooks — fire on content events or let external systems trigger rebuilds and cache purges"
 ---
 
 # Webhooks
@@ -171,3 +171,86 @@ Returns the 50 most recent delivery records from the last 7 days, newest first. 
 **Use HTTPS endpoints only.** Plain HTTP endpoints transmit payloads — and, in a misconfigured setup, signing secrets — in the clear.
 
 **Use environment variables for secrets.** Set `secret: "$MY_SECRET"` in the config and define the value in your deployment environment. This keeps secrets out of your repository and out of any config files committed to version control.
+
+---
+
+## Incoming webhooks
+
+Incoming webhooks let external systems trigger server-side actions — such as a site rebuild after a deployment or a cache purge after a CDN flush — by POSTing to a public endpoint with a pre-shared token. No admin session is required.
+
+### Configuration
+
+```yaml
+admin:
+  incoming_webhooks:
+    - token: "$DEPLOY_WEBHOOK_TOKEN"
+      actions: [rebuild]
+
+    - token: "$CACHE_WEBHOOK_TOKEN"
+      actions: [purge-cache]
+
+    - token: "$FULL_ACCESS_TOKEN"
+      actions: [rebuild, purge-cache]
+```
+
+Token values that start with `$` are expanded from environment variables at request time — the raw value is never stored in logs or config output.
+
+### Endpoint
+
+```
+POST /api/webhook/incoming
+```
+
+This route is **public** — it does not require an admin session. Authentication is via token only.
+
+#### Request
+
+Provide the token in the `Authorization` header or in the JSON body:
+
+```
+Authorization: Bearer <token>
+```
+
+```json
+{
+  "token": "<token>",
+  "actions": ["rebuild"]
+}
+```
+
+The `actions` field is optional. If omitted, all actions permitted for the matched token are executed. If provided, only the intersection of the requested and permitted actions is run.
+
+#### Response
+
+```json
+{ "ok": true, "executed": ["rebuild"] }
+```
+
+| Status | Meaning |
+|--------|---------|
+| `200` | One or more actions executed. `executed` lists what ran. |
+| `400` | No permitted actions matched the request. |
+| `401` | Token missing or not recognised. |
+| `501` | No incoming webhooks configured. |
+
+### Available actions
+
+| Action | Effect |
+|--------|--------|
+| `rebuild` | Triggers `engine.rebuild()` asynchronously — re-indexes content and updates the router. The HTTP response returns immediately; the rebuild runs in the background. |
+| `purge-cache` | Clears the processed image cache. Useful after deploying new source images when filesystem caching is enabled. |
+
+### Example: trigger rebuild from a CI pipeline
+
+```bash
+curl -X POST https://example.com/api/webhook/incoming \
+  -H "Authorization: Bearer $DEPLOY_WEBHOOK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"actions": ["rebuild"]}'
+```
+
+### Security notes
+
+- Keep tokens secret — treat them like API keys. Use `$ENV_VAR` expansion so tokens never appear in config files or version control.
+- Incoming webhook tokens grant no other admin access; they can only trigger the actions explicitly listed in their config entry.
+- The `rebuild` action is fire-and-forget and does not expose any content in the response.

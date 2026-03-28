@@ -115,9 +115,18 @@ admin:
         - onPageUpdate
         - onPageDelete
         - onWorkflowChange
+
+  # Incoming webhooks — let external systems trigger actions via POST /api/webhook/incoming
+  incoming_webhooks:
+    - token: "$DEPLOY_WEBHOOK_TOKEN"   # string — pre-shared token ("$ENV_VAR" expansion supported)
+      actions: [rebuild]               # Array<"rebuild" | "purge-cache">
+    - token: "$CACHE_WEBHOOK_TOKEN"
+      actions: [purge-cache]
 ```
 
 Valid `events` values: `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`. See [Webhooks](/webhooks) for full documentation.
+
+Valid incoming webhook `actions`: `rebuild` (re-indexes content), `purge-cache` (clears the processed image cache).
 
 `dataDir` contains user accounts, form submissions, and editorial comments — should be committed to version control. `runtimeDir` contains ephemeral session, revision, staging, and analytics data — should be in `.gitignore`.
 
