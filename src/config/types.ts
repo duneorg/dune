@@ -4,6 +4,7 @@
 
 import type { WorkflowStage, WorkflowTransition } from "../workflow/types.ts";
 import type { MachineTranslationConfig } from "../mt/types.ts";
+import type { AuthProviderConfig } from "../admin/auth/provider.ts";
 
 /**
  * A single plugin entry declared in site.yaml under the `plugins:` key.
@@ -128,6 +129,32 @@ export interface AdminConfig {
     /** Permitted actions for this token */
     actions: Array<"rebuild" | "purge-cache">;
   }>;
+  /**
+   * External authentication provider configuration.
+   * When omitted, the built-in local password auth is used.
+   *
+   * @example LDAP
+   * ```yaml
+   * admin:
+   *   auth_provider:
+   *     type: "ldap"
+   *     url: "ldaps://ldap.example.com"
+   *     baseDn: "ou=users,dc=example,dc=com"
+   *     bindDn: "cn=service,dc=example,dc=com"
+   *     bindPassword: "$LDAP_BIND_PASSWORD"
+   * ```
+   *
+   * @example SAML
+   * ```yaml
+   * admin:
+   *   auth_provider:
+   *     type: "saml"
+   *     entityId: "https://example.com/admin"
+   *     acsUrl: "https://example.com/admin/saml/acs"
+   *     idpMetadata: "https://idp.example.com/metadata.xml"
+   * ```
+   */
+  auth_provider?: AuthProviderConfig;
   /**
    * Audit log configuration.
    * Records admin panel actions with actor, timestamp, IP, and outcome.

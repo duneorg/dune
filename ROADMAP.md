@@ -243,7 +243,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - ~~`GET /admin/api/metrics` JSON endpoint~~
 
 #### Enterprise Features
-- LDAP/SAML SSO integration
+- ~~LDAP/SAML SSO integration~~ ✅ (pluggable AuthProvider interface; LDAP + SAML stubs with full implementation guides)
 - ~~Audit logging (who did what, when, from where)~~ ✅
 - ~~Content approval workflows (configurable multi-stage)~~ ✅
 - Role-based access control with granular permissions

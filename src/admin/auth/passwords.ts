@@ -6,6 +6,17 @@
 
 import { encodeHex } from "@std/encoding/hex";
 
+/**
+ * Pre-computed PBKDF2 hash used for constant-time dummy comparisons.
+ *
+ * When a login attempt uses an unknown username, we still run `verifyPassword()`
+ * against this hash so the response time is indistinguishable from a valid-user
+ * attempt (preventing username enumeration via timing side-channels).
+ * The hash will never validate — it is a fixed string in the correct format.
+ */
+export const DUMMY_HASH =
+  "pbkdf2:100000:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000";
+
 const ITERATIONS = 100_000;
 const KEY_LENGTH = 32;
 const SALT_LENGTH = 16;

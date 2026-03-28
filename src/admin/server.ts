@@ -68,7 +68,9 @@ import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { AdminPermission, AuthResult } from "./types.ts";
 import { toUserInfo } from "./types.ts";
-import { verifyPassword } from "./auth/passwords.ts";
+import { verifyPassword, DUMMY_HASH } from "./auth/passwords.ts";
+import type { AuthProvider } from "./auth/provider.ts";
+import { findOrProvisionUser } from "./auth/provisioner.ts";
 import { renderLoginPage, renderDashboardPage, renderShellPage, applyAdminRtl } from "./ui/pages.ts";
 import { renderPageTree, renderSearchResults, PAGES_PER_PAGE } from "./ui/page-tree.ts";
 import { renderPageEditorPage } from "./ui/page-editor.ts";
@@ -159,6 +161,11 @@ export interface AdminServerConfig {
   metrics?: MetricsCollector;
   /** Machine translation provider — omit when not configured */
   mt?: MachineTranslator | null;
+  /**
+   * External authentication provider.
+   * When omitted, the built-in local password auth is used.
+   */
+  authProvider?: AuthProvider;
 }
 
 // === In-memory rate limiter ===
@@ -216,7 +223,7 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
 export function createAdminHandler(config: AdminServerConfig) {
-  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics, mt } = config;
+  const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics, mt, authProvider } = config;
   const adminConfig = config.config.admin!;
 
   /** Extract IP address from a request, checking proxy headers first. */
@@ -647,24 +654,45 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse(renderLoginPage(prefix, "Username and password required"), 400);
       }
 
-      const user = await users.getByUsername(username);
-      // Always run verifyPassword regardless of whether the user exists to prevent
-      // username enumeration via response-time differences (timing oracle).
-      const DUMMY_HASH =
-        "pbkdf2:100000:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000";
-      const hashToVerify = user?.passwordHash ?? DUMMY_HASH;
-      const valid = await verifyPassword(password, hashToVerify);
-      if (!user || !user.enabled || !valid) {
-        void auditLogger?.log({
-          event: "auth.login_failed",
-          actor: null,
-          ip: ip === "unknown" ? null : ip,
-          userAgent: req.headers.get("user-agent"),
-          target: null,
-          detail: { username },
-          outcome: "failure",
-        }).catch(() => {});
-        return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
+      let user!: import("./types.ts").AdminUser;
+
+      if (authProvider) {
+        // External provider path — delegate credential verification to the provider,
+        // then find or auto-provision the corresponding local AdminUser.
+        const providerUser = await authProvider.authenticate({ username, password });
+        if (!providerUser) {
+          void auditLogger?.log({
+            event: "auth.login_failed",
+            actor: null,
+            ip: ip === "unknown" ? null : ip,
+            userAgent: req.headers.get("user-agent"),
+            target: null,
+            detail: { username },
+            outcome: "failure",
+          }).catch(() => {});
+          return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
+        }
+        user = await findOrProvisionUser(providerUser, users);
+      } else {
+        // Local auth path — verify against the stored PBKDF2 password hash.
+        // Always run verifyPassword regardless of whether the user exists to prevent
+        // username enumeration via response-time differences (timing oracle).
+        const found = await users.getByUsername(username);
+        const hashToVerify = found?.passwordHash ?? DUMMY_HASH;
+        const valid = await verifyPassword(password, hashToVerify);
+        if (!found || !found.enabled || !valid) {
+          void auditLogger?.log({
+            event: "auth.login_failed",
+            actor: null,
+            ip: ip === "unknown" ? null : ip,
+            userAgent: req.headers.get("user-agent"),
+            target: null,
+            detail: { username },
+            outcome: "failure",
+          }).catch(() => {});
+          return htmlResponse(renderLoginPage(prefix, "Invalid credentials"), 401);
+        }
+        user = found;
       }
 
       // Revoke all existing sessions for this user before issuing a new one.

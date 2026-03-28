@@ -21,6 +21,7 @@ import { createImageHandler } from "../images/handler.ts";
 import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
+import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
 import { createAdminHandler } from "../admin/server.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
@@ -47,6 +48,7 @@ import type { ImageCache } from "../images/cache.ts";
 import type { UserManager } from "../admin/auth/users.ts";
 import type { SessionManager } from "../admin/auth/sessions.ts";
 import type { AuthMiddleware } from "../admin/auth/middleware.ts";
+import type { AuthProvider } from "../admin/auth/provider.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
@@ -85,6 +87,8 @@ export interface BootstrapResult {
   pluginAssetDirs: Map<string, string>;
   /** Absolute path to shared themes dir (multisite only), for static file serving */
   sharedThemesDir?: string;
+  /** Active authentication provider (local by default, or external if configured) */
+  authProvider: AuthProvider;
   /** Audit logger — null when admin is disabled or audit.enabled is false */
   auditLogger: AuditLogger | null;
   /** In-process performance metrics collector */
@@ -325,6 +329,11 @@ export async function bootstrap(
     lifetime: adminConfig.sessionLifetime,
   });
 
+  // Auth provider — local by default; swap to LDAP/SAML when configured.
+  // Currently only LocalAuthProvider is fully implemented; LDAP and SAML
+  // providers are stubs that satisfy the interface and throw NotImplemented.
+  const authProvider: AuthProvider = new LocalAuthProvider(users);
+
   // Set Secure cookie flag unless running in a local dev environment.
   // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
   // (except on localhost in most browsers, where the browser grants an exception).
@@ -389,6 +398,7 @@ export async function bootstrap(
         auditLogger: auditLogger ?? undefined,
         metrics: metricsEnabled ? metrics : undefined,
         mt: mt ?? undefined,
+        authProvider,
       })
     : async (_req: Request) => null as Response | null;
 
@@ -406,6 +416,7 @@ export async function bootstrap(
     engine, storage, config, formats, collections, taxonomy,
     search, hooks, imageHandler, imageProcessor, imageCache,
     adminHandler, users, sessions, auth,
+    authProvider,
     workflow, scheduler, history,
     submissionManager,
     flexEngine,
