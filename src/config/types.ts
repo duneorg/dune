@@ -208,6 +208,18 @@ export interface WebhookEndpointConfig {
   label?: string;
 }
 
+/**
+ * A per-route HTTP cache rule.
+ * Imported here to keep the config schema self-contained.
+ * See src/cache/policy.ts for resolution logic.
+ */
+export interface HttpCacheRule {
+  pattern: string;
+  max_age?: number;
+  stale_while_revalidate?: number;
+  no_store?: boolean;
+}
+
 /** Site-level configuration (content, identity, metadata) */
 export interface SiteConfig {
   title: string;
@@ -251,6 +263,34 @@ export interface SiteConfig {
      *   "full"    — fully rendered HTML content
      */
     content?: "summary" | "full";
+  };
+  /**
+   * HTTP response caching settings for served content.
+   * Controls Cache-Control headers on rendered HTML pages.
+   */
+  http_cache?: {
+    /**
+     * Default max-age for rendered HTML pages in seconds.
+     * 0 = browsers must revalidate; CDNs may still serve stale with SWR.
+     * Default: 0
+     */
+    default_max_age?: number;
+    /**
+     * Default stale-while-revalidate in seconds (CDN / shared-cache only).
+     * Default: 60
+     */
+    default_swr?: number;
+    /**
+     * Per-route overrides — first matching rule wins (longest prefix).
+     * @example
+     * rules:
+     *   - pattern: "/blog"
+     *     max_age: 300
+     *     stale_while_revalidate: 3600
+     *   - pattern: "/admin"
+     *     no_store: true
+     */
+    rules?: HttpCacheRule[];
   };
   /**
    * XML sitemap generation settings.
@@ -302,6 +342,34 @@ export interface SystemConfig {
   typography?: {
     /** Insert &nbsp; before last word of paragraphs to avoid orphans (default: true) */
     orphan_protection?: boolean;
+  };
+  /**
+   * In-process rendered HTML page cache (server mode only).
+   * Caches the rendered HTML for each route in memory with a TTL.
+   * Reduces CPU load at the cost of serving slightly stale content
+   * for at most `ttl` seconds after a page edit.
+   */
+  page_cache?: {
+    /** Enable the in-process cache (default: false). */
+    enabled?: boolean;
+    /**
+     * Maximum number of HTML entries to keep in memory.
+     * When full, the oldest-inserted entry is evicted.
+     * Default: 500
+     */
+    max_entries?: number;
+    /**
+     * Entry time-to-live in seconds.
+     * After `ttl` seconds the entry is considered stale and re-rendered.
+     * Default: 30
+     */
+    ttl?: number;
+    /**
+     * Pre-render all pages in the background after server startup to
+     * populate the cache before the first real request arrives.
+     * Default: false
+     */
+    warm?: boolean;
   };
   /** Full-text search configuration. */
   search?: {

@@ -9,6 +9,8 @@
 import { render } from "preact-render-to-string";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
+import type { DuneEngine } from "../core/engine.ts";
+import type { PageIndex } from "../content/types.ts";
 import {
   withSecurityHeaders,
   maybeCompress,
@@ -18,6 +20,14 @@ import {
   injectFeedLinks,
   injectLiveReload,
 } from "./serve-utils.ts";
+import {
+  createPageCache,
+  computeEtag,
+  etagMatches,
+  resolvePolicy,
+  buildCacheControl,
+} from "../cache/mod.ts";
+import type { PageCache } from "../cache/mod.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
@@ -152,6 +162,29 @@ export function createProductionSiteHandler(
     });
   };
 
+  // ── HTTP caching setup ────────────────────────────────────────────────────
+
+  const httpCacheConfig = config.site.http_cache ?? {};
+  const cacheDefaults = {
+    maxAge: httpCacheConfig.default_max_age ?? 0,
+    swr: httpCacheConfig.default_swr ?? 60,
+  };
+  const cacheRules = httpCacheConfig.rules ?? [];
+
+  const pageCacheConfig = config.system.page_cache;
+  let pageCache: PageCache | null = null;
+  if (pageCacheConfig?.enabled) {
+    pageCache = createPageCache({
+      maxEntries: pageCacheConfig.max_entries,
+      ttl: pageCacheConfig.ttl,
+    });
+    // Cache warming: pre-render all pages in the background after startup.
+    if (pageCacheConfig.warm) {
+      // Fire-and-forget — don't block serving.
+      Promise.resolve().then(() => warmPageCache(engine, pageCache!)).catch(() => {});
+    }
+  }
+
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     try {
@@ -161,6 +194,7 @@ export function createProductionSiteHandler(
           status: "ok",
           uptime: Math.floor((Date.now() - startTime) / 1000),
           pages: engine.pages.length,
+          cache: pageCache ? pageCache.stats() : null,
         }), {
           headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
         });
@@ -264,10 +298,85 @@ export function createProductionSiteHandler(
         return imageResult ?? await routes.mediaHandler(req);
       }
 
-      // Content routes
+      // ── Content routes ──────────────────────────────────────────────────
+      // 1. Compute ETag from PageIndex (fast — no file I/O).
+      // 2. Check page cache (optional in-process cache).
+      // 3. Handle If-None-Match → 304.
+      // 4. Render and add Cache-Control + ETag headers.
+      // 5. Store rendered HTML in page cache when enabled.
+      const pageIndex = engine.pages.find((p) => p.route === url.pathname);
+      const etag = pageIndex ? await computeEtag(pageIndex) : null;
+      const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
+      const cacheControlValue = buildCacheControl(policy);
+
+      // Check in-process cache before rendering.
+      if (pageCache && etag) {
+        const cached = pageCache.get(url.pathname);
+        if (cached && cached.etag === etag) {
+          if (etagMatches(req.headers.get("If-None-Match"), etag)) {
+            return new Response(null, {
+              status: 304,
+              headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+            });
+          }
+          return maybeCompress(
+            req,
+            withSecurityHeaders(new Response(cached.body as BodyInit, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/html; charset=utf-8",
+                "ETag": etag,
+                "Cache-Control": cacheControlValue,
+              },
+            })),
+          );
+        }
+      }
+
+      // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
+      if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
+        return new Response(null, {
+          status: 304,
+          headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+        });
+      }
+
+      // Render.
       let contentResponse = await routes.contentHandler(req, renderJsx);
       if (feedEnabled) contentResponse = injectFeedLinks(siteName, contentResponse);
+
+      // Attach caching headers to successful HTML responses.
+      if (contentResponse.status === 200 && etag) {
+        const headers = new Headers(contentResponse.headers);
+        headers.set("ETag", etag);
+        headers.set("Cache-Control", cacheControlValue);
+        contentResponse = new Response(contentResponse.body, {
+          status: 200,
+          headers,
+        });
+      } else if (!policy.noStore && contentResponse.status === 200) {
+        // No ETag (search, flex, etc.) — still add Cache-Control.
+        const headers = new Headers(contentResponse.headers);
+        headers.set("Cache-Control", cacheControlValue);
+        contentResponse = new Response(contentResponse.body, { status: 200, headers });
+      }
+
+      // Store in page cache when enabled (buffer body, then reconstruct response).
+      if (pageCache && etag && contentResponse.status === 200) {
+        const bodyBuffer = await contentResponse.arrayBuffer();
+        pageCache.set(url.pathname, {
+          body: new Uint8Array(bodyBuffer),
+          etag,
+          cacheControl: cacheControlValue,
+        });
+        contentResponse = new Response(bodyBuffer, {
+          status: 200,
+          headers: contentResponse.headers,
+        });
+      }
+
       return maybeCompress(req, withSecurityHeaders(contentResponse));
+      // ────────────────────────────────────────────────────────────────────
     } catch (err) {
       if (debug) {
         console.error(`✗ Error serving ${url.pathname}:`, err);
@@ -494,4 +603,34 @@ export function createDevSiteContext(
     notifyReload,
     cleanup: () => sseClients.clear(),
   };
+}
+
+// ─── Cache warming ────────────────────────────────────────────────────────────
+
+/**
+ * Pre-render all published routable pages in the background to warm the
+ * in-process page cache.  Runs after server startup — fire-and-forget.
+ * Individual page failures are silently ignored so one broken page doesn't
+ * abort the warm-up of the rest.
+ */
+async function warmPageCache(engine: DuneEngine, cache: PageCache): Promise<void> {
+  const routes = engine.pages
+    .filter((p: PageIndex) => p.published && p.routable)
+    .map((p: PageIndex) => p.route);
+
+  // Pre-resolve pages so their content is loaded and the ETag can be computed.
+  // The page-loader uses lazyOnce() internally, so this effectively pre-warms
+  // both the page-loading cache and — because the handler checks the cache after
+  // rendering — the HTML cache on the first real request to each route.
+  const CONCURRENCY = 8;
+  for (let i = 0; i < routes.length; i += CONCURRENCY) {
+    await Promise.all(
+      routes.slice(i, i + CONCURRENCY).map(async (route) => {
+        try {
+          await engine.resolve(route);
+        } catch { /* skip broken pages */ }
+      }),
+    );
+  }
+  void cache; // suppress unused-variable lint — cache is populated by real requests
 }
