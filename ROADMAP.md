@@ -224,11 +224,11 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ### Deliverables
 
-#### Static Site Generation (SSG)
-- `dune build --static` generates a fully static site
-- Incremental static regeneration (rebuild only changed pages)
-- Deploy to any static host (Netlify, Cloudflare Pages, S3, etc.)
-- Hybrid mode: static pages + dynamic API endpoints
+#### ~~Static Site Generation (SSG)~~ ✅
+- ~~`dune build --static` generates a fully static site~~
+- ~~Incremental static regeneration (rebuild only changed pages)~~
+- ~~Deploy to any static host (Netlify, Cloudflare Pages, S3, etc.)~~
+- ~~Hybrid mode: static pages + dynamic API endpoints~~ (`--hybrid` flag, `_routes.json` + `_redirects`)
 
 #### Advanced Caching
 - Edge caching strategies for Deno Deploy

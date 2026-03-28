@@ -26,9 +26,24 @@ All commands are run with `dune` (or `deno task dune`).
 
 | Command | Description |
 |---------|-------------|
-| `dune build` | Build content index, validate config, optimize assets. Run before production serving. |
+| `dune build` | Build content index, validate config. Run before production serving. |
+| `dune build --static` | Generate a fully static site into `dist/` (SSG). |
 | `dune cache:clear` | Delete all cached data (rendered HTML, content index, images). |
 | `dune cache:rebuild` | Rebuild content index from scratch. Use after bulk content changes. |
+
+### Static build options (`dune build --static`)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--out <dir>` | `dist` | Output directory |
+| `--base-url <url>` | `config.site.url` | Canonical base URL for sitemap and feeds |
+| `--no-incremental` | — | Rebuild all pages regardless of content changes |
+| `--concurrency <n>` | `8` | Number of pages to render in parallel |
+| `--hybrid` | — | Emit `_routes.json`, `_redirects`, `_headers` for edge deployments |
+| `--include-drafts` | — | Include unpublished pages |
+| `--verbose` | — | Print each rendered route |
+
+See [Static Site Generation](/deployment/static) for full documentation.
 
 ## Configuration
 

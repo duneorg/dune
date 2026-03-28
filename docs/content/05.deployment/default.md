@@ -22,13 +22,26 @@ Dune is designed to deploy anywhere Deno runs — from a traditional VPS to Deno
 
 ## Deployment options
 
-| Target | Cache driver | Content source | Best for |
-|--------|-------------|----------------|----------|
-| **Deno Deploy** | `kv` | Deno KV (synced) | Global edge, zero-ops |
-| **VPS / Server** | `filesystem` | Local filesystem | Full control, existing infra |
-| **Docker** | `filesystem` | Mounted volume | Containerized deployments |
+| Target | Command | Content source | Best for |
+|--------|---------|----------------|----------|
+| **Static hosts** | `dune build --static` | Files in `dist/` | Netlify, Cloudflare Pages, S3, GitHub Pages |
+| **Deno Deploy** | `deployctl deploy` | Deno KV (synced) | Global edge, zero-ops |
+| **VPS / Server** | `dune serve` | Local filesystem | Full control, existing infra |
+| **Docker** | `dune serve` | Mounted volume | Containerised deployments |
 
 ## Quick deploy
+
+### Static site (Netlify, Cloudflare Pages, S3, …)
+
+```bash
+# Generate the static site into dist/
+dune build --static --base-url https://example.com
+
+# Deploy (example: Netlify CLI)
+netlify deploy --dir=dist --prod
+```
+
+See [Static Site Generation](/deployment/static) for full options including incremental builds and hybrid mode.
 
 ### Traditional server
 
