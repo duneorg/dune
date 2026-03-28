@@ -7,6 +7,37 @@
 
 import type { DuneEngine } from "../../core/engine.ts";
 import type { AuthResult } from "../types.ts";
+import { isRtl } from "../../i18n/rtl.ts";
+
+/**
+ * Apply RTL attributes and styles to a complete admin HTML page string.
+ *
+ * - Sets `dir="rtl"` on the `<html>` tag (when not already present)
+ * - Appends RTL override CSS when the site language is RTL
+ *
+ * Called by the admin HTML response helper so all admin pages get RTL support
+ * without requiring each render function to be updated individually.
+ */
+export function applyAdminRtl(
+  html: string,
+  siteLang: string,
+  rtlOverride?: string[],
+): string {
+  if (!isRtl(siteLang, rtlOverride)) return html;
+
+  // Inject dir="rtl" onto <html> if not already present
+  if (!/(<html\b[^>]*)\bdir=/.test(html)) {
+    html = html.replace(/(<html\b)([^>]*>)/, '$1 dir="rtl"$2');
+  }
+
+  // Inject RTL stylesheet before </head>
+  const rtlCss = `<style>${rtlStyles()}</style>`;
+  if (html.includes("</head>")) {
+    html = html.replace("</head>", `${rtlCss}\n</head>`);
+  }
+
+  return html;
+}
 
 /**
  * Render the login page.
@@ -59,14 +90,18 @@ export function renderDashboardPage(
   const tsxCount = pages.filter((p) => p.format === "tsx").length;
 
   const userName = authResult.user?.name ?? "Admin";
+  const siteLang = engine.config?.system?.languages?.default ?? "en";
+  const rtlOverride = engine.config?.system?.languages?.rtl_override;
+  const siteIsRtl = isRtl(siteLang, rtlOverride);
+  const dir = siteIsRtl ? " dir=\"rtl\"" : "";
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${siteLang}"${dir}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard — Dune Admin</title>
-  <style>${adminStyles()}</style>
+  <style>${adminStyles()}${siteIsRtl ? rtlStyles() : ""}</style>
 </head>
 <body>
   ${adminShell(prefix, "dashboard", userName, `
@@ -134,17 +169,23 @@ export function renderShellPage(
   prefix: string,
   section: string,
   authResult: AuthResult,
+  /** Site default language — used to set RTL direction on the admin shell. */
+  siteLang?: string,
+  rtlOverride?: string[],
 ): string {
   const userName = authResult.user?.name ?? "Admin";
   const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
+  const lang = siteLang ?? "en";
+  const siteIsRtl = isRtl(lang, rtlOverride);
+  const dir = siteIsRtl ? " dir=\"rtl\"" : "";
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}"${dir}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${sectionTitle} — Dune Admin</title>
-  <style>${adminStyles()}</style>
+  <style>${adminStyles()}${siteIsRtl ? rtlStyles() : ""}</style>
 </head>
 <body>
   ${adminShell(prefix, section, userName, `
@@ -332,6 +373,30 @@ function adminStyles(): string {
     .admin-topbar { padding: 0.6rem 1rem; }
     .admin-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  }
+  `;
+}
+
+function rtlStyles(): string {
+  return `
+  /* RTL overrides — applied when the site default language is RTL */
+  [dir="rtl"] { text-align: right; }
+  [dir="rtl"] .admin-sidebar { right: 0; left: auto; border-right: none; border-left: 1px solid rgba(255,255,255,0.1); }
+  [dir="rtl"] .nav-item.active { border-right: none; border-left: 3px solid #c9a96e; }
+  [dir="rtl"] .nav-icon { margin-right: 0; margin-left: 0.75rem; }
+  [dir="rtl"] .breadcrumb { flex-direction: row-reverse; }
+  [dir="rtl"] .admin-table th, [dir="rtl"] .admin-table td { text-align: right; }
+  [dir="rtl"] input, [dir="rtl"] textarea, [dir="rtl"] select {
+    text-align: right;
+    direction: rtl;
+  }
+  @media (max-width: 767px) {
+    [dir="rtl"] .admin-sidebar {
+      left: auto;
+      right: 0;
+      transform: translateX(100%);
+    }
+    [dir="rtl"] .admin-sidebar.open { transform: translateX(0); }
   }
   `;
 }

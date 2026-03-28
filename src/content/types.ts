@@ -245,6 +245,17 @@ export interface TemplateProps {
   config: DuneConfig;
   /** Top-level navigation pages */
   nav: PageIndex[];
+  /**
+   * Text direction for the page's language.
+   * Always provided by the engine — themes can use this to set `dir` on
+   * their `<html>` element for RTL language support.
+   *
+   * @example
+   * ```tsx
+   * <html lang={page.language} dir={dir}>
+   * ```
+   */
+  dir: "ltr" | "rtl";
   /** Current request pathname (for canonical, hreflang, language switcher) */
   pathname?: string;
   /** Current request query string, e.g. "?submitted=1" (empty string when none) */

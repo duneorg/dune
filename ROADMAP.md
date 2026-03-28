@@ -254,7 +254,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - ~~Machine translation integration (optional, via API)~~ ✅ (DeepL, Google Translate, LibreTranslate)
 - Translation project management
 - Locale-specific formatting (dates, numbers, currencies)
-- RTL language support
+- ~~RTL language support~~ ✅
 - Per-locale SEO configuration
 
 ### Success Criteria

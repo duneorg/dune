@@ -69,7 +69,7 @@ import type { DuneConfig } from "../config/types.ts";
 import type { AdminPermission, AuthResult } from "./types.ts";
 import { toUserInfo } from "./types.ts";
 import { verifyPassword } from "./auth/passwords.ts";
-import { renderLoginPage, renderDashboardPage, renderShellPage } from "./ui/pages.ts";
+import { renderLoginPage, renderDashboardPage, renderShellPage, applyAdminRtl } from "./ui/pages.ts";
 import { renderPageTree, renderSearchResults, PAGES_PER_PAGE } from "./ui/page-tree.ts";
 import { renderPageEditorPage } from "./ui/page-editor.ts";
 import { renderMediaLibrary } from "./ui/media-library.ts";
@@ -246,6 +246,19 @@ export function createAdminHandler(config: AdminServerConfig) {
   if (!prefix.startsWith("/")) {
     throw new Error(`Admin prefix must start with "/" — got: ${JSON.stringify(prefix)}`);
   }
+
+  // RTL-aware HTML response helper.
+  // Shadows the module-level _htmlResponseBase so all inner functions within
+  // createAdminHandler automatically get dir="rtl" and RTL CSS when the site's
+  // default language is right-to-left.  Module-level helpers use _htmlResponseBase
+  // directly (error pages don't need language-specific direction).
+  const htmlResponse = (html: string, status = 200): Response =>
+    _htmlResponseBase(
+      html,
+      status,
+      config.config.system.languages?.default ?? "en",
+      config.config.system.languages?.rtl_override,
+    );
 
   return async function handleAdminRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
@@ -770,32 +783,40 @@ export function createAdminHandler(config: AdminServerConfig) {
       const allUsers = await users.list();
       const usernames = allUsers.map((u) => u.username);
 
-      return htmlResponse(renderPageEditorPage(prefix, userName, {
-        sourcePath: page.sourcePath,
-        route: page.route,
-        title: page.frontmatter.title ?? "",
-        format: page.format,
-        template: page.template,
-        published: page.frontmatter.published !== false,
-        rawContent: page.rawContent,
-        frontmatter: page.frontmatter as Record<string, unknown>,
-        media: page.media.map((m) => ({
-          name: m.name,
-          url: m.url,
-          type: m.type,
-          size: m.size,
-        })),
-        taxonomies: configuredTaxonomies,
-        taxonomyValues,
-        blueprint: resolvedBlueprint,
-        revisionCount,
-        language: pageLanguage,
-        defaultLanguage: defaultLang,
-        translations,
-        referenceContent,
-        tmSuggestions,
-        users: usernames,
-      }));
+      // Use the page's own language (not the site default) to determine RTL
+      // direction for the editor shell — editors working in Arabic, Hebrew, etc.
+      // get a mirrored UI matching their content's reading direction.
+      return _htmlResponseBase(
+        renderPageEditorPage(prefix, userName, {
+          sourcePath: page.sourcePath,
+          route: page.route,
+          title: page.frontmatter.title ?? "",
+          format: page.format,
+          template: page.template,
+          published: page.frontmatter.published !== false,
+          rawContent: page.rawContent,
+          frontmatter: page.frontmatter as Record<string, unknown>,
+          media: page.media.map((m) => ({
+            name: m.name,
+            url: m.url,
+            type: m.type,
+            size: m.size,
+          })),
+          taxonomies: configuredTaxonomies,
+          taxonomyValues,
+          blueprint: resolvedBlueprint,
+          revisionCount,
+          language: pageLanguage,
+          defaultLanguage: defaultLang,
+          translations,
+          referenceContent,
+          tmSuggestions,
+          users: usernames,
+        }),
+        200,
+        pageLanguage,
+        config.config.system.languages?.rtl_override,
+      );
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
     }
@@ -4513,8 +4534,16 @@ function adminShell(prefix: string, active: string, userName: string, content: s
   </script>`;
 }
 
-function htmlResponse(html: string, status = 200): Response {
-  return new Response(html, {
+function _htmlResponseBase(
+  html: string,
+  status = 200,
+  siteLang?: string,
+  rtlOverride?: string[],
+): Response {
+  const finalHtml = siteLang
+    ? applyAdminRtl(html, siteLang, rtlOverride)
+    : html;
+  return new Response(finalHtml, {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
@@ -4561,7 +4590,7 @@ function serverError(err: unknown, context?: string): Response {
 function serverErrorHtml(err: unknown, context?: string): Response {
   const message = err instanceof Error ? err.message : String(err);
   console.error(`  ❌ Admin server error${context ? ` [${context}]` : ""}: ${message}`);
-  return htmlResponse("<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>", 500);
+  return _htmlResponseBase("<h1>Internal Server Error</h1><p>An unexpected error occurred.</p>", 500);
 }
 
 function escapeHtml(str: string): string {

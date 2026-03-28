@@ -19,7 +19,9 @@ import {
   renderErrorPage,
   injectFeedLinks,
   injectLiveReload,
+  injectRtlDir,
 } from "./serve-utils.ts";
+import { isRtl } from "../i18n/rtl.ts";
 import {
   createPageCache,
   computeEtag,
@@ -202,6 +204,15 @@ export function createProductionSiteHandler(
   ): Promise<Response> {
     let contentResponse = await routes.contentHandler(req, renderJsx);
     if (feedEnabled) contentResponse = injectFeedLinks(siteName, contentResponse);
+
+    // Inject dir="rtl" for RTL languages when the theme template hasn't already
+    // set a dir= attribute on its <html> tag (safety net for legacy themes).
+    const pageIndex = engine.pages.find((p) => p.route === url.pathname);
+    const pageLang = pageIndex?.language ?? config.system.languages?.default ?? "en";
+    contentResponse = injectRtlDir(
+      contentResponse,
+      isRtl(pageLang, config.system.languages?.rtl_override),
+    );
 
     // Attach caching headers to successful HTML responses.
     if (contentResponse.status === 200 && etag) {
@@ -582,9 +593,18 @@ export function createDevSiteContext(
         response = await routes.contentHandler(req, renderJsx);
       }
 
-      // Inject feed links + live-reload script into HTML (skip admin and API paths)
+      // Inject feed links + live-reload script + RTL direction into HTML
+      // (skip admin and API paths).
       if (!url.pathname.startsWith(adminPrefix) && !url.pathname.startsWith("/api/")) {
         if (feedEnabled) response = injectFeedLinks(engine.site.title, response);
+        // RTL injection: add dir="rtl" when the page language is RTL and the
+        // theme template hasn't already set a dir= on the <html> tag.
+        const devPageIndex = engine.pages.find((p) => p.route === url.pathname);
+        const devPageLang = devPageIndex?.language ?? config.system.languages?.default ?? "en";
+        response = injectRtlDir(
+          response,
+          isRtl(devPageLang, config.system.languages?.rtl_override),
+        );
         response = injectLiveReload(response);
       }
     } catch (err) {

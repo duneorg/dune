@@ -400,6 +400,13 @@ export interface SystemConfig {
     supported: string[];
     default: string;
     include_default_in_url: boolean;
+    /**
+     * Additional language codes to treat as RTL (right-to-left).
+     * Extends the built-in RTL language list (`ar`, `he`, `fa`, `ur`, …).
+     * Use this for rare scripts or when you need to force a code to RTL.
+     * @example ["ku-Latn"] — mark Kurmanji Kurdish in Latin script as RTL
+     */
+    rtl_override?: string[];
   };
   /** Typography options (orphan protection, etc.) */
   typography?: {

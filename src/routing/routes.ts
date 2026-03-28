@@ -16,6 +16,7 @@ import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Collection, MediaFile, TemplateComponent } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
+import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
@@ -309,6 +310,7 @@ export function duneRoutes(
               t,
               searchQuery: q,
               searchResults: results,
+              dir: directionOf("en", engine.config?.system?.languages?.rtl_override),
             }),
           );
         }
@@ -539,6 +541,7 @@ export function duneRoutes(
         if (layout) {
           const strings = await engine.themes.loadLocale(page.language ?? "en");
           const t = (key: string) => (strings[key] ?? key) as string;
+          const pageLangForDir = page.language ?? engine.config?.system?.languages?.default ?? "en";
           return renderJsx(
             h(layout as ComponentType<any>, {
               page,
@@ -550,6 +553,7 @@ export function duneRoutes(
               search: url.search,
               themeConfig: engine.themeConfig,
               t,
+              dir: directionOf(pageLangForDir, engine.config?.system?.languages?.rtl_override),
               children: content,
             }),
           );
@@ -644,6 +648,7 @@ export function duneRoutes(
           Layout: layout ?? undefined,
           themeConfig: engine.themeConfig,
           t,
+          dir: directionOf(pageLang, engine.config?.system?.languages?.rtl_override),
           children: htmlContent,
         }),
       );

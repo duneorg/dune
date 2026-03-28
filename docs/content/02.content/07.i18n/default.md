@@ -97,3 +97,50 @@ dune content:i18n-status
 ```
 
 Reports translation coverage across all configured languages — which pages have translations, which are missing, and which are outdated (the default-language version has been updated since the translation was written).
+
+## RTL languages
+
+Dune automatically detects right-to-left languages (Arabic, Hebrew, Persian, Urdu, and others) and applies the correct `dir` attribute.
+
+### Theme templates
+
+The `TemplateProps` object passed to TSX templates includes a `dir` field:
+
+```tsx
+export default function Layout({ dir, title, content }: TemplateProps) {
+  return (
+    <html dir={dir} lang={props.page.language ?? "en"}>
+      <head>...</head>
+      <body>{content}</body>
+    </html>
+  );
+}
+```
+
+`dir` is `"rtl"` for Arabic, Hebrew, Persian, Urdu, and similar languages; `"ltr"` for everything else.
+
+### Automatic injection
+
+If your theme template does not include a `dir` attribute on `<html>`, Dune injects it automatically on the server when serving RTL-language pages. This ensures correct text direction even with themes that predate RTL support.
+
+### Admin panel
+
+The admin panel mirrors its layout when the site's default language (or the language of the page being edited) is RTL:
+
+- Sidebar shifts to the right side
+- Text inputs are right-aligned
+- Navigation items right-align
+- Breadcrumbs reverse direction
+
+### Extending the RTL language list
+
+Add languages to the built-in RTL set via `system.yaml`:
+
+```yaml
+languages:
+  supported: ["en", "ar", "ku-Latn"]
+  default: "en"
+  rtl_override: ["ku-Latn"]   # Force Kurdish Latin script to RTL (unusual, example only)
+```
+
+`rtl_override` entries are checked after the built-in list, so you can add rare scripts or regional variants not covered by the default detection.
