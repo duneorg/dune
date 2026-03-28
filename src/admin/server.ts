@@ -1401,14 +1401,19 @@ export function createAdminHandler(config: AdminServerConfig) {
     // POST /admin/api/workflow/transition — Change page status
     if (adminPath === "/api/workflow/transition" && method === "POST") {
       requirePermission(authResult, "pages.update");
-      return handleWorkflowTransition(req);
+      return handleWorkflowTransition(req, authResult);
     }
 
     // GET /admin/api/workflow/status/:path — Get workflow status
     if (adminPath.startsWith("/api/workflow/status/") && method === "GET") {
       requirePermission(authResult, "pages.read");
       const pagePath = decodeURIComponent(adminPath.replace("/api/workflow/status/", ""));
-      return handleGetWorkflowStatus(pagePath);
+      return handleGetWorkflowStatus(pagePath, authResult);
+    }
+
+    // GET /admin/api/workflow/stages — List workflow stages (no auth required)
+    if (adminPath === "/api/workflow/stages" && method === "GET") {
+      return handleGetWorkflowStages();
     }
 
     // POST /admin/api/workflow/schedule — Schedule an action
@@ -2774,7 +2779,7 @@ export function createAdminHandler(config: AdminServerConfig) {
 
   // === Workflow handlers ===
 
-  async function handleWorkflowTransition(req: Request): Promise<Response> {
+  async function handleWorkflowTransition(req: Request, authResult: AuthResult): Promise<Response> {
     if (!workflow) return jsonResponse({ error: "Workflow not enabled" }, 501);
     try {
       const body = await req.json();
@@ -2787,7 +2792,8 @@ export function createAdminHandler(config: AdminServerConfig) {
       if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
 
       const currentStatus = workflow.getStatus(pageIndex);
-      if (!workflow.canTransition(currentStatus, newStatus)) {
+      const userRole = authResult.user?.role;
+      if (!workflow.canTransition(currentStatus, newStatus, userRole)) {
         return jsonResponse({ error: `Cannot transition from ${currentStatus} to ${newStatus}` }, 400);
       }
 
@@ -2804,12 +2810,12 @@ export function createAdminHandler(config: AdminServerConfig) {
         updated = raw.replace(/^---\n/, `---\nstatus: ${newStatus}\n`);
       }
 
-      // Also update published flag based on status
-      if (newStatus === "published") {
+      // Update published flag based on workflow stage config
+      if (workflow.setsPublished(newStatus)) {
         if (updated.match(/^published:\s*.+$/m)) {
           updated = updated.replace(/^published:\s*.+$/m, "published: true");
         }
-      } else if (newStatus === "draft" || newStatus === "archived") {
+      } else {
         if (updated.match(/^published:\s*.+$/m)) {
           updated = updated.replace(/^published:\s*.+$/m, "published: false");
         }
@@ -2832,14 +2838,32 @@ export function createAdminHandler(config: AdminServerConfig) {
     }
   }
 
-  function handleGetWorkflowStatus(pagePath: string): Response {
+  function handleGetWorkflowStatus(pagePath: string, authResult: AuthResult): Response {
     if (!workflow) return jsonResponse({ error: "Workflow not enabled" }, 501);
     const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
     if (!pageIndex) return jsonResponse({ error: "Page not found" }, 404);
 
     const status = workflow.getStatus(pageIndex);
-    const allowed = workflow.allowedTransitions(status);
-    return jsonResponse({ sourcePath: pagePath, status, allowedTransitions: allowed });
+    const userRole = authResult.user?.role;
+    const transitionObjects = workflow.allowedTransitionObjects(status, userRole);
+    const allowedTransitions = transitionObjects.map((t) => t.to);
+    const transitions = transitionObjects.map((t) => ({ to: t.to, label: t.label ?? t.to }));
+
+    return jsonResponse({
+      sourcePath: pagePath,
+      status,
+      allowedTransitions,
+      transitions,
+      stages: workflow.stages,
+    });
+  }
+
+  function handleGetWorkflowStages(): Response {
+    if (!workflow) return jsonResponse({ stages: [], defaultStatus: "draft" });
+    return jsonResponse({
+      stages: workflow.stages,
+      defaultStatus: workflow.stages[0]?.id ?? "draft",
+    });
   }
 
   async function handleScheduleAction(req: Request, authResult: AuthResult): Promise<Response> {

@@ -7,12 +7,12 @@ taxonomy:
   difficulty: [intermediate]
   topic: [content, workflow]
 metadata:
-  description: "Managing content status with draft, review, published, and archived states"
+  description: "Managing content status with built-in or fully customizable workflow stages, role-based transitions, and scheduling"
 ---
 
 # Content Workflow
 
-Dune includes a built-in editorial workflow with four content states. The workflow is visible in the admin panel and can be controlled via frontmatter.
+Dune includes a built-in editorial workflow with four content states. You can also define fully custom stages and transitions with per-role permissions — no code required, just YAML config.
 
 ## States
 
@@ -57,6 +57,145 @@ Specifically:
 | `archived` | `draft` | Restore from archive |
 
 Any other transition (e.g. `archived → published`) is invalid and will be rejected.
+
+---
+
+## Custom workflows
+
+Override the built-in 4-stage workflow by adding a `workflow:` block to `site.yaml`. Define your own stages and transitions with labels, colors, and per-role permissions.
+
+### Defining stages
+
+```yaml
+# site.yaml
+workflow:
+  stages:
+    - id: "draft"
+      label: "Draft"
+      color: "amber"
+    - id: "in_review"
+      label: "In Review"
+      color: "blue"
+    - id: "needs_changes"
+      label: "Needs Changes"
+      color: "orange"
+    - id: "approved"
+      label: "Approved"
+      color: "teal"
+    - id: "published"
+      label: "Published"
+      color: "green"
+      publish: true       # sets published: true on transition in
+    - id: "archived"
+      label: "Archived"
+      color: "gray"
+      terminal: true
+
+  transitions:
+    - from: "draft"
+      to: "in_review"
+      label: "Submit for Review"
+      roles: ["admin", "editor", "author"]
+
+    - from: "in_review"
+      to: "approved"
+      label: "Approve"
+      roles: ["admin"]
+
+    - from: "in_review"
+      to: "needs_changes"
+      label: "Request Changes"
+      roles: ["admin"]
+
+    - from: "needs_changes"
+      to: "in_review"
+      label: "Resubmit"
+      roles: ["admin", "editor", "author"]
+
+    - from: "approved"
+      to: "published"
+      label: "Publish"
+      roles: ["admin"]
+
+    - from: "published"
+      to: "archived"
+      label: "Archive"
+      roles: ["admin"]
+
+    - from: "published"
+      to: "draft"
+      label: "Unpublish"
+      roles: ["admin"]
+
+    - from: "archived"
+      to: "draft"
+      label: "Restore"
+      roles: ["admin"]
+```
+
+### Stage fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Unique identifier — stored as the `status` value in frontmatter |
+| `label` | `string` | Display name in admin UI |
+| `color` | `string` | Badge color: `amber`, `blue`, `green`, `gray`, `orange`, `teal`, `red`, `purple` |
+| `publish` | `boolean` | If `true`, transitioning to this stage sets `published: true` on the page |
+| `terminal` | `boolean` | Informational marker — no effect on transitions |
+
+### Transition fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `from` | `string` | Source stage ID |
+| `to` | `string` | Target stage ID |
+| `label` | `string` | Button label in admin UI (e.g. "Approve", "Request Changes") |
+| `roles` | `string[]` | Roles allowed to perform this transition. If omitted, any role can perform it. Valid: `admin`, `editor`, `author` |
+
+### Role-based permissions
+
+When `roles` is set on a transition, only users with one of those roles see the transition button and can perform the action. The server enforces this — a role mismatch returns `403 Forbidden`.
+
+Omitting `roles` means any authenticated admin user can perform the transition.
+
+### REST API
+
+```
+GET /admin/api/workflow/stages
+```
+
+Returns all configured stages. No authentication required (used by the admin UI to render status badges on page lists).
+
+```
+GET /admin/api/workflow/status/{path}
+```
+
+Returns the current status, all allowed transitions (filtered to the requesting user's role), and the full stages list.
+
+```json
+{
+  "sourcePath": "content/blog/my-post/default.md",
+  "status": "in_review",
+  "allowedTransitions": ["approved", "needs_changes"],
+  "transitions": [
+    { "to": "approved", "label": "Approve" },
+    { "to": "needs_changes", "label": "Request Changes" }
+  ],
+  "stages": [...]
+}
+```
+
+```
+POST /admin/api/workflow/transition
+```
+
+```json
+{ "sourcePath": "content/blog/my-post/default.md", "status": "approved" }
+```
+
+Returns `403` if the requesting user's role is not permitted to make the transition.
+
+---
 
 ## Status vs. `published`
 

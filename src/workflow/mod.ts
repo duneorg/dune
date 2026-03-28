@@ -4,6 +4,10 @@
 
 export type {
   ContentStatus,
+  BuiltinStatus,
+  WorkflowStage,
+  WorkflowTransition,
+  WorkflowConfig,
   StatusTransition,
   ScheduledAction,
   ContentRevision,

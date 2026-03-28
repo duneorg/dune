@@ -2,6 +2,8 @@
  * Configuration type definitions for Dune CMS.
  */
 
+import type { WorkflowStage, WorkflowTransition } from "../workflow/types.ts";
+
 /**
  * A single plugin entry declared in site.yaml under the `plugins:` key.
  *
@@ -307,6 +309,44 @@ export interface SiteConfig {
      *     no_store: true
      */
     rules?: HttpCacheRule[];
+  };
+  /**
+   * Content workflow configuration.
+   * Define custom stages and transitions for your editorial process.
+   * If omitted, the default 4-stage workflow (draft → in_review → published → archived) is used.
+   *
+   * @example
+   * ```yaml
+   * workflow:
+   *   stages:
+   *     - id: draft
+   *       label: Draft
+   *       color: amber
+   *     - id: legal_review
+   *       label: Legal Review
+   *       color: orange
+   *     - id: published
+   *       label: Published
+   *       color: green
+   *       publish: true
+   *   transitions:
+   *     - from: draft
+   *       to: legal_review
+   *       label: Submit for Legal Review
+   *       roles: [author, editor]
+   *     - from: legal_review
+   *       to: published
+   *       label: Approve & Publish
+   *       roles: [admin]
+   *     - from: published
+   *       to: draft
+   *       label: Unpublish
+   *       roles: [admin]
+   * ```
+   */
+  workflow?: {
+    stages: WorkflowStage[];
+    transitions: WorkflowTransition[];
   };
   /**
    * XML sitemap generation settings.

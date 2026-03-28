@@ -265,10 +265,10 @@ export async function bootstrap(
   const runtimeDir = adminConfig.runtimeDir ?? ".dune/admin";
   const dataDir = adminConfig.dataDir ?? "data";
 
-  const workflow = createWorkflowEngine({
-    storage,
-    dataDir: runtimeDir,
-  });
+  const workflow = createWorkflowEngine(
+    { storage, dataDir: runtimeDir },
+    config.site.workflow ?? undefined,
+  );
 
   const scheduler = createScheduler({
     storage,

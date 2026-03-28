@@ -1,13 +1,18 @@
 /**
  * Workflow engine — manages content status transitions and queries.
  *
- * Enforces valid status transitions and provides query methods
- * for finding content by status.
+ * Supports configurable multi-stage workflows. When no WorkflowConfig is
+ * provided, falls back to the built-in 4-stage default (backward-compatible).
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
 import type { PageIndex } from "../content/types.ts";
-import type { ContentStatus, StatusTransition, TRANSITIONS } from "./types.ts";
+import type {
+  ContentStatus,
+  WorkflowConfig,
+  WorkflowStage,
+  WorkflowTransition,
+} from "./types.ts";
 
 export interface WorkflowEngineConfig {
   storage: StorageAdapter;
@@ -16,78 +21,117 @@ export interface WorkflowEngineConfig {
 }
 
 export interface WorkflowEngine {
+  /** All configured stages */
+  stages: WorkflowStage[];
   /** Get the effective status for a page (from frontmatter or default) */
   getStatus(page: PageIndex): ContentStatus;
-  /** Check if a transition is valid */
-  canTransition(from: ContentStatus, to: ContentStatus): boolean;
-  /** Get allowed transitions from a status */
-  allowedTransitions(from: ContentStatus): ContentStatus[];
+  /** Check if a transition is valid, optionally scoped to a user role */
+  canTransition(from: ContentStatus, to: ContentStatus, role?: string): boolean;
+  /** Get allowed target statuses from a status, optionally filtered by role */
+  allowedTransitions(from: ContentStatus, role?: string): ContentStatus[];
+  /** Full transition objects from a status, optionally filtered by role */
+  allowedTransitionObjects(from: ContentStatus, role?: string): WorkflowTransition[];
+  /** Whether transitioning to `to` should set published=true on the page */
+  setsPublished(to: ContentStatus): boolean;
   /** Find pages by status */
   findByStatus(pages: PageIndex[], status: ContentStatus): PageIndex[];
   /** Get status counts */
-  statusCounts(pages: PageIndex[]): Record<ContentStatus, number>;
+  statusCounts(pages: PageIndex[]): Record<string, number>;
 }
+
+// ── Default config (backward-compatible) ─────────────────────────────────────
+
+const DEFAULT_STAGES: WorkflowStage[] = [
+  { id: "draft", label: "Draft", color: "amber" },
+  { id: "in_review", label: "In Review", color: "blue" },
+  { id: "published", label: "Published", color: "green", publish: true },
+  { id: "archived", label: "Archived", color: "gray", terminal: true },
+];
+
+const DEFAULT_TRANSITIONS: WorkflowTransition[] = [
+  { from: "draft", to: "in_review", label: "Submit for Review" },
+  { from: "draft", to: "published", label: "Publish" },
+  { from: "in_review", to: "published", label: "Approve & Publish" },
+  { from: "in_review", to: "draft", label: "Return to Draft" },
+  { from: "published", to: "archived", label: "Archive" },
+  { from: "published", to: "draft", label: "Unpublish" },
+  { from: "archived", to: "draft", label: "Restore" },
+];
+
+// ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
  * Create a workflow engine.
+ *
+ * @param _config  Storage/data-dir config (kept for API compatibility).
+ * @param workflow Optional workflow stage+transition config. When omitted the
+ *                 built-in 4-stage default is used.
  */
 export function createWorkflowEngine(
-  config: WorkflowEngineConfig,
-  transitions: StatusTransition[] = [...defaultTransitions()],
+  _config?: WorkflowEngineConfig,
+  workflow?: WorkflowConfig,
 ): WorkflowEngine {
+  const stages = workflow?.stages ?? DEFAULT_STAGES;
+  const transitions = workflow?.transitions ?? DEFAULT_TRANSITIONS;
+
+  // Build a fast Set of valid stage IDs for getStatus validation.
+  const stageIds = new Set(stages.map((s) => s.id));
+
+  // Build a Map from stage id → stage for O(1) lookup.
+  const stageMap = new Map<string, WorkflowStage>(stages.map((s) => [s.id, s]));
+
+  function filterByRole(
+    list: WorkflowTransition[],
+    role: string | undefined,
+  ): WorkflowTransition[] {
+    if (role === undefined) return list;
+    return list.filter((t) => !t.roles || t.roles.length === 0 || t.roles.includes(role));
+  }
+
   return {
+    stages,
+
     getStatus(page: PageIndex): ContentStatus {
-      // PageIndex.status is already typed as the full union — no cast needed.
-      if (page.status && isValidStatus(page.status)) {
-        return page.status;
+      if (page.status && stageIds.has(page.status as string)) {
+        return page.status as string;
       }
-      // Infer from published flag for pages without an explicit status.
+      // Infer from published flag for pages without a recognised status.
       return page.published ? "published" : "draft";
     },
 
-    canTransition(from: ContentStatus, to: ContentStatus): boolean {
-      return transitions.some((t) => t.from === from && t.to === to);
+    canTransition(from: ContentStatus, to: ContentStatus, role?: string): boolean {
+      const matching = transitions.filter((t) => t.from === from && t.to === to);
+      return filterByRole(matching, role).length > 0;
     },
 
-    allowedTransitions(from: ContentStatus): ContentStatus[] {
-      return transitions
-        .filter((t) => t.from === from)
-        .map((t) => t.to);
+    allowedTransitions(from: ContentStatus, role?: string): ContentStatus[] {
+      return this.allowedTransitionObjects(from, role).map((t) => t.to);
+    },
+
+    allowedTransitionObjects(from: ContentStatus, role?: string): WorkflowTransition[] {
+      const fromTransitions = transitions.filter((t) => t.from === from);
+      return filterByRole(fromTransitions, role);
+    },
+
+    setsPublished(to: ContentStatus): boolean {
+      return stageMap.get(to)?.publish === true;
     },
 
     findByStatus(pages: PageIndex[], status: ContentStatus): PageIndex[] {
       return pages.filter((p) => this.getStatus(p) === status);
     },
 
-    statusCounts(pages: PageIndex[]): Record<ContentStatus, number> {
-      const counts: Record<ContentStatus, number> = {
-        draft: 0,
-        in_review: 0,
-        published: 0,
-        archived: 0,
-      };
+    statusCounts(pages: PageIndex[]): Record<string, number> {
+      const counts: Record<string, number> = {};
+      // Initialise all known stages to 0.
+      for (const s of stages) {
+        counts[s.id] = 0;
+      }
       for (const page of pages) {
         const status = this.getStatus(page);
-        counts[status]++;
+        counts[status] = (counts[status] ?? 0) + 1;
       }
       return counts;
     },
   };
-}
-
-function isValidStatus(s: unknown): s is ContentStatus {
-  return typeof s === "string" &&
-    ["draft", "in_review", "published", "archived"].includes(s);
-}
-
-function defaultTransitions(): StatusTransition[] {
-  return [
-    { from: "draft", to: "in_review", permission: "pages.update" },
-    { from: "draft", to: "published", permission: "pages.update" },
-    { from: "in_review", to: "published", permission: "pages.update" },
-    { from: "in_review", to: "draft", permission: "pages.update" },
-    { from: "published", to: "archived", permission: "pages.update" },
-    { from: "published", to: "draft", permission: "pages.update" },
-    { from: "archived", to: "draft", permission: "pages.update" },
-  ];
 }

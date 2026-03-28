@@ -245,7 +245,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 #### Enterprise Features
 - LDAP/SAML SSO integration
 - ~~Audit logging (who did what, when, from where)~~ ✅
-- Content approval workflows (configurable multi-stage)
+- ~~Content approval workflows (configurable multi-stage)~~ ✅
 - Role-based access control with granular permissions
 - Content scheduling calendar view
 - Backup and disaster recovery tools

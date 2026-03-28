@@ -2,14 +2,34 @@
  * Workflow panel — status selector, transition buttons, and schedule pickers.
  *
  * Renders as an inline panel within the page editor sidebar.
+ * Uses stage and transition metadata from the workflow status API response when
+ * available, falling back to built-in defaults for backward compatibility.
  */
 
 import type { ContentStatus } from "../../workflow/types.ts";
 
+/** A transition object as returned by GET /api/workflow/status/:path */
+interface TransitionObject {
+  to: string;
+  label: string;
+}
+
+/** A stage definition as returned by the API */
+interface StageInfo {
+  id: string;
+  label: string;
+  color?: string;
+}
+
 interface WorkflowPanelData {
   sourcePath: string;
   currentStatus: ContentStatus;
+  /** Target status IDs — used as fallback if `transitions` is absent */
   allowedTransitions: ContentStatus[];
+  /** Rich transition objects with labels (preferred) */
+  transitions?: TransitionObject[];
+  /** Stage definitions for badge colors and labels (optional) */
+  stages?: StageInfo[];
   scheduledActions: Array<{
     id: string;
     action: string;
@@ -17,29 +37,71 @@ interface WorkflowPanelData {
   }>;
 }
 
+// ── Color map for named colors ────────────────────────────────────────────────
+
+const NAMED_COLORS: Record<string, string> = {
+  amber: "#f59e0b",
+  blue: "#3b82f6",
+  green: "#10b981",
+  gray: "#6b7280",
+  orange: "#f97316",
+  teal: "#14b8a6",
+  red: "#ef4444",
+  purple: "#8b5cf6",
+};
+
+/** Built-in fallback colors keyed by status ID */
+const FALLBACK_COLORS: Record<string, string> = {
+  draft: NAMED_COLORS.amber,
+  in_review: NAMED_COLORS.blue,
+  published: NAMED_COLORS.green,
+  archived: NAMED_COLORS.gray,
+};
+
+/** Built-in fallback labels keyed by status ID */
+const FALLBACK_LABELS: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In Review",
+  published: "Published",
+  archived: "Archived",
+};
+
+function resolveColor(color: string | undefined, fallbackId: string): string {
+  if (!color) return FALLBACK_COLORS[fallbackId] ?? NAMED_COLORS.gray;
+  return NAMED_COLORS[color] ?? color;
+}
+
 /**
  * Render the workflow panel HTML for the page editor sidebar.
  */
 export function renderWorkflowPanel(prefix: string, data: WorkflowPanelData): string {
-  const statusLabels: Record<ContentStatus, string> = {
-    draft: "📝 Draft",
-    in_review: "👀 In Review",
-    published: "✅ Published",
-    archived: "📦 Archived",
-  };
+  // Build a map from stage id → stage info for fast lookup.
+  const stageMap = new Map<string, StageInfo>(
+    (data.stages ?? []).map((s) => [s.id, s]),
+  );
 
-  const statusColors: Record<ContentStatus, string> = {
-    draft: "#f59e0b",
-    in_review: "#3b82f6",
-    published: "#10b981",
-    archived: "#6b7280",
-  };
+  function stageLabel(id: string): string {
+    return stageMap.get(id)?.label ?? FALLBACK_LABELS[id] ?? id;
+  }
 
-  const transitionButtons = data.allowedTransitions.map((to) => `
+  function stageColor(id: string): string {
+    const stage = stageMap.get(id);
+    return stage ? resolveColor(stage.color, id) : (FALLBACK_COLORS[id] ?? NAMED_COLORS.gray);
+  }
+
+  // Prefer rich transition objects; fall back to plain IDs with derived labels.
+  const transitions: TransitionObject[] = data.transitions?.length
+    ? data.transitions
+    : data.allowedTransitions.map((to) => ({ to, label: stageLabel(to) }));
+
+  const currentColor = stageColor(data.currentStatus);
+  const currentLabel = stageLabel(data.currentStatus);
+
+  const transitionButtons = transitions.map((t) => `
     <button class="btn btn-sm btn-outline workflow-transition"
-            data-from="${data.currentStatus}" data-to="${to}"
-            onclick="transitionStatus('${data.sourcePath}', '${to}')">
-      → ${statusLabels[to]}
+            data-from="${data.currentStatus}" data-to="${t.to}"
+            onclick="transitionStatus('${data.sourcePath}', '${t.to}')">
+      &rarr; ${t.label}
     </button>
   `).join("");
 
@@ -47,7 +109,7 @@ export function renderWorkflowPanel(prefix: string, data: WorkflowPanelData): st
     <div class="scheduled-item">
       <span class="scheduled-action">${a.action}</span>
       <span class="scheduled-time">${new Date(a.scheduledAt).toLocaleString()}</span>
-      <button class="btn btn-xs btn-outline" onclick="cancelScheduled('${a.id}')">✕</button>
+      <button class="btn btn-xs btn-outline" onclick="cancelScheduled('${a.id}')">&#x2715;</button>
     </div>
   `).join("");
 
@@ -56,12 +118,12 @@ export function renderWorkflowPanel(prefix: string, data: WorkflowPanelData): st
     <h4>Workflow</h4>
 
     <div class="workflow-status">
-      <span class="status-badge" style="background: ${statusColors[data.currentStatus]}20; color: ${statusColors[data.currentStatus]}; border: 1px solid ${statusColors[data.currentStatus]}40;">
-        ${statusLabels[data.currentStatus]}
+      <span class="status-badge" style="background: ${currentColor}20; color: ${currentColor}; border: 1px solid ${currentColor}40;">
+        ${currentLabel}
       </span>
     </div>
 
-    ${data.allowedTransitions.length > 0 ? `
+    ${transitions.length > 0 ? `
     <div class="workflow-transitions">
       <label>Change status:</label>
       <div class="transition-buttons">
