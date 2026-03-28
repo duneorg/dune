@@ -216,9 +216,11 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v0.5 — Performance & Enterprise
+## v0.5 — Performance & Enterprise ✅
 
 **Theme:** "Production-grade at scale"
+
+**Status:** Complete
 
 **Target:** High-traffic sites, enterprise deployments, agencies managing many sites.
 
