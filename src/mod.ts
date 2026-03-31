@@ -268,3 +268,20 @@ export {
   /** Server-side HTML renderer for an array of SectionInstances. @since 0.6.0 */
   renderSections,
 } from "./sections/mod.ts";
+
+// ── Multisite ─────────────────────────────────────────────────────────────────
+
+export {
+  /** Multi-site manager for serving multiple sites from one process. @since 0.6.0 */
+  MultisiteManager,
+  /** Load multisite config from sites.yaml. @since 0.6.0 */
+  loadMultisiteConfig,
+} from "./multisite/mod.ts";
+export type {
+  /** @since 0.6.0 */
+  InitializedSite,
+  /** @since 0.6.0 */
+  SiteEntry,
+  /** @since 0.6.0 */
+  MultisiteConfig,
+} from "./multisite/mod.ts";
