@@ -10,7 +10,7 @@
  */
 
 import { parse as parseYaml } from "@std/yaml";
-import { join, normalize } from "@std/path";
+import { join, normalize, resolve } from "@std/path";
 import { ConfigError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "./types.ts";
@@ -109,11 +109,13 @@ async function loadYamlFile(
 async function loadConfigTs(
   rootDir: string,
 ): Promise<Record<string, unknown>> {
-  const configPath = join(rootDir, "dune.config.ts");
+  // Resolve to absolute path so the path escape check works correctly
+  // regardless of whether rootDir is relative (e.g. ".") or absolute.
+  const absRoot = resolve(rootDir);
+  const configPath = join(absRoot, "dune.config.ts");
 
   // Defense-in-depth: verify the resolved path stays within rootDir.
-  // join() already normalizes, but be explicit about the invariant.
-  const normalizedRoot = normalize(rootDir);
+  const normalizedRoot = normalize(absRoot);
   const normalizedConfig = normalize(configPath);
   if (
     normalizedConfig !== `${normalizedRoot}/dune.config.ts` &&
