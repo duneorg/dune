@@ -2,8 +2,8 @@
  * AuditLogger — appends entries to a JSONL file and supports filtered queries.
  */
 
-import { dirname } from "https://deno.land/std@0.208.0/path/mod.ts";
-import { ensureDir } from "https://deno.land/std@0.208.0/fs/mod.ts";
+import { dirname } from "@std/path";
+import { ensureDir } from "@std/fs";
 import type {
   AuditEntry,
   AuditLogOptions,

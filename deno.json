@@ -1,6 +1,7 @@
 {
   "name": "@dune/core",
   "version": "0.6.0",
+  "license": "MIT",
   "exports": {
     ".": "./src/mod.ts",
     "./cli": "./src/cli.ts",

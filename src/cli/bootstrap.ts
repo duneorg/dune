@@ -36,7 +36,7 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
-import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
+import { join } from "@std/path";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
