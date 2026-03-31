@@ -157,7 +157,6 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
           if (await storage.exists(templatePath)) {
             const absPath = await resolveAbsPath(templatePath, rootDir);
             const fileUrl = getImportUrl(absPath);
-            console.log(`  [theme] loading template: ${fileUrl}`);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
@@ -165,11 +164,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
               warnStaticLayoutImport(templatePath, storage);
               templateCache.set(name, component);
               return { name, component, fromTheme: current.manifest.name };
-            } else {
-              console.warn(`  ⚠️  Template ${templatePath}: mod.default is ${typeof mod.default} (exports: ${Object.keys(mod).join(", ")})`);
             }
-          } else {
-            console.warn(`  ⚠️  Template not found in storage: ${templatePath} (rootDir: ${rootDir})`);
           }
         } catch (err) {
           // Template file exists but failed to load — log and continue to parent
