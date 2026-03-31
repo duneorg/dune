@@ -166,8 +166,9 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
               return { name, component, fromTheme: current.manifest.name };
             }
           }
-        } catch (_err) {
-          // Template file exists but failed to load — continue to parent
+        } catch (err) {
+          // Template file exists but failed to load — log and continue to parent
+          console.warn(`  ⚠️  Failed to load template ${templatePath}: ${err}`);
         }
         current = current.parent;
       }
