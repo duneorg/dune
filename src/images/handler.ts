@@ -28,6 +28,8 @@ const PROCESSABLE_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "webp", "avif", "gif", "tiff",
 ]);
 
+export type ImageHandler = (req: Request) => Promise<Response | null>;
+
 /**
  * Create an image-aware media handler.
  *
@@ -35,7 +37,7 @@ const PROCESSABLE_EXTENSIONS = new Set([
  * - Returns a Response if the request was handled (image processing applied)
  * - Returns null if the request should fall through to the normal media handler
  */
-export function createImageHandler(options: ImageHandlerOptions) {
+export function createImageHandler(options: ImageHandlerOptions): ImageHandler {
   const { engine, processor, cache } = options;
 
   return async function handleImageRequest(
@@ -125,4 +127,3 @@ export function createImageHandler(options: ImageHandlerOptions) {
   };
 }
 
-export type ImageHandler = ReturnType<typeof createImageHandler>;

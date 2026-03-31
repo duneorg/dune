@@ -20,6 +20,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
+import type { PageIndex } from "../content/types.ts";
 
 export interface ApiHandlerOptions {
   engine: DuneEngine;
@@ -105,7 +106,7 @@ async function routeApiRequest(
   if (path === "/api/nav") {
     const nav = engine.router.getNavigation();
     return {
-      items: nav.map((p) => ({
+      items: nav.map((p: PageIndex) => ({
         route: p.route,
         title: p.title,
         order: p.order,

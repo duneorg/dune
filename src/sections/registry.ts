@@ -29,4 +29,4 @@ export class SectionRegistry {
 }
 
 /** Shared singleton used by the admin server and renderer */
-export const sectionRegistry = new SectionRegistry();
+export const sectionRegistry: SectionRegistry = new SectionRegistry();

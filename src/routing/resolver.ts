@@ -38,10 +38,18 @@ export interface RouteResolverOptions {
   includeDefaultInUrl?: boolean;
 }
 
+export interface RouteResolver {
+  resolve(pathname: string): RouteMatch | null;
+  findBySourcePath(sourcePath: string): PageIndex | undefined;
+  getNavigation(lang?: string): PageIndex[];
+  getTopNavigation(lang?: string): PageIndex[];
+  rebuild(pages: PageIndex[], newHomeSlug?: string): void;
+}
+
 /**
  * Create a route resolver from page indexes and site config.
  */
-export function createRouteResolver(options: RouteResolverOptions) {
+export function createRouteResolver(options: RouteResolverOptions): RouteResolver {
   const supportedLangs = options.supportedLanguages ?? [];
   const defaultLang = options.defaultLanguage ?? "en";
   const includeDefaultInUrl = options.includeDefaultInUrl ?? false;
@@ -214,7 +222,7 @@ export function createRouteResolver(options: RouteResolverOptions) {
      * Get top-level navigation items (depth 0 = direct children of content root).
      */
     getTopNavigation(lang?: string): PageIndex[] {
-      return this.getNavigation(lang).filter((p) => p.depth === 0);
+      return this.getNavigation(lang).filter((p: PageIndex) => p.depth === 0);
     },
 
     /**
@@ -268,4 +276,3 @@ function normalizeRoute(route: string): string {
   return normalized;
 }
 
-export type RouteResolver = ReturnType<typeof createRouteResolver>;

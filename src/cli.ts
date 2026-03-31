@@ -26,6 +26,8 @@
  *   dune migrate:from-hugo <src>       — Import a Hugo site
  */
 
+/** @module */
+
 import { devCommand } from "./cli/dev.ts";
 import { serveCommand } from "./cli/serve.ts";
 import { buildCommand } from "./cli/build.ts";

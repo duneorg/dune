@@ -64,13 +64,19 @@ export interface FlexDetailTemplateProps {
  * Register all Dune routes on a Fresh App.
  * Returns a function that takes the app and returns it with routes added.
  */
+export interface DuneRoutes {
+  mediaHandler(req: Request): Promise<Response>;
+  apiHandler(req: Request): Promise<Response>;
+  contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response): Promise<Response>;
+}
+
 export function duneRoutes(
   engine: DuneEngine,
   collections?: CollectionEngine,
   flex?: FlexEngine,
   search?: SearchEngine,
   analyticsPath?: string,
-) {
+): DuneRoutes {
   // Analytics recorder — only created when a path is provided
   const analytics = analyticsPath ? createSearchAnalytics(analyticsPath) : null;
   return {

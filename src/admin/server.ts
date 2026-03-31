@@ -116,6 +116,7 @@ import { renderThemesPage, type ThemeRegistry, type InstalledThemeInfo } from ".
 import { h, type ComponentType } from "preact";
 import { render as renderJsxToString } from "preact-render-to-string";
 import { buildPageTitle } from "../content/types.ts";
+import type { PageIndex } from "../content/types.ts";
 import { validateConfig } from "../config/validator.ts";
 import { renderUsersPage, userStyles, type UsersPageData } from "./ui/users.ts";
 import type { ResolvedBlueprint } from "../blueprints/types.ts";
@@ -234,7 +235,9 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 // Rate limiter for public contact form: 5 submissions per minute per IP
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
-export function createAdminHandler(config: AdminServerConfig) {
+export type AdminHandler = (req: Request) => Promise<Response | null>;
+
+export function createAdminHandler(config: AdminServerConfig): AdminHandler {
   const { engine, storage, auth, users, sessions, prefix, workflow, scheduler, history, submissions, flex, hooks, staging, comments, collab, imageCache, auditLogger, metrics, mt, authProvider } = config;
   const adminConfig = config.config.admin!;
 
@@ -4163,7 +4166,7 @@ export function createAdminHandler(config: AdminServerConfig) {
         themeSchema: (manifest.configSchema ?? {}) as Record<string, import("../blueprints/types.ts").BlueprintField>,
         themeConfig: engine.themeConfig,
         navRoutes: engine.router.getTopNavigation("en")
-          .map((p) => ({ route: p.route, title: p.navTitle || p.title || p.route })),
+          .map((p: PageIndex) => ({ route: p.route, title: p.navTitle || p.title || p.route })),
       };
     } catch {
       // Theme data unavailable — omit the Theme tab content

@@ -55,10 +55,21 @@ export interface ThemeLoaderOptions {
   sharedThemesDir?: string;
 }
 
+export interface ThemeLoader {
+  theme: ResolvedTheme;
+  resolveTemplateName(page: Page): string | null;
+  loadTemplate(name: string): Promise<LoadedTemplate | null>;
+  loadLayout(name: string): Promise<TemplateComponent | null>;
+  loadLocale(lang: string): Promise<Record<string, string>>;
+  getAvailableTemplates(): string[];
+  clearCache(): void;
+  addTemplateDirs(dirs: string[]): void;
+}
+
 /**
  * Create a theme loader that discovers and loads theme templates.
  */
-export async function createThemeLoader(options: ThemeLoaderOptions) {
+export async function createThemeLoader(options: ThemeLoaderOptions): Promise<ThemeLoader> {
   let { storage, themesDir, themeName, rootDir } = options;
   const { sharedThemesDir } = options;
 
@@ -102,7 +113,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
     return importVersion === 0 ? base : `${base}?v=${importVersion}`;
   }
 
-  return {
+  const loader: ThemeLoader = {
     /** The resolved theme with inheritance chain */
     theme,
 
@@ -238,7 +249,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
       const cached = localeCache.get(lang);
       if (cached) return cached;
 
-      const fallback = lang !== "en" ? await this.loadLocale("en") : null;
+      const fallback = lang !== "en" ? await loader.loadLocale("en") : null;
       let current: ResolvedTheme | undefined = theme;
       while (current) {
         const localePath = join(current.dir, "locales", `${lang}.json`);
@@ -307,6 +318,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions) {
       templateCache.clear();
     },
   };
+  return loader;
 }
 
 // === Internal helpers ===
@@ -489,4 +501,3 @@ async function resolveAbsPath(relativePath: string, rootDir?: string): Promise<s
   }
 }
 
-export type ThemeLoader = Awaited<ReturnType<typeof createThemeLoader>>;

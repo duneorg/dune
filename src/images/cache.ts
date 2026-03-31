@@ -33,10 +33,18 @@ interface CacheMeta {
   createdAt: number;
 }
 
+export interface ImageCache {
+  buildKey(sourcePath: string, options: Record<string, unknown>): Promise<string>;
+  get(key: string): Promise<CachedImage | null>;
+  set(key: string, image: CachedImage): Promise<void>;
+  clear(): Promise<void>;
+  has(key: string): Promise<boolean>;
+}
+
 /**
  * Create an image cache backed by the storage adapter.
  */
-export function createImageCache(config: ImageCacheConfig) {
+export function createImageCache(config: ImageCacheConfig): ImageCache {
   const { storage, cacheDir } = config;
 
   /**
@@ -149,4 +157,3 @@ export function createImageCache(config: ImageCacheConfig) {
   return { buildKey, get, set, clear, has };
 }
 
-export type ImageCache = ReturnType<typeof createImageCache>;

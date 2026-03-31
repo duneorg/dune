@@ -45,10 +45,17 @@ export interface ImageProcessorConfig {
   allowedSizes: number[];
 }
 
+export interface ImageProcessor {
+  process(input: Uint8Array, options: ImageProcessingOptions): Promise<ProcessedImage | null>;
+  generateSrcset(input: Uint8Array, options?: Omit<ImageProcessingOptions, "width" | "height">): Promise<ProcessedImage[]>;
+  isAllowedSize(size: number): boolean;
+  parseOptions(params: URLSearchParams): ImageProcessingOptions | null;
+}
+
 /**
  * Create an image processor with the given config.
  */
-export function createImageProcessor(config: ImageProcessorConfig) {
+export function createImageProcessor(config: ImageProcessorConfig): ImageProcessor {
   /**
    * Process an image according to the given options.
    * Returns null if the options are invalid (e.g. disallowed size).
@@ -225,7 +232,6 @@ export function createImageProcessor(config: ImageProcessorConfig) {
   return { process, generateSrcset, isAllowedSize, parseOptions };
 }
 
-export type ImageProcessor = ReturnType<typeof createImageProcessor>;
 
 // === Helpers ===
 
