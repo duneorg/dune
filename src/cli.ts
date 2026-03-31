@@ -142,6 +142,31 @@ async function main() {
 
   const root = (options.root as string) || ".";
 
+  // Auto re-exec with --config if the site root has a deno.json and we weren't
+  // already started with one. This ensures dynamically-imported theme TSX files
+  // can resolve bare specifiers (preact, etc.) from the site's import map.
+  // DUNE_CONFIG_APPLIED env var prevents an infinite re-exec loop.
+  if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new") {
+    const { resolve, join: joinPath } = await import("@std/path");
+    const absRoot = resolve(root);
+    const siteDenoJson = joinPath(absRoot, "deno.json");
+    try {
+      await Deno.stat(siteDenoJson);
+      // Site has a deno.json — re-exec with --config so theme imports work
+      const cmd = new Deno.Command(Deno.execPath(), {
+        args: ["run", "-A", `--config=${siteDenoJson}`, import.meta.url, ...args],
+        env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1" },
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      const status = await cmd.spawn().status;
+      Deno.exit(status.code);
+    } catch {
+      // No deno.json in site root — proceed normally
+    }
+  }
+
   try {
     switch (command) {
       case "new":
