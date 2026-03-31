@@ -23,6 +23,8 @@ import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import { createSearchAnalytics } from "../search/analytics.ts";
 import { generateSearchPage } from "../search/page.ts";
+import { renderSections } from "../sections/mod.ts";
+import type { SectionInstance } from "../sections/mod.ts";
 
 /**
  * Props passed to a flex type list template.
@@ -603,13 +605,23 @@ export function duneRoutes(
       }
 
       // Pre-resolve HTML and pass as children to the template
-      let html = await page.html();
       const supportedLangs = engine.config?.system?.languages?.supported ?? [];
       const defaultLang = engine.config?.system?.languages?.default ?? "en";
       const includeDefaultInUrl = engine.config?.system?.languages?.include_default_in_url ?? false;
       const pageLang = page.language ?? defaultLang;
-      if (supportedLangs.length > 1) {
-        html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs);
+
+      let html: string;
+      if (page.frontmatter.layout === "page-builder") {
+        // Render page-builder sections instead of markdown body
+        const sectionData = Array.isArray(page.frontmatter.sections)
+          ? (page.frontmatter.sections as SectionInstance[])
+          : [];
+        html = renderSections(sectionData);
+      } else {
+        html = await page.html();
+        if (supportedLangs.length > 1) {
+          html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs);
+        }
       }
       const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 

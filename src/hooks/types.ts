@@ -6,7 +6,14 @@ import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
 
-/** All lifecycle events a plugin can subscribe to */
+/**
+ * All lifecycle events a plugin can subscribe to.
+ *
+ * **Stability:** frozen since v0.6.0. New events may be added in minor
+ * versions; existing events will not be removed or renamed before v2.0.
+ *
+ * @since 0.1.0
+ */
 export type HookEvent =
   // Startup
   | "onConfigLoaded"
@@ -74,7 +81,34 @@ export interface PluginApi {
   storage: StorageAdapter;
 }
 
-/** Plugin definition */
+/**
+ * Plugin definition.
+ *
+ * Implement this interface and export it as the default export of your plugin
+ * module. Dune loads it automatically when the module is listed in
+ * `site.yaml` under `plugins:`.
+ *
+ * **Stability:** frozen since v0.6.0.
+ *
+ * @since 0.1.0
+ *
+ * @example
+ * ```ts
+ * import type { DunePlugin } from "@dune/core";
+ *
+ * const plugin: DunePlugin = {
+ *   name: "my-plugin",
+ *   version: "1.0.0",
+ *   hooks: {
+ *     onPageLoaded: ({ data }) => {
+ *       console.log("loaded:", data.route);
+ *     },
+ *   },
+ * };
+ *
+ * export default plugin;
+ * ```
+ */
 export interface DunePlugin {
   /** Unique plugin identifier — used as the key in config.plugins */
   name: string;

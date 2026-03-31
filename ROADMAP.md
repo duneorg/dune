@@ -26,7 +26,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - Configuration system (5-tier merge, env detection, schema validation, inspector CLI)
 - Theme engine (JSX/TSX templates, theme inheritance, layout system for TSX content pages)
 - Collection engine (declarative frontmatter queries, taxonomy index, chaining — works across formats)
-- Storage abstraction (filesystem + Deno KV adapters)
+- Storage abstraction (filesystem adapter)
 - REST API (11 endpoints — format-aware responses for pages, collections, taxonomy, search, nav)
 - Search index (full-text, incrementally updated, indexes both `.md` and `.tsx` frontmatter)
 - Hook system (lifecycle events, plugin registration)
@@ -39,7 +39,6 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 - 500-page site (mixed formats) indexes in <2 seconds
 - Page load <50ms cached, <200ms uncached (both formats)
 - `.md` and `.tsx` pages work identically in collections, taxonomy, API, and navigation
-- Works on local filesystem AND Deno Deploy with KV
 - REST API enables full headless usage
 
 ---
@@ -267,7 +266,7 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## v1.0 — Stable Release
+## v0.6 — Current Release
 
 **Theme:** "Ready for everything"
 
@@ -275,25 +274,26 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ### Deliverables
 
-#### API Stability
-- All public APIs frozen (semver major for breaking changes)
-- Migration guides for any pre-1.0 breaking changes
-- TypeScript types published as stable JSR packages
-- Plugin API compatibility guarantees
+#### API Stability ✅
+- All public APIs frozen (semver major for breaking changes) ✅
+- Migration guides for any pre-0.6 breaking changes ✅ (CHANGELOG.md)
+- TypeScript types published as stable JSR packages ✅ (deno.json v0.6.0, named sub-module exports)
+- Plugin API compatibility guarantees ✅ (PLUGIN_API_VERSION "0.6", @since annotations)
 
-#### Visual Page Builder
-- Drag-and-drop page composition from modular sections
-- Pre-built section library (hero, features, testimonials, CTA, gallery, etc.)
+#### Visual Page Builder ✅
+- Drag-and-drop page composition from modular sections ✅
+- Pre-built section library (hero, features, testimonials, CTA, gallery, pricing, FAQ, text, columns, contact) ✅
 - Custom section creation (blueprint-defined)
-- Responsive preview (desktop/tablet/mobile)
-- Theme-aware rendering (sections use theme styles)
+- Responsive preview (desktop/tablet/mobile) ✅
+- Theme-aware rendering (sections use theme styles) ✅
 
-#### Marketplace
-- Official plugin/theme directory (web UI)
-- Ratings, reviews, download counts
-- Verified publisher badges
-- Automated compatibility testing
-- Revenue sharing for premium plugins/themes (optional)
+#### Marketplace ✅
+- ~~Official plugin/theme directory (web UI)~~ ✅ (Admin → Marketplace, unified plugin + theme tabs)
+- ~~Download counts~~ ✅
+- ~~Verified publisher badges~~ ✅
+- Ratings, reviews _(post-0.6)_
+- Automated compatibility testing _(post-0.6)_
+- Revenue sharing for premium plugins/themes _(post-0.6)_
 
 #### Documentation Site
 - Interactive tutorials
@@ -318,7 +318,18 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 
 ---
 
-## Beyond v1.0 — Future Vision
+## Beyond v0.6 — Future Vision
+
+### Edge Deployment (Not Committed)
+
+Dune's storage abstraction was designed with edge deployment in mind, but the KV adapter has not been built yet. Full edge-readiness requires:
+
+- **Deno KV storage adapter** — replace `FileSystemAdapter` with a KV-backed adapter so Dune can run on Deno Deploy without a persistent filesystem
+- **Edge-compatible dependencies** — audit and replace any npm packages (e.g. `sharp`) that cannot run in a Deno Deploy / V8 isolate context
+- **Distributed cache invalidation** — current in-process page cache doesn't work across multiple edge instances; needs a shared invalidation mechanism (e.g. KV watch, pub/sub)
+- **Build-time content bundling** — for fully static edge serving, content index and rendered pages need to be bundled at build time and served from KV
+
+Once these are in place, a Dune site could deploy to Deno Deploy and serve edge-cached pages globally with no origin server.
 
 ### Potential Directions (Not Committed)
 
@@ -343,9 +354,9 @@ Each version should be **independently useful**. v0.1 is a working headless CMS 
 | v0.3 | Plugin Ecosystem & Custom Types | 6-8 weeks |
 | v0.4 | Collaboration & Advanced Features | 8-10 weeks |
 | v0.5 | Performance & Enterprise | 6-8 weeks |
-| v1.0 | Stable Release | 4-6 weeks (polish + docs) |
+| v0.6 | Stable Release | 4-6 weeks (polish + docs) |
 
-**Total estimated time to v1.0:** ~40-50 weeks (~10-12 months)
+**Total estimated time to v0.6:** ~40-50 weeks (~10-12 months)
 
 These estimates assume a single developer working part-time. With more contributors, timelines compress significantly.
 

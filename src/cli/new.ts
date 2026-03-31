@@ -152,7 +152,7 @@ const DENO_JSON = `{
     "preact": "npm:preact@^10",
     "preact/": "npm:preact@^10/",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/cms": "jsr:@dune/cms@^0.1"
+    "@dune/core": "jsr:@dune/core@^0.6"
   },
   "tasks": {
     "dev": "deno run -A --import-map=deno.json main.ts dev",

@@ -75,6 +75,7 @@ export function renderPageEditorPage(
       <div class="toolbar-right">
         <button class="btn btn-sm btn-outline" onclick="togglePreview()">Preview</button>
         <button class="btn btn-sm btn-outline" onclick="toggleSource()">Source</button>
+        <a href="${prefix}/pages/builder?path=${encodeURIComponent(pageData.sourcePath)}" class="btn btn-sm btn-outline" title="Switch to Visual Page Builder">Builder</a>
         <a href="${escapeAttr(pageData.route)}" target="_blank" class="btn btn-sm btn-outline">View →</a>
         <a href="${prefix}/pages/history?path=${encodeURIComponent(pageData.sourcePath)}" class="btn btn-sm btn-outline">History${pageData.revisionCount ? ` <span class="toolbar-rev-count">${pageData.revisionCount}</span>` : ""}</a>
         ${pageData.referenceContent != null ? `<button class="btn btn-sm btn-outline" id="ref-toggle" onclick="toggleReference()">Reference: ${escapeHtml(pageData.defaultLanguage ?? "")}</button>` : ""}

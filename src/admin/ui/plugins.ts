@@ -248,6 +248,8 @@ function adminShellPartial(
     { id: "submissions", label: "Submissions", icon: "📬", href: `${prefix}/submissions` },
     { id: "users", label: "Users", icon: "👥", href: `${prefix}/users` },
     { id: "plugins", label: "Plugins", icon: "🔌", href: `${prefix}/plugins` },
+    { id: "themes", label: "Themes", icon: "🎨", href: `${prefix}/themes` },
+    { id: "marketplace", label: "Marketplace", icon: "🛒", href: `${prefix}/marketplace` },
     { id: "config", label: "Config", icon: "⚙️", href: `${prefix}/config` },
   ];
 

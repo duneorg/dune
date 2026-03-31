@@ -307,6 +307,47 @@ export const LIVE_RELOAD_SCRIPT = `<script>
 })();
 </script>`;
 
+// === RTL Direction Injection ===
+
+/**
+ * Inject `dir="rtl"` onto the `<html>` tag of an HTML response when the page
+ * language uses a right-to-left script.
+ *
+ * Only modifies the response when:
+ * 1. The Content-Type is text/html
+ * 2. `rtl` is true
+ * 3. The existing `<html` tag does not already carry a `dir=` attribute
+ *
+ * This is a safety-net for theme templates that don't yet consume the `dir`
+ * prop from TemplateProps.  Themes that do set `dir` explicitly are unaffected.
+ */
+export function injectRtlDir(response: Response, rtl: boolean): Response {
+  if (!rtl) return response;
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  return new Response(
+    response.body
+      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            const text = new TextDecoder().decode(chunk);
+            // Only inject when there is no existing dir= on the <html> tag.
+            const injected = /(<html\b[^>]*)\bdir=/.test(text)
+              ? text
+              : text.replace(/(<html\b)([^>]*>)/, '$1 dir="rtl"$2');
+            controller.enqueue(new TextEncoder().encode(injected));
+          },
+        }))
+      : null,
+    {
+      status: response.status,
+      headers: new Headers(
+        [...response.headers.entries()].filter(([k]) => k.toLowerCase() !== "content-length"),
+      ),
+    },
+  );
+}
+
 /** Inject the live-reload script before `</body>` or `</html>`. */
 export function injectLiveReload(response: Response): Response {
   const contentType = response.headers.get("Content-Type") ?? "";

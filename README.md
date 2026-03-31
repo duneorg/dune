@@ -1,9 +1,8 @@
 # Dune
 
-A flat-file CMS built on [Deno](https://deno.land/) and [Fresh 2](https://fresh.deno.dev/). Content is files. No database required.
+A flat-file CMS built on [Deno](https://deno.land/) and [Preact](https://preactjs.com/). Content is files. No database required.
 
-> **Status: v0.1 — Core Engine**
-> Fully functional CLI-driven flat-file CMS. Create, develop, and serve content sites.
+> **Status: v0.6** — Pre-1.0. Minor releases may include breaking changes per semver convention.
 
 ## What is Dune?
 
@@ -24,19 +23,18 @@ content/
 
 ### Core ideas
 
-- **Content is files.** Markdown for prose, TSX for interactive pages. No database, no migration scripts.
+- **Content is files.** Markdown, MDX, or TSX. No database, no migration scripts.
 - **Folder = page.** Directory structure IS your site structure. Numeric prefixes control order.
 - **Frontmatter = config.** YAML metadata controls titles, taxonomies, collections, caching, and routing.
 - **Lazy everything.** A content index handles routing and queries without loading page bodies.
-- **Multi-format.** `.md` and `.tsx` interchangeably in the same site, sharing the same collections and taxonomy system.
-- **API-first.** Every content operation available via REST (11 endpoints).
-- **Edge-ready.** Filesystem for local dev, Deno KV for Deno Deploy — same engine, same content.
+- **Multi-format.** `.md`, `.mdx`, and `.tsx` interchangeably in the same site.
+- **API-first.** Every content operation available via REST.
 
 ## Quick start
 
 ```bash
 # Create a new site
-deno run -A jsr:@dune/cms new my-site
+deno run -A jsr:@dune/core/cli new my-site
 
 # Start dev server
 cd my-site
@@ -45,32 +43,18 @@ deno task dev
 
 ## Installing the CLI
 
-To use the `dune` command directly, install it globally. Choose one of the following methods:
-
-**From local source** (if you have the repository cloned):
 ```bash
-cd dune  # or wherever you cloned the repo
-deno install --global -n dune -A --import-map=deno.json src/cli.ts
+deno install --global -n dune -A jsr:@dune/core/cli
 ```
 
-**From JSR** (once published):
-```bash
-deno install --global -n dune -A jsr:@dune/cms/src/cli.ts
-```
-
-This installs the `dune` command globally. Make sure Deno's bin directory is in your PATH (usually `~/.deno/bin`).
+Make sure Deno's bin directory is in your PATH (usually `~/.deno/bin`).
 
 To uninstall: `deno uninstall dune`
 
-**Note:** When installing from local source, the command must be run from the repository root directory where `deno.json` is located, as it needs access to the import map.
-
-**Alternative for local development:** Instead of installing globally, you can use `deno task dune <command>` from within the repository, which automatically uses the correct import map and permissions. For example:
+**For local development** (working on the framework itself):
 ```bash
-deno task dune dev
-deno task dune build
+deno install --global -n dune -A --import-map=deno.json src/cli.ts
 ```
-
-Once published to JSR, you can use `deno run -A jsr:@dune/cms <command>` directly without installing.
 
 ## CLI Commands
 
@@ -79,7 +63,12 @@ Once published to JSR, you can use `deno run -A jsr:@dune/cms <command>` directl
 | `dune new [dir]` | Scaffold a new site with starter theme |
 | `dune dev` | Dev server with hot-reload (watches content + themes) |
 | `dune build` | Build content index, validate config |
+| `dune build --static` | Static site generation |
 | `dune serve` | Production server |
+| `dune migrate:from-grav <src>` | Import a Grav site |
+| `dune migrate:from-wordpress <src>` | Import a WordPress WXR export |
+| `dune migrate:from-hugo <src>` | Import a Hugo site |
+| `dune migrate:from-markdown <src>` | Import a flat markdown folder |
 | `dune cache:clear` | Clear all caches |
 | `dune cache:rebuild` | Rebuild content index from scratch |
 | `dune config:show` | Display merged config with source annotations |
@@ -87,51 +76,72 @@ Once published to JSR, you can use `deno run -A jsr:@dune/cms <command>` directl
 | `dune content:list` | List all pages with routes and templates |
 | `dune content:check` | Check content for broken links, missing templates |
 
-## REST API
+## Features
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/pages` | List all pages (filterable, paginated) |
-| `GET /api/pages/:path` | Get single page with rendered HTML |
-| `GET /api/pages/:path/children` | Get child pages |
-| `GET /api/pages/:path/media` | Get co-located media files |
-| `GET /api/collections` | Query collections via URL params |
-| `GET /api/taxonomy` | List all taxonomies with value counts |
-| `GET /api/taxonomy/:name` | Get values for a taxonomy |
-| `GET /api/taxonomy/:name/:value` | Get pages for a taxonomy value |
-| `GET /api/search?q=term` | Full-text search |
-| `GET /api/config/site` | Public site configuration |
-| `GET /api/nav` | Navigation tree (ordered, visible pages) |
+### Content
+- Markdown, MDX, and TSX format handlers
+- YAML frontmatter, blueprint-driven custom fields
+- Declarative collection queries with filter/sort/paginate
+- Taxonomy system (find, findAll AND, findAny OR)
+- Full-text search with relevance scoring and excerpt generation
+- Revision history with visual diff
+- Content workflow: draft / in_review / published / archived
+- Static site generation with incremental builds
+
+### Admin
+- Block editor, media library, page tree
+- Visual page builder (drag-and-drop sections)
+- Multi-stage configurable workflows
+- Real-time collaboration (OT-based concurrent editing)
+- i18n translation management, side-by-side editing, Translation Memory
+- Machine translation (DeepL, Google Translate, LibreTranslate)
+- RTL language support
+- Marketplace (plugin + theme discovery)
+
+### Extending
+- Plugin system (JSR-based, hook lifecycle)
+- Theme SDK with inheritance and configuration schema
+- Flex Objects: schema-driven custom content types
+- REST API (20+ endpoints)
+- Outbound and incoming webhooks
+- Internal comments and @mention notifications
+
+### Operations
+- Multi-site management (hostname/path-prefix routing, shared themes)
+- ETag/304, Cache-Control + SWR, in-process page cache
+- Append-only audit log (15 event types)
+- Performance monitoring dashboard (p50/p95/p99 latency)
+- CSRF, rate limiting, security headers, path traversal protection
+- Docker support
 
 ## Project structure
 
 ```
 dune/
 ├── src/                    # Engine source (TypeScript)
-│   ├── core/               #   DuneEngine orchestrator, error types
-│   ├── storage/            #   Storage abstraction (filesystem, KV)
+│   ├── core/               #   DuneEngine orchestrator
+│   ├── storage/            #   Storage abstraction (filesystem)
 │   ├── config/             #   Config loading, merging, validation
-│   ├── content/            #   Content types, format handlers, index builder, page loader
-│   │   └── formats/        #     Pluggable: MarkdownHandler, TsxHandler
-│   ├── routing/            #   Route resolver, Fresh integration, HTTP handlers
-│   ├── themes/             #   Theme discovery, inheritance, template/layout loading
-│   ├── collections/        #   Declarative page queries with chainable modifiers
-│   ├── taxonomy/           #   Taxonomy query engine (find, findAll, findAny)
-│   ├── search/             #   Full-text search with relevance scoring
+│   ├── content/            #   Content types, format handlers, index builder
+│   ├── routing/            #   Route resolver, HTTP handlers
+│   ├── themes/             #   Theme discovery, inheritance, template loading
+│   ├── collections/        #   Declarative page queries
+│   ├── taxonomy/           #   Taxonomy query engine
+│   ├── search/             #   Full-text search
 │   ├── hooks/              #   Plugin lifecycle events
-│   ├── api/                #   REST API handlers (11 endpoints)
+│   ├── plugins/            #   Plugin loader
+│   ├── admin/              #   Admin panel and REST API
+│   ├── sections/           #   Visual page builder
 │   ├── cli/                #   CLI command implementations
 │   ├── cli.ts              #   CLI entry point
 │   └── mod.ts              #   Package entry point
-├── tests/                  # Test suite (75 tests)
+├── tests/                  # Test suite
 ├── docs/                   # Documentation as a Dune site (dogfood)
 │   ├── config/site.yaml
-│   ├── content/            #   30 pages across 7 sections
-│   ├── themes/default/     #   Documentation theme
-│   └── main.ts             #   Standalone docs server entry point
-├── PRD.md                  # Product requirements (v0.1 spec)
-├── ROADMAP.md              # v0.1 → v1.0 roadmap
-└── RESEARCH-GRAV.md        # GRAV strengths/shortcomings analysis
+│   ├── content/
+│   ├── themes/default/
+│   └── main.ts             #   Imports from ../src
+└── ROADMAP.md
 ```
 
 ## Architecture
@@ -163,44 +173,9 @@ dune/
    │
 ┌──┴──────────────────┐
 │  Storage Abstraction │
-│  (FileSystem · KV)   │
+│  (FileSystem)        │
 └──────────────────────┘
 ```
-
-## What's built
-
-| Module | Status | Description |
-|--------|--------|-------------|
-| Storage abstraction | ✅ | `StorageAdapter` interface, `FileSystemAdapter` with JSON cache + TTL |
-| Config system | ✅ | 5-tier merge (defaults → YAML → env → TS → frontmatter), validation |
-| Content types | ✅ | Page, PageIndex, Collection, MediaFile, ContentPageProps |
-| Format registry | ✅ | Pluggable `ContentFormatHandler` — add new formats without engine changes |
-| Markdown handler | ✅ | gray-matter frontmatter + marked rendering + media URL resolution |
-| TSX handler | ✅ | Sidecar YAML (fast path) + AST extraction from `export const frontmatter` |
-| Path utilities | ✅ | Folder conventions (`01.name/`, `_module/`, `_drafts/`), route building |
-| Content index | ✅ | Full + incremental scan, taxonomy reverse map, mtime-based invalidation |
-| Page loader | ✅ | Lazy memoized accessors: html, component, children, parent, siblings, summary |
-| Route resolver | ✅ | URL → PageIndex with redirects, aliases, trailing slash normalization |
-| Theme engine | ✅ | Theme discovery, inheritance chains, template/layout resolution + caching |
-| DuneEngine | ✅ | Central orchestrator wiring storage → config → content → routing → themes |
-| HTTP handlers | ✅ | Content rendering, media serving, format-aware dispatch |
-| Collection engine | ✅ | Declarative queries, filter/sort/paginate, chainable modifiers |
-| Taxonomy engine | ✅ | find, findAll (AND), findAny (OR), values with counts |
-| Search engine | ✅ | Full-text inverted index, relevance scoring, excerpt generation |
-| Hook system | ✅ | Plugin registration, lifecycle events, data pipeline |
-| REST API | ✅ | 11 endpoints: pages, taxonomy, collections, search, nav, config |
-| CLI | ✅ | new, dev, build, serve, cache:*, config:*, content:* |
-| Default theme | ✅ | Layout shell + default template for docs site |
-| Documentation | ✅ | 30-page docs site using Dune's own content model |
-
-## What's next
-
-See [ROADMAP.md](ROADMAP.md) for the full plan. Near-term:
-
-- **v0.2:** Admin panel with block editor, MDX content format, image processing pipeline
-- **v0.3:** Plugin ecosystem (JSR), custom content types (Flex Objects), form handling
-- **v0.4:** Real-time collaboration, advanced search, webhooks
-- **v0.5:** Static site generation, edge caching, enterprise features
 
 ## Development
 
@@ -222,21 +197,17 @@ deno run -A src/cli.ts build --root docs
 
 ## Documentation
 
-The `docs/` directory is a real Dune content site — structured using Dune's own folder conventions, frontmatter, and taxonomy system. Every page is tagged by audience (`editor`, `webmaster`, `developer`) and difficulty level.
+The `docs/` directory is a real Dune site — structured using Dune's own folder conventions, frontmatter, and taxonomy system. It imports directly from `../src`, making it a live dogfood example of the framework.
 
-Serve the docs locally (run from the repository root):
+Serve the docs locally:
 
 ```bash
-deno task dune dev --root docs
-# or
 deno run -A src/cli.ts dev --root docs
 ```
 
 ## Design documents
 
-- **[PRD.md](PRD.md)** — Full v0.1 specification: architecture, interfaces, content model, config system, routing, themes, collections, API, CLI
 - **[ROADMAP.md](ROADMAP.md)** — Version plan from v0.1 through v1.0
-- **[RESEARCH-GRAV.md](RESEARCH-GRAV.md)** — Analysis of GRAV CMS: what to adopt, what to avoid
 
 ## License
 

@@ -52,6 +52,12 @@ export interface PageFrontmatter {
   };
   collection?: CollectionDefinition;
   custom?: Record<string, unknown>;
+  /**
+   * Visual Page Builder sections.
+   * Present when `layout: "page-builder"` — the routing layer renders these
+   * as the page body instead of the markdown content.
+   */
+  sections?: Array<{ id: string; type: string; [field: string]: unknown }>;
   /** Allow additional fields beyond the spec */
   [key: string]: unknown;
 }

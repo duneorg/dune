@@ -20,6 +20,10 @@
  *   dune plugin:publish [name] — Publish plugin to JSR
  *   dune plugin:search <query> — Search JSR for plugins
  *   dune plugin:update [name]  — Update JSR plugins to latest versions
+ *   dune migrate:from-grav <src>       — Import a Grav site
+ *   dune migrate:from-wordpress <src>  — Import a WordPress WXR export
+ *   dune migrate:from-markdown <src>   — Import a flat markdown folder
+ *   dune migrate:from-hugo <src>       — Import a Hugo site
  */
 
 import { devCommand } from "./cli/dev.ts";
@@ -31,6 +35,12 @@ import { configCommands } from "./cli/config.ts";
 import { contentCommands } from "./cli/content.ts";
 import { i18nStatusCommand } from "./cli/i18n.ts";
 import { pluginCommands } from "./cli/plugin.ts";
+import {
+  migrateFromGrav,
+  migrateFromWordPress,
+  migrateFromMarkdown,
+  migrateFromHugo,
+} from "./cli/migrate.ts";
 
 const HELP = `
 dune — Flat-file CMS for Deno Fresh
@@ -62,6 +72,11 @@ Commands:
   plugin:publish      Publish plugin to JSR (runs deno publish in plugin dir)
   plugin:search       Search JSR for Dune plugins
   plugin:update       Update JSR plugins to their latest versions
+
+  migrate:from-grav <src>       Import a Grav site (user/pages/ folder)
+  migrate:from-wordpress <src>  Import a WordPress WXR export (.xml)
+  migrate:from-markdown <src>   Import a flat folder of markdown files
+  migrate:from-hugo <src>       Import a Hugo site (content/ folder)
 
 Options:
   --port <n>          Server port (default: 3000)
@@ -113,8 +128,15 @@ async function main() {
       options.includeDrafts = true;
     } else if (args[i] === "--verbose") {
       options.verbose = true;
+    } else if (args[i] === "--dry-run") {
+      options.dryRun = true;
     } else if (!args[i].startsWith("--")) {
-      options.positional = args[i];
+      // Accept multiple positional args (e.g. migrate source path)
+      if (!options.positional) {
+        options.positional = args[i];
+      } else {
+        options.positional2 = args[i];
+      }
     }
   }
 
@@ -208,6 +230,38 @@ async function main() {
 
       case "plugin:update":
         await pluginCommands.update(root, options.positional as string);
+        break;
+
+      case "migrate:from-grav":
+        await migrateFromGrav(options.positional as string, root, {
+          out: options.outDir as string | undefined,
+          dryRun: options.dryRun === true,
+          verbose: options.verbose === true,
+        });
+        break;
+
+      case "migrate:from-wordpress":
+        await migrateFromWordPress(options.positional as string, root, {
+          out: options.outDir as string | undefined,
+          dryRun: options.dryRun === true,
+          verbose: options.verbose === true,
+        });
+        break;
+
+      case "migrate:from-markdown":
+        await migrateFromMarkdown(options.positional as string, root, {
+          out: options.outDir as string | undefined,
+          dryRun: options.dryRun === true,
+          verbose: options.verbose === true,
+        });
+        break;
+
+      case "migrate:from-hugo":
+        await migrateFromHugo(options.positional as string, root, {
+          out: options.outDir as string | undefined,
+          dryRun: options.dryRun === true,
+          verbose: options.verbose === true,
+        });
         break;
 
       default:

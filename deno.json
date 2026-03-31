@@ -1,7 +1,12 @@
 {
-  "name": "@dune/cms",
-  "version": "0.1.0",
-  "exports": "./src/mod.ts",
+  "name": "@dune/core",
+  "version": "0.6.0",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts",
+    "./plugins": "./src/plugins/mod.ts",
+    "./sections": "./src/sections/mod.ts"
+  },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",

@@ -8,6 +8,8 @@
  *   POST /admin/logout        → Clear session
  *   GET  /admin/pages         → Page tree
  *   GET  /admin/pages/edit    → Page editor
+ *   GET  /admin/pages/builder → Visual Page Builder
+ *   GET  /admin/api/sections  → Section library (JSON)
  *   GET  /admin/media         → Media library
  *   GET  /admin/users         → User management
  *   GET  /admin/api/dashboard → Dashboard data (JSON)
@@ -42,6 +44,9 @@
  *   GET  /admin/api/theme-preview?theme=X&route=/path → Render page with preview theme
  *   GET  /admin/api/registry/themes  → Bundled theme registry JSON
  *   POST /admin/api/themes/install   → Download + extract theme ZIP
+ *   GET  /admin/marketplace          → Unified plugin + theme marketplace
+ *   GET  /admin/api/registry/plugins → Bundled plugin registry JSON
+ *   POST /admin/api/plugins/install  → Add a plugin entry to site.yaml
  *
  * Public routes (no admin auth):
  *   POST /api/contact                → Accept contact form submissions
@@ -130,6 +135,13 @@ import type { ImageCache } from "../images/cache.ts";
 import type { AuditLogger } from "../audit/mod.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
+import { renderPageBuilderPage } from "./ui/page-builder.ts";
+import { sectionRegistry } from "../sections/mod.ts";
+import {
+  renderMarketplacePage,
+  type PluginRegistry,
+  type ThemeRegistry as MarketplaceThemeRegistry,
+} from "./ui/marketplace.ts";
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -394,6 +406,17 @@ export function createAdminHandler(config: AdminServerConfig) {
       return handlePageEditor(url, authResult);
     }
 
+    // GET /admin/pages/builder?path=... — Visual Page Builder
+    if (adminPath === "/pages/builder" && req.method === "GET") {
+      return handlePageBuilder(url, authResult);
+    }
+
+    // GET /admin/api/sections — Section library for the page builder
+    if (adminPath === "/api/sections" && req.method === "GET") {
+      requirePermission(authResult, "pages.read");
+      return jsonResponse(sectionRegistry.all());
+    }
+
     // GET /admin/pages — Page tree (or search results when ?q= is present)
     if (adminPath === "/pages") {
       const q = url.searchParams.get("q")?.trim() ?? "";
@@ -575,6 +598,13 @@ export function createAdminHandler(config: AdminServerConfig) {
         return htmlResponse("<h1>403 Forbidden</h1>", 403);
       }
       return htmlResponse(await renderThemesPageHtml(prefix, authResult));
+    }
+
+    // GET /admin/marketplace — Unified plugin + theme marketplace
+    if (adminPath === "/marketplace" && req.method === "GET") {
+      requirePermission(authResult, "config.read");
+      const tab = (url.searchParams.get("tab") ?? "plugins") === "themes" ? "themes" : "plugins";
+      return htmlResponse(await renderMarketplacePageHtml(prefix, authResult, tab));
     }
 
     // === Flex Object UI routes ===
@@ -844,6 +874,38 @@ export function createAdminHandler(config: AdminServerConfig) {
         200,
         pageLanguage,
         config.config.system.languages?.rtl_override,
+      );
+    } catch (err) {
+      return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
+    }
+  }
+
+  // === Page builder handler ===
+
+  async function handlePageBuilder(url: URL, authResult: AuthResult): Promise<Response> {
+    requirePermission(authResult, "pages.read");
+    const sourcePath = url.searchParams.get("path");
+    if (!sourcePath) {
+      return new Response(null, { status: 302, headers: { "Location": `${prefix}/pages` } });
+    }
+    try {
+      const page = await engine.loadPage(sourcePath);
+      const userName = authResult.user?.name ?? "Admin";
+      const sections = Array.isArray(page.frontmatter.sections)
+        ? (page.frontmatter.sections as unknown[])
+        : [];
+      const fm = page.frontmatter;
+      return htmlResponse(
+        renderPageBuilderPage(prefix, userName, {
+          sourcePath: page.sourcePath,
+          route: page.route,
+          title: fm.title ?? "",
+          published: fm.published !== false,
+          slug: typeof fm.slug === "string" ? fm.slug : "",
+          date: typeof fm.date === "string" ? fm.date : "",
+          sections,
+          sectionDefs: sectionRegistry.all(),
+        }),
       );
     } catch (err) {
       return htmlResponse(`<h1>Page not found</h1><p>${escapeHtml(String(err))}</p>`, 404);
@@ -1432,6 +1494,18 @@ export function createAdminHandler(config: AdminServerConfig) {
     if (adminPath === "/api/themes/install" && method === "POST") {
       requirePermission(authResult, "config.update");
       return handleThemeInstall(req);
+    }
+
+    // GET /admin/api/registry/plugins — Return the bundled plugin registry JSON
+    if (adminPath === "/api/registry/plugins" && method === "GET") {
+      requirePermission(authResult, "config.read");
+      return handlePluginRegistry();
+    }
+
+    // POST /admin/api/plugins/install — Add a plugin entry to site.yaml
+    if (adminPath === "/api/plugins/install" && method === "POST") {
+      requirePermission(authResult, "config.update");
+      return handlePluginInstall(req);
     }
 
     // === Plugin API routes ===
@@ -4287,6 +4361,100 @@ export function createAdminHandler(config: AdminServerConfig) {
       return htmlResponse(`<!DOCTYPE html>${rendered}`);
     } catch (err) {
       return serverErrorHtml(err, "theme-preview");
+    }
+  }
+
+  // === Marketplace page ===
+
+  async function renderMarketplacePageHtml(
+    pfx: string,
+    authResult: AuthResult,
+    tab: "plugins" | "themes",
+  ): Promise<string> {
+    let pluginRegistry: PluginRegistry = { version: 1, plugins: [] };
+    let themeReg: MarketplaceThemeRegistry = { version: 1, themes: [] };
+
+    try {
+      const pluginRegUrl = new URL("./registry/plugins.json", import.meta.url);
+      pluginRegistry = JSON.parse(await Deno.readTextFile(pluginRegUrl)) as PluginRegistry;
+    } catch { /* leave empty */ }
+
+    try {
+      const themeRegUrl = new URL("./registry/themes.json", import.meta.url);
+      themeReg = JSON.parse(await Deno.readTextFile(themeRegUrl)) as MarketplaceThemeRegistry;
+    } catch { /* leave empty */ }
+
+    // Installed plugins — from in-memory plugin list
+    const installedPlugins = new Set(
+      config.config.pluginList.map((p) => p.src),
+    );
+
+    // Installed themes
+    const installedThemeSlugs = await engine.getAvailableThemes();
+    const installedThemes = new Set(installedThemeSlugs);
+
+    return renderMarketplacePage(
+      pfx,
+      pluginRegistry,
+      themeReg,
+      installedPlugins,
+      installedThemes,
+      authResult,
+      tab,
+    );
+  }
+
+  // === Plugin registry handler ===
+
+  async function handlePluginRegistry(): Promise<Response> {
+    try {
+      const registryUrl = new URL("./registry/plugins.json", import.meta.url);
+      const registry = JSON.parse(await Deno.readTextFile(registryUrl)) as PluginRegistry;
+      return jsonResponse(registry);
+    } catch {
+      return jsonResponse({ version: 1, plugins: [] });
+    }
+  }
+
+  // === Plugin install handler ===
+
+  async function handlePluginInstall(req: Request): Promise<Response> {
+    try {
+      const { name, jsr } = await req.json() as { name?: string; jsr?: string };
+
+      if (!name || typeof name !== "string") {
+        return jsonResponse({ error: "Plugin name required" }, 400);
+      }
+      if (!jsr || typeof jsr !== "string" || !jsr.startsWith("jsr:")) {
+        return jsonResponse({ error: "jsr specifier required (must start with jsr:)" }, 400);
+      }
+
+      // Read current site.yaml
+      const siteRaw = await storage.readText("config/site.yaml").catch(() => "");
+      const site = (parseYaml(siteRaw || "") ?? {}) as Record<string, unknown>;
+
+      // Build updated plugins list — avoid duplicates
+      const existingList = Array.isArray(site.plugins)
+        ? (site.plugins as Array<Record<string, unknown>>)
+        : [];
+
+      const alreadyInstalled = existingList.some(
+        (p) => typeof p === "object" && p !== null && (p.src === jsr || p.src === name),
+      );
+
+      if (alreadyInstalled) {
+        return jsonResponse({ installed: false, reason: "already installed" });
+      }
+
+      const updatedList = [...existingList, { src: jsr }];
+      const updatedSite = { ...site, plugins: updatedList };
+
+      await storage.write("config/site.yaml", stringifyYaml(updatedSite).trimEnd() + "\n");
+
+      console.log(`  🔌 Plugin "${name}" (${jsr}) added to site.yaml`);
+      return jsonResponse({ installed: true, name, jsr });
+    } catch (err) {
+      return serverError(err, "plugin-install");
     }
   }
 

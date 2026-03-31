@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updatedAt": "2026-03-09",
+  "version": 2,
+  "updatedAt": "2026-03-28",
   "themes": [
     {
       "slug": "minimal",
@@ -10,9 +10,12 @@
       "version": "1.0.0",
       "license": "MIT",
       "tags": ["blog", "minimal", "light"],
-      "demoUrl": "https://minimal.dune-cms.dev",
-      "screenshotUrl": "https://cdn.dune-cms.dev/themes/minimal/screenshot.png",
-      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/minimal-v1.0.0/minimal.zip"
+      "demoUrl": "https://minimal.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/minimal/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/minimal-v1.0.0/minimal.zip",
+      "verified": true,
+      "downloads": 4210,
+      "compatibleWith": "^0.6.0"
     },
     {
       "slug": "docs",
@@ -22,9 +25,12 @@
       "version": "1.0.0",
       "license": "MIT",
       "tags": ["docs", "sidebar", "search"],
-      "demoUrl": "https://docs.dune-cms.dev",
-      "screenshotUrl": "https://cdn.dune-cms.dev/themes/docs/screenshot.png",
-      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/docs-v1.0.0/docs.zip"
+      "demoUrl": "https://docs.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/docs/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/docs-v1.0.0/docs.zip",
+      "verified": true,
+      "downloads": 3870,
+      "compatibleWith": "^0.6.0"
     },
     {
       "slug": "magazine",
@@ -34,9 +40,57 @@
       "version": "1.0.0",
       "license": "MIT",
       "tags": ["magazine", "blog", "grid", "news"],
-      "demoUrl": "https://magazine.dune-cms.dev",
-      "screenshotUrl": "https://cdn.dune-cms.dev/themes/magazine/screenshot.png",
-      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/magazine-v1.0.0/magazine.zip"
+      "demoUrl": "https://magazine.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/magazine/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/magazine-v1.0.0/magazine.zip",
+      "verified": true,
+      "downloads": 2940,
+      "compatibleWith": "^0.6.0"
+    },
+    {
+      "slug": "portfolio",
+      "name": "Portfolio",
+      "description": "Project showcase theme with filterable gallery, case study layout, and full-screen hero. Ideal for agencies, freelancers, and creatives.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["portfolio", "gallery", "creative"],
+      "demoUrl": "https://portfolio.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/portfolio/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/portfolio-v1.0.0/portfolio.zip",
+      "verified": true,
+      "downloads": 1760,
+      "compatibleWith": "^0.6.0"
+    },
+    {
+      "slug": "landing",
+      "name": "Landing",
+      "description": "Conversion-focused landing page theme. Works seamlessly with the Visual Page Builder for drag-and-drop section composition.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["landing", "page-builder", "marketing"],
+      "demoUrl": "https://landing.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/landing/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/landing-v1.0.0/landing.zip",
+      "verified": true,
+      "downloads": 1320,
+      "compatibleWith": "^0.6.0"
+    },
+    {
+      "slug": "starter",
+      "name": "Starter",
+      "description": "Minimal starter theme for theme developers. Includes all required templates, a layout component, and commented-out examples for common patterns.",
+      "author": "Dune Team",
+      "version": "1.0.0",
+      "license": "MIT",
+      "tags": ["starter", "development"],
+      "demoUrl": "https://starter.getdune.org",
+      "screenshotUrl": "https://cdn.getdune.org/themes/starter/screenshot.png",
+      "downloadUrl": "https://github.com/dune-cms/themes/releases/download/starter-v1.0.0/starter.zip",
+      "verified": true,
+      "downloads": 5680,
+      "compatibleWith": "^0.6.0"
     }
   ]
 }

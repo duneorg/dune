@@ -1,26 +1,39 @@
 /**
- * Plugin system — public API for plugin loading and management.
+ * Dune plugin system — public API for plugin loading and management.
  *
- * ## Stability
+ * @module
  *
- * The following exports are STABLE as of v0.3 and follow semver:
- *   - PLUGIN_API_VERSION constant
- *   - DunePlugin interface (src/hooks/types.ts)
- *   - HookEvent and HookContext types (src/hooks/types.ts)
- *   - PluginApi interface (src/hooks/types.ts)
- *   - loadPlugins / loadPluginAdminConfigs functions
+ * ## Stability guarantee (v0.6+)
  *
- * Breaking changes to these exports will only occur in major version bumps.
+ * The following are **frozen** as of v0.6.0 and will not change before v1.0:
+ *
+ * - `PLUGIN_API_VERSION` — runtime version constant
+ * - `DunePlugin` interface (defined in `@dune/core`)
+ * - `HookEvent` union (additive only — new events may be added in minor versions)
+ * - `HookContext` interface
+ * - `PluginApi` interface
+ * - `loadPlugins` / `loadPluginAdminConfigs` functions
+ *
+ * @example
+ * ```ts
+ * import { PLUGIN_API_VERSION } from "@dune/core/plugins";
+ * if (PLUGIN_API_VERSION !== "0.6") console.warn("Unexpected API version");
+ * ```
+ *
+ * @since 0.6.0
  */
 
 /**
- * Current plugin API version. Plugin authors can check this at runtime to
- * conditionally enable features or warn about incompatibility:
+ * Current plugin API version.
  *
- *   import { PLUGIN_API_VERSION } from "jsr:@dune-cms/core/plugins";
- *   if (PLUGIN_API_VERSION !== "0.3") console.warn("Unexpected API version");
+ * Plugin authors should check this at load time and warn (not error) if it
+ * doesn't match the version they were written against. The minor component
+ * may advance when new hook events are added; the major component advances
+ * only on breaking changes.
+ *
+ * @since 0.3.0
  */
-export const PLUGIN_API_VERSION = "0.3";
+export const PLUGIN_API_VERSION = "0.6";
 
 export { loadPlugins, loadPluginAdminConfigs } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
