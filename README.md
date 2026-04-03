@@ -211,4 +211,4 @@ deno run -A src/cli.ts dev --root docs
 
 ## License
 
-MIT
+MIT — © 2026 [zumbrunn](https://zumbrunn.com)
