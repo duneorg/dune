@@ -148,13 +148,17 @@ async function main() {
   // already started with one. This ensures dynamically-imported theme TSX files
   // can resolve bare specifiers (preact, etc.) from the site's import map.
   // DUNE_CONFIG_APPLIED env var prevents an infinite re-exec loop.
-  if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new") {
+  //
+  // When running from local source (file:// URL) we skip the re-exec entirely:
+  // dune's own deno.json already provides @std/*, preact, jsxImportSource etc.,
+  // so there is nothing to gain and no import map to restore.
+  if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
+      !import.meta.url.startsWith("file://")) {
     const { resolve, join: joinPath } = await import("@std/path");
     const absRoot = resolve(root);
     const siteDenoJson = joinPath(absRoot, "deno.json");
     try {
       await Deno.stat(siteDenoJson);
-      // Site has a deno.json — re-exec with --config so theme imports work
       const cmd = new Deno.Command(Deno.execPath(), {
         args: ["run", "-A", `--config=${siteDenoJson}`, import.meta.url, ...args],
         env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1" },
