@@ -94,6 +94,14 @@ export const MIME_TYPES: Record<string, string> = {
   json: "application/json",
   txt: "text/plain",
   xml: "application/xml",
+  // Video
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  ogg: "video/ogg",
+  // Audio
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
   // Other
   pdf: "application/pdf",
 };

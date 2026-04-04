@@ -1,6 +1,6 @@
 # Dune
 
-A flat-file CMS built on [Deno](https://deno.land/) and [Preact](https://preactjs.com/). Content is files. No database required.
+A flat-file CMS built for [Deno](https://deno.land/) and [Fresh](https://fresh.deno.dev/). Content is files. No database required.
 
 > **Status: v0.6** — Pre-1.0. Minor releases may include breaking changes per semver convention.
 
