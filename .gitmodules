@@ -1,3 +1,3 @@
 [submodule "docs/content"]
 	path = docs/content
-	url = git@github.com:duneorg/dune-docs.git
+	url = https://github.com/duneorg/dune-docs.git
