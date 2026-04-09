@@ -44,6 +44,24 @@ import {
   migrateFromHugo,
 } from "./cli/migrate.ts";
 
+/** Resolve version string and install source from runtime context. */
+function resolveVersion(): { version: string; source: string } {
+  const url = import.meta.url;
+  if (url.startsWith("file://")) {
+    try {
+      const denoJsonPath = new URL("../deno.json", url).pathname;
+      const denoJson = JSON.parse(Deno.readTextFileSync(denoJsonPath));
+      const root = new URL("../", url).pathname.replace(/\/$/, "");
+      return { version: denoJson.version ?? "unknown", source: `source: ${root}` };
+    } catch {
+      return { version: "unknown", source: "source (local)" };
+    }
+  }
+  // JSR URL: https://jsr.io/@dune/core/0.6.9/src/cli.ts
+  const jsrMatch = url.match(/jsr\.io\/@dune\/core\/([^/]+)\//);
+  return { version: jsrMatch?.[1] ?? "unknown", source: "jsr:@dune/core" };
+}
+
 const HELP = `
 dune — Flat-file CMS for Deno Fresh
 
@@ -84,6 +102,7 @@ Options:
   --port <n>          Server port (default: 3000)
   --root <dir>        Site root directory (default: .)
   --debug             Enable debug output
+  --version, -V       Show version and install source
   --help, -h          Show this help message
 
 Static build options (used with build --static):
@@ -102,6 +121,12 @@ async function main() {
 
   if (!command || command === "--help" || command === "-h") {
     console.log(HELP.trim());
+    Deno.exit(0);
+  }
+
+  if (command === "--version" || command === "-V") {
+    const { version, source } = resolveVersion();
+    console.log(`dune ${version} (${source})`);
     Deno.exit(0);
   }
 
