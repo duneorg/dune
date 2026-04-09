@@ -281,6 +281,20 @@ export function getParentPath(sourcePath: string): string | null {
 }
 
 /**
+ * Effective sort order for a page.
+ *
+ * Pages without a numeric prefix have `order: 0`.  Treating 0 arithmetically
+ * would sort them before `01.` pages, which is wrong.  This helper maps 0 →
+ * MAX_SAFE_INTEGER so unprefixed items always sort after explicitly-ordered ones.
+ *
+ * Two unprefixed items both produce MAX_SAFE_INTEGER and compare as equal-order,
+ * falling through to the secondary sort key (usually route).
+ */
+export function effectiveOrder(order: number): number {
+  return order > 0 ? order : Number.MAX_SAFE_INTEGER;
+}
+
+/**
  * Check if a path segment indicates it's within a drafts folder.
  */
 export function isInDraftsFolder(sourcePath: string): boolean {

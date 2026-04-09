@@ -21,6 +21,7 @@ import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { PageIndex } from "../content/types.ts";
+import { effectiveOrder } from "../content/path-utils.ts";
 
 export interface ApiHandlerOptions {
   engine: DuneEngine;
@@ -283,7 +284,7 @@ async function handlePageList(url: URL, engine: DuneEngine) {
         case "title":
           return a.title.localeCompare(b.title) * mult;
         case "order":
-          return (a.order - b.order) * mult;
+          return (effectiveOrder(a.order) - effectiveOrder(b.order)) * mult;
         default:
           return 0;
       }

@@ -24,7 +24,7 @@ import type {
   RenderContext,
   TemplateComponent,
 } from "./types.ts";
-import { dirPathToRoute, isMediaFile } from "./path-utils.ts";
+import { dirPathToRoute, effectiveOrder, isMediaFile } from "./path-utils.ts";
 
 export interface PageLoaderOptions {
   storage: StorageAdapter;
@@ -146,7 +146,7 @@ export async function loadPage(
         const pParent = dirname(pDir);
         return pParent === myDir && !p.isModule;
       });
-      childPages.sort((a, b) => a.order - b.order || a.route.localeCompare(b.route));
+      childPages.sort((a, b) => effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route));
       return Promise.all(childPages.map((c) => options.loadPage(c.sourcePath)));
     }),
 
@@ -156,7 +156,7 @@ export async function loadPage(
         if (p.sourcePath === index.sourcePath) return false;
         return p.parentPath === index.parentPath && !p.isModule;
       });
-      siblingPages.sort((a, b) => a.order - b.order || a.route.localeCompare(b.route));
+      siblingPages.sort((a, b) => effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route));
       return Promise.all(siblingPages.map((s) => options.loadPage(s.sourcePath)));
     }),
 
@@ -168,7 +168,7 @@ export async function loadPage(
         const pParent = dirname(pDir);
         return pParent === myDir && p.isModule;
       });
-      moduleParts.sort((a, b) => a.order - b.order);
+      moduleParts.sort((a, b) => effectiveOrder(a.order) - effectiveOrder(b.order));
       return Promise.all(moduleParts.map((m) => options.loadPage(m.sourcePath)));
     }),
   };

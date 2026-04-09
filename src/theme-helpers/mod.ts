@@ -157,6 +157,7 @@ export function getSearchUrl(query: string, base?: string): string {
 // ─── Sorting ──────────────────────────────────────────────────────────────────
 
 import type { PageIndex } from "../content/types.ts";
+import { effectiveOrder } from "../content/path-utils.ts";
 
 /**
  * Sort a `PageIndex[]` by a given field.
@@ -181,7 +182,7 @@ export function sortPages(
       return sign * (ad - bd);
     }
     // "order"
-    return sign * (a.order - b.order);
+    return sign * (effectiveOrder(a.order) - effectiveOrder(b.order));
   });
 }
 

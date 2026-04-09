@@ -14,6 +14,7 @@
 
 import type { SiteConfig } from "../config/types.ts";
 import type { PageIndex } from "../content/types.ts";
+import { effectiveOrder } from "../content/path-utils.ts";
 
 export interface RouteMatch {
   type: "page" | "redirect";
@@ -213,7 +214,7 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
       }
       return items.sort((a, b) => {
         if (a.depth !== b.depth) return a.depth - b.depth;
-        if (a.order !== b.order) return a.order - b.order;
+        if (a.order !== b.order) return effectiveOrder(a.order) - effectiveOrder(b.order);
         return a.route.localeCompare(b.route);
       });
     },

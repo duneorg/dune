@@ -11,6 +11,7 @@
  */
 
 import { dirname } from "@std/path";
+import { effectiveOrder } from "../content/path-utils.ts";
 import type {
   Collection,
   CollectionDefinition,
@@ -329,7 +330,7 @@ export function createCollectionEngine(
           result = a.title.localeCompare(b.title);
           break;
         case "order":
-          result = a.order - b.order;
+          result = effectiveOrder(a.order) - effectiveOrder(b.order);
           break;
         case "random":
           result = Math.random() - 0.5;
@@ -337,7 +338,7 @@ export function createCollectionEngine(
         default:
           // Custom field — try to compare as strings
           // Custom fields would need full Page objects; for now, use order
-          result = a.order - b.order;
+          result = effectiveOrder(a.order) - effectiveOrder(b.order);
           break;
       }
 
@@ -621,7 +622,7 @@ function createCollectionObject(
           case "title":
             return a.title.localeCompare(b.title) * mult;
           case "order":
-            return (a.order - b.order) * mult;
+            return (effectiveOrder(a.order) - effectiveOrder(b.order)) * mult;
           default:
             return 0;
         }

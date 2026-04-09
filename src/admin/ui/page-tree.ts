@@ -9,6 +9,7 @@
  */
 
 import type { PageIndex } from "../../content/types.ts";
+import { effectiveOrder } from "../../content/path-utils.ts";
 
 export const PAGES_PER_PAGE = 50;
 
@@ -24,7 +25,7 @@ interface TreeNode {
 export function buildPageTree(pages: PageIndex[]): TreeNode[] {
   const sorted = [...pages].sort((a, b) => {
     if (a.depth !== b.depth) return a.depth - b.depth;
-    return a.order - b.order;
+    return effectiveOrder(a.order) - effectiveOrder(b.order);
   });
 
   const roots: TreeNode[] = [];

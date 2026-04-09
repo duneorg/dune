@@ -357,6 +357,8 @@ function isFlatFilePath(sp: string): boolean {
  */
 function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
   const nonRoutable: PageIndex[] = [];
+  // Key is "route::language" — multilingual variants share a route but differ
+  // by language, which is intentional and not a collision.
   const routeMap = new Map<string, PageIndex>();
 
   for (const page of pages) {
@@ -364,7 +366,8 @@ function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
       nonRoutable.push(page);
       continue;
     }
-    const existing = routeMap.get(page.route);
+    const key = `${page.route}::${page.language}`;
+    const existing = routeMap.get(key);
     if (existing) {
       const existingIsFlat = isFlatFilePath(existing.sourcePath);
       const newIsFlat = isFlatFilePath(page.sourcePath);
@@ -374,13 +377,13 @@ function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
       } else if (existingIsFlat && !newIsFlat) {
         // New directory-based page wins — replace
         console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Directory-based page wins.`);
-        routeMap.set(page.route, page);
+        routeMap.set(key, page);
       } else {
         // Both same type — keep first
         console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Keeping first.`);
       }
     } else {
-      routeMap.set(page.route, page);
+      routeMap.set(key, page);
     }
   }
 
@@ -415,7 +418,9 @@ function buildPageIndex(
   const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
   const folderName = parts.length > 1 ? parts[parts.length - 2] : "";
   const folderInfo = parseFolderName(folderName);
-  const order = flatMatch ? parseInt(flatMatch[1], 10) : folderInfo.order;
+  const order = frontmatter.order != null
+    ? frontmatter.order
+    : flatMatch ? parseInt(flatMatch[1], 10) : folderInfo.order;
 
   // Template: frontmatter override > filename convention
   const template = frontmatter.template ?? defaultTemplate;

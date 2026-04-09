@@ -25,6 +25,8 @@ export interface PageFrontmatter {
    *  Use when the SEO title differs from the desired on-page heading. */
   heading?: string;
   slug?: string;
+  /** Explicit sort order. Overrides the numeric folder/filename prefix when set. */
+  order?: number;
   template?: string;
   /** Layout control (TSX content files): string = named layout, false = no layout */
   layout?: string | false;
