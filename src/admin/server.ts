@@ -63,7 +63,7 @@
 
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import { dirname, basename, join } from "@std/path";
-import { parseContentFilename, isMediaFile } from "../content/path-utils.ts";
+import { parseContentFilename, isMediaFile, dirPathToRoute } from "../content/path-utils.ts";
 import { getMimeType } from "../content/page-loader.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { AuthMiddleware } from "./auth/middleware.ts";
@@ -2515,7 +2515,7 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
       const bytes = new Uint8Array(await file.arrayBuffer());
       await storage.write(destPath, bytes);
 
-      const url = `/content-media/${pageDir}/${safeName}`;
+      const url = `${dirPathToRoute(pageDir)}/${safeName}`;
       const mimeType = getMimeType(safeName);
       return jsonResponse({
         ok: true,

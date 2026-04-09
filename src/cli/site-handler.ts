@@ -43,6 +43,7 @@ import {
 } from "../feeds/generator.ts";
 import { serveStagedPreview } from "../staging/preview.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
+import { isMediaFile } from "../content/path-utils.ts";
 
 // ── Production ────────────────────────────────────────────────────────────────
 
@@ -336,56 +337,78 @@ export function createProductionSiteHandler(
               renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
             );
       } else if (url.pathname.startsWith("/content-media/")) {
-        // Media (image processing first, then raw file)
+        // Legacy /content-media/* path — kept for backward compat
         const imageResult = await imageHandler(req);
         response = imageResult ?? await routes.mediaHandler(req);
       } else {
-        // ── Content routes ────────────────────────────────────────────────
-        // 1. Compute ETag from PageIndex (fast — no file I/O).
-        // 2. Check page cache (optional in-process cache).
-        // 3. Handle If-None-Match → 304.
-        // 4. Render and add Cache-Control + ETag headers.
-        // 5. Store rendered HTML in page cache when enabled.
-        const pageIndex = engine.pages.find((p) => p.route === url.pathname);
-        const etag = pageIndex ? await computeEtag(pageIndex) : null;
-        const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
-        const cacheControlValue = buildCacheControl(policy);
+        // Stat-first: if the URL ends in a known media extension, check for
+        // a co-located content file before routing to the page handler.
+        const lastSegment = url.pathname.split("/").pop() ?? "";
+        let mediaServed = false;
+        if (lastSegment && isMediaFile(lastSegment)) {
+          const mediaPath = url.pathname.slice(1); // strip leading /
+          const media = await engine.serveMedia(mediaPath);
+          if (media) {
+            const imageResult = await imageHandler(req);
+            response = imageResult ?? new Response(media.data as BodyInit, {
+              headers: {
+                "Content-Type": media.contentType,
+                "Content-Length": String(media.size),
+                "Cache-Control": "public, max-age=3600",
+              },
+            });
+            mediaServed = true;
+          }
+        }
 
-        // Check in-process cache before rendering.
-        if (pageCache && etag) {
-          const cached = pageCache.get(url.pathname);
-          if (cached && cached.etag === etag) {
-            if (etagMatches(req.headers.get("If-None-Match"), etag)) {
-              response = new Response(null, {
-                status: 304,
-                headers: { "ETag": etag, "Cache-Control": cacheControlValue },
-              });
+        if (!mediaServed) {
+          // ── Content routes ────────────────────────────────────────────────
+          // 1. Compute ETag from PageIndex (fast — no file I/O).
+          // 2. Check page cache (optional in-process cache).
+          // 3. Handle If-None-Match → 304.
+          // 4. Render and add Cache-Control + ETag headers.
+          // 5. Store rendered HTML in page cache when enabled.
+          const pageIndex = engine.pages.find((p) => p.route === url.pathname);
+          const etag = pageIndex ? await computeEtag(pageIndex) : null;
+          const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
+          const cacheControlValue = buildCacheControl(policy);
+
+          // Check in-process cache before rendering.
+          if (pageCache && etag) {
+            const cached = pageCache.get(url.pathname);
+            if (cached && cached.etag === etag) {
+              if (etagMatches(req.headers.get("If-None-Match"), etag)) {
+                response = new Response(null, {
+                  status: 304,
+                  headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+                });
+              } else {
+                response = await maybeCompress(
+                  req,
+                  withSecurityHeaders(new Response(cached.body as BodyInit, {
+                    status: 200,
+                    headers: {
+                      "Content-Type": "text/html; charset=utf-8",
+                      "ETag": etag,
+                      "Cache-Control": cacheControlValue,
+                    },
+                  })),
+                );
+              }
             } else {
-              response = await maybeCompress(
-                req,
-                withSecurityHeaders(new Response(cached.body as BodyInit, {
-                  status: 200,
-                  headers: {
-                    "Content-Type": "text/html; charset=utf-8",
-                    "ETag": etag,
-                    "Cache-Control": cacheControlValue,
-                  },
-                })),
-              );
+              response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
             }
+          } else if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
+            // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
+            response = new Response(null, {
+              status: 304,
+              headers: { "ETag": etag, "Cache-Control": cacheControlValue },
+            });
           } else {
             response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
           }
-        } else if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
-          // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
-          response = new Response(null, {
-            status: 304,
-            headers: { "ETag": etag, "Cache-Control": cacheControlValue },
-          });
-        } else {
-          response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
+          // ──────────────────────────────────────────────────────────────────
         }
-        // ──────────────────────────────────────────────────────────────────
       }
     } catch (err) {
       if (debug) {
@@ -516,7 +539,7 @@ export function createDevSiteContext(
   const handler = async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const startPerf = performance.now();
-    let response: Response;
+    let response: Response = new Response("Internal Server Error", { status: 500 });
 
     try {
       if (url.pathname === "/__dune_reload") {
@@ -590,7 +613,28 @@ export function createDevSiteContext(
         const imageResult = await imageHandler(req);
         response = imageResult ?? await routes.mediaHandler(req);
       } else {
-        response = await routes.contentHandler(req, renderJsx);
+        // Stat-first: if the URL ends in a known media extension, check for
+        // a co-located content file before routing to the page handler.
+        const lastSegment = url.pathname.split("/").pop() ?? "";
+        let devMediaServed = false;
+        if (lastSegment && isMediaFile(lastSegment)) {
+          const mediaPath = url.pathname.slice(1); // strip leading /
+          const media = await engine.serveMedia(mediaPath);
+          if (media) {
+            const imageResult = await imageHandler(req);
+            response = imageResult ?? new Response(media.data as BodyInit, {
+              headers: {
+                "Content-Type": media.contentType,
+                "Content-Length": String(media.size),
+                "Cache-Control": "public, max-age=3600",
+              },
+            });
+            devMediaServed = true;
+          }
+        }
+        if (!devMediaServed) {
+          response = await routes.contentHandler(req, renderJsx);
+        }
       }
 
       // Inject feed links + live-reload script + RTL direction into HTML

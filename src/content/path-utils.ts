@@ -119,12 +119,16 @@ export function parseContentFilename(
 
   const baseName = name.slice(0, dotIndex);
 
+  // Strip numeric prefix from filename stem for flat pages (e.g. "01.my-article" → "my-article")
+  const numMatch = baseName.match(/^(\d+)\.(.*)/);
+  const templateBase = numMatch ? numMatch[2] : baseName;
+
   // Check for language variant: {template}.{lang} when lang is in supported list
   if (supportedLanguages && supportedLanguages.length > 0 && format !== "tsx") {
-    const lastDot = baseName.lastIndexOf(".");
+    const lastDot = templateBase.lastIndexOf(".");
     if (lastDot !== -1) {
-      const possibleLang = baseName.slice(lastDot + 1);
-      const template = baseName.slice(0, lastDot);
+      const possibleLang = templateBase.slice(lastDot + 1);
+      const template = templateBase.slice(0, lastDot);
       if (
         possibleLang.length >= 2 &&
         supportedLanguages.includes(possibleLang.toLowerCase())
@@ -141,11 +145,28 @@ export function parseContentFilename(
   }
 
   return {
-    template: format === "tsx" ? "self" : baseName,
+    template: format === "tsx" ? "self" : templateBase,
     format,
     ext,
     raw: name,
   };
+}
+
+/**
+ * Convert a content directory path to a URL route prefix.
+ * Strips numeric prefixes from each segment.
+ *
+ * Examples:
+ *   "04.blog/01.post"  → "/blog/post"
+ *   "04.blog"          → "/blog"
+ *   ""                 → ""
+ */
+export function dirPathToRoute(dirPath: string): string {
+  if (!dirPath || dirPath === "." || dirPath === "") return "";
+  return "/" + dirPath.split("/")
+    .filter(Boolean)
+    .map((seg) => parseFolderName(seg).slug)
+    .join("/");
 }
 
 /**
@@ -216,8 +237,14 @@ export function sourcePathToRoute(
   // Drafts and modules are non-routable
   if (hasDraft || hasModule) return null;
 
-  // Use frontmatter slug if provided, otherwise use the last folder
-  if (frontmatterSlug) {
+  // If the filename itself has a numeric prefix (e.g. "01.my-article.md"),
+  // this is a "flat page" — the stem contributes to the route.
+  const filename = parts[parts.length - 1];
+  const filenameStem = filename.slice(0, filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length);
+  const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
+  if (flatMatch) {
+    segments.push(frontmatterSlug ?? flatMatch[2]);
+  } else if (frontmatterSlug) {
     segments[segments.length - 1] = frontmatterSlug;
   }
 

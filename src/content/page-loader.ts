@@ -24,7 +24,7 @@ import type {
   RenderContext,
   TemplateComponent,
 } from "./types.ts";
-import { isMediaFile } from "./path-utils.ts";
+import { dirPathToRoute, isMediaFile } from "./path-utils.ts";
 
 export interface PageLoaderOptions {
   storage: StorageAdapter;
@@ -68,8 +68,11 @@ export async function loadPage(
   const frontmatter = await handler.extractFrontmatter(raw, contentFilePath);
   const rawContent = handler.extractBody(raw, contentFilePath);
 
+  // Compute the URL prefix for co-located media (based on content directory, not page route)
+  const contentDirPath = dirname(index.sourcePath); // e.g. "04.blog/01.post"
+  const contentDirRoute = dirPathToRoute(contentDirPath); // e.g. "/blog/post"
   // Discover co-located media
-  const media = await discoverMedia(storage, contentDir, index.sourcePath);
+  const media = await discoverMedia(storage, contentDir, index.sourcePath, contentDirRoute);
 
   // Build the page with lazy accessors
   const page: Page = {
@@ -227,6 +230,7 @@ async function discoverMedia(
   storage: StorageAdapter,
   contentDir: string,
   sourcePath: string,
+  dirRoute: string,
 ): Promise<MediaFile[]> {
   const dir = join(contentDir, dirname(sourcePath));
   const media: MediaFile[] = [];
@@ -243,9 +247,8 @@ async function discoverMedia(
       // Determine MIME type from extension
       const mimeType = getMimeType(entry.name);
 
-      // Build the served URL
-      const sourceDir = dirname(sourcePath);
-      const url = `/content-media/${sourceDir}/${entry.name}`;
+      // Build the served URL using the route-based path
+      const url = `${dirRoute}/${entry.name}`;
 
       // Check for sidecar metadata
       let meta: Record<string, unknown> = {};
@@ -291,13 +294,15 @@ async function discoverMedia(
 function buildMinimalRenderContext(
   media: MediaFile[],
   sourcePath: string,
-  contentDir: string,
+  _contentDir: string,
 ): RenderContext {
   return {
     media: {
       url: (filename: string) => {
         const file = media.find((m) => m.name === filename);
-        return file?.url ?? `/content-media/${dirname(sourcePath)}/${filename}`;
+        if (file) return file.url;
+        const dirRoute = dirPathToRoute(dirname(sourcePath));
+        return `${dirRoute}/${filename}`;
       },
       get: (filename: string) => media.find((m) => m.name === filename) ?? null,
       list: () => media,

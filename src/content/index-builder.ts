@@ -20,6 +20,7 @@ import type { BlueprintMap } from "../blueprints/types.ts";
 import { validateFrontmatter } from "../blueprints/validator.ts";
 import {
   calculateDepth,
+  dirPathToRoute,
   getParentPath,
   isContentFile,
   isInDraftsFolder,
@@ -182,14 +183,17 @@ export async function buildIndex(
   // Sort pages by route for consistent ordering
   pages.sort((a, b) => a.route.localeCompare(b.route));
 
+  // Deduplicate routes: directory-based pages win over flat files.
+  const finalPages = deduplicateRoutes(pages);
+
   const duration = performance.now() - start;
-  const homeSlug = siteHome ?? detectHomeSlug(pages);
+  const homeSlug = siteHome ?? detectHomeSlug(finalPages);
 
   return {
-    pages,
+    pages: finalPages,
     taxonomyMap,
     scanned,
-    indexed: pages.length,
+    indexed: finalPages.length,
     errors,
     duration,
     homeSlug,
@@ -319,14 +323,17 @@ export async function updateIndex(
 
   pages.sort((a, b) => a.route.localeCompare(b.route));
 
+  // Deduplicate routes: directory-based pages win over flat files.
+  const finalPages = deduplicateRoutes(pages);
+
   const duration = performance.now() - start;
-  const homeSlug = siteHome ?? detectHomeSlug(pages);
+  const homeSlug = siteHome ?? detectHomeSlug(finalPages);
 
   return {
-    pages,
+    pages: finalPages,
     taxonomyMap,
     scanned,
-    indexed: pages.length,
+    indexed: finalPages.length,
     errors,
     duration,
     homeSlug,
@@ -334,6 +341,53 @@ export async function updateIndex(
 }
 
 // === Internal helpers ===
+
+/** Check whether a sourcePath is a flat-file (filename stem has a numeric prefix). */
+function isFlatFilePath(sp: string): boolean {
+  const parts = sp.split("/");
+  const fn = parts[parts.length - 1];
+  const stem = fn.slice(0, fn.lastIndexOf(".") >= 0 ? fn.lastIndexOf(".") : fn.length);
+  return /^\d+\./.test(stem);
+}
+
+/**
+ * Deduplicate routable pages by route.
+ * Directory-based pages (non-flat) win over flat-file pages when routes collide.
+ * Among same-type collisions the first-encountered page wins.
+ */
+function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
+  const nonRoutable: PageIndex[] = [];
+  const routeMap = new Map<string, PageIndex>();
+
+  for (const page of pages) {
+    if (!page.route) {
+      nonRoutable.push(page);
+      continue;
+    }
+    const existing = routeMap.get(page.route);
+    if (existing) {
+      const existingIsFlat = isFlatFilePath(existing.sourcePath);
+      const newIsFlat = isFlatFilePath(page.sourcePath);
+      if (!existingIsFlat && newIsFlat) {
+        // Existing directory-based page wins
+        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Directory-based page wins.`);
+      } else if (existingIsFlat && !newIsFlat) {
+        // New directory-based page wins — replace
+        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Directory-based page wins.`);
+        routeMap.set(page.route, page);
+      } else {
+        // Both same type — keep first
+        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Keeping first.`);
+      }
+    } else {
+      routeMap.set(page.route, page);
+    }
+  }
+
+  const result = [...nonRoutable, ...routeMap.values()];
+  result.sort((a, b) => a.route.localeCompare(b.route));
+  return result;
+}
 
 /** Build a single PageIndex entry from parsed data. */
 function buildPageIndex(
@@ -354,10 +408,14 @@ function buildPageIndex(
   // but with an empty route
   const finalRoute = route ?? "";
 
-  // Determine order from folder prefix
+  // Determine order: flat files use their own numeric prefix; directory-based use folder prefix
   const parts = sourcePath.split("/");
+  const filename = parts[parts.length - 1];
+  const filenameStem = filename.slice(0, filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length);
+  const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
   const folderName = parts.length > 1 ? parts[parts.length - 2] : "";
   const folderInfo = parseFolderName(folderName);
+  const order = flatMatch ? parseInt(flatMatch[1], 10) : folderInfo.order;
 
   // Template: frontmatter override > filename convention
   const template = frontmatter.template ?? defaultTemplate;
@@ -387,7 +445,7 @@ function buildPageIndex(
     visible: frontmatter.visible ?? true,
     routable: frontmatter.routable ?? true,
     isModule,
-    order: folderInfo.order,
+    order,
     depth: calculateDepth(sourcePath),
     parentPath: getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},
@@ -471,26 +529,26 @@ export function detectHomeSlug(pages: PageIndex[]): string {
  * Derive the cover image URL from the page's `image` frontmatter field.
  *
  * The image field is expected to be a filename (e.g. "cover.jpg") co-located
- * with the content file. The URL is built from the content-media serving prefix
- * and the page's directory path.
+ * with the content file. The URL is built from the route-based path for the
+ * page's directory (numeric prefixes stripped).
  *
  * @example
  *   sourcePath: "02.blog/01.post/default.md"
  *   image: "cover.jpg"
- *   → "/content-media/02.blog/01.post/cover.jpg"
+ *   → "/blog/post/cover.jpg"
  */
 function buildCoverImageUrl(sourcePath: string, image: string | undefined): string | undefined {
   if (!image || typeof image !== "string") return undefined;
   const dir = sourcePath.split("/").slice(0, -1).join("/");
   if (!dir) return undefined;
-  return `/content-media/${dir}/${image}`;
+  return `${dirPathToRoute(dir)}/${image}`;
 }
 
 /**
  * Derive the file redirect URL for a file-type page.
  *
  * Accepts either:
- *   - `file` frontmatter (filename only) → auto-computes `/content-media/{dir}/{file}`
+ *   - `file` frontmatter (filename only) → auto-computes `/{route-prefix}/{file}`
  *   - `file_url` frontmatter (explicit URL) → used as-is (backward compat)
  *
  * `file` takes precedence over `file_url` when both are present.
@@ -503,7 +561,7 @@ function buildFileUrl(
   if (file && typeof file === "string") {
     const dir = sourcePath.split("/").slice(0, -1).join("/");
     if (!dir) return undefined;
-    return `/content-media/${dir}/${file}`;
+    return `${dirPathToRoute(dir)}/${file}`;
   }
   if (fileUrl && typeof fileUrl === "string") {
     return fileUrl;

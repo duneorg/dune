@@ -45,11 +45,6 @@ export function createImageHandler(options: ImageHandlerOptions): ImageHandler {
   ): Promise<Response | null> {
     const url = new URL(req.url);
 
-    // Only handle /content-media/* paths
-    if (!url.pathname.startsWith("/content-media/")) {
-      return null;
-    }
-
     // Parse image processing options from query params
     const imageOptions = processor.parseOptions(url.searchParams);
 
@@ -58,8 +53,10 @@ export function createImageHandler(options: ImageHandlerOptions): ImageHandler {
       return null;
     }
 
-    // Extract the media path (without /content-media/ prefix)
-    const mediaPath = url.pathname.replace(/^\/content-media\//, "");
+    // Extract media path: handle both /content-media/* (legacy) and direct paths (new)
+    const mediaPath = url.pathname.startsWith("/content-media/")
+      ? url.pathname.replace(/^\/content-media\//, "")
+      : url.pathname.slice(1);
 
     // Check if this is a processable image file
     const ext = mediaPath.split(".").pop()?.toLowerCase() ?? "";

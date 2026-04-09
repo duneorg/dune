@@ -15,6 +15,7 @@
  */
 
 import { join, dirname } from "@std/path";
+import { parseFolderName } from "../content/path-utils.ts";
 import { ensureDir } from "@std/fs";
 import type { BootstrapResult } from "../cli/bootstrap.ts";
 import type { SitePrebuilt } from "../cli/site-handler.ts";
@@ -176,7 +177,7 @@ export async function buildStatic(
 
   let assetsWritten = 0;
   assetsWritten += await copyStaticAssets(root, outDir, config, pluginAssetDirs, sharedThemesDir);
-  assetsWritten += await copyContentMedia(join(root, contentDir), join(outDir, "content-media"));
+  assetsWritten += await copyContentMedia(join(root, contentDir), outDir);
 
   // ── Hybrid config ─────────────────────────────────────────────────────────
 
@@ -423,14 +424,43 @@ async function copyStaticAssets(
 }
 
 /**
- * Mirror the content directory into `outDir/content-media/`, copying only
- * non-content files (images, PDFs, videos, downloads, etc.).
+ * Copy co-located media files to their route-based output paths.
+ * e.g. content/04.blog/01.post/image.jpg → outDir/blog/post/image.jpg
  */
-async function copyContentMedia(contentDir: string, mediaOutDir: string): Promise<number> {
-  return copyDir(contentDir, mediaOutDir, (name) => {
-    const ext = name.split(".").pop()?.toLowerCase() ?? "";
-    return !CONTENT_EXTENSIONS.has(ext);
-  });
+async function copyContentMedia(contentRoot: string, outDir: string): Promise<number> {
+  return copyMediaWithRoutes(contentRoot, contentRoot, outDir);
+}
+
+async function copyMediaWithRoutes(src: string, contentRoot: string, outDir: string): Promise<number> {
+  let count = 0;
+  try {
+    const stat = await Deno.stat(src);
+    if (!stat.isDirectory) return 0;
+  } catch {
+    return 0;
+  }
+
+  for await (const entry of Deno.readDir(src)) {
+    const srcPath = join(src, entry.name);
+    if (entry.isDirectory) {
+      count += await copyMediaWithRoutes(srcPath, contentRoot, outDir);
+    } else if (entry.isFile) {
+      const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!CONTENT_EXTENSIONS.has(ext) && !entry.name.endsWith(".meta.yaml") && !entry.name.endsWith(".frontmatter.yaml")) {
+        // Compute the route prefix for this file's containing directory
+        const relDir = src.length > contentRoot.length ? src.slice(contentRoot.length + 1) : "";
+        const routePrefix = relDir
+          ? relDir.split("/").filter(Boolean).map((seg) => parseFolderName(seg).slug).join("/")
+          : "";
+        const destRelPath = routePrefix ? `${routePrefix}/${entry.name}` : entry.name;
+        const destPath = join(outDir, destRelPath);
+        await ensureDir(dirname(destPath));
+        await Deno.copyFile(srcPath, destPath);
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
