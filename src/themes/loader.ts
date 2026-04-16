@@ -96,21 +96,44 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
   const extraTemplateDirs: string[] = [...(options.extraTemplateDirs ?? [])];
 
   // Template component cache (lazy-loaded on first use)
-  const templateCache = new Map<string, TemplateComponent>();
-  const layoutCache = new Map<string, TemplateComponent>();
+  // Each entry stores the component and the mtime at load time so we can
+  // detect file changes without a file watcher (works in production too).
+  interface CacheEntry { component: TemplateComponent; mtime: number; absPath: string }
+  const templateCache = new Map<string, CacheEntry>();
+  const layoutCache = new Map<string, CacheEntry>();
   const localeCache = new Map<string, Record<string, string>>();
 
-  // Hot-reload: version counter for ?v=N cache busting
-  let importVersion = 0;
+  // Per-file import version counters — incremented when a file's mtime changes.
+  const importVersions = new Map<string, number>();
+
+  /**
+   * Get the current mtime for an absolute file path. Returns 0 on error.
+   */
+  async function getMtime(absPath: string): Promise<number> {
+    try {
+      const stat = await Deno.stat(absPath);
+      return stat.mtime?.getTime() ?? 0;
+    } catch {
+      return 0;
+    }
+  }
 
   /**
    * Get the import URL for a theme file.
-   * Version 0 (initial load): plain file URL.
-   * Version 1+ (after clearCache): append ?v=N to bust Deno's module cache.
+   * Uses a per-file version counter so only changed files get re-imported,
+   * not the entire cache.
    */
   function getImportUrl(absPath: string): string {
+    const v = importVersions.get(absPath) ?? 0;
     const base = `file://${absPath}`;
-    return importVersion === 0 ? base : `${base}?v=${importVersion}`;
+    return v === 0 ? base : `${base}?v=${v}`;
+  }
+
+  /**
+   * Bump the per-file import version for a given path.
+   */
+  function bumpVersion(absPath: string): void {
+    importVersions.set(absPath, (importVersions.get(absPath) ?? 0) + 1);
   }
 
   const loader: ThemeLoader = {
@@ -150,14 +173,17 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
      * Follows the theme inheritance chain.
      */
     async loadTemplate(name: string): Promise<LoadedTemplate | null> {
-      // Check cache first
+      // Check cache — but validate mtime so file changes are picked up
+      // without needing a restart (works in both dev and production).
       const cached = templateCache.get(name);
       if (cached) {
-        return {
-          name,
-          component: cached,
-          fromTheme: theme.manifest.name,
-        };
+        const currentMtime = await getMtime(cached.absPath);
+        if (currentMtime === cached.mtime) {
+          return { name, component: cached.component, fromTheme: theme.manifest.name };
+        }
+        // File changed — invalidate this entry and re-import with a bumped version
+        templateCache.delete(name);
+        bumpVersion(cached.absPath);
       }
 
       // Walk the theme chain: child → parent → grandparent
@@ -167,13 +193,14 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
         try {
           if (await storage.exists(templatePath)) {
             const absPath = await resolveAbsPath(templatePath, rootDir);
+            const mtime = await getMtime(absPath);
             const fileUrl = getImportUrl(absPath);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
               // Warn about static layout imports that break hot-reload
               warnStaticLayoutImport(templatePath, storage);
-              templateCache.set(name, component);
+              templateCache.set(name, { component, mtime, absPath });
               return { name, component, fromTheme: current.manifest.name };
             }
           }
@@ -190,11 +217,13 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
         try {
           const stat = await Deno.stat(templatePath);
           if (stat.isFile) {
-            const fileUrl = getImportUrl(templatePath);
+            const absPath = templatePath;
+            const mtime = stat.mtime?.getTime() ?? 0;
+            const fileUrl = getImportUrl(absPath);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
-              templateCache.set(name, component);
+              templateCache.set(name, { component, mtime, absPath });
               return { name, component, fromTheme: "(plugin)" };
             }
           }
@@ -211,9 +240,14 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
      * Used for wrapping .tsx content pages.
      */
     async loadLayout(name: string): Promise<TemplateComponent | null> {
-      // Check cache
+      // Check cache — validate mtime so layout changes are picked up automatically
       const cached = layoutCache.get(name);
-      if (cached) return cached;
+      if (cached) {
+        const currentMtime = await getMtime(cached.absPath);
+        if (currentMtime === cached.mtime) return cached.component;
+        layoutCache.delete(name);
+        bumpVersion(cached.absPath);
+      }
 
       // Walk theme chain
       let current: ResolvedTheme | undefined = theme;
@@ -222,11 +256,12 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
         try {
           if (await storage.exists(layoutPath)) {
             const absPath = await resolveAbsPath(layoutPath, rootDir);
+            const mtime = await getMtime(absPath);
             const fileUrl = getImportUrl(absPath);
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
-              layoutCache.set(name, component);
+              layoutCache.set(name, { component, mtime, absPath });
               return component;
             }
           }
@@ -298,10 +333,12 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
      * forcing Deno to re-evaluate the module.
      */
     clearCache() {
+      // Bump version for all currently cached files so Deno re-imports them
+      for (const { absPath } of templateCache.values()) bumpVersion(absPath);
+      for (const { absPath } of layoutCache.values()) bumpVersion(absPath);
       templateCache.clear();
       layoutCache.clear();
       localeCache.clear();
-      importVersion++;
     },
 
     /**
