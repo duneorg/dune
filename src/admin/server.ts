@@ -3925,13 +3925,18 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
 
       // Redirect back (form POST) — validate Referer is same-origin to prevent open redirect.
       // If Referer is missing, cross-origin, or unparseable, fall back to "/".
+      // Behind a reverse proxy req.url has the internal origin (http://localhost:PORT),
+      // so also accept the public origin derived from Host + X-Forwarded-Proto headers.
       const requestOrigin = new URL(req.url).origin;
+      const host = req.headers.get("host");
+      const proto = req.headers.get("x-forwarded-proto") ?? "https";
+      const publicOrigin = host ? `${proto}://${host}` : null;
       const refererHeader = req.headers.get("referer");
       let redirectPath = "/";
       if (refererHeader) {
         try {
           const refererUrl = new URL(refererHeader);
-          if (refererUrl.origin === requestOrigin) {
+          if (refererUrl.origin === requestOrigin || (publicOrigin && refererUrl.origin === publicOrigin)) {
             // Safe: same-origin — keep the path+query, append ?submitted=1
             refererUrl.searchParams.set("submitted", "1");
             redirectPath = refererUrl.pathname + refererUrl.search;
