@@ -3563,23 +3563,30 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
 
       // Parse body
       const contentType = req.headers.get("content-type") ?? "";
-      let fields: Record<string, string> = {};
+      const multiFields: Record<string, string[]> = {};
       const uploadedFiles: Array<{ key: string; file: File }> = [];
 
       if (contentType.includes("application/json")) {
         const body = await req.json();
         for (const [k, v] of Object.entries(body)) {
-          if (typeof v === "string") fields[k] = v;
+          if (typeof v === "string") multiFields[k] = [v];
+          else if (Array.isArray(v)) multiFields[k] = v.filter((x) => typeof x === "string");
         }
       } else {
         const formData = await req.formData();
         for (const [k, v] of formData.entries()) {
           if (typeof v === "string") {
-            fields[k] = v;
+            (multiFields[k] ??= []).push(v);
           } else if (v instanceof File && v.size > 0) {
             uploadedFiles.push({ key: k, file: v });
           }
         }
+      }
+
+      // Collapse multi-value fields to comma-joined strings
+      let fields: Record<string, string> = {};
+      for (const [k, vs] of Object.entries(multiFields)) {
+        fields[k] = vs.join(", ");
       }
 
       // Honeypot anti-spam
@@ -3803,24 +3810,31 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
       }
 
       const contentType = req.headers.get("content-type") ?? "";
-      let fields: Record<string, string> = {};
+      const multiFields: Record<string, string[]> = {};
       const uploadedFiles: Array<{ key: string; file: File }> = [];
 
       if (contentType.includes("application/json")) {
         const body = await req.json();
         for (const [k, v] of Object.entries(body)) {
-          if (typeof v === "string") fields[k] = v;
+          if (typeof v === "string") multiFields[k] = [v];
+          else if (Array.isArray(v)) multiFields[k] = v.filter((x) => typeof x === "string");
         }
       } else {
         // application/x-www-form-urlencoded or multipart/form-data
         const formData = await req.formData();
         for (const [k, v] of formData.entries()) {
           if (typeof v === "string") {
-            fields[k] = v;
+            (multiFields[k] ??= []).push(v);
           } else if (v instanceof File && v.size > 0) {
             uploadedFiles.push({ key: k, file: v });
           }
         }
+      }
+
+      // Collapse multi-value fields to comma-joined strings
+      let fields: Record<string, string> = {};
+      for (const [k, vs] of Object.entries(multiFields)) {
+        fields[k] = vs.join(", ");
       }
 
       // ── Honeypot anti-spam ────────────────────────────────────────────────
