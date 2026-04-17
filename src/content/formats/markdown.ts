@@ -19,6 +19,7 @@ import type {
   PageFrontmatter,
   RenderContext,
 } from "../types.ts";
+import { resolveMediaRefs } from "./media-resolve.ts";
 
 export class MarkdownHandler implements ContentFormatHandler {
   readonly extensions = [".md"];
@@ -61,7 +62,8 @@ export class MarkdownHandler implements ContentFormatHandler {
    * Render markdown content to HTML.
    *
    * Resolves co-located media references:
-   *   ![alt](photo.jpg) → ![alt](/content-media/02.blog/01.hello-world/photo.jpg)
+   *   ![alt](photo.jpg)  → ![alt](/content-media/02.blog/01.hello-world/photo.jpg)
+   *   [text](doc.pdf)    → [text](/content-media/02.blog/01.hello-world/doc.pdf)
    */
   async renderToHtml(
     page: Page,
@@ -70,49 +72,13 @@ export class MarkdownHandler implements ContentFormatHandler {
     const raw = page.rawContent;
     if (!raw) return "";
 
-    // Resolve relative image/link references to media URLs
-    const resolved = this.resolveMediaReferences(raw, ctx);
+    // Resolve relative image/link references to absolute /content-media/ URLs
+    const resolved = resolveMediaRefs(raw, ctx);
 
     // Parse markdown to HTML
     let html = await this.marked.parse(resolved);
     // Add loading="lazy" to img tags that don't have it
     html = html.replace(/<img(?=\s)(?![^>]*\bloading=)/gi, '<img loading="lazy"');
     return html;
-  }
-
-  /**
-   * Replace relative media references with full URLs.
-   *
-   * Patterns handled:
-   *   ![alt](filename.jpg)           → ![alt](media.url("filename.jpg"))
-   *   ![alt](filename.jpg?width=800) → preserves query string (for v0.2 processing)
-   */
-  private resolveMediaReferences(
-    markdown: string,
-    ctx: RenderContext,
-  ): string {
-    // Match markdown image syntax: ![alt](path)
-    return markdown.replace(
-      /!\[([^\]]*)\]\(([^)]+)\)/g,
-      (_match, alt: string, src: string) => {
-        // Skip absolute URLs and protocol-relative URLs
-        if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("//")) {
-          return `![${alt}](${src})`;
-        }
-
-        // Split filename from query params
-        const [filename, query] = src.split("?", 2);
-
-        // Look up the media file
-        const mediaFile = ctx.media.get(filename);
-        if (mediaFile) {
-          const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
-          return `![${alt}](${url})`;
-        }
-
-        // Not a known media file — leave as-is
-        return `![${alt}](${src})`;
-      },
-    );
   }
 }

@@ -6,6 +6,8 @@ import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert
 import { FormatRegistry } from "../../src/content/formats/registry.ts";
 import { MarkdownHandler } from "../../src/content/formats/markdown.ts";
 import { TsxHandler } from "../../src/content/formats/tsx.ts";
+import { resolveMediaRefs } from "../../src/content/formats/media-resolve.ts";
+import type { RenderContext } from "../../src/content/types.ts";
 
 // === FormatRegistry tests ===
 
@@ -168,6 +170,125 @@ export default function Page() {
   const fm = await handler.extractFrontmatter(raw, "/tmp/test/page.tsx");
   assertEquals(fm.title, "Test Page");
   assertEquals(fm.layout, "landing");
+});
+
+// === resolveMediaRefs tests ===
+
+/** Build a minimal RenderContext with a fixed media map for testing. */
+function makeCtx(files: Record<string, string>): RenderContext {
+  return {
+    media: {
+      url: (name: string) => files[name] ?? name,
+      get: (name: string) =>
+        name in files
+          ? { name, url: files[name], path: name, type: "application/octet-stream", size: 0, meta: {} }
+          : null,
+      list: () =>
+        Object.entries(files).map(([name, url]) => ({
+          name,
+          url,
+          path: name,
+          type: "application/octet-stream",
+          size: 0,
+          meta: {},
+        })),
+    },
+    params: {},
+  };
+}
+
+const mediaCtx = makeCtx({
+  "photo.jpg": "/content-media/blog/my-post/photo.jpg",
+  "doc.pdf": "/content-media/blog/my-post/doc.pdf",
+  "data.csv": "/content-media/blog/my-post/data.csv",
+});
+
+Deno.test("resolveMediaRefs: rewrites image to absolute URL", () => {
+  const input = "![alt](photo.jpg)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "![alt](/content-media/blog/my-post/photo.jpg)");
+});
+
+Deno.test("resolveMediaRefs: rewrites link to absolute URL", () => {
+  const input = "[Download PDF](doc.pdf)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "[Download PDF](/content-media/blog/my-post/doc.pdf)");
+});
+
+Deno.test("resolveMediaRefs: rewrites ./prefixed link", () => {
+  const input = "[CSV](./data.csv)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "[CSV](/content-media/blog/my-post/data.csv)");
+});
+
+Deno.test("resolveMediaRefs: rewrites ./prefixed image", () => {
+  const input = "![photo](./photo.jpg)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "![photo](/content-media/blog/my-post/photo.jpg)");
+});
+
+Deno.test("resolveMediaRefs: preserves query string on image", () => {
+  const input = "![photo](photo.jpg?width=800&format=webp)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "![photo](/content-media/blog/my-post/photo.jpg?width=800&format=webp)");
+});
+
+Deno.test("resolveMediaRefs: preserves query string on link", () => {
+  const input = "[doc](doc.pdf?v=2)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, "[doc](/content-media/blog/my-post/doc.pdf?v=2)");
+});
+
+Deno.test("resolveMediaRefs: leaves absolute http URL untouched", () => {
+  const input = "[link](https://example.com/file.pdf)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves root-relative URL untouched", () => {
+  const input = "[link](/other/page)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves anchor untouched", () => {
+  const input = "[link](#section)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves mailto untouched", () => {
+  const input = "[email](mailto:foo@example.com)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves unknown relative filename untouched", () => {
+  const input = "[file](unknown.zip)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: does not double-rewrite images as links", () => {
+  // An image `![alt](src)` must not also be matched by the link pass
+  const input = "![photo](photo.jpg)";
+  const out = resolveMediaRefs(input, mediaCtx);
+  // Should be a single clean rewrite, not nested or duplicated
+  assertEquals(out, "![photo](/content-media/blog/my-post/photo.jpg)");
+});
+
+Deno.test("resolveMediaRefs: handles mixed content", () => {
+  const input = [
+    "See the ![diagram](photo.jpg) above.",
+    "",
+    "Download the [full report](doc.pdf) or visit [our site](https://example.com).",
+  ].join("\n");
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, [
+    "See the ![diagram](/content-media/blog/my-post/photo.jpg) above.",
+    "",
+    "Download the [full report](/content-media/blog/my-post/doc.pdf) or visit [our site](https://example.com).",
+  ].join("\n"));
 });
 
 Deno.test("TsxHandler: handles nested objects", async () => {

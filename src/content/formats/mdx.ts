@@ -23,6 +23,7 @@ import type {
   RenderContext,
 } from "../types.ts";
 import type { MdxComponentRegistry } from "./mdx-components.ts";
+import { resolveMediaRefs } from "./media-resolve.ts";
 
 export interface MdxHandlerOptions {
   /** Component registry for MDX content (optional — defaults to empty) */
@@ -81,8 +82,8 @@ export class MdxHandler implements ContentFormatHandler {
     const raw = page.rawContent;
     if (!raw) return "";
 
-    // Resolve relative media references (same approach as MarkdownHandler)
-    const resolved = this.resolveMediaReferences(raw, ctx);
+    // Resolve relative image/link references to absolute /content-media/ URLs
+    const resolved = resolveMediaRefs(raw, ctx);
 
     try {
       // Lazy import @mdx-js/mdx (heavy dependency, only load when needed)
@@ -140,37 +141,6 @@ export class MdxHandler implements ContentFormatHandler {
     }
   }
 
-  /**
-   * Replace relative media references with full URLs.
-   * Same pattern as MarkdownHandler — MDX supports standard markdown image syntax.
-   */
-  private resolveMediaReferences(
-    mdx: string,
-    ctx: RenderContext,
-  ): string {
-    return mdx.replace(
-      /!\[([^\]]*)\]\(([^)]+)\)/g,
-      (_match, alt: string, src: string) => {
-        // Skip absolute URLs and protocol-relative URLs
-        if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("//")) {
-          return `![${alt}](${src})`;
-        }
-
-        // Split filename from query params
-        const [filename, query] = src.split("?", 2);
-
-        // Look up the media file
-        const mediaFile = ctx.media.get(filename);
-        if (mediaFile) {
-          const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
-          return `![${alt}](${url})`;
-        }
-
-        // Not a known media file — leave as-is
-        return `![${alt}](${src})`;
-      },
-    );
-  }
 }
 
 /** Escape HTML special characters for safe inline display. */
