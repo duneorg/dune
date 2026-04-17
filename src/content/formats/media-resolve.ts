@@ -93,5 +93,41 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
     },
   );
 
+  // Pass 3: HTML <img src="..."> tags embedded in markdown
+  result = result.replace(
+    /(<img\b[^>]*?\bsrc=")([^"]+)(")/gi,
+    (_match, before: string, src: string, after: string) => {
+      if (isNonRelative(src)) return `${before}${src}${after}`;
+
+      const bare = src.startsWith("./") ? src.slice(2) : src;
+      const [filename, query] = bare.split("?", 2);
+      const mediaFile = ctx.media.get(filename);
+      if (mediaFile) {
+        const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
+        return `${before}${url}${after}`;
+      }
+
+      return `${before}${src}${after}`;
+    },
+  );
+
+  // Pass 4: HTML <a href="..."> tags embedded in markdown
+  result = result.replace(
+    /(<a\b[^>]*?\bhref=")([^"]+)(")/gi,
+    (_match, before: string, href: string, after: string) => {
+      if (isNonRelative(href)) return `${before}${href}${after}`;
+
+      const bare = href.startsWith("./") ? href.slice(2) : href;
+      const [filename, query] = bare.split("?", 2);
+      const mediaFile = ctx.media.get(filename);
+      if (mediaFile) {
+        const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
+        return `${before}${url}${after}`;
+      }
+
+      return `${before}${href}${after}`;
+    },
+  );
+
   return result;
 }

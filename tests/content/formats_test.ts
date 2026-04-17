@@ -277,6 +277,54 @@ Deno.test("resolveMediaRefs: does not double-rewrite images as links", () => {
   assertEquals(out, "![photo](/content-media/blog/my-post/photo.jpg)");
 });
 
+Deno.test("resolveMediaRefs: rewrites HTML img src", () => {
+  const input = `<img src="photo.jpg" alt="test" style="max-width:100%">`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, `<img src="/content-media/blog/my-post/photo.jpg" alt="test" style="max-width:100%">`);
+});
+
+Deno.test("resolveMediaRefs: rewrites HTML img src with attributes before src", () => {
+  const input = `<img alt="test" src="photo.jpg" style="max-width:100%">`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, `<img alt="test" src="/content-media/blog/my-post/photo.jpg" style="max-width:100%">`);
+});
+
+Deno.test("resolveMediaRefs: leaves absolute HTML img src untouched", () => {
+  const input = `<img src="https://example.com/photo.jpg">`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves root-relative HTML img src untouched", () => {
+  const input = `<img src="/static/photo.jpg">`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: rewrites HTML a href to media file", () => {
+  const input = `<a href="doc.pdf">Download</a>`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, `<a href="/content-media/blog/my-post/doc.pdf">Download</a>`);
+});
+
+Deno.test("resolveMediaRefs: leaves absolute HTML a href untouched", () => {
+  const input = `<a href="https://example.com/doc.pdf">link</a>`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves root-relative HTML a href untouched", () => {
+  const input = `<a href="/other/page">link</a>`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
+Deno.test("resolveMediaRefs: leaves unknown relative HTML a href untouched", () => {
+  const input = `<a href="unknown.zip">link</a>`;
+  const out = resolveMediaRefs(input, mediaCtx);
+  assertEquals(out, input);
+});
+
 Deno.test("resolveMediaRefs: handles mixed content", () => {
   const input = [
     "See the ![diagram](photo.jpg) above.",
