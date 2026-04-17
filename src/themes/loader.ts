@@ -96,12 +96,25 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
   const extraTemplateDirs: string[] = [...(options.extraTemplateDirs ?? [])];
 
   // Template component cache (lazy-loaded on first use)
-  // Each entry stores the component and the mtime at load time so we can
-  // detect file changes without a file watcher (works in production too).
-  interface CacheEntry { component: TemplateComponent; mtime: number; absPath: string }
+  // Each entry stores the component, the mtime at load time, and the
+  // timestamp of the last mtime check so we can throttle Deno.stat calls.
+  interface CacheEntry {
+    component: TemplateComponent;
+    mtime: number;
+    absPath: string;
+    /** Timestamp (ms) of the last mtime stat — used to throttle Deno.stat. */
+    lastChecked: number;
+  }
   const templateCache = new Map<string, CacheEntry>();
   const layoutCache = new Map<string, CacheEntry>();
   const localeCache = new Map<string, Record<string, string>>();
+
+  /**
+   * Minimum interval between mtime stat calls per cached file.
+   * Avoids a Deno.stat syscall on every single request while still
+   * detecting file changes within a few seconds.
+   */
+  const MTIME_CHECK_TTL_MS = 5_000;
 
   // Per-file import version counters — incremented when a file's mtime changes.
   const importVersions = new Map<string, number>();
@@ -175,10 +188,17 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
     async loadTemplate(name: string): Promise<LoadedTemplate | null> {
       // Check cache — but validate mtime so file changes are picked up
       // without needing a restart (works in both dev and production).
+      // Mtime checks are throttled by MTIME_CHECK_TTL_MS to avoid a
+      // Deno.stat syscall on every request.
       const cached = templateCache.get(name);
       if (cached) {
+        const now = Date.now();
+        if (now - cached.lastChecked < MTIME_CHECK_TTL_MS) {
+          return { name, component: cached.component, fromTheme: theme.manifest.name };
+        }
         const currentMtime = await getMtime(cached.absPath);
         if (currentMtime === cached.mtime) {
+          cached.lastChecked = now;
           return { name, component: cached.component, fromTheme: theme.manifest.name };
         }
         // File changed — invalidate this entry and re-import with a bumped version
@@ -196,13 +216,12 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const mtime = await getMtime(absPath);
             const fileUrl = getImportUrl(absPath);
             const mod = await import(fileUrl);
+            if (!mod.default) continue;
             const component = mod.default as TemplateComponent;
-            if (component) {
-              // Warn about static layout imports that break hot-reload
-              warnStaticLayoutImport(templatePath, storage);
-              templateCache.set(name, { component, mtime, absPath });
-              return { name, component, fromTheme: current.manifest.name };
-            }
+            // Warn about static layout imports that break hot-reload
+            warnStaticLayoutImport(templatePath, storage);
+            templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
+            return { name, component, fromTheme: current.manifest.name };
           }
         } catch (err) {
           // Template file exists but failed to load — log and continue to parent
@@ -221,11 +240,10 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const mtime = stat.mtime?.getTime() ?? 0;
             const fileUrl = getImportUrl(absPath);
             const mod = await import(fileUrl);
+            if (!mod.default) continue;
             const component = mod.default as TemplateComponent;
-            if (component) {
-              templateCache.set(name, { component, mtime, absPath });
-              return { name, component, fromTheme: "(plugin)" };
-            }
+            templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
+            return { name, component, fromTheme: "(plugin)" };
           }
         } catch {
           // Not in this plugin dir — continue
@@ -240,11 +258,17 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
      * Used for wrapping .tsx content pages.
      */
     async loadLayout(name: string): Promise<TemplateComponent | null> {
-      // Check cache — validate mtime so layout changes are picked up automatically
+      // Check cache — validate mtime so layout changes are picked up automatically.
+      // Throttled by MTIME_CHECK_TTL_MS to avoid per-request Deno.stat calls.
       const cached = layoutCache.get(name);
       if (cached) {
+        const now = Date.now();
+        if (now - cached.lastChecked < MTIME_CHECK_TTL_MS) return cached.component;
         const currentMtime = await getMtime(cached.absPath);
-        if (currentMtime === cached.mtime) return cached.component;
+        if (currentMtime === cached.mtime) {
+          cached.lastChecked = now;
+          return cached.component;
+        }
         layoutCache.delete(name);
         bumpVersion(cached.absPath);
       }
@@ -261,7 +285,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const mod = await import(fileUrl);
             const component = mod.default as TemplateComponent;
             if (component) {
-              layoutCache.set(name, { component, mtime, absPath });
+              layoutCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
               return component;
             }
           }
