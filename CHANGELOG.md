@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.7.3] — 2026-04-17
+
+### Fixed
+
+- **Raw HTML media refs in markdown** — `<img src="file.jpg">` and `<a href="doc.pdf">` tags embedded in markdown content are now rewritten to absolute route-based URLs, matching the existing behaviour for markdown `![](src)` and `[](href)` syntax.
+
+---
+
 ## [0.7.1] — 2026-04-17
 
 ### Fixed
