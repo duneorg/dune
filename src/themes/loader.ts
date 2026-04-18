@@ -186,6 +186,11 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
      * Follows the theme inheritance chain.
      */
     async loadTemplate(name: string): Promise<LoadedTemplate | null> {
+      // Reject traversal or unusual names. `name` comes from page
+      // frontmatter (admin/editor-authored) — defense-in-depth against
+      // a compromised author account planting `../../etc/passwd`.
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) return null;
+
       // Check cache — but validate mtime so file changes are picked up
       // without needing a restart (works in both dev and production).
       // Mtime checks are throttled by MTIME_CHECK_TTL_MS to avoid a

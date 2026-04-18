@@ -6,6 +6,21 @@
  */
 
 import type { AuthResult } from "../types.ts";
+import { safeUrl } from "../../security/urls.ts";
+
+/** Allow only https: or protocol-relative URLs for marketplace image sources. */
+function httpsImageSrc(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const raw = String(url).trim();
+  if (!raw) return null;
+  if (raw.startsWith("//")) return raw;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -145,11 +160,12 @@ export function renderMarketplacePage(
 // ─── Plugin card ──────────────────────────────────────────────────────────────
 
 function renderPluginCard(entry: PluginRegistryEntry, isInstalled: boolean): string {
-  const icon = entry.iconUrl
-    ? `<img src="${escAttr(entry.iconUrl)}" alt="" class="plugin-icon" loading="lazy"
+  const safeIconUrl = httpsImageSrc(entry.iconUrl);
+  const icon = safeIconUrl
+    ? `<img src="${escAttr(safeIconUrl)}" alt="" class="plugin-icon" loading="lazy"
          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
     : "";
-  const iconFallback = `<span class="plugin-icon-fallback" ${entry.iconUrl ? 'style="display:none"' : ""}>🔌</span>`;
+  const iconFallback = `<span class="plugin-icon-fallback" ${safeIconUrl ? 'style="display:none"' : ""}>🔌</span>`;
 
   const tags = (entry.tags ?? [])
     .map((t) => `<span class="mkt-tag">${escHtml(t)}</span>`)
@@ -194,7 +210,7 @@ function renderPluginCard(entry: PluginRegistryEntry, isInstalled: boolean): str
       <div class="plugin-card-footer">
         <div class="plugin-card-actions">
           ${entry.repositoryUrl
-      ? `<a href="${escAttr(entry.repositoryUrl)}" target="_blank" rel="noopener"
+      ? `<a href="${escAttr(safeUrl(entry.repositoryUrl))}" target="_blank" rel="noopener noreferrer"
                class="btn btn-sm">Source ↗</a>`
       : ""}
           ${installBtn}
@@ -214,11 +230,12 @@ function renderThemeCard(
   entry: ThemeRegistryEntry,
   isInstalled: boolean,
 ): string {
-  const screenshot = entry.screenshotUrl
-    ? `<img src="${escAttr(entry.screenshotUrl)}" alt="${escAttr(entry.name)} screenshot"
+  const safeScreenshotUrl = httpsImageSrc(entry.screenshotUrl);
+  const screenshot = safeScreenshotUrl
+    ? `<img src="${escAttr(safeScreenshotUrl)}" alt="${escAttr(entry.name)} screenshot"
          loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
     : "";
-  const placeholder = `<span class="theme-placeholder-icon" ${entry.screenshotUrl ? 'style="display:none"' : ""}>🎨</span>`;
+  const placeholder = `<span class="theme-placeholder-icon" ${safeScreenshotUrl ? 'style="display:none"' : ""}>🎨</span>`;
 
   const tags = (entry.tags ?? [])
     .map((t) => `<span class="mkt-tag">${escHtml(t)}</span>`)
@@ -245,7 +262,7 @@ function renderThemeCard(
       ${tags ? `<div class="mkt-tags">${tags}</div>` : ""}
       <div class="theme-card-actions">
         ${entry.demoUrl
-      ? `<a href="${escAttr(entry.demoUrl)}" target="_blank" rel="noopener" class="btn btn-sm">Demo ↗</a>`
+      ? `<a href="${escAttr(safeUrl(entry.demoUrl))}" target="_blank" rel="noopener noreferrer" class="btn btn-sm">Demo ↗</a>`
       : ""}
         ${isInstalled
       ? `<span class="btn btn-sm btn-disabled">Installed ✓</span>`

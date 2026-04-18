@@ -328,6 +328,12 @@ export interface RenderContext {
   media: MediaHelper;
   collection?: Collection;
   params: Record<string, string>;
+  /**
+   * Pre-resolved trust flag: true when either site.trusted_html or the
+   * page's own frontmatter.trusted_html is set. Format handlers should
+   * check this rather than reading site/frontmatter directly.
+   */
+  trustedHtml?: boolean;
 }
 
 /**

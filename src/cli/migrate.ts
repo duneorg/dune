@@ -14,6 +14,7 @@
 import { join, basename, extname, dirname } from "@std/path";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { ensureDir, exists } from "@std/fs";
+import { sanitizeHtml } from "../security/sanitize-html.ts";
 
 // ---------------------------------------------------------------------------
 // Shared utilities
@@ -26,6 +27,13 @@ interface MigrateOptions {
   dryRun?: boolean;
   /** Extra logging */
   verbose?: boolean;
+  /**
+   * Skip HTML sanitization of imported content. Only use when the source
+   * export is fully trusted (e.g. your own WordPress instance). By default
+   * imported HTML is sanitized to strip scripts/event handlers so a
+   * malicious third-party export cannot plant persistent XSS.
+   */
+  trustSource?: boolean;
 }
 
 interface MigrateResult {
@@ -338,8 +346,11 @@ export async function migrateFromWordPress(
       if (post.tags.length) fm.taxonomy = { ...((fm.taxonomy as object) ?? {}), tag: post.tags };
 
       const dest = join(contentDir, "01.blog", folderName, "post.md");
-      // WordPress content is HTML — use it directly (Dune markdown passes through HTML)
-      const body = post.content;
+      // WordPress content is HTML — the markdown renderer sanitizes it at
+      // render time, but we also sanitize on import to prevent a malicious
+      // export from planting obviously-bad tags (script, iframe) that would
+      // show up in raw .md files and surprise anyone reading them on disk.
+      const body = options.trustSource ? post.content : sanitizeHtml(post.content);
       if (options.verbose) info(`blog/${folderName}/post.md`);
       try {
         await writeFile(dest, serialisePage(fm, body), dry);
@@ -373,9 +384,10 @@ export async function migrateFromWordPress(
       };
 
       const dest = join(contentDir, folderName, "default.md");
+      const body = options.trustSource ? page.content : sanitizeHtml(page.content);
       if (options.verbose) info(`${folderName}/default.md`);
       try {
-        await writeFile(dest, serialisePage(fm, page.content), dry);
+        await writeFile(dest, serialisePage(fm, body), dry);
         result.imported++;
       } catch (err) {
         result.errors.push(`${folderName}: ${err}`);

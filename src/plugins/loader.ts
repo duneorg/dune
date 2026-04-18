@@ -92,7 +92,12 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
   const { config, hooks, root, storage } = options;
 
   const configured = config.pluginList ?? [];
-  const discovered = await discoverLocalPlugins(root, storage, configured);
+  // Auto-discovery is opt-in — loading an arbitrary `.ts` file out of
+  // `plugins/` executes its module code at startup. Sites that want the
+  // drop-in workflow must set `autoDiscoverPlugins: true` in site.yaml.
+  const discovered = config.autoDiscoverPlugins
+    ? await discoverLocalPlugins(root, storage, configured)
+    : [];
 
   // Discovered plugins load first (lowest priority) so explicit config wins.
   const allEntries = [...discovered, ...configured];

@@ -205,10 +205,12 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   const themeFromSite = siteYaml.theme;
   const pluginListFromSite = siteYaml.plugins;    // PluginEntry[]
   const pluginCfgsFromSite = siteYaml.plugin_configs; // Record<name, config>
+  const autoDiscoverFromSite = siteYaml.auto_discover_plugins; // boolean
   const siteWithoutTop = { ...siteYaml };
   delete siteWithoutTop.theme;
   delete siteWithoutTop.plugins;
   delete siteWithoutTop.plugin_configs;
+  delete siteWithoutTop.auto_discover_plugins;
 
   // site.yaml values go under the "site" key (except promoted top-level keys)
   if (Object.keys(siteWithoutTop).length > 0) {
@@ -223,6 +225,10 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   // Plugin list — replace default empty array (arrays are replaced, not merged)
   if (Array.isArray(pluginListFromSite) && pluginListFromSite.length > 0) {
     (config as Record<string, unknown>).pluginList = pluginListFromSite;
+  }
+
+  if (typeof autoDiscoverFromSite === "boolean") {
+    (config as Record<string, unknown>).autoDiscoverPlugins = autoDiscoverFromSite;
   }
 
   // Explicit per-plugin config overrides (Record<name, Record<k,v>>)

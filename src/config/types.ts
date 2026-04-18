@@ -58,6 +58,15 @@ export interface DuneConfig {
    * Declared in site.yaml under the `plugins:` key.
    */
   pluginList: PluginEntry[];
+  /**
+   * Auto-discover and load any `.ts` files in the site's `plugins/` directory
+   * that are not already listed in `pluginList`.
+   *
+   * Default: `false`. Auto-discovery executes arbitrary TypeScript at startup,
+   * so opting in is required — rely on explicit entries in `site.yaml` unless
+   * you have a trusted local workflow that expects drop-in plugin files.
+   */
+  autoDiscoverPlugins?: boolean;
   /** Admin panel configuration (optional — defaults applied if omitted) */
   admin?: AdminConfig;
 }
@@ -96,6 +105,13 @@ export interface AdminConfig {
   honeypot?: string;
   /** Outbound notifications fired after each form submission is saved. */
   notifications?: AdminNotificationsConfig;
+  /**
+   * Maximum upload body size (in MB) for admin-side multipart uploads
+   * (media library, content attachments). Rejected with 413 before the body
+   * is buffered into memory. Public form submissions are gated separately at
+   * a fixed 55 MB ceiling. Default: 100.
+   */
+  maxUploadMb?: number;
   /**
    * Automatically create a git commit after every page save via the admin panel.
    * Requires the site directory to be a git repository.
@@ -400,6 +416,18 @@ export interface SiteConfig {
      */
     changefreq?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
   };
+  /**
+   * Trust raw HTML in authored content.
+   *
+   * When `false` (default), HTML inside markdown bodies and page-builder
+   * richtext fields is sanitized — script tags, event handlers, and
+   * `javascript:` URLs are stripped. This prevents stored XSS from
+   * lower-privilege editors (or migrated third-party content).
+   *
+   * Set to `true` only when every author is fully trusted AND the site does
+   * not import content from external sources (WordPress WXR, Grav, etc.).
+   */
+  trusted_html?: boolean;
 }
 
 /** System-level configuration (engine behavior) */

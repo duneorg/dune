@@ -138,11 +138,21 @@ import type { MetricsCollector } from "../metrics/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
 import { renderPageBuilderPage } from "./ui/page-builder.ts";
 import { sectionRegistry } from "../sections/mod.ts";
+import { RateLimiter } from "../security/rate-limit.ts";
+import { checkPasswordStrength } from "../security/password-strength.ts";
+import { checkUpload } from "../security/uploads.ts";
+import { checkBodySize } from "../security/body-limit.ts";
 import {
   renderMarketplacePage,
   type PluginRegistry,
   type ThemeRegistry as MarketplaceThemeRegistry,
 } from "./ui/marketplace.ts";
+
+// Hard ceiling on a single form submission body (multipart or urlencoded).
+// Mirrors the per-file (10 MB) × per-submission (5 files) budget plus a small
+// allowance for boundaries, headers, and non-file fields. Used to reject
+// oversized requests via Content-Length before `req.formData()` buffers them.
+const MAX_SUBMISSION_BYTES = 55 * 1024 * 1024;
 
 export interface AdminServerConfig {
   engine: DuneEngine;
@@ -179,50 +189,6 @@ export interface AdminServerConfig {
    * When omitted, the built-in local password auth is used.
    */
   authProvider?: AuthProvider;
-}
-
-// === In-memory rate limiter ===
-// Keyed by IP address (or any string bucket). Not shared across processes —
-// sufficient for single-instance deployments; upgrade to KV-backed limiting
-// for multi-instance production if needed.
-
-interface RateLimitBucket {
-  count: number;
-  resetAt: number;
-}
-
-class RateLimiter {
-  private buckets = new Map<string, RateLimitBucket>();
-
-  constructor(
-    private readonly maxRequests: number,
-    private readonly windowMs: number,
-  ) {}
-
-  /** Returns true if the key is within the allowed rate, false if limited. */
-  check(key: string): boolean {
-    const now = Date.now();
-    const bucket = this.buckets.get(key);
-
-    if (!bucket || now >= bucket.resetAt) {
-      this.buckets.set(key, { count: 1, resetAt: now + this.windowMs });
-      return true;
-    }
-
-    if (bucket.count >= this.maxRequests) {
-      return false; // rate limited
-    }
-
-    bucket.count++;
-    return true;
-  }
-
-  /** Returns the number of seconds until the window resets for a key. */
-  retryAfter(key: string): number {
-    const bucket = this.buckets.get(key);
-    if (!bucket) return 0;
-    return Math.ceil(Math.max(0, bucket.resetAt - Date.now()) / 1000);
-  }
 }
 
 /**
@@ -2476,7 +2442,13 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
 
   async function handleUploadMedia(req: Request): Promise<Response> {
     const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+    // Admin-side upload ceiling — configurable via `admin.maxUploadMb`
+    // (default 100 MB). Applied as a Content-Length pre-check so oversized
+    // requests are rejected before `req.formData()` buffers the body.
+    const maxBodyBytes = (config.config.admin?.maxUploadMb ?? 100) * 1024 * 1024;
     try {
+      const tooLarge = checkBodySize(req, maxBodyBytes);
+      if (tooLarge) return tooLarge;
       const formData = await req.formData();
       const file = formData.get("file");
       const pagePath = formData.get("pagePath");
@@ -2643,10 +2615,10 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
         return jsonResponse({ error: "username, password, and role are required" }, 400);
       }
 
-      // Enforce minimum password length.
-      const MIN_PASSWORD_LENGTH = 12;
-      if (password.length < MIN_PASSWORD_LENGTH) {
-        return jsonResponse({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400);
+      // Enforce password strength (length + common-password blocklist).
+      const strength = checkPasswordStrength(password);
+      if (!strength.ok) {
+        return jsonResponse({ error: strength.reason }, 400);
       }
 
       // Validate role against the known set to prevent privilege escalation.
@@ -2718,12 +2690,9 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
   async function handleChangeUserPassword(req: Request, userId: string): Promise<Response> {
     try {
       const { password } = await req.json();
-      if (!password || typeof password !== "string") {
-        return jsonResponse({ error: "password is required" }, 400);
-      }
-      const MIN_PASSWORD_LENGTH = 12;
-      if (password.length < MIN_PASSWORD_LENGTH) {
-        return jsonResponse({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400);
+      const strength = checkPasswordStrength(password);
+      if (!strength.ok) {
+        return jsonResponse({ error: strength.reason }, 400);
       }
       const changed = await users.changePassword(userId, password);
       if (!changed) return jsonResponse({ error: "User not found" }, 404);
@@ -3573,6 +3542,8 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
           else if (Array.isArray(v)) multiFields[k] = v.filter((x) => typeof x === "string");
         }
       } else {
+        const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
+        if (tooLarge) return tooLarge;
         const formData = await req.formData();
         for (const [k, v] of formData.entries()) {
           if (typeof v === "string") {
@@ -3636,11 +3607,13 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
             .replace(/_{2,}/g, "_")
             .slice(0, 200);
           if (!safeName) continue;
+          const check = checkUpload(safeName);
+          if (!check.ok) continue;
           const storagePath = `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
           await storage.write(storagePath, new Uint8Array(await file.arrayBuffer()));
           storedFiles.push({
             name: safeName,
-            contentType: file.type || "application/octet-stream",
+            contentType: check.contentType,
             size: file.size,
             storagePath,
           });
@@ -3821,6 +3794,8 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
         }
       } else {
         // application/x-www-form-urlencoded or multipart/form-data
+        const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
+        if (tooLarge) return tooLarge;
         const formData = await req.formData();
         for (const [k, v] of formData.entries()) {
           if (typeof v === "string") {
@@ -3885,13 +3860,16 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
             .slice(0, 200);
           if (!safeName) continue;
 
+          const check = checkUpload(safeName);
+          if (!check.ok) continue; // silently skip disallowed extensions
+
           const storagePath = `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
           const bytes = new Uint8Array(await file.arrayBuffer());
           await storage.write(storagePath, bytes);
 
           storedFiles.push({
             name: safeName,
-            contentType: file.type || "application/octet-stream",
+            contentType: check.contentType,
             size: file.size,
             storagePath,
           });
@@ -4103,6 +4081,7 @@ export function createAdminHandler(config: AdminServerConfig): AdminHandler {
           "Content-Disposition": `attachment; filename="${filename.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
           "Content-Length": String(data.byteLength),
           "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
         },
       });
     } catch {
@@ -4773,7 +4752,7 @@ function _htmlResponseBase(
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob: *",
+        "img-src 'self' data: blob: https:",
         "connect-src 'self'",
         "frame-ancestors 'none'",
       ].join("; "),

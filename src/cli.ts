@@ -113,6 +113,12 @@ Static build options (used with build --static):
   --hybrid            Emit _routes.json / _redirects / _headers for edge deployments
   --include-drafts    Include unpublished pages
   --verbose           Print each rendered route
+
+Migration options (used with migrate:from-*):
+  --out <dir>         Content directory to import into (default: <root>/content)
+  --dry-run           Report what would be imported without writing files
+  --verbose           Print each imported page
+  --trust-source      Skip HTML sanitization — only use for sources you fully trust
 `;
 
 async function main() {
@@ -157,6 +163,8 @@ async function main() {
       options.verbose = true;
     } else if (args[i] === "--dry-run") {
       options.dryRun = true;
+    } else if (args[i] === "--trust-source") {
+      options.trustSource = true;
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
@@ -293,6 +301,7 @@ async function main() {
           out: options.outDir as string | undefined,
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
+          trustSource: options.trustSource === true,
         });
         break;
 
@@ -301,6 +310,7 @@ async function main() {
           out: options.outDir as string | undefined,
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
+          trustSource: options.trustSource === true,
         });
         break;
 
@@ -309,6 +319,7 @@ async function main() {
           out: options.outDir as string | undefined,
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
+          trustSource: options.trustSource === true,
         });
         break;
 
@@ -317,6 +328,7 @@ async function main() {
           out: options.outDir as string | undefined,
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
+          trustSource: options.trustSource === true,
         });
         break;
 

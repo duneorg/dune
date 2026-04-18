@@ -6,6 +6,8 @@
  */
 
 import type { SectionInstance } from "./types.ts";
+import { sanitizeHtml } from "../security/sanitize-html.ts";
+import { safeUrl } from "../security/urls.ts";
 
 // ---------------------------------------------------------------------------
 // Utility
@@ -17,6 +19,16 @@ function esc(s: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** URL-attribute escape: validate scheme first, then HTML-attr escape. */
+function escUrl(s: unknown, fallback = "#"): string {
+  return esc(safeUrl(s == null ? undefined : String(s), fallback));
+}
+
+/** Sanitize a richtext/HTML-accepting field from an admin/editor author. */
+function richtext(s: unknown): string {
+  return sanitizeHtml(String(s ?? ""));
 }
 
 function bgClass(bg: unknown): string {
@@ -130,14 +142,14 @@ function renderHero(s: SectionInstance): string {
   const sectionClass = `pb-section pb-hero ${bg} ${wrapClass}`.trim();
 
   const imgTag = hasImage
-    ? `<img class="pb-hero-img" src="${esc(s.image)}" alt="">`
+    ? `<img class="pb-hero-img" src="${escUrl(s.image)}" alt="">`
     : "";
 
   const primary = s.cta_text
-    ? `<a href="${esc(s.cta_url || "#")}" class="pb-btn ${bg === "pb-bg-light" ? "pb-btn-primary" : "pb-btn-primary-inv"}">${esc(s.cta_text)}</a>`
+    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn ${bg === "pb-bg-light" ? "pb-btn-primary" : "pb-btn-primary-inv"}">${esc(s.cta_text)}</a>`
     : "";
   const secondary = s.cta2_text
-    ? `<a href="${esc(s.cta2_url || "#")}" class="pb-btn pb-btn-secondary">${esc(s.cta2_text)}</a>`
+    ? `<a href="${escUrl(s.cta2_url)}" class="pb-btn pb-btn-secondary">${esc(s.cta2_text)}</a>`
     : "";
   const ctas = primary || secondary
     ? `<div class="pb-hero-ctas">${primary}${secondary}</div>`
@@ -177,7 +189,7 @@ function renderTestimonials(s: SectionInstance): string {
   const items = Array.isArray(s.items) ? s.items as Record<string, unknown>[] : [];
   const cards = items.map((item) => {
     const avatar = item.avatar
-      ? `<img class="pb-testimonial-avatar" src="${esc(item.avatar)}" alt="${esc(item.author)}">`
+      ? `<img class="pb-testimonial-avatar" src="${escUrl(item.avatar)}" alt="${esc(item.author)}">`
       : `<div class="pb-testimonial-avatar" style="background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:1.1rem">👤</div>`;
     return `
     <div class="pb-testimonial-card">
@@ -205,7 +217,7 @@ function renderCta(s: SectionInstance): string {
   const bg = bgClass(s.background);
   const btnClass = bg === "pb-bg-light" ? "pb-btn-primary" : "pb-btn-primary-inv";
   const btn = s.cta_text
-    ? `<a href="${esc(s.cta_url || "#")}" class="pb-btn ${btnClass}">${esc(s.cta_text)}</a>`
+    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn ${btnClass}">${esc(s.cta_text)}</a>`
     : "";
 
   return `
@@ -224,7 +236,7 @@ function renderGallery(s: SectionInstance): string {
   const imgs = items.map((item) => `
     <div>
       <div class="pb-gallery-img-wrap">
-        <img class="pb-gallery-img" src="${esc(item.image)}" alt="${esc(item.alt || item.caption || "")}">
+        <img class="pb-gallery-img" src="${escUrl(item.image)}" alt="${esc(item.alt || item.caption || "")}">
       </div>
       ${item.caption ? `<p class="pb-gallery-caption">${esc(item.caption)}</p>` : ""}
     </div>`).join("");
@@ -246,7 +258,7 @@ function renderPricing(s: SectionInstance): string {
     const features = String(item.features ?? "").split("\n").filter((f) => f.trim());
     const fItems = features.map((f) => `<li>${esc(f.trim())}</li>`).join("");
     const btn = item.cta_text
-      ? `<a href="${esc(item.cta_url || "#")}" class="pb-btn pb-btn-primary" style="width:100%;text-align:center">${esc(item.cta_text)}</a>`
+      ? `<a href="${escUrl(item.cta_url)}" class="pb-btn pb-btn-primary" style="width:100%;text-align:center">${esc(item.cta_text)}</a>`
       : "";
     return `
     <div class="pb-pricing-card${hl ? " pb-highlighted" : ""}">
@@ -291,7 +303,7 @@ function renderText(s: SectionInstance): string {
   return `
 <section class="pb-section pb-bg-light">
   <div class="pb-container">
-    <div class="${wClass} pb-richtext">${String(s.content ?? "")}</div>
+    <div class="${wClass} pb-richtext">${richtext(s.content)}</div>
   </div>
 </section>`;
 }
@@ -299,7 +311,7 @@ function renderText(s: SectionInstance): string {
 function renderColumns(s: SectionInstance): string {
   const count = String(s.count ?? "2");
   const cols = [s.col1, s.col2, count === "3" ? s.col3 : null].filter(Boolean);
-  const colHtml = cols.map((c) => `<div class="pb-col pb-richtext">${String(c ?? "")}</div>`).join("");
+  const colHtml = cols.map((c) => `<div class="pb-col pb-richtext">${richtext(c)}</div>`).join("");
   return `
 <section class="pb-section pb-bg-light">
   <div class="pb-container">
@@ -314,7 +326,7 @@ function renderContact(s: SectionInstance): string {
   if (s.phone) details.push(`<div class="pb-contact-detail"><span class="pb-contact-icon">📞</span><span class="pb-contact-text">${esc(s.phone)}</span></div>`);
   if (s.address) details.push(`<div class="pb-contact-detail"><span class="pb-contact-icon">📍</span><span class="pb-contact-text">${esc(s.address)}</span></div>`);
   const btn = s.cta_text
-    ? `<a href="${esc(s.cta_url || "#")}" class="pb-btn pb-btn-primary" style="margin-top:1.5rem">${esc(s.cta_text)}</a>`
+    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn pb-btn-primary" style="margin-top:1.5rem">${esc(s.cta_text)}</a>`
     : "";
 
   return `

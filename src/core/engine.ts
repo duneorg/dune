@@ -260,6 +260,7 @@ export async function createDuneEngine(
         loadPage,
         storageRoot,
         orphanProtection: config.system.typography?.orphan_protection !== false,
+        site: config.site,
       },
     );
 

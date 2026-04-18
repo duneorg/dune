@@ -126,10 +126,15 @@ export class MetricsCollector {
     durationMs: number,
   ): void {
     if (durationMs < this.opts.slowQueryThresholdMs) return;
+    // Truncate the raw query string so the admin dashboard can't reveal
+    // arbitrarily long user-supplied text (names/emails in search, filter
+    // values in collection queries). Admins still see enough to diagnose
+    // a slow pattern; full strings stay out of the metrics buffer.
+    const truncated = query.length > 80 ? query.slice(0, 77) + "..." : query;
     const entry: SlowQuery = {
       ts: new Date().toISOString(),
       type,
-      query,
+      query: truncated,
       durationMs,
     };
     this.slowQueryList.push(entry);

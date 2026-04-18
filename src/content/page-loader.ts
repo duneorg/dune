@@ -38,6 +38,9 @@ export interface PageLoaderOptions {
   storageRoot?: string;
   /** Apply orphan protection (&nbsp; before last word) to rendered HTML (default: true) */
   orphanProtection?: boolean;
+  /** Site configuration — passed into the render context so format handlers
+   *  (e.g. the markdown renderer) can read site-level flags like trusted_html. */
+  site?: import("../config/types.ts").SiteConfig;
 }
 
 /**
@@ -92,7 +95,8 @@ export async function loadPage(
     // Lazy: rendered HTML (for .md and .mdx pages)
     html: lazyOnce(async () => {
       if (index.format !== "md" && index.format !== "mdx") return "";
-      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir);
+      const trustedHtml = options.site?.trusted_html === true || frontmatter.trusted_html === true;
+      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml);
       let html = await handler.renderToHtml(page, ctx);
       if (options.orphanProtection !== false) {
         html = applyOrphanProtection(html);
@@ -295,8 +299,12 @@ function buildMinimalRenderContext(
   media: MediaFile[],
   sourcePath: string,
   _contentDir: string,
+  site?: import("../config/types.ts").SiteConfig,
+  trustedHtml?: boolean,
 ): RenderContext {
   return {
+    site,
+    trustedHtml,
     media: {
       url: (filename: string) => {
         const file = media.find((m) => m.name === filename);

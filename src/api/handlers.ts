@@ -22,6 +22,15 @@ import type { SearchEngine } from "../search/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
+import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+
+// Per-IP rate limit for public API. Generous enough for legitimate headless
+// consumers (~2 req/sec) but cheap to enforce. Protects against trivial CPU
+// DoS on /api/search, /api/collections, and /api/taxonomy/*.
+const apiRateLimiter = new RateLimiter(120, 60 * 1000);
+
+// One-shot warning latch when `site.url` is missing — emit once per process.
+let warnedMissingSiteUrl = false;
 
 export interface ApiHandlerOptions {
   engine: DuneEngine;
@@ -54,7 +63,17 @@ export function createApiHandler(options: ApiHandlerOptions) {
     try {
       primaryOrigin = new URL(siteUrl).origin;
     } catch {
-      // site.url is not set or invalid — fall back to the request's own origin
+      // site.url is not set or invalid. Fall back to the request's own
+      // origin so the API still functions, but warn loudly — this means
+      // any origin can read the response, which is almost certainly not
+      // what the operator intended. Set `site.url` in site.yaml.
+      if (!warnedMissingSiteUrl) {
+        console.warn(
+          "[dune] site.url is missing or invalid — API CORS falls back to reflecting the request origin. " +
+            "Set `site: { url: https://your-site }` in site.yaml to lock this down.",
+        );
+        warnedMissingSiteUrl = true;
+      }
       primaryOrigin = new URL(req.url).origin;
     }
     const extraOrigins = (engine.site.cors_origins ?? [])
@@ -79,6 +98,25 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // Handle OPTIONS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Rate limit expensive read endpoints. Cheap list/get for /api/nav and
+    // /api/config/site are exempt — they serve from an in-memory index.
+    if (
+      path.startsWith("/api/search") ||
+      path.startsWith("/api/collections") ||
+      path.startsWith("/api/taxonomy") ||
+      path.startsWith("/api/pages") ||
+      path.startsWith("/api/flex/")
+    ) {
+      const ip = clientIp(req);
+      if (!apiRateLimiter.check(ip)) {
+        return jsonResponse(
+          { error: "Too many requests" },
+          429,
+          { ...corsHeaders, "Retry-After": String(apiRateLimiter.retryAfter(ip)) },
+        );
+      }
     }
 
     try {
