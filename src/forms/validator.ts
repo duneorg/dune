@@ -87,17 +87,39 @@ function validateField(
     }
   }
 
-  // Pattern validation (string fields)
+  // Pattern validation (string fields). Admin-authored patterns can still
+  // contain catastrophic-backtracking constructs like `(a+)+`, so we reject
+  // a basic class of dangerous shapes up front and cap the input length
+  // passed to RegExp#test to bound worst-case matching cost.
   if (field.validate?.pattern && typeof value === "string") {
-    try {
-      const re = new RegExp(field.validate.pattern);
-      if (!re.test(value)) {
-        errors.push({ field: name, message: `${field.label} has an invalid format.` });
+    if (isDangerousPattern(field.validate.pattern)) {
+      // Log server-side and skip — the form owner should fix the blueprint.
+      console.warn(`[dune] Rejected form pattern for field "${name}" — nested quantifier`);
+    } else if (value.length > MAX_PATTERN_INPUT) {
+      errors.push({ field: name, message: `${field.label} is too long.` });
+    } else {
+      try {
+        const re = new RegExp(field.validate.pattern);
+        if (!re.test(value)) {
+          errors.push({ field: name, message: `${field.label} has an invalid format.` });
+        }
+      } catch {
+        // Invalid regex in YAML — skip pattern check
       }
-    } catch {
-      // Invalid regex in YAML — skip pattern check
     }
   }
 
   return errors;
+}
+
+const MAX_PATTERN_INPUT = 10_000;
+
+/**
+ * Reject patterns with nested quantifiers — the classic ReDoS shape
+ * `(x+)+`, `(x*)+`, `(x+)*` and similar. Not exhaustive; a determined
+ * author can still write a pathological regex, but this catches the
+ * common accidental footgun.
+ */
+function isDangerousPattern(pattern: string): boolean {
+  return /\([^)]*[+*][^)]*\)\s*[+*?{]/.test(pattern);
 }

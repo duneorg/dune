@@ -20,6 +20,7 @@ import type {
   RenderContext,
 } from "../types.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
+import { sanitizeHtml } from "../../security/sanitize-html.ts";
 
 export class MarkdownHandler implements ContentFormatHandler {
   readonly extensions = [".md"];
@@ -77,6 +78,20 @@ export class MarkdownHandler implements ContentFormatHandler {
 
     // Parse markdown to HTML
     let html = await this.marked.parse(resolved);
+
+    // Sanitize to strip any raw <script>, event handlers, javascript: URLs,
+    // etc. that an author embedded in the markdown body. Formatting tags,
+    // images, and safe links pass through.
+    //
+    // Sites that explicitly need raw HTML passthrough (e.g. when authors are
+    // fully trusted and embed custom widgets) can opt out with
+    // `site.trusted_html: true` in site.yaml or `trusted_html: true` in a
+    // page's own frontmatter. The resolved flag is pre-computed in the page
+    // loader and surfaced here as ctx.trustedHtml.
+    if (!ctx.trustedHtml) {
+      html = sanitizeHtml(html);
+    }
+
     // Add loading="lazy" to img tags that don't have it
     html = html.replace(/<img(?=\s)(?![^>]*\bloading=)/gi, '<img loading="lazy"');
     return html;

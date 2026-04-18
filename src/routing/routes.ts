@@ -25,6 +25,10 @@ import { createSearchAnalytics } from "../search/analytics.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
+import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+
+// Per-IP rate limit for public read endpoints (120 req/min).
+const publicRateLimiter = new RateLimiter(120, 60 * 1000);
 
 /**
  * Props passed to a flex type list template.
@@ -112,6 +116,24 @@ export function duneRoutes(
     apiHandler: async (req: Request): Promise<Response> => {
       const url = new URL(req.url);
       const path = url.pathname;
+
+      // Rate-limit expensive endpoints (search, taxonomy, page list).
+      if (
+        path.startsWith("/api/search") ||
+        path.startsWith("/api/taxonomy") ||
+        path.startsWith("/api/pages")
+      ) {
+        const ip = clientIp(req);
+        if (!publicRateLimiter.check(ip)) {
+          return Response.json(
+            { error: "Too many requests" },
+            {
+              status: 429,
+              headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
+            },
+          );
+        }
+      }
 
       // GET /api/pages — list all pages
       if (path === "/api/pages") {
@@ -289,6 +311,13 @@ export function duneRoutes(
       // Intercept /search before content resolution so it is always served,
       // even when there is no content file at that path.
       if (url.pathname === "/search") {
+        const ip = clientIp(req);
+        if (!publicRateLimiter.check(ip)) {
+          return new Response("Too many requests", {
+            status: 429,
+            headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
+          });
+        }
         const q = url.searchParams.get("q") ?? "";
         const rawResults = search ? search.search(q, 20) : [];
         const results = rawResults.map((r) => ({

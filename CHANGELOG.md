@@ -5,6 +5,38 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.7.4] — 2026-04-17
+
+### Security
+
+Full audit of new attack surface added since v1.0. No exploited issues; every finding below is defence in depth against author/editor-role compromise, hostile migration input, or cheap DoS. See `/Users/xrs/.claude/plans/it-s-time-to-once-buzzing-fog.md` for the findings matrix.
+
+- **HTML sanitizer** (`src/security/sanitize-html.ts`) — hand-rolled tokenizer sanitiser with an allowlist of tags and per-tag attributes. Strips `<script>`, `<iframe>`, event handlers, `style`, and any attribute whose value contains `javascript:` / `data:text/html`. Applied to:
+  - `renderText` and `renderColumns` in the page-builder sections renderer (fixes H1 — stored XSS via richtext section fields).
+  - `MarkdownHandler.renderToHtml` (fixes H2 — marked v15 passes raw HTML through by default). Opt-out via `site.trusted_html: true` in `site.yaml` or `trusted_html: true` in a page's own frontmatter.
+  - WordPress WXR importer in `src/cli/migrate.ts` (fixes H3 — imported post bodies were written unsanitised). Opt-out via `--trust-source`.
+- **Fixed: `trusted_html` opt-out was silently ignored** — `ctx.site` was always `undefined` in the markdown renderer because `buildMinimalRenderContext` never received the site config, and per-page frontmatter was not read either. Fixed by threading `site?: SiteConfig` through `PageLoaderOptions` → engine → `buildMinimalRenderContext`, pre-resolving the flag as `trustedHtml?: boolean` on `RenderContext`, and checking `ctx.trustedHtml` in the renderer. Both `site.trusted_html` (site.yaml) and `trusted_html` (page frontmatter) now work correctly.
+- **URL scheme allowlist** (`src/security/urls.ts`) — `isSafeUrl` / `safeUrl` accept only `http:`, `https:`, `mailto:`, `tel:`, anchor fragments, and relative paths. Rejects `javascript:`, `data:`, `vbscript:`, `file:`, tab/newline obfuscation, and leading whitespace. Applied to every CTA/image URL in page-builder sections and to marketplace repository/demo links (fixes H4).
+- **Template name validation** — `ThemeLoader.loadTemplate` rejects any name that doesn't match `/^[a-zA-Z0-9_-]+$/` before using it in a path join. Frontmatter can no longer request `../../etc/passwd` (fixes M1).
+- **CSP tightened** — admin `img-src` narrowed from `'self' data: blob: *` to `'self' data: blob: https:`. Rejects attacker-host `http://` exfil pixels (fixes M2).
+- **Rate limiting on public API** — extracted the admin rate limiter into `src/security/rate-limit.ts` and applied a 120 req/min per-IP budget to `/api/search`, `/api/collections`, `/api/taxonomy/*`, `/api/pages`, `/api/flex/*`, and the `/search` page (fixes M3).
+- **Audit log sharding** — `AuditLogger` rotates to `{runtimeDir}/audit/YYYY-MM-DD.jsonl`. Queries read only the shards within the requested date range instead of slurping the full file on every request. Legacy single-file logs continue to be read as a fallback so no history is lost on upgrade (fixes M4).
+- **Password strength** — new `src/security/password-strength.ts` rejects a small blocklist of common passwords, single-character runs, and trivial sequential patterns in addition to the existing 12-char minimum. Applied to user create and password-change endpoints (fixes M5).
+- **Metrics redaction** — slow-query strings are truncated to 80 characters before being stored, preventing arbitrarily long user-supplied search / filter text from surfacing on the admin metrics dashboard (fixes M6).
+- **Plugin auto-discovery is opt-in** — `plugins/*.ts` are no longer auto-loaded unless `auto_discover_plugins: true` is set at the top level of `site.yaml`. Reduces blast radius of a rogue file dropped into the plugins directory (fixes L1).
+- **Form-validator ReDoS guard** — blueprint `validate.pattern` patterns with nested quantifiers (`(x+)+`, `(x*)+`, etc.) are rejected at validation time, and the input length fed to `RegExp#test` is capped at 10 000 characters (fixes L2).
+- **CORS misconfiguration warning** — the API layer emits a one-shot warning when `site.url` is missing or invalid and the origin is being reflected back, surfacing the misconfiguration (fixes L3).
+- **Marketplace image URL validation** — plugin `iconUrl` and theme `screenshotUrl` are now accepted only when they resolve to `https:` (or protocol-relative); all other schemes are silently dropped (fixes L4).
+- **Form upload hardening** — new `src/security/uploads.ts` gates form-submission file uploads behind a server-side extension allowlist (images, PDF, office docs, txt, csv, zip). The stored content-type is derived from the extension, discarding the attacker-controlled `file.type`. `.php`, `.sh`, `.exe`, `.html`, `.svg`, `.js`, and other script/executable formats are rejected. Submission file downloads now set `X-Content-Type-Options: nosniff` so a tampered content-type can't be reinterpreted by the browser.
+- **Form-submission body size cap** — form submission handlers now reject requests whose `Content-Length` exceeds 55 MB with a `413 Request too large` response, before `req.formData()` buffers the body into memory. Closes a cheap memory-DoS where a client could stream a multi-hundred-MB multipart body and rely on the per-file cap only being applied post-parse.
+- **Admin media upload body size cap** — `POST /admin/api/upload-media` now applies the same `Content-Length` pre-check, gated by a new `admin.maxUploadMb` config setting (default 100 MB). Defence in depth against compromised-credential or CSRF-driven DoS; operators with large media libraries can raise the ceiling without touching code.
+
+### Tests
+
+- New test suites under `tests/security/` covering the sanitiser, URL allowlist, rate limiter, password strength, upload allowlist, and body-size gate. 75 new tests; 679 total passing.
+
+---
+
 ## [0.7.3] — 2026-04-17
 
 ### Fixed

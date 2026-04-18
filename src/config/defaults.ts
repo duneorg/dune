@@ -55,6 +55,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
   },
   plugins: {},
   pluginList: [],
+  autoDiscoverPlugins: false,
   admin: {
     path: "/admin",
     sessionLifetime: 86400,
@@ -62,5 +63,6 @@ export const DEFAULT_CONFIG: DuneConfig = {
     runtimeDir: ".dune/admin",
     enabled: true,
     maxRevisions: 50,
+    maxUploadMb: 100,
   },
 };
