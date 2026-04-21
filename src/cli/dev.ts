@@ -10,8 +10,10 @@
  */
 
 import { join } from "@std/path";
+import { App } from "fresh";
 import { bootstrap } from "./bootstrap.ts";
 import { createDevSiteContext } from "./site-handler.ts";
+import type { RenderJsx } from "./site-handler.ts";
 
 export interface DevOptions {
   port?: number;
@@ -97,5 +99,16 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   console.log(`\n  🌐 http://localhost:${port}\n`);
 
-  Deno.serve({ port, handler: siteCtx.handler });
+  const app = new App().get("/*", async (freshCtx) => {
+    const rj: RenderJsx = (vnode, _s = 200) =>
+      freshCtx.render(vnode as Parameters<typeof freshCtx.render>[0]);
+    return siteCtx.handler(freshCtx.req, rj);
+  });
+  const freshHandler = app.handler();
+  Deno.serve({
+    port,
+    handler: (req) => req.method === "GET" || req.method === "HEAD"
+      ? freshHandler(req)
+      : siteCtx.handler(req),
+  });
 }

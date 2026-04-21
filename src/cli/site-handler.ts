@@ -7,6 +7,17 @@
  */
 
 import { render } from "preact-render-to-string";
+
+/** Render function that converts a JSX vnode to an HTTP Response. */
+export type RenderJsx = (jsx: unknown, statusCode?: number) => Response | Promise<Response>;
+
+function defaultRenderJsx(jsx: unknown, statusCode = 200): Response {
+  const html = render(jsx as Parameters<typeof render>[0]);
+  return new Response(`<!DOCTYPE html>${html}`, {
+    status: statusCode,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneEngine } from "../core/engine.ts";
@@ -141,7 +152,7 @@ export function createProductionSiteHandler(
   prebuilt: SitePrebuilt,
   root: string,
   options: { port: number; debug?: boolean; metrics?: MetricsCollector },
-): (req: Request) => Promise<Response> {
+): (req: Request, renderJsx?: RenderJsx) => Promise<Response> {
   const { debug = false, metrics } = options;
   const {
     engine, collections, taxonomy, search, imageHandler,
@@ -157,14 +168,6 @@ export function createProductionSiteHandler(
   const adminPrefix = config.admin?.path ?? "/admin";
   const siteName = engine.site.title;
   const { sitemapGzip, rssFeed, atomFeed, feedEnabled, startTime } = prebuilt;
-
-  const renderJsx = (jsx: unknown, statusCode = 200) => {
-    const html = render(jsx as Parameters<typeof render>[0]);
-    return new Response(`<!DOCTYPE html>${html}`, {
-      status: statusCode,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
-  };
 
   // ── HTTP caching setup ────────────────────────────────────────────────────
 
@@ -202,6 +205,7 @@ export function createProductionSiteHandler(
     etag: string | null,
     policy: ResolvedCachePolicy,
     cacheControlValue: string,
+    renderJsx: RenderJsx,
   ): Promise<Response> {
     let contentResponse = await routes.contentHandler(req, renderJsx);
     if (feedEnabled) contentResponse = injectFeedLinks(siteName, contentResponse);
@@ -244,7 +248,7 @@ export function createProductionSiteHandler(
     return maybeCompress(req, withSecurityHeaders(contentResponse));
   }
 
-  return async (req: Request): Promise<Response> => {
+  return async (req: Request, renderJsx: RenderJsx = defaultRenderJsx): Promise<Response> => {
     const startMs = performance.now();
     const url = new URL(req.url);
     let response: Response = new Response("Internal Server Error", { status: 500 });
@@ -396,7 +400,7 @@ export function createProductionSiteHandler(
                 );
               }
             } else {
-              response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
+              response = await renderContentResponse(req, url, etag, policy, cacheControlValue, renderJsx);
             }
           } else if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
             // 304 via If-None-Match even without the page cache (browser / CDN revalidation).
@@ -405,7 +409,7 @@ export function createProductionSiteHandler(
               headers: { "ETag": etag, "Cache-Control": cacheControlValue },
             });
           } else {
-            response = await renderContentResponse(req, url, etag, policy, cacheControlValue);
+            response = await renderContentResponse(req, url, etag, policy, cacheControlValue, renderJsx);
           }
           // ──────────────────────────────────────────────────────────────────
         }
@@ -430,8 +434,8 @@ export function createProductionSiteHandler(
 
 /** Dev-mode site context returned by createDevSiteContext. */
 export interface DevSiteContext {
-  /** HTTP request handler — pass to Deno.serve or MultisiteManager. */
-  handler: (req: Request) => Promise<Response>;
+  /** HTTP request handler. Pass to Deno.serve or MultisiteManager (without renderJsx for default SSR). */
+  handler: (req: Request, renderJsx?: RenderJsx) => Promise<Response>;
   /** Signal all connected SSE clients to reload (call after a successful rebuild). */
   notifyReload: () => void;
   /** Clear the SSE client set — call when tearing down the site in multi-site mode. */
@@ -462,14 +466,6 @@ export function createDevSiteContext(
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
   const adminPrefix = config.admin?.path ?? "/admin";
   const feedEnabled = config.site.feed?.enabled !== false;
-
-  const renderJsx = (jsx: unknown, statusCode = 200) => {
-    const html = render(jsx as Parameters<typeof render>[0]);
-    return new Response(`<!DOCTYPE html>${html}`, {
-      status: statusCode,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
-  };
 
   // SSE state — one Set of controllers per site instance
   const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -536,7 +532,7 @@ export function createDevSiteContext(
     return items;
   }
 
-  const handler = async (req: Request): Promise<Response> => {
+  const handler = async (req: Request, renderJsx: RenderJsx = defaultRenderJsx): Promise<Response> => {
     const url = new URL(req.url);
     const startPerf = performance.now();
     let response: Response = new Response("Internal Server Error", { status: 500 });

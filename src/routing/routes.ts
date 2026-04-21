@@ -71,7 +71,7 @@ export interface FlexDetailTemplateProps {
 export interface DuneRoutes {
   mediaHandler(req: Request): Promise<Response>;
   apiHandler(req: Request): Promise<Response>;
-  contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response): Promise<Response>;
+  contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>): Promise<Response>;
 }
 
 export function duneRoutes(
@@ -303,7 +303,7 @@ export function duneRoutes(
      */
     contentHandler: async (
       req: Request,
-      renderJsx: (jsx: unknown, status?: number) => Response,
+      renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>,
     ): Promise<Response> => {
       const url = new URL(req.url);
 
