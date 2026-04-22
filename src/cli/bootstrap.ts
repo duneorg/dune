@@ -36,7 +36,7 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
-import { join } from "@std/path";
+import { join, resolve } from "@std/path";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -122,6 +122,7 @@ export async function bootstrap(
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
   const { debug = false, buildSearch = false, sharedThemesDir, dev = false } = options;
+  root = resolve(root); // normalise "." or relative paths to absolute
 
   // 1. Storage
   const storage = createStorage({ rootDir: root });
