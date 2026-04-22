@@ -1,20 +1,21 @@
 /**
  * dune dev — Development server with file watching and live-reload.
  *
- * Features:
- *   - Watches content/ and themes/ for changes
- *   - Rebuilds index, taxonomy, collections, search on file changes
- *   - SSE-based live reload: browser auto-refreshes after rebuild
- *   - Template cache busting: theme/layout changes take effect immediately
- *   - Multi-site mode when config/sites.yaml is present at the installation root
+ * Fresh owns the server via builder.listen(), which handles island bundling,
+ * JS live reload (/_fresh_live_reload), and the dev error overlay.
+ *
+ * Dune's content watcher runs alongside and calls notifyReload() after each
+ * rebuild, which pushes a reload event via the /__dune_reload SSE endpoint
+ * registered inside createDuneApp().
+ *
+ * Multi-site mode delegates to MultisiteManager when config/sites.yaml is
+ * present at the installation root.
  */
 
 import { join } from "@std/path";
-import { App, staticFiles } from "fresh";
+import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
-import { createDevSiteContext } from "./site-handler.ts";
-import type { RenderJsx } from "./site-handler.ts";
-import { buildIslands } from "./islands.ts";
+import { createDuneApp } from "./fresh-app.ts";
 
 export interface DevOptions {
   port?: number;
@@ -47,17 +48,19 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   console.log("🏜️  Dune — starting development server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search } = ctx;
-  const adminPrefix = ctx.config.admin?.path ?? "/admin";
-
-  const siteCtx = createDevSiteContext(ctx, root, { port, debug });
+  const { engine, collections, taxonomy, search, config } = ctx;
+  const adminPrefix = config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🏷️  ${taxonomy.names().length} taxonomies`);
   console.log(`  🔍 Search index built`);
   console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
 
-  // ── File watcher ─────────────────────────────────────────────────────────────
+  // ── Content file watcher ─────────────────────────────────────────────────────
+  // notifyReload comes from createDuneApp (called inside builder.listen below).
+  // We use a shared mutable reference so the watcher can call it once it is set.
+  let notifyContentReload: () => void = () => {};
+
   const contentDir = `${root}/${engine.config.system.content.dir}`;
   const themesDir = `${root}/themes`;
   const flexObjectsDir = `${root}/flex-objects`;
@@ -86,7 +89,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
               await search.rebuild(engine.pages);
               const elapsed = (performance.now() - start).toFixed(0);
               console.log(`  🔄 Rebuilt in ${elapsed}ms (${engine.pages.length} pages)`);
-              siteCtx.notifyReload();
+              notifyContentReload();
             } catch (err) {
               console.error(`  ✗ Rebuild error: ${err}`);
             }
@@ -100,19 +103,18 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   console.log(`\n  🌐 http://localhost:${port}\n`);
 
-  const app = new App();
-  await buildIslands(app, root, ctx.config.theme.name, "development");
-  app.use(staticFiles());
-  app.get("/*", async (freshCtx) => {
-    const rj: RenderJsx = (vnode, _s = 200) =>
-      freshCtx.render(vnode as Parameters<typeof freshCtx.render>[0]);
-    return siteCtx.handler(freshCtx.req, rj);
-  });
-  const freshHandler = app.handler();
-  Deno.serve({
-    port,
-    handler: (req) => req.method === "GET" || req.method === "HEAD"
-      ? freshHandler(req)
-      : siteCtx.handler(req),
-  });
+  // ── Fresh dev server ─────────────────────────────────────────────────────────
+  // builder.listen() handles island bundling in watch mode, the
+  // /_fresh_live_reload SSE endpoint (for island JS changes), and the dev error
+  // overlay. createDuneApp() adds Dune's /__dune_reload SSE endpoint (for
+  // content changes) and all other routes.
+  const islandDir = join(root, "themes", config.theme.name, "islands");
+  const builder = new Builder({ root, islandDir });
+
+  await builder.listen(async () => {
+    const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });
+    // Wire the content watcher's notifyReload reference now that the app is built.
+    notifyContentReload = notifyReload;
+    return app;
+  }, { port });
 }

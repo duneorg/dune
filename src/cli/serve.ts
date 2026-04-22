@@ -1,22 +1,19 @@
 /**
  * dune serve — Production server (no file watching).
  *
- * Features:
- *   - Security headers (CSP, X-Frame-Options, etc.)
- *   - Gzip compression for text-based responses
- *   - Cache-aware static file serving (long-lived for fonts/images, short for HTML)
- *   - Auto-generated /sitemap.xml from content index
- *   - /health endpoint for monitoring
- *   - Custom 404/500 error pages rendered through the theme
- *   - Multi-site mode when config/sites.yaml is present at the installation root
+ * Fresh owns the server and request lifecycle. Dune's content routing, admin
+ * panel, plugin hooks, and static file serving are registered as Fresh routes
+ * and middleware via createDuneApp(). Island bundles are built once at startup
+ * with the Fresh Builder and attached to the same app instance.
+ *
+ * Multi-site mode delegates to MultisiteManager when config/sites.yaml is
+ * present at the installation root.
  */
 
 import { join } from "@std/path";
-import { App, staticFiles } from "fresh";
+import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
-import { buildSitePrebuilt, createProductionSiteHandler } from "./site-handler.ts";
-import type { RenderJsx } from "./site-handler.ts";
-import { buildIslands } from "./islands.ts";
+import { createDuneApp } from "./fresh-app.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -47,29 +44,27 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine } = ctx;
+  const { engine, config } = ctx;
+  const adminPrefix = config.admin?.path ?? "/admin";
+  const feedEnabled = config.site.feed?.enabled !== false;
 
-  const prebuilt = await buildSitePrebuilt(ctx, port);
-  const handler = createProductionSiteHandler(ctx, prebuilt, root, { port, debug });
+  // Build island bundles and attach them to the app via the Fresh build cache.
+  // Builder scans the theme's islands/ dir; if no islands exist it's a no-op.
+  const islandDir = join(root, "themes", config.theme.name, "islands");
+  const builder = new Builder({ root, islandDir });
+  const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
+
+  // Assemble the Fresh app with all Dune routes as middleware.
+  const { app } = await createDuneApp(ctx, { root, port, debug, dev: false });
+
+  // Attach the island build cache so staticFiles() can serve /_fresh/js/* chunks.
+  applySnapshot(app);
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🗺️  Sitemap generated`);
-  if (prebuilt.feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
+  if (feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
+  console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
   console.log(`  🌐 http://localhost:${port}\n`);
 
-  const app = new App();
-  await buildIslands(app, root, ctx.config.theme.name, "production");
-  app.use(staticFiles());
-  app.get("/*", async (freshCtx) => {
-    const rj: RenderJsx = (vnode, _s = 200) =>
-      freshCtx.render(vnode as Parameters<typeof freshCtx.render>[0]);
-    return handler(freshCtx.req, rj);
-  });
-  const freshHandler = app.handler();
-  Deno.serve({
-    port,
-    handler: (req) => req.method === "GET" || req.method === "HEAD"
-      ? freshHandler(req)
-      : handler(req),
-  });
+  Deno.serve({ port, handler: app.handler() });
 }

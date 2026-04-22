@@ -14,6 +14,7 @@
     "preact": "npm:preact@^10",
     "preact/": "npm:preact@^10/",
     "preact/hooks": "npm:preact@^10/hooks",
+    "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
     "@std/yaml": "jsr:@std/yaml@^1",
