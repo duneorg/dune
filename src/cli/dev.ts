@@ -10,10 +10,11 @@
  */
 
 import { join } from "@std/path";
-import { App } from "fresh";
+import { App, staticFiles } from "fresh";
 import { bootstrap } from "./bootstrap.ts";
 import { createDevSiteContext } from "./site-handler.ts";
 import type { RenderJsx } from "./site-handler.ts";
+import { buildIslands } from "./islands.ts";
 
 export interface DevOptions {
   port?: number;
@@ -99,7 +100,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   console.log(`\n  🌐 http://localhost:${port}\n`);
 
-  const app = new App().get("/*", async (freshCtx) => {
+  const app = new App();
+  await buildIslands(app, root, ctx.config.theme.name, "development");
+  app.use(staticFiles());
+  app.get("/*", async (freshCtx) => {
     const rj: RenderJsx = (vnode, _s = 200) =>
       freshCtx.render(vnode as Parameters<typeof freshCtx.render>[0]);
     return siteCtx.handler(freshCtx.req, rj);

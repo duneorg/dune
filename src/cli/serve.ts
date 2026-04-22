@@ -12,10 +12,11 @@
  */
 
 import { join } from "@std/path";
-import { App } from "fresh";
+import { App, staticFiles } from "fresh";
 import { bootstrap } from "./bootstrap.ts";
 import { buildSitePrebuilt, createProductionSiteHandler } from "./site-handler.ts";
 import type { RenderJsx } from "./site-handler.ts";
+import { buildIslands } from "./islands.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -56,7 +57,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   if (prebuilt.feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
   console.log(`  🌐 http://localhost:${port}\n`);
 
-  const app = new App().get("/*", async (freshCtx) => {
+  const app = new App();
+  await buildIslands(app, root, ctx.config.theme.name, "production");
+  app.use(staticFiles());
+  app.get("/*", async (freshCtx) => {
     const rj: RenderJsx = (vnode, _s = 200) =>
       freshCtx.render(vnode as Parameters<typeof freshCtx.render>[0]);
     return handler(freshCtx.req, rj);
