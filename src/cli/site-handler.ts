@@ -157,7 +157,7 @@ export function createProductionSiteHandler(
   const {
     engine, collections, taxonomy, search, imageHandler,
     adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
-    sharedThemesDir,
+    sharedThemesDir, hooks,
   } = ctx;
   const searchAnalyticsPath = join(
     config.admin?.runtimeDir ?? ".dune/admin",
@@ -253,6 +253,14 @@ export function createProductionSiteHandler(
     const url = new URL(req.url);
     let response: Response = new Response("Internal Server Error", { status: 500 });
     try {
+      // Plugin request interception — fires onRequest hook; if a plugin
+      // returns a Response, short-circuit the normal routing pipeline.
+      const hookResult = await hooks.fire<Request | Response>("onRequest", req);
+      if (hookResult instanceof Response) {
+        metrics?.recordRequest(url.pathname, performance.now() - startMs, hookResult.status >= 500);
+        return hookResult;
+      }
+
       // Health check
       if (url.pathname === "/health") {
         response = new Response(JSON.stringify({
@@ -456,7 +464,7 @@ export function createDevSiteContext(
   const {
     engine, collections, taxonomy, search, imageHandler,
     adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
-    sharedThemesDir,
+    sharedThemesDir, hooks,
   } = ctx;
   const searchAnalyticsPath = join(
     config.admin?.runtimeDir ?? ".dune/admin",
@@ -538,6 +546,13 @@ export function createDevSiteContext(
     let response: Response = new Response("Internal Server Error", { status: 500 });
 
     try {
+      // Plugin request interception — fires onRequest hook; if a plugin
+      // returns a Response, short-circuit the normal routing pipeline.
+      const hookResult = await hooks.fire<Request | Response>("onRequest", req);
+      if (hookResult instanceof Response) {
+        return hookResult;
+      }
+
       if (url.pathname === "/__dune_reload") {
         return handleSSE();
       } else if (url.pathname === "/__preview" && req.method === "GET") {
