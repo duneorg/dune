@@ -12,10 +12,9 @@
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",
-    "preact/": "npm:preact@^10/",
     "preact/hooks": "npm:preact@^10/hooks",
-    "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
+    "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
     "@std/yaml": "jsr:@std/yaml@^1",
     "@std/path": "jsr:@std/path@^1.1.4",
