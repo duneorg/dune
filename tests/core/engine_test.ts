@@ -103,10 +103,15 @@ function withBinaryFile(
   data: Uint8Array,
   size: number,
 ): StorageAdapter {
+  // Derive the parent directory path so resolveMediaPath's directory
+  // existence checks succeed (the base mock only tracks file paths).
+  const parentDir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const fileName = path.includes("/") ? path.slice(path.lastIndexOf("/") + 1) : path;
+
   return {
     ...base,
     exists: async (p: string) => {
-      if (p === path) return true;
+      if (p === path || (parentDir && p === parentDir)) return true;
       return base.exists(p);
     },
     read: async (p: string) => {
@@ -117,7 +122,16 @@ function withBinaryFile(
       if (p === path) {
         return { size, mtime: 2_000, isFile: true, isDirectory: false };
       }
+      if (parentDir && p === parentDir) {
+        return { size: 0, mtime: 2_000, isFile: false, isDirectory: true };
+      }
       return base.stat(p);
+    },
+    list: async (dir: string) => {
+      if (parentDir && dir === parentDir) {
+        return [{ name: fileName, path, isFile: true, isDirectory: false }];
+      }
+      return base.list(dir);
     },
   } as unknown as StorageAdapter;
 }

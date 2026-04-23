@@ -129,6 +129,7 @@ function makeEngine(
     getAvailableThemes: () => Promise.resolve([]),
     switchTheme: (_name: string) => Promise.resolve(),
     createPreviewTheme: (_name: string) => Promise.reject(new Error("not implemented")),
+    setPluginTemplateDirs: (_dirs: string[]) => {},
   };
 }
 
