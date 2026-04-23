@@ -67,7 +67,13 @@ export interface SitePrebuilt {
   startTime: number;
 }
 
-/** Build startup-time artifacts (sitemap gzip + feeds). Call once per site. */
+/**
+ * Build startup-time artifacts (sitemap gzip + feeds). Call once per site.
+ *
+ * @deprecated Single-site production serving now uses `createDuneApp()` in
+ * `fresh-app.ts`, which builds sitemap and feeds internally. This function
+ * is retained for `multisite/manager.ts` and `ssg/builder.ts` only.
+ */
 export async function buildSitePrebuilt(
   ctx: BootstrapResult,
   port: number,
@@ -146,7 +152,13 @@ export async function buildSitePrebuilt(
   return { sitemapGzip, rssFeed, atomFeed, feedEnabled, startTime };
 }
 
-/** Create the production HTTP handler for a single site. */
+/**
+ * Create the production HTTP handler for a single site.
+ *
+ * @deprecated Single-site production serving now uses `createDuneApp()` in
+ * `fresh-app.ts` with Fresh owning the server. This function is retained for
+ * `multisite/manager.ts` only.
+ */
 export function createProductionSiteHandler(
   ctx: BootstrapResult,
   prebuilt: SitePrebuilt,
@@ -454,6 +466,10 @@ export interface DevSiteContext {
  * Create the dev-mode HTTP handler + SSE infrastructure for one site.
  * File watching is NOT set up here — the caller (dev.ts or MultisiteManager)
  * is responsible for calling `notifyReload()` after each rebuild.
+ *
+ * @deprecated Single-site dev serving now uses `createDuneApp()` in
+ * `fresh-app.ts` with `builder.listen()` from Fresh owning the server.
+ * This function is retained for `multisite/manager.ts` only.
  */
 export function createDevSiteContext(
   ctx: BootstrapResult,
