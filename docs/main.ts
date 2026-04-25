@@ -17,6 +17,17 @@ import { MarkdownHandler } from "../src/content/formats/markdown.ts";
 import { TsxHandler } from "../src/content/formats/tsx.ts";
 import { createDuneEngine } from "../src/core/engine.ts";
 import { duneRoutes } from "../src/routing/routes.ts";
+import { createSearchEngine } from "../src/search/engine.ts";
+import { join, extname } from "@std/path";
+
+const MIME: Record<string, string> = {
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
 
 const PORT = parseInt(Deno.env.get("PORT") ?? "3000");
 
@@ -52,10 +63,19 @@ async function main() {
 
   console.log(`[dune] Content index: ${engine.pages.length} pages`);
   console.log(`[dune] Theme: ${engine.themes.theme.manifest.name}`);
-  console.log(`[dune] Templates: ${engine.themes.getAvailableTemplates().join(", ")}`);
 
-  // 5. Set up route handlers
-  const routes = duneRoutes(engine);
+  // 5. Search engine
+  const search = createSearchEngine({
+    pages: engine.pages,
+    storage,
+    contentDir: "content",
+    formats,
+  });
+  await search.build();
+  console.log(`[dune] Search index built`);
+
+  // 6. Set up route handlers
+  const routes = duneRoutes(engine, undefined, undefined, search);
 
   // 6. Simple HTTP server (no Fresh dependency for now — pure Deno.serve)
   // This proves the engine works end-to-end. Fresh integration comes next.
@@ -66,6 +86,18 @@ async function main() {
     const path = url.pathname;
 
     try {
+      // Theme static files
+      if (path.startsWith("/themes/")) {
+        try {
+          const filePath = join("docs", path);
+          const data = await Deno.readFile(filePath);
+          const mime = MIME[extname(path)] ?? "application/octet-stream";
+          return new Response(data, { headers: { "Content-Type": mime, "Cache-Control": "public, max-age=3600" } });
+        } catch {
+          return new Response("Not found", { status: 404 });
+        }
+      }
+
       // Media files
       if (path.startsWith("/content-media/")) {
         return await routes.mediaHandler(req);
