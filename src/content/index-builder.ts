@@ -369,6 +369,16 @@ function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
     const key = `${page.route}::${page.language}`;
     const existing = routeMap.get(key);
     if (existing) {
+      // If one page is unpublished, silently prefer the published one — no warning.
+      // This covers intentional cases like README.md alongside default.md in a submodule.
+      if (!page.published && existing.published) {
+        continue; // existing (published) already wins — nothing to do
+      }
+      if (page.published && !existing.published) {
+        routeMap.set(key, page); // replace unpublished incumbent with published page
+        continue;
+      }
+
       const existingIsFlat = isFlatFilePath(existing.sourcePath);
       const newIsFlat = isFlatFilePath(page.sourcePath);
       if (!existingIsFlat && newIsFlat) {
