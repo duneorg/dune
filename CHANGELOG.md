@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.8.4] — 2026-05-04
+
+### Fixed
+
+- **Co-located audio and video not rewritten** — `<source src="./file.mp3">`, `<audio src="./file.mp3">`, and `<video src="./file.mp4">` relative references were not rewritten to absolute URLs, causing 404s in the browser. A new media resolver pass handles these elements identically to the existing `<img>`, `<a>`, and `<iframe>` passes.
+
+---
+
 ## [0.8.3] — 2026-05-04
 
 ### Fixed
