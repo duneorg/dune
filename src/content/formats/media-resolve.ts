@@ -15,7 +15,8 @@
  * bare relative href like `myfile.pdf` correctly — it strips the last segment
  * and resolves against `/einstieg/` instead of `/einstieg/my-page/`.
  *
- * Pass 5 handles <iframe src="./file.html"> co-located embeds. When the src
+ * Pass 5 handles <source>/<audio>/<video> src attributes for colocated media.
+ * Pass 6 handles <iframe src="./file.html"> co-located embeds. When the src
  * resolves to a co-located media file, the src is rewritten to an absolute URL
  * and a small inline listener script is emitted immediately after the closing
  * </iframe> tag. The corresponding sender script is injected by the engine into
@@ -138,7 +139,29 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
     },
   );
 
-  // Pass 5: <iframe src="./file.html"> co-located embeds.
+  // Pass 5: <source src="...">, <audio src="...">, <video src="..."> elements.
+  //
+  // Handles both the common pattern (nested <source> inside <audio>/<video>) and
+  // the direct src attribute on <audio>/<video> itself. <source> is a void element
+  // so no closing tag matching is needed — just the opening tag's src attribute.
+  result = result.replace(
+    /(<(?:source|audio|video)\b[^>]*?\bsrc=")([^"]+)(")/gi,
+    (_match, before: string, src: string, after: string) => {
+      if (isNonRelative(src)) return `${before}${src}${after}`;
+
+      const bare = src.startsWith("./") ? src.slice(2) : src;
+      const [filename, query] = bare.split("?", 2);
+      const mediaFile = ctx.media.get(filename);
+      if (mediaFile) {
+        const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
+        return `${before}${url}${after}`;
+      }
+
+      return `${before}${src}${after}`;
+    },
+  );
+
+  // Pass 6: <iframe src="./file.html"> co-located embeds.
   //
   // Matches a complete <iframe ...></iframe> unit whose src attribute is a
   // relative reference. When the src resolves to a co-located media file the
