@@ -147,9 +147,12 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
   //
   // Uses e.source === iframe.contentWindow to scope messages to this specific
   // iframe, so multiple iframes on the same page work independently.
+  //
+  // Uses [\s\S]*? (lazy dotall) to reliably handle multiline opening tags
+  // where attributes span multiple lines.
   result = result.replace(
-    /(<iframe\b)((?:[^>](?!src=))*?\bsrc=")([^"]+)("(?:[^>]*?)>)\s*<\/iframe>/gis,
-    (_match, open: string, before: string, src: string, after: string) => {
+    /<iframe\b([\s\S]*?)\bsrc="([^"]+)"([\s\S]*?)>\s*<\/iframe>/gi,
+    (_match, before: string, src: string, after: string) => {
       if (isNonRelative(src)) return _match;
 
       const bare = src.startsWith("./") ? src.slice(2) : src;
@@ -157,7 +160,7 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
       const mediaFile = ctx.media.get(filename);
       if (!mediaFile) return _match;
 
-      const rewritten = `${open}${before}${mediaFile.url}${after}</iframe>`;
+      const rewritten = `<iframe${before}src="${mediaFile.url}"${after}></iframe>`;
       const listener =
         `<script>(function(){` +
         `var f=document.currentScript.previousElementSibling;` +
