@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.8.3] — 2026-05-04
+
+### Fixed
+
+- **Co-located iframe src not rewritten** — `.html` was missing from `MEDIA_EXTENSIONS`, so HTML files were never indexed by `discoverMedia()`. `ctx.media.get('file.html')` always returned null, silently skipping the iframe src rewrite introduced in 0.8.2.
+
+- **Iframe regex failed on multiline tags** — The previous `[^>](?!src=)` pattern did not match `<iframe>` opening tags where attributes span multiple lines (e.g. `width`, `height`, and `src` on separate lines). Replaced with `[\s\S]*?` (lazy dotall) which handles both inline and multiline tags correctly.
+
+---
+
 ## [0.8.2] — 2026-05-04
 
 ### Added
