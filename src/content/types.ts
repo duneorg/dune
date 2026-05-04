@@ -329,6 +329,12 @@ export interface RenderContext {
   collection?: Collection;
   params: Record<string, string>;
   /**
+   * Absolute filesystem path to the content directory root.
+   * Used by format handlers (e.g. MDX) to resolve co-located file imports.
+   * Available whenever a real content directory is in use.
+   */
+  contentDir?: string;
+  /**
    * Pre-resolved trust flag: true when either site.trusted_html or the
    * page's own frontmatter.trusted_html is set. Format handlers should
    * check this rather than reading site/frontmatter directly.

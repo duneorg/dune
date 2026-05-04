@@ -298,12 +298,13 @@ async function discoverMedia(
 function buildMinimalRenderContext(
   media: MediaFile[],
   sourcePath: string,
-  _contentDir: string,
+  contentDir: string,
   site?: import("../config/types.ts").SiteConfig,
   trustedHtml?: boolean,
 ): RenderContext {
   return {
     site,
+    contentDir,
     trustedHtml,
     media: {
       url: (filename: string) => {

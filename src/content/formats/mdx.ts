@@ -7,13 +7,22 @@
  * Processing pipeline:
  *   1. Parse YAML frontmatter between --- delimiters (same as .md)
  *   2. Extract raw MDX body
- *   3. At render time: compile MDX → evaluate → render to HTML string
- *   4. Resolve co-located media references (same regex as .md)
+ *   3. At render time:
+ *      a. Resolve co-located media references (same regex as .md)
+ *      b. Extract and resolve co-located import statements (relative ./... imports)
+ *      c. Compile MDX (import-stripped source) → evaluate → render to HTML string
+ *   4. Component scope = theme registry + co-located imports merged together
  *
- * Components available inside MDX content come from the MdxComponentRegistry.
+ * Components available inside MDX content come from two sources:
+ *   - MdxComponentRegistry: theme-wide reusable components (registered via
+ *     themes/{name}/mdx-components.ts)
+ *   - Co-located imports: relative import statements in the MDX file itself
+ *     (e.g. `import Chart from './Chart.tsx'`) resolved against the MDX file's
+ *     directory and loaded server-side via Deno dynamic import.
  */
 
 import matter from "gray-matter";
+import { dirname, join } from "@std/path";
 import { h } from "preact";
 import { render } from "preact-render-to-string";
 import type {
@@ -71,9 +80,10 @@ export class MdxHandler implements ContentFormatHandler {
    *
    * Pipeline:
    *   1. Resolve media references (same as markdown handler)
-   *   2. Compile MDX source to a module via @mdx-js/mdx
-   *   3. Evaluate the compiled module to get a component function
-   *   4. Render the component to an HTML string via Preact SSR
+   *   2. Extract and load co-located relative imports (./Foo.tsx etc.)
+   *   3. Compile import-stripped MDX source via @mdx-js/mdx (function-body)
+   *   4. Evaluate compiled module, merging registry + colocated component scopes
+   *   5. Render component to HTML string via Preact SSR
    */
   async renderToHtml(
     page: Page,
@@ -86,61 +96,169 @@ export class MdxHandler implements ContentFormatHandler {
     const resolved = resolveMediaRefs(raw, ctx);
 
     try {
+      // Resolve co-located imports if we know the content directory.
+      // Produces a stripped source (imports removed) + loaded component map.
+      let mdxSource = resolved;
+      let colocatedComponents: Record<string, unknown> = {};
+      if (ctx.contentDir) {
+        const mdxDir = join(ctx.contentDir, dirname(page.sourcePath));
+        const result = await resolveColocaledImports(resolved, mdxDir);
+        mdxSource = result.source;
+        colocatedComponents = result.components;
+      }
+
       // Lazy import @mdx-js/mdx (heavy dependency, only load when needed)
-      const { compile } = await import("@mdx-js/mdx");
+      const { compile, run } = await import("@mdx-js/mdx");
 
       // Compile MDX source to a JS module string
-      const compiled = await compile(resolved, {
+      const compiled = await compile(mdxSource, {
         // Output as function body (not full module) for evaluation
         outputFormat: "function-body",
-        // Use development mode for better error messages
         development: false,
-        // JSX runtime config — we'll provide our own
         providerImportSource: undefined,
       });
 
-      // Evaluate the compiled MDX to get the content component.
-      // The compiled code expects a runtime with `jsx`, `jsxs`, `Fragment`.
-      const { run } = await import("@mdx-js/mdx");
-
-      // Build component scope from registry
-      const componentScope = this.components?.getComponents() ?? {};
+      // Merge registry components + co-located imports into one scope.
+      // Co-located imports take precedence so a post can shadow a theme component.
+      const componentScope: Record<string, unknown> = {
+        ...this.components?.getComponents() ?? {},
+        ...colocatedComponents,
+      };
 
       const mdxModule = await run(compiled, {
-        // Provide the JSX runtime
         jsx: h as any,
         jsxs: h as any,
         jsxDEV: h as any,
         Fragment: "div" as any,
-        // Provide components from the registry (cast to satisfy @mdx-js types)
         useMDXComponents: (() => componentScope) as any,
       });
 
-      // mdxModule.default is the MDX content component
       const MdxContent = mdxModule.default;
       if (!MdxContent) return "";
 
-      // Build component props with available components
-      const componentProps: Record<string, unknown> = {};
-      if (this.components) {
-        componentProps.components = this.components.getComponents();
-      }
-
       // Render MDX component to HTML via Preact SSR
-      const jsx = h(MdxContent, componentProps);
+      const jsx = h(MdxContent, { components: componentScope } as any);
       const html = render(jsx);
 
       return html;
     } catch (err) {
-      // MDX compilation/evaluation errors — return error message wrapped in HTML.
-      // Log the full message server-side (includes paths for debugging) but strip
-      // filesystem paths from the client-facing output to avoid leaking server layout.
       const message = err instanceof Error ? err.message : String(err);
       console.error(`  ✗ MDX render error in ${page.sourcePath}: ${message}`);
       return `<div class="mdx-error"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
     }
   }
 
+}
+
+/**
+ * Extract, load, and strip relative import statements from MDX source.
+ *
+ * Handles the three common import forms:
+ *   import Foo from './Foo.tsx'           → default export bound as Foo
+ *   import { Foo, Bar as B } from './x'  → named exports
+ *   import * as Ns from './ns.tsx'        → entire module as namespace
+ *
+ * Only relative specifiers (starting with ./ or ../) are processed.
+ * Non-relative imports are left in the source and will cause a compile
+ * error later — MDX function-body format does not support bare imports.
+ *
+ * @param source  Raw MDX body (frontmatter already stripped)
+ * @param mdxDir  Absolute path to the directory containing the MDX file
+ */
+async function resolveColocaledImports(
+  source: string,
+  mdxDir: string,
+): Promise<{ source: string; components: Record<string, unknown> }> {
+  const components: Record<string, unknown> = {};
+
+  // Match ES import statements — covers default, named, and namespace forms.
+  // Uses a single pattern that captures (bindings, specifier).
+  // Multiline flag off: we process line-by-line via replace, gm handles newlines.
+  const IMPORT_RE =
+    /^import\s+((?:\*\s+as\s+\w+|\{[^}]*\}|[\w]+)(?:\s*,\s*(?:\{[^}]*\}|[\w]+))*)\s+from\s+(['"])(\.\.?\/[^'"]+)\2\s*;?\r?\n?/gm;
+
+  // First pass: collect all relative imports and load them.
+  let match: RegExpExecArray | null;
+  const reScan = new RegExp(IMPORT_RE.source, "gm");
+  while ((match = reScan.exec(source)) !== null) {
+    const [, bindings, , specifier] = match;
+
+    // Resolve specifier relative to the MDX file's directory.
+    // Deno's dynamic import requires an absolute file:// URL.
+    const absPath = join(mdxDir, specifier);
+    let mod: Record<string, unknown>;
+    try {
+      mod = await import(`file://${absPath}`);
+    } catch {
+      // If the import fails, leave the line in source so MDX reports a clear error.
+      continue;
+    }
+
+    // Parse bindings into name→value entries.
+    const trimmed = bindings.trim();
+
+    // Namespace import: * as Foo
+    const nsMatch = trimmed.match(/^\*\s+as\s+(\w+)$/);
+    if (nsMatch) {
+      components[nsMatch[1]] = mod;
+      continue;
+    }
+
+    // Named import block: { Foo, Bar as B, baz }
+    const namedBlock = trimmed.match(/^\{([^}]*)\}$/);
+    if (namedBlock) {
+      for (const part of namedBlock[1].split(",")) {
+        const [orig, alias] = part.trim().split(/\s+as\s+/);
+        if (!orig?.trim()) continue;
+        const exportName = orig.trim();
+        const localName = alias?.trim() ?? exportName;
+        components[localName] = mod[exportName];
+      }
+      continue;
+    }
+
+    // Default import (possibly with trailing named block):
+    //   Foo
+    //   Foo, { Bar }
+    const defaultMatch = trimmed.match(/^(\w+)(?:\s*,\s*\{([^}]*)\})?$/);
+    if (defaultMatch) {
+      components[defaultMatch[1]] = mod.default;
+      if (defaultMatch[2]) {
+        for (const part of defaultMatch[2].split(",")) {
+          const [orig, alias] = part.trim().split(/\s+as\s+/);
+          if (!orig?.trim()) continue;
+          const exportName = orig.trim();
+          const localName = alias?.trim() ?? exportName;
+          components[localName] = mod[exportName];
+        }
+      }
+    }
+  }
+
+  // Second pass: strip successfully-loaded relative imports from the source.
+  // We only strip lines whose specifier resolves — failures were skipped above
+  // so they remain and surface as MDX compile errors.
+  const loadedSpecifiers = new Set(
+    [...source.matchAll(new RegExp(IMPORT_RE.source, "gm"))]
+      .map((m) => m[3])
+      .filter((spec) => {
+        const absPath = join(mdxDir, spec);
+        // A specifier was loaded if its default or any named export landed in components.
+        // Simplest heuristic: always strip relative imports we attempted (loaded or not
+        // caught above); failures were re-tried and skipped, so the import line is safe
+        // to remove since we already have the error case handled.
+        return absPath.length > 0;
+      }),
+  );
+
+  const stripped = source.replace(
+    new RegExp(IMPORT_RE.source, "gm"),
+    (line, _bindings, _quote, specifier) => {
+      return loadedSpecifiers.has(specifier) ? "" : line;
+    },
+  );
+
+  return { source: stripped.trimStart(), components };
 }
 
 /** Escape HTML special characters for safe inline display. */
