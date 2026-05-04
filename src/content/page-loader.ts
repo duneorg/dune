@@ -365,6 +365,7 @@ export function getMimeType(filename: string): string {
     ".zip": "application/zip",
     ".json": "application/json",
     ".csv": "text/csv",
+    ".html": "text/html",
   };
   return types[ext] ?? "application/octet-stream";
 }

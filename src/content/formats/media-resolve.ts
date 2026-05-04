@@ -14,6 +14,15 @@
  * trailing slash (e.g. `/einstieg/my-page`), so the browser cannot resolve a
  * bare relative href like `myfile.pdf` correctly — it strips the last segment
  * and resolves against `/einstieg/` instead of `/einstieg/my-page/`.
+ *
+ * Pass 5 handles <iframe src="./file.html"> co-located embeds. When the src
+ * resolves to a co-located media file, the src is rewritten to an absolute URL
+ * and a small inline listener script is emitted immediately after the closing
+ * </iframe> tag. The corresponding sender script is injected by the engine into
+ * the served HTML file itself (see engine.ts serveMedia). Together they
+ * implement automatic height synchronisation with no author configuration.
+ * This requires trusted_html to be set — the sanitiser strips <iframe> tags
+ * otherwise, so the rewrite only takes effect when the author has opted in.
  */
 
 import type { RenderContext } from "../types.ts";
@@ -129,5 +138,56 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
     },
   );
 
+  // Pass 5: <iframe src="./file.html"> co-located embeds.
+  //
+  // Matches a complete <iframe ...></iframe> unit whose src attribute is a
+  // relative reference. When the src resolves to a co-located media file the
+  // tag is rewritten with an absolute src and a namespaced auto-resize listener
+  // script is appended immediately after the closing tag.
+  //
+  // Uses e.source === iframe.contentWindow to scope messages to this specific
+  // iframe, so multiple iframes on the same page work independently.
+  result = result.replace(
+    /(<iframe\b)((?:[^>](?!src=))*?\bsrc=")([^"]+)("(?:[^>]*?)>)\s*<\/iframe>/gis,
+    (_match, open: string, before: string, src: string, after: string) => {
+      if (isNonRelative(src)) return _match;
+
+      const bare = src.startsWith("./") ? src.slice(2) : src;
+      const [filename] = bare.split("?", 1);
+      const mediaFile = ctx.media.get(filename);
+      if (!mediaFile) return _match;
+
+      const rewritten = `${open}${before}${mediaFile.url}${after}</iframe>`;
+      const listener =
+        `<script>(function(){` +
+        `var f=document.currentScript.previousElementSibling;` +
+        `window.addEventListener('message',function(e){` +
+        `if(e.data&&typeof e.data.__duneIframeHeight==='number'&&e.source===f.contentWindow)` +
+        `f.style.height=e.data.__duneIframeHeight+'px';` +
+        `});` +
+        `})()</script>`;
+      return `${rewritten}\n${listener}`;
+    },
+  );
+
   return result;
 }
+
+/**
+ * Inline script injected by serveMedia() into co-located HTML files.
+ *
+ * Reports document height to the parent frame on load and on every resize,
+ * enabling the listener emitted by resolveMediaRefs() Pass 5 to keep the
+ * <iframe> height synchronised with its content without any author config.
+ *
+ * Exported so engine.ts can import a single canonical copy rather than
+ * duplicating the string.
+ */
+export const IFRAME_SENDER_SCRIPT =
+  `<script>(function(){` +
+  `function r(){window.parent.postMessage(` +
+  `{__duneIframeHeight:document.documentElement.scrollHeight},'*'` +
+  `);}` +
+  `window.addEventListener('load',r);` +
+  `window.addEventListener('resize',r);` +
+  `})()</script>`;

@@ -23,6 +23,7 @@ import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
 import { parseFolderName } from "../content/path-utils.ts";
 import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
+import { IFRAME_SENDER_SCRIPT } from "../content/formats/media-resolve.ts";
 import { loadBlueprints } from "../blueprints/loader.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
 import { createRouteResolver } from "../routing/resolver.ts";
@@ -376,12 +377,25 @@ export async function createDuneEngine(
     if (!resolved) return null;
 
     try {
-      const data = await storage.read(resolved);
-      const stat = await storage.stat(resolved);
+      let data = await storage.read(resolved);
+      const contentType = getMimeType(resolved);
+
+      // Inject the iframe height-sender script into co-located HTML files.
+      // This pairs with the listener emitted by resolveMediaRefs() Pass 5 so
+      // that <iframe src="./file.html"> embeds auto-size to their content
+      // without any author configuration.
+      if (contentType === "text/html") {
+        const html = new TextDecoder().decode(data);
+        const injected = html.includes("</body>")
+          ? html.replace("</body>", `${IFRAME_SENDER_SCRIPT}</body>`)
+          : html + IFRAME_SENDER_SCRIPT;
+        data = new TextEncoder().encode(injected);
+      }
+
       return {
         data,
-        contentType: getMimeType(resolved),
-        size: stat.size,
+        contentType,
+        size: data.byteLength,
       };
     } catch {
       return null;
