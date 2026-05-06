@@ -1,9 +1,7 @@
 /** POST /admin/api/pages/:path/comments/:id/resolve */
 
-
 import type { AdminState } from "../../../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../../../_utils.ts";
-import { getAdminContext } from "../../../../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -13,7 +11,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
-    const { comments } = getAdminContext();
+    const { comments } = ctx.state.adminContext;
     if (!comments) return json({ error: "Comments not available" }, 503);
 
     const { path: pagePath, id } = ctx.params;

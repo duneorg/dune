@@ -1,9 +1,7 @@
 /** POST /admin/api/workflow/schedule */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -13,7 +11,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { scheduler } = getAdminContext();
+    const { scheduler } = ctx.state.adminContext;
     if (!scheduler) return json({ error: "Scheduler not enabled" }, 501);
 
     const authResult = ctx.state.auth;

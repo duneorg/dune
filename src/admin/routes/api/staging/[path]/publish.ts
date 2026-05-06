@@ -1,9 +1,7 @@
 /** POST /admin/api/staging/:path/publish */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import { stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
@@ -28,7 +26,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { staging, engine, storage, config, history: hist } = getAdminContext();
+    const { staging, engine, storage, config, history: hist } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
 
     const pagePath = ctx.params.path;

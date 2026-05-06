@@ -4,13 +4,12 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import ConfigEditor from "../../islands/ConfigEditor.tsx";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { auth, prefix } = getAdminContext();
+    const { auth, prefix } = ctx.state.adminContext;
     if (!auth.hasPermission(ctx.state.auth, "config.read")) {
       return new Response("Forbidden", { status: 403 });
     }

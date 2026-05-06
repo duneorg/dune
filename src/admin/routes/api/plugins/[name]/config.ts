@@ -1,9 +1,7 @@
 /** PUT /admin/api/plugins/:name/config */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import type { BlueprintField } from "../../../../../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 
@@ -14,7 +12,7 @@ export const handler = {
     const denied = requirePermission(ctx, "config.update");
     if (denied) return denied;
 
-    const { hooks, storage, config } = getAdminContext();
+    const { hooks, storage, config } = ctx.state.adminContext;
     const pluginName = decodeURIComponent(ctx.params.name);
     if (!pluginName) return json({ error: "Plugin name required" }, 400);
 

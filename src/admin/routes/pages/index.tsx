@@ -4,16 +4,15 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import PageTree from "../../islands/PageTree.tsx";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
     if (!ctx.state.auth.authenticated) {
-      return new Response(null, { status: 302, headers: { Location: `${getAdminContext().prefix}/login` } });
+      return new Response(null, { status: 302, headers: { Location: `${ctx.state.adminContext.prefix}/login` } });
     }
-    const { engine, prefix } = getAdminContext();
+    const { engine, prefix } = ctx.state.adminContext;
     const q = ctx.url.searchParams.get("q") ?? "";
     const pages = engine.pages.map((p) => ({
       route: p.route,

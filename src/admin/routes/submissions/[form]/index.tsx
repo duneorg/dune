@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../../types.ts";
-import { getAdminContext } from "../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { submissions, prefix } = getAdminContext();
+    const { submissions, prefix } = ctx.state.adminContext;
     const form = ctx.params.form;
     if (!submissions) return new Response("Submissions not enabled", { status: 501 });
     const items = await submissions.list(form);

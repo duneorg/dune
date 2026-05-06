@@ -1,16 +1,14 @@
 /** GET + POST + DELETE /admin/api/staging/:path */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
-    const { staging } = getAdminContext();
+    const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
 
     const pagePath = ctx.params.path;
@@ -35,7 +33,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { staging } = getAdminContext();
+    const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
 
     const pagePath = ctx.params.path;
@@ -60,7 +58,7 @@ export const handler = {
     if (csrf) return csrf;
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
-    const { staging } = getAdminContext();
+    const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
     await staging.discard(ctx.params.path);
     return json({ discarded: true });

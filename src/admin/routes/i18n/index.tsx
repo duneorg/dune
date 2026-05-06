@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { engine, config } = getAdminContext();
+    const { engine, config } = ctx.state.adminContext;
     const supported = config.system.languages?.supported ?? [];
     const defaultLang = config.system.languages?.default ?? "en";
 
@@ -26,7 +25,7 @@ export const handler = {
       pct: engine.pages.length > 0 ? Math.round(((byLang.get(lang) ?? 0) / engine.pages.length) * 100) : 0,
     }));
 
-    return ctx.render(<I18nRoute data={{ rows, defaultLang, total: engine.pages.length, prefix: getAdminContext().prefix }} />);
+    return ctx.render(<I18nRoute data={{ rows, defaultLang, total: engine.pages.length, prefix: ctx.state.adminContext.prefix }} />);
   },
 };
 

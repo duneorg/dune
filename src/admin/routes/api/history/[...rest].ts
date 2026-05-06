@@ -7,10 +7,8 @@
  * POST /admin/api/history/:encodedPath/:revNum/restore  → restore revision
  */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
@@ -19,7 +17,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
-    const { history: hist, engine } = getAdminContext();
+    const { history: hist, engine } = ctx.state.adminContext;
     if (!hist) return json({ error: "History not enabled" }, 501);
 
     // rest = "encodedPath" | "encodedPath/revNum" | "encodedPath/revNum/diff"
@@ -65,7 +63,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { history: hist, engine, storage, config } = getAdminContext();
+    const { history: hist, engine, storage, config } = ctx.state.adminContext;
     if (!hist) return json({ error: "History not enabled" }, 501);
 
     const rest = ctx.params.rest;

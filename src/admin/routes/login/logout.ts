@@ -3,14 +3,12 @@
  * Split into its own route so the layout's sign-out form can POST here.
  */
 
-
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
-    const { auth, sessions, prefix, auditLogger } = getAdminContext();
+    const { auth, sessions, prefix, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     if (authResult?.session) {
       await sessions.revoke(authResult.session.id);

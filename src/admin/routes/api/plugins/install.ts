@@ -1,9 +1,7 @@
 /** POST /admin/api/plugins/install */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
@@ -14,7 +12,7 @@ export const handler = {
     const denied = requirePermission(ctx, "config.update");
     if (denied) return denied;
 
-    const { storage } = getAdminContext();
+    const { storage } = ctx.state.adminContext;
     try {
       const { name, jsr } = await ctx.req.json() as { name?: string; jsr?: string };
 

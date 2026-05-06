@@ -106,9 +106,15 @@ export interface AdminUserInfo {
   enabled: boolean;
 }
 
-/** Fresh 2 context state for admin routes — set by _middleware.ts */
+/** Fresh 2 context state for admin routes — set by middleware in fresh-app.ts */
 export interface AdminState {
   auth: AuthResult;
+  /**
+   * Per-site admin context, injected by the per-site middleware in fresh-app.ts.
+   * Avoids the module-level singleton bug in multisite: each site's Fresh app
+   * has its own middleware that closes over its own AdminContext.
+   */
+  adminContext: import("./context.ts").AdminContext;
 }
 
 /** Convert AdminUser to safe API response */

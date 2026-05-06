@@ -1,9 +1,7 @@
 /** GET + POST /admin/api/users */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { toUserInfo } from "../../../types.ts";
 import { checkPasswordStrength } from "../../../../security/password-strength.ts";
 import type { FreshContext } from "fresh";
@@ -12,7 +10,7 @@ export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
     const denied = requirePermission(ctx, "users.read");
     if (denied) return denied;
-    const { users } = getAdminContext();
+    const { users } = ctx.state.adminContext;
     try {
       const all = await users.list();
       return json({ items: all.map(toUserInfo), total: all.length });
@@ -27,7 +25,7 @@ export const handler = {
     const denied = requirePermission(ctx, "users.create");
     if (denied) return denied;
 
-    const { users, auditLogger } = getAdminContext();
+    const { users, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     try {
       const body = await ctx.req.json();

@@ -1,9 +1,7 @@
 /** GET + PUT + DELETE /admin/api/pages/:path */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import { validateFrontmatter } from "../../../../../blueprints/validator.ts";
 import { fireContentWebhooks } from "../../../../../admin/webhooks.ts";
@@ -31,7 +29,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     const pagePath = ctx.params.path;
     try {
       const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
@@ -53,7 +51,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { engine, storage, config, hooks, auditLogger } = getAdminContext();
+    const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     const pagePath = ctx.params.path;
 
@@ -121,7 +119,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.delete");
     if (denied) return denied;
 
-    const { engine, storage, config, hooks, auditLogger } = getAdminContext();
+    const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     const pagePath = ctx.params.path;
 

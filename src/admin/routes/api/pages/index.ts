@@ -1,9 +1,7 @@
 /** GET + POST /admin/api/pages */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, validatePagePath, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { fireContentWebhooks } from "../../../../admin/webhooks.ts";
 import type { FreshContext } from "fresh";
 
@@ -11,7 +9,7 @@ export const handler = {
   GET(ctx: FreshContext<AdminState>) {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     return json({
       items: engine.pages.map((p) => ({
         route: p.route, title: p.title, sourcePath: p.sourcePath,
@@ -29,7 +27,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.create");
     if (denied) return denied;
 
-    const { engine, storage, config, hooks, auditLogger } = getAdminContext();
+    const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     try {
       const body = await ctx.req.json();

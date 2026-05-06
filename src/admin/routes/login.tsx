@@ -8,7 +8,6 @@
 import { h } from "preact";
 import type { FreshContext } from "fresh";
 import type { AdminState } from "../types.ts";
-import { getAdminContext } from "../context.ts";
 import { verifyPassword, DUMMY_HASH } from "../auth/passwords.ts";
 import { findOrProvisionUser } from "../auth/provisioner.ts";
 import { RateLimiter } from "../../security/rate-limit.ts";
@@ -17,18 +16,18 @@ const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { auth, prefix } = getAdminContext();
+    const { auth, prefix } = ctx.state.adminContext;
     // Already authenticated → redirect to dashboard
     if (ctx.state.auth?.authenticated) {
       return new Response(null, { status: 302, headers: { Location: `${prefix}/` } });
     }
     const error = ctx.url.searchParams.get("error") ?? undefined;
     const next = ctx.url.searchParams.get("next") ?? `${prefix}/`;
-    return ctx.render(<LoginPage data={{ error, next }} />);
+    return ctx.render(<LoginPage data={{ error, next, prefix }} />);
   },
 
   async POST(ctx: FreshContext<AdminState>) {
-    const { auth, users, sessions, prefix, auditLogger, authProvider, config } = getAdminContext();
+    const { auth, users, sessions, prefix, auditLogger, authProvider, config } = ctx.state.adminContext;
     const adminConfig = config.admin!;
     const url = ctx.url;
 
@@ -65,7 +64,7 @@ export const handler = {
 
     if (!loginRateLimiter.check(ip)) {
       const retryAfter = loginRateLimiter.retryAfter(ip);
-      return ctx.render(<LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/` }} />, { status: 429 });
+      return ctx.render(<LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/`, prefix }} />, { status: 429 });
     }
 
     const formData = await ctx.req.formData();
@@ -74,7 +73,7 @@ export const handler = {
     const next = (formData.get("next") as string) ?? `${prefix}/`;
 
     if (!username || !password) {
-      return ctx.render(<LoginPage data={{ error: "Username and password required", next }} />, { status: 400 });
+      return ctx.render(<LoginPage data={{ error: "Username and password required", next, prefix }} />, { status: 400 });
     }
 
     let user!: import("../types.ts").AdminUser;
@@ -83,7 +82,7 @@ export const handler = {
       const providerUser = await authProvider.authenticate({ username, password });
       if (!providerUser) {
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
-        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next }} />, { status: 401 });
+        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
       user = await findOrProvisionUser(providerUser, users);
     } else {
@@ -92,7 +91,7 @@ export const handler = {
       const valid = await verifyPassword(password, hashToVerify);
       if (!found || !found.enabled || !valid) {
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
-        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next }} />, { status: 401 });
+        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
       user = found;
     }
@@ -114,10 +113,9 @@ export const handler = {
 };
 
 export default function LoginPage(
-  { data }: { data: { error?: string; next: string } },
+  { data }: { data: { error?: string; next: string; prefix: string } },
 ) {
-  const { prefix } = getAdminContext();
-  const { error, next } = data ?? {};
+  const { error, next, prefix } = data ?? {};
   return (
     <html lang="en">
       <head>

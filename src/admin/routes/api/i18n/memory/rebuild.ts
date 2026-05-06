@@ -1,9 +1,7 @@
 /** POST /admin/api/i18n/memory/rebuild */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import { loadTM, saveTM, buildTMFromPages } from "../../../../tm.ts";
 import { dirname, basename } from "@std/path";
 import { parseContentFilename } from "../../../../../content/path-utils.ts";
@@ -16,7 +14,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
-    const { storage, config, engine } = getAdminContext();
+    const { storage, config, engine } = ctx.state.adminContext;
     try {
       const supported = config.system.languages?.supported ?? [];
       const body = await ctx.req.json();

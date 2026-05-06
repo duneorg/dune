@@ -1,9 +1,7 @@
 /** POST /admin/api/pages/translate */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { dirname, basename } from "@std/path";
 import { parseContentFilename } from "../../../../content/path-utils.ts";
 import type { FreshContext } from "fresh";
@@ -15,7 +13,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.create");
     if (denied) return denied;
 
-    const { engine, storage, config } = getAdminContext();
+    const { engine, storage, config } = ctx.state.adminContext;
     try {
       const { sourcePath, lang } = await ctx.req.json();
       const supportedLangs = engine.config.system.languages?.supported ?? [];

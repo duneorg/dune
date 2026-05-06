@@ -1,17 +1,16 @@
 /** GET /admin/api/plugins */
 
-
 import type { AdminState } from "../../../types.ts";
 import { json } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import type { FreshContext } from "fresh";
+import type { DunePlugin } from "../../../../hooks/types.ts";
 
 export const handler = {
-  GET(_ctx: FreshContext<AdminState>) {
-    const { hooks, config } = getAdminContext();
+  GET(ctx: FreshContext<AdminState>) {
+    const { hooks, config } = ctx.state.adminContext;
     const plugins = hooks?.plugins() ?? [];
     return json({
-      items: plugins.map((p) => ({
+      items: plugins.map((p: DunePlugin) => ({
         name: p.name,
         version: p.version,
         description: p.description,

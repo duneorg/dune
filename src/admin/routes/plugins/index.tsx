@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { hooks, prefix } = getAdminContext();
+    const { hooks, prefix } = ctx.state.adminContext;
     const plugins = (hooks?.plugins() ?? []).map((p) => ({
       name: p.name,
       version: p.version,

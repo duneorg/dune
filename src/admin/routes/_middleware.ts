@@ -6,14 +6,13 @@
 
 import type { FreshContext } from "fresh";
 import type { AdminState } from "../types.ts";
-import { getAdminContext } from "../context.ts";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export async function handler(
   ctx: FreshContext<AdminState>,
 ): Promise<Response> {
-  const { auth, prefix } = getAdminContext();
+  const { auth, prefix } = ctx.state.adminContext;
 
   // Strip prefix to get the admin-relative path for public path check
   const pathname = ctx.url.pathname;

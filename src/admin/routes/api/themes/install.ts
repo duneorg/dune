@@ -1,9 +1,7 @@
 /** POST /admin/api/themes/install */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -13,7 +11,7 @@ export const handler = {
     const denied = requirePermission(ctx, "config.update");
     if (denied) return denied;
 
-    const { storage, engine } = getAdminContext();
+    const { storage, engine } = ctx.state.adminContext;
     try {
       const { slug, downloadUrl } = await ctx.req.json() as { slug?: string; downloadUrl?: string };
 

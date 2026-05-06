@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { auditLogger, auth, prefix } = getAdminContext();
+    const { auditLogger, auth, prefix } = ctx.state.adminContext;
     if (!auth.hasPermission(ctx.state.auth, "config.read")) {
       return new Response("Forbidden", { status: 403 });
     }

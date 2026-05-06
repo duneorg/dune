@@ -1,14 +1,12 @@
 /** GET /admin/api/metrics */
 
-
 import type { AdminState } from "../../types.ts";
 import { json } from "./_utils.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { metrics } = getAdminContext();
+    const { metrics } = ctx.state.adminContext;
     if (ctx.state.auth.user?.role !== "admin") {
       return json({ error: "Forbidden" }, 403);
     }

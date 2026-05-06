@@ -1,9 +1,7 @@
 /** GET /admin/api/media — list; DELETE /admin/api/media — delete */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { dirname } from "@std/path";
 import { isMediaFile } from "../../../../content/path-utils.ts";
 import type { FreshContext } from "fresh";
@@ -13,7 +11,7 @@ export const handler = {
     const denied = requirePermission(ctx, "media.read");
     if (denied) return denied;
 
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     try {
       const items: Array<{
         name: string; url: string; type: string; size: number; pagePath: string; meta: Record<string, unknown>;
@@ -40,7 +38,7 @@ export const handler = {
     const denied = requirePermission(ctx, "media.delete");
     if (denied) return denied;
 
-    const { storage, config, auditLogger } = getAdminContext();
+    const { storage, config, auditLogger } = ctx.state.adminContext;
     try {
       const body = await ctx.req.json();
       const { pagePath, name } = body;

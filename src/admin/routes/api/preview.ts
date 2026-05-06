@@ -1,9 +1,7 @@
 /** POST /admin/api/preview */
 
-
 import type { AdminState } from "../../types.ts";
 import { requirePermission, serverError } from "./_utils.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 function htmlResponse(html: string, status = 200): Response {
@@ -15,7 +13,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     try {
       const body = await ctx.req.json();
       const { sourcePath, content } = body;

@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { config, prefix } = getAdminContext();
+    const { config, prefix } = ctx.state.adminContext;
     return ctx.render(<ThemesRoute data={{ activeTheme: config.theme.name, prefix }} />);
   },
 };

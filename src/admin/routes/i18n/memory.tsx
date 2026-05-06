@@ -4,13 +4,12 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import TranslationMemory from "../../islands/TranslationMemory.tsx";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { config, prefix } = getAdminContext();
+    const { config, prefix } = ctx.state.adminContext;
     const supported = config.system.languages?.supported ?? [];
     return ctx.render(<TranslationMemoryRoute data={{ supported, prefix }} />);
   },

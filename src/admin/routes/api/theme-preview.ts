@@ -1,9 +1,7 @@
 /** GET /admin/api/theme-preview?theme=X&route=/path */
 
-
 import type { AdminState } from "../../types.ts";
 import { requirePermission, serverError } from "./_utils.ts";
-import { getAdminContext } from "../../context.ts";
 import { h, type ComponentType } from "preact";
 import { render as renderJsxToString } from "preact-render-to-string";
 import { buildPageTitle } from "../../../content/types.ts";
@@ -22,7 +20,7 @@ export const handler = {
     const denied = requirePermission(ctx, "config.read");
     if (denied) return denied;
 
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     const themeName = ctx.url.searchParams.get("theme") ?? "";
     const route = ctx.url.searchParams.get("route") || "/";
 

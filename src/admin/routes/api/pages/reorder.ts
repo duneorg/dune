@@ -1,9 +1,7 @@
 /** POST /admin/api/pages/reorder */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, validatePagePath, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { dirname, basename } from "@std/path";
 import type { FreshContext } from "fresh";
 
@@ -14,7 +12,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { engine, storage, config } = getAdminContext();
+    const { engine, storage, config } = ctx.state.adminContext;
     try {
       const body = await ctx.req.json() as {
         sourcePath: string; targetPath: string | null; position?: "before" | "after";

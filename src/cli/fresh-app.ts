@@ -428,6 +428,17 @@ export async function createDuneApp(
 
   // 8. Admin panel — file-system routes handle all /admin/* requests.
   if (config.admin?.enabled !== false) {
+    // 8a. Per-site admin context middleware — runs before every /admin/* route handler.
+    // Threads the correct AdminContext through ctx.state so multisite doesn't suffer
+    // from the module-level singleton being overwritten by the last-bootstrapped site.
+    if (ctx.adminContext) {
+      const adminCtx = ctx.adminContext;
+      app.use(async (fc) => {
+        fc.state.adminContext = adminCtx;
+        return fc.next();
+      });
+    }
+
     app.fsRoutes(adminPrefix);
 
     // 8b. Plugin admin pages — registered programmatically after fsRoutes so

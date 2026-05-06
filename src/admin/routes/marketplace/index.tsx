@@ -4,14 +4,13 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import Marketplace from "../../islands/Marketplace.tsx";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
     const tab = ctx.url.searchParams.get("tab") ?? "plugins";
-    return ctx.render(<MarketplaceRoute data={{ tab, prefix: getAdminContext().prefix }} />);
+    return ctx.render(<MarketplaceRoute data={{ tab, prefix: ctx.state.adminContext.prefix }} />);
   },
 };
 

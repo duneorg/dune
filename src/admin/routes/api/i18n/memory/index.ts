@@ -1,9 +1,7 @@
 /** GET + POST + DELETE /admin/api/i18n/memory */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import { loadTM, saveTM } from "../../../../tm.ts";
 import type { FreshContext } from "fresh";
 
@@ -13,7 +11,7 @@ function isValidLang(lang: unknown, supported: string[]): lang is string {
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { storage, config } = getAdminContext();
+    const { storage, config } = ctx.state.adminContext;
     try {
       const supported = config.system.languages?.supported ?? [];
       const from = ctx.url.searchParams.get("from");
@@ -38,7 +36,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { storage, config } = getAdminContext();
+    const { storage, config } = ctx.state.adminContext;
     try {
       const supported = config.system.languages?.supported ?? [];
       const body = await ctx.req.json();
@@ -62,7 +60,7 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const { storage, config } = getAdminContext();
+    const { storage, config } = ctx.state.adminContext;
     try {
       const supported = config.system.languages?.supported ?? [];
       const body = await ctx.req.json();

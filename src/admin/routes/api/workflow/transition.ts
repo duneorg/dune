@@ -1,9 +1,7 @@
 /** POST /admin/api/workflow/transition */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { fireContentWebhooks } from "../../../../admin/webhooks.ts";
 import type { FreshContext } from "fresh";
 
@@ -14,7 +12,7 @@ export const handler = {
     const denied = requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
-    const { workflow, engine, storage, config, hooks } = getAdminContext();
+    const { workflow, engine, storage, config, hooks } = ctx.state.adminContext;
     if (!workflow) return json({ error: "Workflow not enabled" }, 501);
 
     const authResult = ctx.state.auth;

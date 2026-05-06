@@ -1,9 +1,7 @@
 /** POST /admin/api/media/upload */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { dirname } from "@std/path";
 import { isMediaFile, dirPathToRoute } from "../../../../content/path-utils.ts";
 import { getMimeType } from "../../../../content/page-loader.ts";
@@ -17,7 +15,7 @@ export const handler = {
     const denied = requirePermission(ctx, "media.upload");
     if (denied) return denied;
 
-    const { storage, config, auditLogger } = getAdminContext();
+    const { storage, config, auditLogger } = ctx.state.adminContext;
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
     const maxBodyBytes = (config.admin?.maxUploadMb ?? 100) * 1024 * 1024;
 

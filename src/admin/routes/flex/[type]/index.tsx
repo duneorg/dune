@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../../types.ts";
-import { getAdminContext } from "../../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { flex, prefix } = getAdminContext();
+    const { flex, prefix } = ctx.state.adminContext;
     const type = ctx.params.type;
     if (!flex) return new Response("Flex objects not enabled", { status: 501 });
     const schema = (await flex.loadSchemas())[type] ?? null;

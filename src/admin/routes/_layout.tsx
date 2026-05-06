@@ -8,14 +8,13 @@ import { h } from "preact";
 import type { FreshContext } from "fresh";
 import type { AdminState } from "../types.ts";
 import { getNavItems } from "../nav.ts";
-import { getAdminContext } from "../context.ts";
 import { isRtl } from "../../i18n/rtl.ts";
 import { ROLE_PERMISSIONS } from "../types.ts";
 
 export default function AdminLayout(
   { Component, state, url }: { Component: () => h.JSX.Element; state: AdminState; url: URL },
 ) {
-  const { config, prefix } = getAdminContext();
+  const { config, prefix } = state.adminContext;
   const siteLang = config.system.languages?.default ?? "en";
   const rtlOverride = config.system.languages?.rtl_override;
   const dir = isRtl(siteLang, rtlOverride) ? "rtl" : "ltr";

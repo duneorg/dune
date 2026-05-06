@@ -4,7 +4,6 @@
 
 import type { FreshContext } from "fresh";
 import type { AdminState, AdminPermission } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -41,7 +40,7 @@ export function requirePermission(
   ctx: FreshContext<AdminState>,
   permission: AdminPermission,
 ): Response | null {
-  const { auth } = getAdminContext();
+  const { auth } = ctx.state.adminContext;
   if (!auth.hasPermission(ctx.state.auth, permission)) {
     return json({ error: "Forbidden" }, 403);
   }

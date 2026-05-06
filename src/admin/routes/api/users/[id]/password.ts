@@ -1,9 +1,7 @@
 /** POST /admin/api/users/:id/password */
 
-
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../../_utils.ts";
-import { getAdminContext } from "../../../../context.ts";
 import { checkPasswordStrength } from "../../../../../security/password-strength.ts";
 import type { FreshContext } from "fresh";
 
@@ -14,7 +12,7 @@ export const handler = {
     const denied = requirePermission(ctx, "users.update");
     if (denied) return denied;
 
-    const { users, auditLogger } = getAdminContext();
+    const { users, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     const userId = ctx.params.id;
 

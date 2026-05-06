@@ -1,14 +1,12 @@
 /** GET /admin/submissions/:form/:id/files/:filename */
 
-
 import type { AdminState } from "../../../../../types.ts";
-import { getAdminContext } from "../../../../../context.ts";
 import { basename } from "@std/path";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { submissions, storage, config } = getAdminContext();
+    const { submissions, storage, config } = ctx.state.adminContext;
     const { form, id } = ctx.params;
     const filename = basename(decodeURIComponent(ctx.params.filename));
 

@@ -1,9 +1,7 @@
 /** GET + PUT /admin/api/config/theme-config */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import type { BlueprintField } from "../../../../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 
@@ -11,7 +9,7 @@ export const handler = {
   GET(ctx: FreshContext<AdminState>) {
     const denied = requirePermission(ctx, "config.read");
     if (denied) return denied;
-    const { engine } = getAdminContext();
+    const { engine } = ctx.state.adminContext;
     const manifest = engine.themes.theme.manifest;
     return json({
       themeName: engine.config.theme.name,
@@ -26,7 +24,7 @@ export const handler = {
     const denied = requirePermission(ctx, "config.update");
     if (denied) return denied;
 
-    const { engine, storage, config } = getAdminContext();
+    const { engine, storage, config } = ctx.state.adminContext;
     try {
       const body = await ctx.req.json() as Record<string, unknown>;
       const manifest = engine.themes.theme.manifest;

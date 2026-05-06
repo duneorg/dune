@@ -1,9 +1,7 @@
 /** PUT /admin/api/media/meta */
 
-
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { getAdminContext } from "../../../context.ts";
 import { dirname } from "@std/path";
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
@@ -15,7 +13,7 @@ export const handler = {
     const denied = requirePermission(ctx, "media.upload");
     if (denied) return denied;
 
-    const { storage, config } = getAdminContext();
+    const { storage, config } = ctx.state.adminContext;
     try {
       const body = await ctx.req.json();
       const { pagePath, name, focal } = body;

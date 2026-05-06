@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../types.ts";
-import { getAdminContext } from "../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { engine, prefix } = getAdminContext();
+    const { engine, prefix } = ctx.state.adminContext;
     const pages = engine.pages;
     const stats = {
       total: pages.length,

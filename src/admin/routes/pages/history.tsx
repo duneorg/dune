@@ -4,13 +4,12 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import RevisionHistory from "../../islands/RevisionHistory.tsx";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { prefix } = getAdminContext();
+    const { prefix } = ctx.state.adminContext;
     const pagePath = ctx.url.searchParams.get("path");
     if (!pagePath) {
       return new Response(null, { status: 302, headers: { Location: `${prefix}/pages` } });

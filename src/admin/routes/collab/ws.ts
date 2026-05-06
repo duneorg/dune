@@ -3,14 +3,12 @@
  * Real-time collaborative editing WebSocket endpoint.
  */
 
-
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { collab } = getAdminContext();
+    const { collab } = ctx.state.adminContext;
     if (!collab) {
       return new Response("Collaboration not enabled", { status: 501 });
     }

@@ -4,12 +4,11 @@
 import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
-import { getAdminContext } from "../../context.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const { flex, prefix } = getAdminContext();
+    const { flex, prefix } = ctx.state.adminContext;
     const schemas = flex ? Object.entries(await flex.loadSchemas()).map(([type, s]) => ({ type, label: s.title })) : [];
     return ctx.render(<FlexRoute data={{ schemas, prefix }} />);
   },

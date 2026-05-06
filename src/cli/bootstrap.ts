@@ -96,6 +96,13 @@ export interface BootstrapResult {
   mt: MachineTranslator | null;
   /** Custom admin pages registered by plugins, for programmatic Fresh route wiring */
   pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[];
+  /**
+   * The per-site AdminContext object.
+   * Null when admin is disabled. In multisite, each site gets its own BootstrapResult
+   * with its own AdminContext — use this instead of getAdminContext() to avoid the
+   * singleton bug where the last-bootstrapped site overwrites the global.
+   */
+  adminContext: import("../admin/context.ts").AdminContext | null;
 }
 
 export interface BootstrapOptions {
@@ -380,10 +387,13 @@ export async function bootstrap(
     });
   }
 
-  // Initialize the admin context singleton so Fresh route files can call
-  // getAdminContext() without threading dependencies through state.
+  // Build the per-site AdminContext object. Also initialize the singleton so
+  // single-site code paths (serve.ts, dev.ts) can still call getAdminContext().
+  // In multisite, fresh-app.ts threads this object through ctx.state.adminContext
+  // instead of relying on the singleton, avoiding the last-writer-wins bug.
+  let adminContextObj: import("../admin/context.ts").AdminContext | null = null;
   if (adminConfig.enabled) {
-    initAdminContext({
+    adminContextObj = {
       engine,
       storage,
       config,
@@ -406,7 +416,8 @@ export async function bootstrap(
       metrics: metricsEnabled ? metrics : undefined,
       mt,
       pluginPages: pluginAdminPages.length > 0 ? pluginAdminPages : undefined,
-    });
+    };
+    initAdminContext(adminContextObj);
   }
 
   // Ensure a default admin user exists on first run
@@ -435,5 +446,6 @@ export async function bootstrap(
     metrics,
     mt,
     pluginAdminPages,
+    adminContext: adminContextObj,
   };
 }
