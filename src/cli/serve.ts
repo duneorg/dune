@@ -48,9 +48,14 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, config } = ctx;
+  const { engine, config, pluginPublicRoutes } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
   const feedEnabled = config.site.feed?.enabled !== false;
+
+  // Collect island paths from plugin public routes so they're included in the bundle.
+  const pluginIslandSpecifiers = (pluginPublicRoutes ?? [])
+    .map((r) => r.island)
+    .filter((p): p is string => typeof p === "string");
 
   // Build island bundles and attach them to the app via the Fresh build cache.
   // Builder scans the theme's islands/ dir; if no islands exist it's a no-op.
@@ -66,7 +71,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const duneRoot = new URL("../../", import.meta.url).pathname;
   Deno.chdir(duneRoot);
 
-  const builder = new Builder({ root, islandDir, routeDir });
+  const builder = new Builder({
+    root,
+    islandDir,
+    routeDir,
+    ...(pluginIslandSpecifiers.length > 0 ? { islandSpecifiers: pluginIslandSpecifiers } : {}),
+  });
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 
   // Assemble the Fresh app with all Dune routes as middleware.

@@ -14,6 +14,13 @@
  * - `PluginApi` interface
  * - `loadPlugins` / `loadPluginAdminConfigs` functions
  *
+ * ## Changes in v1.1
+ *
+ * - `DunePlugin.publicRoutes` — plugins can now register public-facing Fresh routes.
+ *   Each entry registers a programmatic route before the content catch-all. Plugins
+ *   get `ctx.render()`, islands, and middleware — no manual URL matching needed.
+ *   See `PublicRouteRegistration` for the full type.
+ *
  * ## Changes in v0.7
  *
  * - `DunePlugin.adminPages` — plugins can now register custom admin panel pages.
@@ -39,7 +46,8 @@
  *
  * @since 0.3.0
  */
-export const PLUGIN_API_VERSION = "0.7";
+export const PLUGIN_API_VERSION = "1.1";
 
 export { loadPlugins, loadPluginAdminConfigs } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
+export type { PublicRouteRegistration } from "../hooks/types.ts";

@@ -96,6 +96,8 @@ export interface BootstrapResult {
   mt: MachineTranslator | null;
   /** Custom admin pages registered by plugins, for programmatic Fresh route wiring */
   pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[];
+  /** Public-facing routes registered by plugins */
+  pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[];
   /**
    * The per-site AdminContext object.
    * Null when admin is disabled. In multisite, each site gets its own BootstrapResult
@@ -206,14 +208,16 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
-  // Collect plugin asset, template dirs, and admin pages after all plugins load.
+  // Collect plugin asset dirs, template dirs, admin pages, and public routes.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
   const pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[] = [];
+  const pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[] = [];
   for (const plugin of hooks.plugins()) {
     if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
     if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
     if (plugin.adminPages) pluginAdminPages.push(...plugin.adminPages);
+    if (plugin.publicRoutes) pluginPublicRoutes.push(...plugin.publicRoutes);
   }
 
   // Register plugin template dirs with the engine so plugins can provide
@@ -446,6 +450,7 @@ export async function bootstrap(
     metrics,
     mt,
     pluginAdminPages,
+    pluginPublicRoutes,
     adminContext: adminContextObj,
   };
 }

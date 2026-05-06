@@ -53,7 +53,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   console.log("🏜️  Dune — starting development server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search, config } = ctx;
+  const { engine, collections, taxonomy, search, config, pluginPublicRoutes } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
@@ -117,6 +117,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const islandDir = join(adminDir, "islands");
   const routeDir = join(adminDir, "routes");
 
+  // Collect island paths from plugin public routes.
+  const pluginIslandSpecifiers = (pluginPublicRoutes ?? [])
+    .map((r) => r.island)
+    .filter((p): p is string => typeof p === "string");
+
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
   // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
   // When users run `dune dev --root ./mysite` from an arbitrary directory, cwd
@@ -126,7 +131,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const duneRoot = new URL("../../", import.meta.url).pathname;
   Deno.chdir(duneRoot);
 
-  const builder = new Builder({ root, islandDir, routeDir });
+  const builder = new Builder({
+    root,
+    islandDir,
+    routeDir,
+    ...(pluginIslandSpecifiers.length > 0 ? { islandSpecifiers: pluginIslandSpecifiers } : {}),
+  });
 
   await builder.listen(async () => {
     const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });

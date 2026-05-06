@@ -112,6 +112,38 @@ export interface PluginApi {
  */
 
 /**
+ * A public-facing route contributed by a plugin.
+ *
+ * Plugins register these via `DunePlugin.publicRoutes`. The bootstrap process
+ * collects them and wires them as programmatic Fresh routes before the content
+ * catch-all handler. Unlike `onRequest`, these are proper Fresh routes with
+ * access to `ctx.render()`, islands, and middleware.
+ *
+ * @since 1.1.0
+ */
+export interface PublicRouteRegistration {
+  /**
+   * HTTP method for this route (default: "GET").
+   * Use "ALL" to match any method.
+   */
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "ALL";
+  /**
+   * Full URL path (must start with `/`).
+   * Example: `/newsletter/confirm`
+   */
+  path: string;
+  /** Fresh handler for this route. */
+  // deno-lint-ignore no-explicit-any
+  handler: (ctx: FreshContext<any>) => Response | Promise<Response>;
+  /**
+   * Absolute path to an island module used by this route.
+   * Included in the Builder's island scan so it's compiled into the bundle.
+   * Example: `new URL("./islands/ConfirmPage.tsx", import.meta.url).pathname`
+   */
+  island?: string;
+}
+
+/**
  * A custom admin page contributed by a plugin.
  *
  * Plugins register these via `DunePlugin.adminPages`. The bootstrap process
@@ -209,6 +241,29 @@ export interface DunePlugin {
    * ```
    */
   adminPages?: AdminPageRegistration[];
+  /**
+   * Public-facing Fresh routes contributed by this plugin.
+   *
+   * Registered before Dune's content catch-all so they take priority.
+   * Handlers receive a full Fresh context with `ctx.render()`, islands,
+   * and middleware — no manual URL matching needed.
+   *
+   * @since 1.1.0
+   *
+   * @example
+   * ```ts
+   * publicRoutes: [{
+   *   path: "/newsletter/confirm",
+   *   handler: async (ctx) => {
+   *     const token = ctx.url.searchParams.get("token");
+   *     // ... verify token
+   *     return ctx.render(<ConfirmPage />);
+   *   },
+   *   island: new URL("./islands/ConfirmPage.tsx", import.meta.url).pathname,
+   * }],
+   * ```
+   */
+  publicRoutes?: PublicRouteRegistration[];
 }
 
 /** Hook registry interface */

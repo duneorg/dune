@@ -89,6 +89,7 @@ export async function createDuneApp(
     flexEngine,
     pluginAssetDirs,
     pluginAdminPages,
+    pluginPublicRoutes,
     stagingEngine,
     config,
     sharedThemesDir,
@@ -464,13 +465,21 @@ export async function createDuneApp(
     }
   }
 
-  // 9. Public form/webhook routes (no auth required)
+  // 9. Plugin public routes — registered before content catch-all so they take
+  // priority over content pages. Plugins get proper Fresh routes instead of the
+  // onRequest hack. Registered before the /api/* catch-all for the same reason.
+  for (const route of pluginPublicRoutes ?? []) {
+    const method = (route.method ?? "GET").toLowerCase() as "get" | "post" | "put" | "delete" | "all";
+    app[method](route.path, route.handler);
+  }
+
+  // 9b. Public form/webhook routes (no auth required)
   app.post("/api/contact", (fc) => handleContactSubmission(fc.req));
   app.get("/api/forms/:name", (fc) => handleFormSchema(fc.params.name));
   app.post("/api/forms/:name", (fc) => handleFormSubmission(fc.req, fc.params.name));
   app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(fc.req));
 
-  // 9b. Core Dune content API. Admin API routes are handled by fsRoutes above.
+  // 9c. Core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
     const apiResult = await apiHandler(fc.req);
     return apiResult ?? Response.json({ error: "Not found" }, { status: 404 });
