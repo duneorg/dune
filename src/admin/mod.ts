@@ -5,6 +5,9 @@
 export { createAdminHandler } from "./server.ts";
 export type { AdminServerConfig } from "./server.ts";
 
+export { initAdminContext, getAdminContext } from "./context.ts";
+export type { AdminContext, AdminPageRegistration } from "./context.ts";
+
 export { createSessionManager } from "./auth/sessions.ts";
 export type { SessionManager, SessionManagerConfig } from "./auth/sessions.ts";
 

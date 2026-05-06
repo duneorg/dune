@@ -1,0 +1,37 @@
+/**
+ * POST /admin/login/logout — revoke session and redirect to login.
+ * Split into its own route so the layout's sign-out form can POST here.
+ */
+
+
+import type { AdminState } from "../../types.ts";
+import { getAdminContext } from "../../context.ts";
+import type { FreshContext } from "fresh";
+
+export const handler = {
+  async POST(ctx: FreshContext<AdminState>) {
+    const { auth, sessions, prefix, auditLogger } = getAdminContext();
+    const authResult = ctx.state.auth;
+    if (authResult?.session) {
+      await sessions.revoke(authResult.session.id);
+      if (authResult.user) {
+        void auditLogger?.log({
+          event: "auth.logout",
+          actor: { userId: authResult.user.id, username: authResult.user.username, name: authResult.user.name },
+          ip: null,
+          userAgent: ctx.req.headers.get("user-agent"),
+          target: null,
+          detail: {},
+          outcome: "success",
+        }).catch(() => {});
+      }
+    }
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `${prefix}/login`,
+        "Set-Cookie": auth.clearSessionCookie(),
+      },
+    });
+  },
+};

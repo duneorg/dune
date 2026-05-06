@@ -14,10 +14,16 @@
  * - `PluginApi` interface
  * - `loadPlugins` / `loadPluginAdminConfigs` functions
  *
+ * ## Changes in v0.7
+ *
+ * - `DunePlugin.adminPages` — plugins can now register custom admin panel pages.
+ *   Each entry adds a programmatic route under the admin prefix and an optional
+ *   sidebar link. See `AdminPageRegistration` for the full type.
+ *
  * @example
  * ```ts
  * import { PLUGIN_API_VERSION } from "@dune/core/plugins";
- * if (PLUGIN_API_VERSION !== "0.6") console.warn("Unexpected API version");
+ * if (PLUGIN_API_VERSION !== "0.7") console.warn("Unexpected API version");
  * ```
  *
  * @since 0.6.0
@@ -33,7 +39,7 @@
  *
  * @since 0.3.0
  */
-export const PLUGIN_API_VERSION = "0.6";
+export const PLUGIN_API_VERSION = "0.7";
 
 export { loadPlugins, loadPluginAdminConfigs } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";

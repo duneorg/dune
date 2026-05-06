@@ -1,0 +1,173 @@
+/** @jsxImportSource preact */
+/**
+ * GET  /admin/login  — login form
+ * POST /admin/login  — authenticate + set session cookie
+ * POST /admin/login/logout — revoke session + redirect to login
+ */
+
+import { h } from "preact";
+import type { FreshContext } from "fresh";
+import type { AdminState } from "../types.ts";
+import { getAdminContext } from "../context.ts";
+import { verifyPassword, DUMMY_HASH } from "../auth/passwords.ts";
+import { findOrProvisionUser } from "../auth/provisioner.ts";
+import { RateLimiter } from "../../security/rate-limit.ts";
+
+const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
+
+export const handler = {
+  async GET(ctx: FreshContext<AdminState>) {
+    const { auth, prefix } = getAdminContext();
+    // Already authenticated → redirect to dashboard
+    if (ctx.state.auth?.authenticated) {
+      return new Response(null, { status: 302, headers: { Location: `${prefix}/` } });
+    }
+    const error = ctx.url.searchParams.get("error") ?? undefined;
+    const next = ctx.url.searchParams.get("next") ?? `${prefix}/`;
+    return ctx.render(<LoginPage data={{ error, next }} />);
+  },
+
+  async POST(ctx: FreshContext<AdminState>) {
+    const { auth, users, sessions, prefix, auditLogger, authProvider, config } = getAdminContext();
+    const adminConfig = config.admin!;
+    const url = ctx.url;
+
+    // Logout sub-action
+    if (url.pathname.endsWith("/logout")) {
+      const authResult = ctx.state.auth;
+      if (authResult?.session) {
+        await sessions.revoke(authResult.session.id);
+        if (authResult.user) {
+          void auditLogger?.log({
+            event: "auth.logout",
+            actor: { userId: authResult.user.id, username: authResult.user.username, name: authResult.user.name },
+            ip: null,
+            userAgent: ctx.req.headers.get("user-agent"),
+            target: null,
+            detail: {},
+            outcome: "success",
+          }).catch(() => {});
+        }
+      }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `${prefix}/login`,
+          "Set-Cookie": auth.clearSessionCookie(),
+        },
+      });
+    }
+
+    // Login
+    const ip = ctx.req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+      ?? ctx.req.headers.get("x-real-ip")
+      ?? "unknown";
+
+    if (!loginRateLimiter.check(ip)) {
+      const retryAfter = loginRateLimiter.retryAfter(ip);
+      return ctx.render(<LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/` }} />, { status: 429 });
+    }
+
+    const formData = await ctx.req.formData();
+    const username = (formData.get("username") as string)?.trim();
+    const password = formData.get("password") as string;
+    const next = (formData.get("next") as string) ?? `${prefix}/`;
+
+    if (!username || !password) {
+      return ctx.render(<LoginPage data={{ error: "Username and password required", next }} />, { status: 400 });
+    }
+
+    let user!: import("../types.ts").AdminUser;
+
+    if (authProvider) {
+      const providerUser = await authProvider.authenticate({ username, password });
+      if (!providerUser) {
+        void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
+        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next }} />, { status: 401 });
+      }
+      user = await findOrProvisionUser(providerUser, users);
+    } else {
+      const found = await users.getByUsername(username);
+      const hashToVerify = found?.passwordHash ?? DUMMY_HASH;
+      const valid = await verifyPassword(password, hashToVerify);
+      if (!found || !found.enabled || !valid) {
+        void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
+        return ctx.render(<LoginPage data={{ error: "Invalid credentials", next }} />, { status: 401 });
+      }
+      user = found;
+    }
+
+    await sessions.revokeAll(user.id);
+    const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
+
+    void auditLogger?.log({ event: "auth.login", actor: { userId: user.id, username: user.username, name: user.name }, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: {}, outcome: "success" }).catch(() => {});
+
+    const safeNext = next.startsWith(prefix) ? next : `${prefix}/`;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: safeNext,
+        "Set-Cookie": auth.createSessionCookie(session.id, adminConfig.sessionLifetime),
+      },
+    });
+  },
+};
+
+export default function LoginPage(
+  { data }: { data: { error?: string; next: string } },
+) {
+  const { prefix } = getAdminContext();
+  const { error, next } = data ?? {};
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Login — Dune Admin</title>
+        <style>{loginCss()}</style>
+      </head>
+      <body class="login-body">
+        <div class="login-card">
+          <div class="login-header">
+            <h1>🏜️ Dune</h1>
+            <p>Admin Panel</p>
+          </div>
+          {error && <div class="alert alert-error">{error}</div>}
+          <form method="POST" action={`${prefix}/login`}>
+            <input type="hidden" name="next" value={next ?? `${prefix}/`} />
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" id="username" name="username" required autofocus />
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" required />
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Sign in</button>
+          </form>
+        </div>
+      </body>
+    </html>
+  );
+}
+
+function loginCss(): string {
+  return `
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --accent: #4f46e5; --border: #e2e8f0; --bg: #f8f9fa; --surface: #fff; --text: #1a202c; --text-muted: #718096; --danger: #e53e3e; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .login-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 100%; max-width: 360px; }
+    .login-header { text-align: center; margin-bottom: 24px; }
+    .login-header h1 { font-size: 28px; margin-bottom: 4px; }
+    .login-header p { color: var(--text-muted); font-size: 14px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+    input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+    input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--text); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .alert { padding: 10px 14px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .alert-error { background: #fff5f5; border: 1px solid #fed7d7; color: var(--danger); }
+  `;
+}

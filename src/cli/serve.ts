@@ -50,8 +50,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // Build island bundles and attach them to the app via the Fresh build cache.
   // Builder scans the theme's islands/ dir; if no islands exist it's a no-op.
-  const islandDir = join(root, "themes", config.theme.name, "islands");
-  const builder = new Builder({ root, islandDir });
+  const adminDir = new URL("../admin", import.meta.url).pathname;
+  const islandDir = join(adminDir, "islands");
+  const routeDir = join(adminDir, "routes");
+  const builder = new Builder({ root, islandDir, routeDir });
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 
   // Assemble the Fresh app with all Dune routes as middleware.

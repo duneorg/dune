@@ -108,8 +108,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // /_fresh_live_reload SSE endpoint (for island JS changes), and the dev error
   // overlay. createDuneApp() adds Dune's /__dune_reload SSE endpoint (for
   // content changes) and all other routes.
-  const islandDir = join(root, "themes", config.theme.name, "islands");
-  const builder = new Builder({ root, islandDir });
+  const adminDir = new URL("../admin", import.meta.url).pathname;
+  const islandDir = join(adminDir, "islands");
+  const routeDir = join(adminDir, "routes");
+  const builder = new Builder({ root, islandDir, routeDir });
 
   await builder.listen(async () => {
     const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });

@@ -5,6 +5,7 @@
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
+import type { FreshContext } from "fresh";
 
 /**
  * All lifecycle events a plugin can subscribe to.
@@ -109,6 +110,36 @@ export interface PluginApi {
  * export default plugin;
  * ```
  */
+
+/**
+ * A custom admin page contributed by a plugin.
+ *
+ * Plugins register these via `DunePlugin.adminPages`. The bootstrap process
+ * collects them and wires them as programmatic Fresh routes after the core
+ * admin file-system routes are mounted.
+ *
+ * @since 0.7.0
+ */
+// deno-lint-ignore no-explicit-any
+export interface AdminPageRegistration<S = any> {
+  /**
+   * URL path relative to the admin prefix (must start with `/`).
+   * Example: `/my-plugin` registers at `/admin/my-plugin`.
+   */
+  path: string;
+  /** Human-readable nav label shown in the admin sidebar */
+  label: string;
+  /** Optional icon — emoji or inline SVG */
+  icon?: string;
+  /**
+   * Admin permission required to view this page.
+   * If omitted, any authenticated admin user can access the page.
+   */
+  permission?: string;
+  /** Fresh GET handler for the page. */
+  handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
+}
+
 export interface DunePlugin {
   /** Unique plugin identifier — used as the key in config.plugins */
   name: string;
@@ -154,6 +185,30 @@ export interface DunePlugin {
    * The loader emits a warning (non-fatal) if any dependency is not installed.
    */
   dependencies?: string[];
+  /**
+   * Custom pages to add to the admin panel.
+   *
+   * Each entry registers a programmatic route under the admin prefix and
+   * adds an optional sidebar link. The handler receives a Fresh context
+   * with `AdminState` set by the admin middleware.
+   *
+   * Use this instead of file-system routes — core admin uses fsRoutes();
+   * plugins extend it programmatically via these registrations.
+   *
+   * @since 0.7.0
+   *
+   * @example
+   * ```ts
+   * adminPages: [{
+   *   path: "/my-plugin",
+   *   label: "My Plugin",
+   *   icon: "🧩",
+   *   permission: "config.read",
+   *   handler: (ctx) => ctx.render(<MyPluginPage />),
+   * }],
+   * ```
+   */
+  adminPages?: AdminPageRegistration[];
 }
 
 /** Hook registry interface */

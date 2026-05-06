@@ -106,6 +106,11 @@ export interface AdminUserInfo {
   enabled: boolean;
 }
 
+/** Fresh 2 context state for admin routes — set by _middleware.ts */
+export interface AdminState {
+  auth: AuthResult;
+}
+
 /** Convert AdminUser to safe API response */
 export function toUserInfo(user: AdminUser): AdminUserInfo {
   return {

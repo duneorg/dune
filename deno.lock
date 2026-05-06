@@ -4,6 +4,7 @@
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.14",
     "jsr:@fresh/build-id@1": "1.0.1",
+    "jsr:@fresh/core@*": "2.2.2",
     "jsr:@fresh/core@2": "2.2.2",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/crypto@1": "1.0.5",

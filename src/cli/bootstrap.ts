@@ -23,6 +23,7 @@ import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
 import { createAdminHandler } from "../admin/server.ts";
+import { initAdminContext } from "../admin/context.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
@@ -95,6 +96,8 @@ export interface BootstrapResult {
   metrics: MetricsCollector;
   /** Machine translation provider — null when not configured */
   mt: MachineTranslator | null;
+  /** Custom admin pages registered by plugins, for programmatic Fresh route wiring */
+  pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[];
 }
 
 export interface BootstrapOptions {
@@ -198,12 +201,14 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
-  // Collect plugin asset and template dirs after all plugins have loaded.
+  // Collect plugin asset, template dirs, and admin pages after all plugins load.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
+  const pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[] = [];
   for (const plugin of hooks.plugins()) {
     if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
     if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
+    if (plugin.adminPages) pluginAdminPages.push(...plugin.adminPages);
   }
 
   // Register plugin template dirs with the engine so plugins can provide
@@ -403,6 +408,35 @@ export async function bootstrap(
       })
     : async (_req: Request) => null as Response | null;
 
+  // Initialize the admin context singleton so Fresh route files can call
+  // getAdminContext() without threading dependencies through state.
+  if (adminConfig.enabled) {
+    initAdminContext({
+      engine,
+      storage,
+      config,
+      auth,
+      users,
+      sessions,
+      prefix: adminConfig.path ?? "/admin",
+      authProvider,
+      workflow,
+      scheduler,
+      history,
+      submissions: submissionManager,
+      flex: flexEngine,
+      hooks,
+      staging: stagingEngine,
+      comments: commentManager,
+      collab: collabManager,
+      imageCache,
+      auditLogger: auditLogger ?? undefined,
+      metrics: metricsEnabled ? metrics : undefined,
+      mt,
+      pluginPages: pluginAdminPages.length > 0 ? pluginAdminPages : undefined,
+    });
+  }
+
   // Ensure a default admin user exists on first run
   if (adminConfig.enabled) {
     const result = await users.ensureDefaultAdmin();
@@ -428,5 +462,6 @@ export async function bootstrap(
     auditLogger,
     metrics,
     mt,
+    pluginAdminPages,
   };
 }

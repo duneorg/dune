@@ -69,6 +69,8 @@ export interface SubmissionManager {
   delete(form: string, id: string): Promise<boolean>;
   /** Count unread (status = "new") submissions across all forms, or for one form. */
   countNew(form?: string): Promise<number>;
+  /** List all form names that have at least one submission directory. */
+  listForms(): Promise<string[]>;
 }
 
 // === Implementation ===
@@ -192,7 +194,16 @@ export function createSubmissionManager(config: SubmissionManagerConfig): Submis
     return total;
   }
 
-  return { create, get, list, setStatus, delete: deleteSubmission, countNew };
+  async function listForms(): Promise<string[]> {
+    try {
+      const formDirs = await storage.list(submissionsDir);
+      return formDirs.filter((d) => d.isDirectory).map((d) => d.name).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  return { create, get, list, setStatus, delete: deleteSubmission, countNew, listForms };
 }
 
 async function generateId(): Promise<string> {

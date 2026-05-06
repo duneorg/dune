@@ -10,6 +10,7 @@
  */
 
 import { App, staticFiles } from "fresh";
+import type { AdminState } from "../admin/types.ts";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import {
@@ -82,6 +83,7 @@ export async function createDuneApp(
     adminHandler,
     flexEngine,
     pluginAssetDirs,
+    pluginAdminPages,
     stagingEngine,
     config,
     sharedThemesDir,
@@ -268,7 +270,7 @@ export async function createDuneApp(
   }
 
   // ── App assembly ──────────────────────────────────────────────────────────
-  const app = new App();
+  const app = new App<AdminState>();
 
   // 1. Static files — serves /_fresh/js/* from build cache + theme static files
   app.use(staticFiles());
@@ -419,26 +421,38 @@ export async function createDuneApp(
     });
   }
 
-  // 8. Admin panel
-  const adminEnabled = config.admin?.enabled !== false;
-  if (adminEnabled) {
-    app.all(`${adminPrefix}/*`, async (fc) => {
-      const result = await adminHandler(fc.req);
-      return withSecurityHeaders(
-        result ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-      );
-    });
-    // Also match the admin prefix without trailing slash
-    app.all(adminPrefix, async (fc) => {
-      const result = await adminHandler(fc.req);
-      return withSecurityHeaders(
-        result ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-      );
-    });
+  // 8. Admin panel — file-system routes handle all /admin/* requests.
+  if (config.admin?.enabled !== false) {
+    app.fsRoutes(adminPrefix);
+
+    // 8b. Plugin admin pages — registered programmatically after fsRoutes so
+    // core routes take precedence. Each plugin page gets its own GET handler
+    // under the admin prefix; the admin middleware (already applied by fsRoutes)
+    // handles authentication before the handler is invoked.
+    if (pluginAdminPages && pluginAdminPages.length > 0) {
+      for (const page of pluginAdminPages) {
+        const fullPath = `${adminPrefix}${page.path}`;
+        app.get(fullPath, (fc) => {
+          // Honour optional permission check — middleware has already set fc.state.auth
+          if (page.permission) {
+            // deno-lint-ignore no-explicit-any
+            const auth = (fc.state as any).auth as { authenticated?: boolean } | undefined;
+            if (!auth?.authenticated) {
+              return new Response(null, { status: 302, headers: { Location: `${adminPrefix}/login` } });
+            }
+          }
+          // deno-lint-ignore no-explicit-any
+          return page.handler(fc as any);
+        });
+      }
+    }
   }
 
-  // 9. API (admin API first, then core Dune API)
+  // 9. Public API (/api/contact, /api/forms/:name, /api/webhook/incoming) +
+  //    core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
+    // Public form/webhook routes live in the legacy adminHandler for now;
+    // they are moved to dedicated Fresh routes in a future cleanup phase.
     const adminResult = await adminHandler(fc.req);
     if (adminResult) return adminResult;
     const apiResult = await apiHandler(fc.req);
