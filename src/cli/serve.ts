@@ -10,7 +10,7 @@
  * present at the installation root.
  */
 
-import { join } from "@std/path";
+import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
@@ -22,6 +22,10 @@ export interface ServeOptions {
 
 export async function serveCommand(root: string, options: ServeOptions = {}) {
   const { port = 3000, debug = false } = options;
+
+  // Resolve root to an absolute path immediately.  The CLI may pass a relative
+  // path and we Deno.chdir() later, which would invalidate relative paths.
+  root = resolve(root);
 
   // ── Multi-site detection ────────────────────────────────────────────────────
   // If config/sites.yaml exists at the root, delegate to MultisiteManager.
@@ -53,6 +57,15 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const adminDir = new URL("../admin", import.meta.url).pathname;
   const islandDir = join(adminDir, "islands");
   const routeDir = join(adminDir, "routes");
+
+  // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
+  // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
+  // Chdir to the dune package root before building so WasmWorkspace finds
+  // dune's deno.json (with explicit preact/hooks, preact/jsx-dev-runtime entries).
+  // root is already absolute, so the chdir cannot invalidate any paths.
+  const duneRoot = new URL("../../", import.meta.url).pathname;
+  Deno.chdir(duneRoot);
+
   const builder = new Builder({ root, islandDir, routeDir });
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 

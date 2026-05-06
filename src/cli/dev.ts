@@ -12,7 +12,7 @@
  * present at the installation root.
  */
 
-import { join } from "@std/path";
+import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
@@ -24,6 +24,11 @@ export interface DevOptions {
 
 export async function devCommand(root: string, options: DevOptions = {}) {
   const { port = 3000, debug = false } = options;
+
+  // Resolve root to an absolute path immediately.  The CLI may pass a relative
+  // path (e.g. "zumbrunn/zumbrunn.com") and we Deno.chdir() later, which would
+  // invalidate any relative paths computed against the original cwd.
+  root = resolve(root);
 
   // Disable Secure cookie flag in dev so session cookies work over plain HTTP.
   // Without this, browsers (particularly Safari) reject the Secure cookie on
@@ -111,6 +116,16 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const adminDir = new URL("../admin", import.meta.url).pathname;
   const islandDir = join(adminDir, "islands");
   const routeDir = join(adminDir, "routes");
+
+  // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
+  // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
+  // When users run `dune dev --root ./mysite` from an arbitrary directory, cwd
+  // has no deno.json, so preact/hooks and preact/jsx-dev-runtime are not found.
+  // Fix: chdir to the dune package root (which has the full deno.json) before
+  // creating the builder.  root is already absolute, so this is safe.
+  const duneRoot = new URL("../../", import.meta.url).pathname;
+  Deno.chdir(duneRoot);
+
   const builder = new Builder({ root, islandDir, routeDir });
 
   await builder.listen(async () => {
