@@ -9,6 +9,9 @@
 # Claude worktrees
 .claude/
 
+# Claude session docs
+claudedocs/
+
 # Environment
 .env
 .env.*
