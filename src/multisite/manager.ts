@@ -11,7 +11,9 @@
 
 import { join, resolve, isAbsolute } from "@std/path";
 import { parse as parseYaml } from "@std/yaml";
+import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
+import { createDuneApp } from "../cli/fresh-app.ts";
 import {
   buildSitePrebuilt,
   createProductionSiteHandler,
@@ -45,6 +47,17 @@ export class MultisiteManager {
 
     const configDir = join(installRoot, "config");
 
+    // Build admin island bundles once — shared across all sites (islands are
+    // package-level, not site-specific).
+    const adminPkgDir = new URL("../admin", import.meta.url).pathname;
+    const islandDir = join(adminPkgDir, "islands");
+    const routeDir = join(adminPkgDir, "routes");
+    const firstSiteRoot = isAbsolute(cfg.sites[0].root)
+      ? cfg.sites[0].root
+      : resolve(configDir, cfg.sites[0].root);
+    const adminBuilder = new Builder({ root: firstSiteRoot, islandDir, routeDir });
+    const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });
+
     for (const entry of cfg.sites) {
       // Resolve site root relative to the directory containing sites.yaml
       const siteRoot = isAbsolute(entry.root)
@@ -71,12 +84,22 @@ export class MultisiteManager {
         sharedThemesDir,
       });
 
+      // Build per-site Fresh admin app and apply shared island snapshot.
+      const { app: adminApp } = await createDuneApp(ctx, {
+        root: siteRoot,
+        port,
+        debug,
+        dev: false,
+      });
+      applyAdminSnapshot(adminApp);
+      const adminFreshHandler = adminApp.handler();
+
       let handler: (req: Request) => Promise<Response>;
       let notify: (() => void) | undefined;
       let cleanup: (() => void) | undefined;
 
       if (dev) {
-        const devCtx = createDevSiteContext(ctx, siteRoot, { port, debug });
+        const devCtx = createDevSiteContext(ctx, siteRoot, { port, debug, adminFreshHandler });
         handler = devCtx.handler;
         notify = devCtx.notifyReload;
         cleanup = devCtx.cleanup;
@@ -88,6 +111,7 @@ export class MultisiteManager {
         handler = createProductionSiteHandler(ctx, prebuilt, siteRoot, {
           port,
           debug,
+          adminFreshHandler,
         });
       }
 

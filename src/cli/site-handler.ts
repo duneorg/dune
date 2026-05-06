@@ -55,6 +55,12 @@ import {
 import { serveStagedPreview } from "../staging/preview.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
 import { isMediaFile } from "../content/path-utils.ts";
+import {
+  handleContactSubmission,
+  handleFormSchema,
+  handleFormSubmission,
+  handleIncomingWebhook,
+} from "../admin/public-api.ts";
 
 // ── Production ────────────────────────────────────────────────────────────────
 
@@ -163,12 +169,12 @@ export function createProductionSiteHandler(
   ctx: BootstrapResult,
   prebuilt: SitePrebuilt,
   root: string,
-  options: { port: number; debug?: boolean; metrics?: MetricsCollector },
+  options: { port: number; debug?: boolean; metrics?: MetricsCollector; adminFreshHandler?: (req: Request) => Promise<Response> },
 ): (req: Request, renderJsx?: RenderJsx) => Promise<Response> {
-  const { debug = false, metrics } = options;
+  const { debug = false, metrics, adminFreshHandler } = options;
   const {
     engine, collections, taxonomy, search, imageHandler,
-    adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
+    flexEngine, pluginAssetDirs, stagingEngine, config,
     sharedThemesDir, hooks,
   } = ctx;
   const searchAnalyticsPath = join(
@@ -328,17 +334,31 @@ export function createProductionSiteHandler(
         response = previewResult ?? withSecurityHeaders(
           renderErrorPage(404, "Not Found", "Preview not found or token invalid.", siteName),
         );
-      } else if (url.pathname.startsWith(adminPrefix)) {
-        // Admin routes
-        const adminResult = await adminHandler(req);
+      } else if (url.pathname.startsWith(adminPrefix) || url.pathname.startsWith("/_fresh/")) {
+        // Admin routes and Fresh island bundles
+        const adminResult = adminFreshHandler ? await adminFreshHandler(req) : null;
         response = withSecurityHeaders(
           adminResult ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
         );
       } else if (url.pathname.startsWith("/api/")) {
-        // API routes — admin handler first (covers /api/contact etc.), then core API
-        const adminApiResult = await adminHandler(req);
-        if (adminApiResult) {
-          response = adminApiResult;
+        // Public API routes
+        const path = url.pathname;
+        let publicApiResult: Response | null = null;
+        if (path === "/api/contact" && req.method === "POST") {
+          publicApiResult = await handleContactSubmission(req);
+        } else {
+          const formsMatch = path.match(/^\/api\/forms\/([a-zA-Z0-9_-]+)$/);
+          if (formsMatch) {
+            const formName = formsMatch[1];
+            if (req.method === "GET") publicApiResult = await handleFormSchema(formName);
+            else if (req.method === "POST") publicApiResult = await handleFormSubmission(req, formName);
+            else publicApiResult = new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, POST" } });
+          } else if (path === "/api/webhook/incoming" && req.method === "POST") {
+            publicApiResult = await handleIncomingWebhook(req);
+          }
+        }
+        if (publicApiResult) {
+          response = publicApiResult;
         } else {
           const apiResult = await apiHandler(req);
           response = apiResult ?? new Response(
@@ -474,12 +494,12 @@ export interface DevSiteContext {
 export function createDevSiteContext(
   ctx: BootstrapResult,
   root: string,
-  options: { port: number; debug?: boolean },
+  options: { port: number; debug?: boolean; adminFreshHandler?: (req: Request) => Promise<Response> },
 ): DevSiteContext {
-  const { port, debug = false } = options;
+  const { port, debug = false, adminFreshHandler } = options;
   const {
     engine, collections, taxonomy, search, imageHandler,
-    adminHandler, flexEngine, pluginAssetDirs, stagingEngine, config,
+    flexEngine, pluginAssetDirs, stagingEngine, config,
     sharedThemesDir, hooks,
   } = ctx;
   const searchAnalyticsPath = join(
@@ -574,12 +594,26 @@ export function createDevSiteContext(
       } else if (url.pathname === "/__preview" && req.method === "GET") {
         const previewResult = await serveStagedPreview(url, engine, stagingEngine);
         response = previewResult ?? new Response("Preview not found or token invalid.", { status: 404 });
-      } else if (url.pathname.startsWith(adminPrefix)) {
-        const adminResult = await adminHandler(req);
+      } else if (url.pathname.startsWith(adminPrefix) || url.pathname.startsWith("/_fresh/")) {
+        const adminResult = adminFreshHandler ? await adminFreshHandler(req) : null;
         response = adminResult ?? new Response("Not found", { status: 404 });
       } else if (url.pathname.startsWith("/api/")) {
-        const adminApiResult = await adminHandler(req);
-        response = adminApiResult ??
+        const path = url.pathname;
+        let publicApiResult: Response | null = null;
+        if (path === "/api/contact" && req.method === "POST") {
+          publicApiResult = await handleContactSubmission(req);
+        } else {
+          const formsMatch = path.match(/^\/api\/forms\/([a-zA-Z0-9_-]+)$/);
+          if (formsMatch) {
+            const formName = formsMatch[1];
+            if (req.method === "GET") publicApiResult = await handleFormSchema(formName);
+            else if (req.method === "POST") publicApiResult = await handleFormSubmission(req, formName);
+            else publicApiResult = new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, POST" } });
+          } else if (path === "/api/webhook/incoming" && req.method === "POST") {
+            publicApiResult = await handleIncomingWebhook(req);
+          }
+        }
+        response = publicApiResult ??
           await apiHandler(req) ??
           new Response(JSON.stringify({ error: "Not found" }), {
             status: 404,

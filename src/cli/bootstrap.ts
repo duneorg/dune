@@ -22,7 +22,6 @@ import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
-import { createAdminHandler } from "../admin/server.ts";
 import { initAdminContext } from "../admin/context.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
@@ -72,7 +71,6 @@ export interface BootstrapResult {
   imageHandler: ImageHandler;
   imageProcessor: ImageProcessor;
   imageCache: ImageCache;
-  adminHandler: (req: Request) => Promise<Response | null>;
   users: UserManager;
   sessions: SessionManager;
   auth: AuthMiddleware;
@@ -382,32 +380,6 @@ export async function bootstrap(
     });
   }
 
-  const adminHandler = adminConfig.enabled
-    ? createAdminHandler({
-        engine,
-        storage,
-        config,
-        auth,
-        users,
-        sessions,
-        prefix: adminConfig.path,
-        workflow,
-        scheduler,
-        history,
-        submissions: submissionManager,
-        flex: flexEngine,
-        hooks,
-        staging: stagingEngine,
-        comments: commentManager,
-        collab: collabManager,
-        imageCache,
-        auditLogger: auditLogger ?? undefined,
-        metrics: metricsEnabled ? metrics : undefined,
-        mt: mt ?? undefined,
-        authProvider,
-      })
-    : async (_req: Request) => null as Response | null;
-
   // Initialize the admin context singleton so Fresh route files can call
   // getAdminContext() without threading dependencies through state.
   if (adminConfig.enabled) {
@@ -450,7 +422,7 @@ export async function bootstrap(
   return {
     engine, storage, config, formats, collections, taxonomy,
     search, hooks, imageHandler, imageProcessor, imageCache,
-    adminHandler, users, sessions, auth,
+    users, sessions, auth,
     authProvider,
     workflow, scheduler, history,
     submissionManager,
