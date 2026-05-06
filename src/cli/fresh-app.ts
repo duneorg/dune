@@ -26,6 +26,12 @@ import {
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
+import {
+  handleContactSubmission,
+  handleFormSchema,
+  handleFormSubmission,
+  handleIncomingWebhook,
+} from "../admin/public-api.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
@@ -448,13 +454,14 @@ export async function createDuneApp(
     }
   }
 
-  // 9. Public API (/api/contact, /api/forms/:name, /api/webhook/incoming) +
-  //    core Dune content API. Admin API routes are handled by fsRoutes above.
+  // 9. Public form/webhook routes (no auth required)
+  app.post("/api/contact", (fc) => handleContactSubmission(fc.req));
+  app.get("/api/forms/:name", (fc) => handleFormSchema(fc.params.name));
+  app.post("/api/forms/:name", (fc) => handleFormSubmission(fc.req, fc.params.name));
+  app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(fc.req));
+
+  // 9b. Core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
-    // Public form/webhook routes live in the legacy adminHandler for now;
-    // they are moved to dedicated Fresh routes in a future cleanup phase.
-    const adminResult = await adminHandler(fc.req);
-    if (adminResult) return adminResult;
     const apiResult = await apiHandler(fc.req);
     return apiResult ?? Response.json({ error: "Not found" }, { status: 404 });
   });
