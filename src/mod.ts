@@ -199,8 +199,6 @@ export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 
-export { createAdminHandler } from "./admin/server.ts";
-export type { AdminServerConfig } from "./admin/server.ts";
 export { createUserManager } from "./admin/auth/users.ts";
 export type { UserManager, CreateUserInput } from "./admin/auth/users.ts";
 export { createSessionManager } from "./admin/auth/sessions.ts";
