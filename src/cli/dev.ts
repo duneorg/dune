@@ -16,6 +16,7 @@ import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
+import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 
 export interface DevOptions {
   port?: number;
@@ -122,6 +123,19 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     .map((r) => r.island)
     .filter((p): p is string => typeof p === "string");
 
+  // Collect island paths from the active theme chain (auto-discovery).
+  const themeIslandPaths = await collectThemeIslands(
+    engine.themes.theme,
+    engine.themes.rootDir,
+  );
+
+  // Collect island paths imported by TSX content pages (auto-discovery).
+  const contentIslandPaths = await collectContentIslands(
+    engine.pages,
+    root,
+    engine.config.system.content.dir,
+  );
+
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
   // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
   // When users run `dune dev --root ./mysite` from an arbitrary directory, cwd
@@ -131,11 +145,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const duneRoot = new URL("../../", import.meta.url).pathname;
   Deno.chdir(duneRoot);
 
+  const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
   const builder = new Builder({
     root,
     islandDir,
     routeDir,
-    ...(pluginIslandSpecifiers.length > 0 ? { islandSpecifiers: pluginIslandSpecifiers } : {}),
+    ...(allIslandSpecifiers.length > 0 ? { islandSpecifiers: allIslandSpecifiers } : {}),
   });
 
   await builder.listen(async () => {

@@ -23,6 +23,7 @@ import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
 import { initAdminContext } from "../admin/context.ts";
+import { initContent } from "../content/api.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
@@ -423,6 +424,11 @@ export async function bootstrap(
     };
     initAdminContext(adminContextObj);
   }
+
+  // Initialize the content API singleton so getContent() works in Fresh routes.
+  // This is always safe to call — headless developers need it, full-mode
+  // developers can use it as an escape hatch, and it's a no-op after the first call.
+  initContent({ engine, search, collections, taxonomy });
 
   // Ensure a default admin user exists on first run
   if (adminConfig.enabled) {

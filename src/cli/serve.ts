@@ -14,6 +14,7 @@ import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
+import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -57,6 +58,19 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     .map((r) => r.island)
     .filter((p): p is string => typeof p === "string");
 
+  // Collect island paths from the active theme chain (auto-discovery).
+  const themeIslandPaths = await collectThemeIslands(
+    engine.themes.theme,
+    engine.themes.rootDir,
+  );
+
+  // Collect island paths imported by TSX content pages (auto-discovery).
+  const contentIslandPaths = await collectContentIslands(
+    engine.pages,
+    root,
+    engine.config.system.content.dir,
+  );
+
   // Build island bundles and attach them to the app via the Fresh build cache.
   // Builder scans the theme's islands/ dir; if no islands exist it's a no-op.
   const adminDir = new URL("../admin", import.meta.url).pathname;
@@ -71,11 +85,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const duneRoot = new URL("../../", import.meta.url).pathname;
   Deno.chdir(duneRoot);
 
+  const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
   const builder = new Builder({
     root,
     islandDir,
     routeDir,
-    ...(pluginIslandSpecifiers.length > 0 ? { islandSpecifiers: pluginIslandSpecifiers } : {}),
+    ...(allIslandSpecifiers.length > 0 ? { islandSpecifiers: allIslandSpecifiers } : {}),
   });
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 

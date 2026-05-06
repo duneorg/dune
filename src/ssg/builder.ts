@@ -3,11 +3,11 @@
  *
  * Strategy
  * ────────
- * The production request handler (`createProductionSiteHandler`) is already a
- * pure `(Request) → Response` function.  For each route we synthesise a fake
- * GET request, call the handler, and write the response body to the output
- * directory.  Special files (sitemap, feeds) are generated directly via their
- * respective generators to avoid dealing with the gzip-encoded handler output.
+ * All content routing goes through a Fresh app created by `createDuneApp()`.
+ * For each route we synthesise a fake GET request, call `app.handler()`, and
+ * write the response body to the output directory.  Special files (sitemap,
+ * feeds) are generated directly via their respective generators to avoid
+ * dealing with the gzip-encoded handler output.
  *
  * Image processing (`?w=…&q=…` params) is intentionally NOT run during a
  * static build.  Source media files are copied verbatim; static hosts
@@ -18,8 +18,7 @@ import { join, dirname } from "@std/path";
 import { parseFolderName } from "../content/path-utils.ts";
 import { ensureDir } from "@std/fs";
 import type { BootstrapResult } from "../cli/bootstrap.ts";
-import type { SitePrebuilt } from "../cli/site-handler.ts";
-import { createProductionSiteHandler } from "../cli/site-handler.ts";
+import { createDuneApp } from "../cli/fresh-app.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { FlexEngine } from "../flex/engine.ts";
@@ -71,22 +70,13 @@ export async function buildStatic(
   // Ensure output directory exists.
   await ensureDir(outDir);
 
-  // Build a minimal SitePrebuilt that satisfies the handler's type signature.
-  // We set feedEnabled=false so the handler never tries to serve feeds from
-  // the prebuilt (we generate those files directly below).
-  const minimalPrebuilt: SitePrebuilt = {
-    sitemapGzip: new ArrayBuffer(0),
-    rssFeed: "",
-    atomFeed: "",
-    feedEnabled: false,
-    startTime: Date.now(),
-  };
-
   // Create the production handler — same code path as `dune serve`.
-  const handler = createProductionSiteHandler(ctx, minimalPrebuilt, root, {
-    port: 8000,
-    debug: false,
-  });
+  // createDuneApp generates sitemap + feeds eagerly (production mode), but the
+  // SSG builder also writes them directly via writeSpecialFiles(). The handler
+  // is only called for content page routes; the special-file routes are never
+  // hit during SSG enumeration, so the duplicate work is harmless.
+  const { app } = await createDuneApp(ctx, { root, port: 8000, debug: false, dev: false });
+  const handler = app.handler();
 
   // ── Enumerate routes ──────────────────────────────────────────────────────
 

@@ -14,11 +14,6 @@ import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
-import {
-  buildSitePrebuilt,
-  createProductionSiteHandler,
-  createDevSiteContext,
-} from "../cli/site-handler.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 
@@ -84,35 +79,24 @@ export class MultisiteManager {
         sharedThemesDir,
       });
 
-      // Build per-site Fresh admin app and apply shared island snapshot.
-      const { app: adminApp } = await createDuneApp(ctx, {
+      // Create a per-site Fresh app (admin + content in one handler).
+      // Apply the shared admin island snapshot so /_fresh/js/* island bundles
+      // are served correctly without rebuilding islands per site.
+      const { app, notifyReload } = await createDuneApp(ctx, {
         root: siteRoot,
         port,
         debug,
-        dev: false,
+        dev,
       });
-      applyAdminSnapshot(adminApp);
-      const adminFreshHandler = adminApp.handler();
+      applyAdminSnapshot(app);
 
-      let handler: (req: Request) => Promise<Response>;
-      let notify: (() => void) | undefined;
-      let cleanup: (() => void) | undefined;
+      const handler = app.handler();
+      const notify = notifyReload;
 
       if (dev) {
-        const devCtx = createDevSiteContext(ctx, siteRoot, { port, debug, adminFreshHandler });
-        handler = devCtx.handler;
-        notify = devCtx.notifyReload;
-        cleanup = devCtx.cleanup;
-
-        // Set up per-site file watcher (debounced 200ms)
-        this._watchSite(siteRoot, ctx, devCtx.notifyReload, debug);
-      } else {
-        const prebuilt = await buildSitePrebuilt(ctx, port);
-        handler = createProductionSiteHandler(ctx, prebuilt, siteRoot, {
-          port,
-          debug,
-          adminFreshHandler,
-        });
+        // Set up per-site file watcher (debounced 200ms). Calls notifyReload()
+        // which pushes a reload event via /__dune_reload SSE to this site's clients.
+        this._watchSite(siteRoot, ctx, notifyReload, debug);
       }
 
       const initialized: InitializedSite = {
@@ -120,7 +104,6 @@ export class MultisiteManager {
         ctx,
         handler,
         notify,
-        cleanup,
       };
 
       this.sites.push(initialized);

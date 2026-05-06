@@ -7,7 +7,9 @@
     ".": "./src/mod.ts",
     "./cli": "./src/cli.ts",
     "./plugins": "./src/plugins/mod.ts",
-    "./sections": "./src/sections/mod.ts"
+    "./sections": "./src/sections/mod.ts",
+    "./content": "./src/content/api.ts",
+    "./admin": "./src/admin/mount.ts"
   },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",

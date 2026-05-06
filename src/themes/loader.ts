@@ -23,10 +23,130 @@
  *   get their own `?v=N` when loaded via loadLayout().
  */
 
-import { join } from "@std/path";
+import { join, dirname, resolve } from "@std/path";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { TemplateComponent, Page } from "../content/types.ts";
+import type { TemplateComponent, Page, PageIndex } from "../content/types.ts";
 import type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./types.ts";
+
+/**
+ * Collect absolute paths to all island files across the active theme chain.
+ *
+ * For each theme in the chain (child → parent → grandparent), enumerates all
+ * `.tsx` files in `themes/{name}/islands/`. Returns a deduplicated list of
+ * absolute paths suitable for use as Builder `islandSpecifiers`.
+ *
+ * This is the auto-discovery mechanism for Plan B: theme authors drop `.tsx`
+ * files into `islands/`, import them from templates, and they're bundled
+ * automatically — no `theme.yaml` declaration needed.
+ */
+export async function collectThemeIslands(
+  theme: ResolvedTheme,
+  rootDir: string,
+): Promise<string[]> {
+  const seen = new Set<string>();
+  const islands: string[] = [];
+
+  let current: ResolvedTheme | undefined = theme;
+  while (current) {
+    const islandsDir = join(rootDir, current.dir, "islands");
+    try {
+      for await (const entry of Deno.readDir(islandsDir)) {
+        if (!entry.isFile || !entry.name.endsWith(".tsx")) continue;
+        const absPath = join(islandsDir, entry.name);
+        if (!seen.has(absPath)) {
+          seen.add(absPath);
+          islands.push(absPath);
+        }
+      }
+    } catch {
+      // No islands/ directory in this theme — that's fine
+    }
+    current = current.parent;
+  }
+
+  return islands;
+}
+
+/**
+ * Collect absolute paths to island files imported by TSX content pages.
+ *
+ * Scans all pages with `format === "tsx"`, reads each source file, and
+ * extracts relative imports that resolve to `.tsx` files inside any
+ * `islands/` directory (co-located, theme-relative, or plugin). Returns
+ * deduplicated absolute paths suitable for use as Builder `islandSpecifiers`.
+ *
+ * This is the auto-discovery mechanism for TSX content pages: authors drop
+ * islands next to their content file (or import from the theme's islands/),
+ * and they are bundled automatically — no explicit registration needed.
+ *
+ * @param pages - All indexed content pages (e.g. engine.pages — PageIndex[])
+ * @param root - Absolute path to the site root
+ * @param contentDir - Content directory name relative to root (e.g. "user")
+ */
+export async function collectContentIslands(
+  pages: PageIndex[],
+  root: string,
+  contentDir: string,
+): Promise<string[]> {
+  const seen = new Set<string>();
+  const islands: string[] = [];
+
+  // Match `from "..."` or `from '...'` — works for both single-line and
+  // multi-line import statements. We check the path rather than the full
+  // import statement, so type-only imports are harmless (they produce no JS).
+  const importRe = /\bfrom\s+["']([^"']+)["']/g;
+
+  for (const page of pages) {
+    if (page.format !== "tsx") continue;
+
+    const absPagePath = join(root, contentDir, page.sourcePath);
+    let source: string;
+    try {
+      source = await Deno.readTextFile(absPagePath);
+    } catch {
+      continue; // File not readable (stale index?) — skip gracefully
+    }
+
+    const pageDir = dirname(absPagePath);
+    importRe.lastIndex = 0; // Reset stateful regex between pages
+
+    let match: RegExpExecArray | null;
+    while ((match = importRe.exec(source)) !== null) {
+      const importPath = match[1];
+
+      // Only follow relative imports; bare specifiers are never island files
+      if (!importPath.startsWith(".")) continue;
+
+      // Resolve the import path relative to the page's directory
+      const resolved = resolve(pageDir, importPath);
+
+      // Determine the actual .tsx file path
+      let filePath: string | null = null;
+      if (resolved.endsWith(".tsx")) {
+        filePath = resolved;
+      } else {
+        // Try appending .tsx extension (import without explicit extension)
+        const candidate = resolved + ".tsx";
+        try {
+          await Deno.stat(candidate);
+          filePath = candidate;
+        } catch {
+          continue; // Not a .tsx file — skip
+        }
+      }
+
+      // Only collect files inside an islands/ directory
+      if (!filePath.includes("/islands/")) continue;
+
+      if (!seen.has(filePath)) {
+        seen.add(filePath);
+        islands.push(filePath);
+      }
+    }
+  }
+
+  return islands;
+}
 
 export interface ThemeLoaderOptions {
   storage: StorageAdapter;
@@ -57,6 +177,12 @@ export interface ThemeLoaderOptions {
 
 export interface ThemeLoader {
   theme: ResolvedTheme;
+  /**
+   * The root directory relative to which `ResolvedTheme.dir` is resolved.
+   * For site-local themes this is the site root; for shared themes it is
+   * the shared themes directory. Useful when calling `collectThemeIslands`.
+   */
+  rootDir: string;
   resolveTemplateName(page: Page): string | null;
   loadTemplate(name: string): Promise<LoadedTemplate | null>;
   loadLayout(name: string): Promise<TemplateComponent | null>;
@@ -152,6 +278,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
   const loader: ThemeLoader = {
     /** The resolved theme with inheritance chain */
     theme,
+    /** Effective root directory for this theme chain */
+    rootDir: rootDir ?? Deno.cwd(),
 
     /**
      * Resolve a template name for a page.

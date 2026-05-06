@@ -70,6 +70,7 @@ Usage:
 
 Commands:
   new [dir]           Create a new Dune site
+  new [dir] --headless  Create a headless Fresh+Dune site (no theme)
   dev                 Start development server with hot-reload
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
@@ -209,7 +210,9 @@ async function main() {
   try {
     switch (command) {
       case "new":
-        await newCommand(options.positional as string || "my-site");
+        await newCommand(options.positional as string || "my-site", {
+          headless: options.headless === true,
+        });
         break;
 
       case "dev":

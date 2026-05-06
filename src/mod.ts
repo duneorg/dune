@@ -23,6 +23,8 @@
  * Sub-modules with their own stability guarantees:
  * - `@dune/core/plugins` — plugin loader and `PLUGIN_API_VERSION`
  * - `@dune/core/sections` — Visual Page Builder section types and registry
+ * - `@dune/core/content` — content query API for headless mode (`getContent()`)
+ * - `@dune/core/admin` — headless admin mounting (`mountDuneAdmin`, `getDuneAdminIslands`)
  *
  * @since 0.6.0
  */

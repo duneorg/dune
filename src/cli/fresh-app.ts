@@ -5,14 +5,15 @@
  * lifecycle; Dune's content routing, admin panel, plugin hooks, and static
  * file serving are registered as Fresh routes and middleware.
  *
- * Used by serve.ts (production) and dev.ts (development).
- * Multisite and SSG continue using site-handler.ts directly.
+ * Used by serve.ts (production), dev.ts (development), multisite/manager.ts,
+ * and ssg/builder.ts — all paths go through a single Fresh app.
  */
 
 import { App, staticFiles } from "fresh";
 import type { AdminState } from "../admin/types.ts";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
+import { mountDuneAdmin } from "../admin/mount.ts";
 import {
   withSecurityHeaders,
   maybeCompress,
@@ -26,12 +27,6 @@ import {
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { createApiHandler } from "../api/handlers.ts";
-import {
-  handleContactSubmission,
-  handleFormSchema,
-  handleFormSubmission,
-  handleIncomingWebhook,
-} from "../admin/public-api.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
@@ -88,8 +83,6 @@ export async function createDuneApp(
     imageHandler,
     flexEngine,
     pluginAssetDirs,
-    pluginAdminPages,
-    pluginPublicRoutes,
     stagingEngine,
     config,
     sharedThemesDir,
@@ -98,7 +91,6 @@ export async function createDuneApp(
   } = ctx;
 
   const startTime = Date.now();
-  const adminPrefix = config.admin?.path ?? "/admin";
   const siteName = engine.site.title;
   const feedEnabled = config.site.feed?.enabled !== false;
 
@@ -427,59 +419,13 @@ export async function createDuneApp(
     });
   }
 
-  // 8. Admin panel — file-system routes handle all /admin/* requests.
-  if (config.admin?.enabled !== false) {
-    // 8a. Per-site admin context middleware — runs before every /admin/* route handler.
-    // Threads the correct AdminContext through ctx.state so multisite doesn't suffer
-    // from the module-level singleton being overwritten by the last-bootstrapped site.
-    if (ctx.adminContext) {
-      const adminCtx = ctx.adminContext;
-      app.use(async (fc) => {
-        fc.state.adminContext = adminCtx;
-        return fc.next();
-      });
-    }
+  // 8. Admin panel + plugin routes + public API — delegated to mountDuneAdmin().
+  // This is the same composable function headless developers call directly on
+  // their own Fresh app. Here createDuneApp() calls it internally so full-mode
+  // and headless mode share a single implementation.
+  await mountDuneAdmin(app, ctx);
 
-    app.fsRoutes(adminPrefix);
-
-    // 8b. Plugin admin pages — registered programmatically after fsRoutes so
-    // core routes take precedence. Each plugin page gets its own GET handler
-    // under the admin prefix; the admin middleware (already applied by fsRoutes)
-    // handles authentication before the handler is invoked.
-    if (pluginAdminPages && pluginAdminPages.length > 0) {
-      for (const page of pluginAdminPages) {
-        const fullPath = `${adminPrefix}${page.path}`;
-        app.get(fullPath, (fc) => {
-          // Honour optional permission check — middleware has already set fc.state.auth
-          if (page.permission) {
-            // deno-lint-ignore no-explicit-any
-            const auth = (fc.state as any).auth as { authenticated?: boolean } | undefined;
-            if (!auth?.authenticated) {
-              return new Response(null, { status: 302, headers: { Location: `${adminPrefix}/login` } });
-            }
-          }
-          // deno-lint-ignore no-explicit-any
-          return page.handler(fc as any);
-        });
-      }
-    }
-  }
-
-  // 9. Plugin public routes — registered before content catch-all so they take
-  // priority over content pages. Plugins get proper Fresh routes instead of the
-  // onRequest hack. Registered before the /api/* catch-all for the same reason.
-  for (const route of pluginPublicRoutes ?? []) {
-    const method = (route.method ?? "GET").toLowerCase() as "get" | "post" | "put" | "delete" | "all";
-    app[method](route.path, route.handler);
-  }
-
-  // 9b. Public form/webhook routes (no auth required)
-  app.post("/api/contact", (fc) => handleContactSubmission(fc.req));
-  app.get("/api/forms/:name", (fc) => handleFormSchema(fc.params.name));
-  app.post("/api/forms/:name", (fc) => handleFormSubmission(fc.req, fc.params.name));
-  app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(fc.req));
-
-  // 9c. Core Dune content API. Admin API routes are handled by fsRoutes above.
+  // 9. Core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
     const apiResult = await apiHandler(fc.req);
     return apiResult ?? Response.json({ error: "Not found" }, { status: 404 });
