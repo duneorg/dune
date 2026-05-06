@@ -12,13 +12,19 @@ const PUBLIC_PATHS = new Set(["/login"]);
 export async function handler(
   ctx: FreshContext<AdminState>,
 ): Promise<Response> {
-  const { auth, prefix } = ctx.state.adminContext;
+  const adminCtx = ctx.state.adminContext;
+
+  // Fresh registers _middleware.ts globally, not scoped to the fsRoutes prefix.
+  // Skip auth enforcement for all non-admin paths so / and content routes are
+  // not redirected to the login page.
+  if (!adminCtx) return ctx.next();
+  const { auth, prefix } = adminCtx;
+
+  const pathname = ctx.url.pathname;
+  if (!pathname.startsWith(prefix)) return ctx.next();
 
   // Strip prefix to get the admin-relative path for public path check
-  const pathname = ctx.url.pathname;
-  const adminRelative = pathname.startsWith(prefix)
-    ? pathname.slice(prefix.length) || "/"
-    : pathname;
+  const adminRelative = pathname.slice(prefix.length) || "/";
 
   const authResult = await auth.authenticate(ctx.req);
   ctx.state.auth = authResult;
