@@ -22,6 +22,8 @@ import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
+import { LdapAuthProvider } from "../admin/auth/ldap-provider.ts";
+import { SamlAuthProvider } from "../admin/auth/saml-provider.ts";
 import { initAdminContext } from "../admin/context.ts";
 import { initContent } from "../content/api.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
@@ -123,6 +125,31 @@ export interface BootstrapOptions {
    * Also honoured when DUNE_ENV=dev is set in the environment.
    */
   dev?: boolean;
+  /**
+   * Custom authentication provider. When supplied, takes precedence over
+   * `admin.auth_provider` in system.yaml. Use this to inject a fully custom
+   * provider (e.g. OpenID Connect, internal SSO) without modifying config files.
+   *
+   * @example
+   * ```ts
+   * import { bootstrap } from "@dune/core";
+   * import { MyOidcProvider } from "./auth/oidc-provider.ts";
+   *
+   * const ctx = await bootstrap("./", { authProvider: new MyOidcProvider() });
+   * ```
+   */
+  authProvider?: AuthProvider;
+}
+
+/** Select an AuthProvider from config, defaulting to local passwords. */
+function resolveAuthProvider(
+  cfg: import("../config/types.ts").AdminConfig["auth_provider"],
+  users: UserManager,
+): AuthProvider {
+  if (!cfg || cfg.type === "local") return new LocalAuthProvider(users);
+  if (cfg.type === "ldap") return new LdapAuthProvider(cfg);
+  if (cfg.type === "saml") return new SamlAuthProvider(cfg);
+  return new LocalAuthProvider(users);
 }
 
 /**
@@ -345,10 +372,10 @@ export async function bootstrap(
     lifetime: adminConfig.sessionLifetime,
   });
 
-  // Auth provider — local by default; swap to LDAP/SAML when configured.
-  // Currently only LocalAuthProvider is fully implemented; LDAP and SAML
-  // providers are stubs that satisfy the interface and throw NotImplemented.
-  const authProvider: AuthProvider = new LocalAuthProvider(users);
+  // Auth provider — select based on BootstrapOptions injection first, then
+  // admin.auth_provider config, falling back to local passwords.
+  const authProvider: AuthProvider = options.authProvider
+    ?? resolveAuthProvider(config.admin?.auth_provider, users);
 
   // Set Secure cookie flag unless running in a local dev environment.
   // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
