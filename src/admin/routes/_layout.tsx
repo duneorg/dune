@@ -14,7 +14,14 @@ import { ROLE_PERMISSIONS } from "../types.ts";
 export default function AdminLayout(
   { Component, state, url }: { Component: () => h.JSX.Element; state: AdminState; url: URL },
 ) {
-  const { config, prefix } = state.adminContext;
+  // Fresh applies _layout.tsx globally, not scoped to the fsRoutes prefix.
+  // For non-admin paths, render the component directly without the admin shell.
+  const adminCtx = state.adminContext;
+  if (!adminCtx || !url.pathname.startsWith(adminCtx.prefix)) {
+    return <Component />;
+  }
+
+  const { config, prefix } = adminCtx;
   const siteLang = config.system.languages?.default ?? "en";
   const rtlOverride = config.system.languages?.rtl_override;
   const dir = isRtl(siteLang, rtlOverride) ? "rtl" : "ltr";
