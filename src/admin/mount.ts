@@ -110,7 +110,35 @@ export async function mountDuneAdmin(
   }
 
   // ── Plugin public routes ────────────────────────────────────────────────────
+  // Plugins register routes via DunePlugin.publicRoutes. Validate that:
+  //   1. The route path is a string starting with "/"
+  //   2. The route path doesn't shadow the admin prefix or built-in
+  //      /api/* endpoints — otherwise a plugin could overwrite admin or
+  //      core API behavior at request time.
+  // Reserved prefixes match how Fresh routes resolve: a plugin "/admin/foo"
+  // would be served before the admin file-system routes for any path that
+  // didn't match an admin route exactly.
+  const reservedPrefixes = [
+    adminPrefix,
+    "/api/contact",
+    "/api/forms",
+    "/api/webhook",
+    "/_fresh",
+    "/health",
+  ];
   for (const route of pluginPublicRoutes ?? []) {
+    if (typeof route.path !== "string" || !route.path.startsWith("/")) {
+      console.warn(`[dune] plugin route rejected: path must be a string starting with "/" (got ${JSON.stringify(route.path)})`);
+      continue;
+    }
+    const normalized = route.path.replace(/\/+$/, "") || "/";
+    const shadowed = reservedPrefixes.find((p) =>
+      normalized === p || normalized.startsWith(p + "/")
+    );
+    if (shadowed) {
+      console.warn(`[dune] plugin route ${route.path} rejected: shadows reserved prefix ${shadowed}`);
+      continue;
+    }
     const method = (route.method ?? "GET").toLowerCase() as "get" | "post" | "put" | "delete" | "all";
     app[method](route.path, route.handler);
   }
