@@ -224,6 +224,38 @@ export async function loadPluginAdminConfigs(
 }
 
 /**
+ * Validate a plugin-supplied island specifier before handing it to the
+ * Fresh Builder. Plugins ship arbitrary code by definition (CRIT-6), but
+ * we still draw a line at letting them name *paths* that escape known
+ * locations, since those paths can be read at build time and fail noisily
+ * in unexpected ways.
+ *
+ * Accept:
+ *   - jsr:/npm:/https: registry specifiers (Deno resolves them)
+ *   - Absolute filesystem paths with no `..` segments
+ * Reject:
+ *   - Non-strings
+ *   - Empty / NUL-bearing strings
+ *   - Anything containing ".." path segments
+ *   - Relative paths (Builder can't resolve them deterministically)
+ */
+export function isValidPluginIslandSpecifier(spec: unknown): spec is string {
+  if (typeof spec !== "string" || spec.length === 0) return false;
+  if (spec.includes("\0")) return false;
+  if (
+    spec.startsWith("jsr:") || spec.startsWith("npm:") ||
+    spec.startsWith("https:") || spec.startsWith("http:")
+  ) {
+    return true;
+  }
+  // Absolute filesystem path; reject relative or `..`-containing paths.
+  if (!spec.startsWith("/")) return false;
+  const segments = spec.split("/");
+  if (segments.some((s) => s === "..")) return false;
+  return true;
+}
+
+/**
  * Resolve a plugin source string to an importable URL.
  *
  * - `jsr:`, `npm:`, `https:` — returned as-is (Deno handles them)

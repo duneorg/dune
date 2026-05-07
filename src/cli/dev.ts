@@ -17,6 +17,7 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
+import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 
 export interface DevOptions {
   port?: number;
@@ -118,10 +119,20 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   const islandDir = join(adminDir, "islands");
   const routeDir = join(adminDir, "routes");
 
-  // Collect island paths from plugin public routes.
+  // Collect island paths from plugin public routes. Validate before
+  // handing to Builder so a plugin can't name a path with `..` that
+  // escapes the workspace root (HIGH-19).
   const pluginIslandSpecifiers = (pluginPublicRoutes ?? [])
     .map((r) => r.island)
-    .filter((p): p is string => typeof p === "string");
+    .filter((p): p is string => {
+      if (!isValidPluginIslandSpecifier(p)) {
+        if (p !== undefined) {
+          console.warn(`[dune] plugin island rejected (invalid path): ${JSON.stringify(p)}`);
+        }
+        return false;
+      }
+      return true;
+    });
 
   // Collect island paths from the active theme chain (auto-discovery).
   const themeIslandPaths = await collectThemeIslands(
