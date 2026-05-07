@@ -46,6 +46,46 @@ function clearAccountFailures(username: string): void {
   accountFailures.delete(username.toLowerCase());
 }
 
+/**
+ * Sanitize the post-login `?next=` redirect target.
+ *
+ * The earlier check was `next.startsWith(prefix)` which is unsafe in two
+ * ways (MED-24, CWE-601):
+ *   - If `prefix === "/"` the test passes for any path including
+ *     `//evil.com` (scheme-relative URL → off-site redirect).
+ *   - It accepted `next = "/admin@evil.com"` style sneaky targets
+ *     because it never validated that the value is actually a path.
+ *
+ * The fix: parse `next` against the request origin, require the resolved
+ * URL to live on the same origin, and require its pathname to start with
+ * the admin prefix. Everything else falls back to `${prefix}/`.
+ */
+function sanitizeNext(next: string, prefix: string, requestUrl: URL): string {
+  if (typeof next !== "string" || next.length === 0) return `${prefix}/`;
+  if (next.length > 2048) return `${prefix}/`;
+  if (next.includes("\0") || next.includes("\r") || next.includes("\n")) {
+    return `${prefix}/`;
+  }
+  // Refuse scheme-relative URLs ("//evil.com/foo") and absolute URLs
+  // outright before involving URL parsing — both forms can resolve
+  // off-site even when startsWith(prefix) returns true.
+  if (next.startsWith("//") || next.startsWith("\\\\")) return `${prefix}/`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(next, requestUrl);
+  } catch {
+    return `${prefix}/`;
+  }
+  if (parsed.origin !== requestUrl.origin) return `${prefix}/`;
+  // Path must start with the admin prefix and (when prefix is "/") at
+  // minimum begin with a "/" so we don't follow protocol-less targets.
+  const path = parsed.pathname + parsed.search + parsed.hash;
+  if (!path.startsWith("/")) return `${prefix}/`;
+  if (prefix !== "/" && !parsed.pathname.startsWith(prefix)) return `${prefix}/`;
+  return path;
+}
+
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
     const { auth, prefix } = ctx.state.adminContext;
@@ -165,7 +205,7 @@ export const handler = {
 
     void auditLogger?.log({ event: "auth.login", actor: { userId: user.id, username: user.username, name: user.name }, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: {}, outcome: "success" }).catch(() => {});
 
-    const safeNext = next.startsWith(prefix) ? next : `${prefix}/`;
+    const safeNext = sanitizeNext(next, prefix, ctx.url);
     return new Response(null, {
       status: 302,
       headers: {
