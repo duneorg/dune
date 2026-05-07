@@ -153,7 +153,16 @@ export class MdxHandler implements ContentFormatHandler {
       return html;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`  ✗ MDX render error in ${page.sourcePath}: ${message}`);
+      // The client response already redacts filesystem paths via
+      // sanitizeMdxError. The server-side log used to include the raw,
+      // un-redacted message which is fine in dev/CI but exposes paths
+      // (and any secret values that happen to live in error strings) on
+      // production stdout. In production we apply the same redaction;
+      // operators with shell access can still see full stacks via DUNE_DEV
+      // or by inspecting `err` directly.
+      const isProd = !Deno.env.get("DUNE_DEV");
+      const safeMessage = isProd ? sanitizeMdxError(message) : message;
+      console.error(`  ✗ MDX render error in ${page.sourcePath}: ${safeMessage}`);
       return `<div class="mdx-error"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
     }
   }
