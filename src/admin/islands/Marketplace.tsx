@@ -119,7 +119,7 @@ export default function Marketplace({ prefix, initialTab }: Props) {
       const res = await fetch(`${apiBase}/themes/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
-        body: JSON.stringify({ slug: entry.slug, downloadUrl: entry.downloadUrl }),
+        body: JSON.stringify({ slug: entry.slug }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
