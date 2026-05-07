@@ -138,7 +138,17 @@ export class MdxHandler implements ContentFormatHandler {
 
       // Render MDX component to HTML via Preact SSR
       const jsx = h(MdxContent, { components: componentScope } as any);
-      const html = render(jsx);
+      let html = render(jsx);
+
+      // MDX is a code-execution surface (arbitrary JSX with author-supplied
+      // components and props). When the trusted_html flag isn't set, run the
+      // rendered output through the same sanitizer the markdown handler uses.
+      // This blocks raw <script>, <iframe>, on* event handlers, and unsafe
+      // URL schemes that a non-admin author might emit through MDX.
+      if (!ctx.trustedHtml) {
+        const { sanitizeHtml } = await import("../../security/sanitize-html.ts");
+        html = sanitizeHtml(html);
+      }
 
       return html;
     } catch (err) {
