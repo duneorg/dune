@@ -81,16 +81,25 @@ export async function mountDuneAdmin(
     // Admin file-system routes (login, pages, users, settings, …)
     app.fsRoutes(adminPrefix);
 
-    // Plugin admin pages — programmatic routes under admin prefix
-    if (pluginAdminPages && pluginAdminPages.length > 0) {
+    // Plugin admin pages — programmatic routes under admin prefix.
+    // The admin _middleware enforces authentication; here we additionally
+    // honour the plugin-declared permission (if any) so plugin authors can
+    // restrict access to a subset of admin roles.
+    if (pluginAdminPages && pluginAdminPages.length > 0 && adminContext) {
+      const adminCtx = adminContext;
       for (const page of pluginAdminPages) {
         const fullPath = `${adminPrefix}${page.path}`;
         app.get(fullPath, (fc) => {
+          // deno-lint-ignore no-explicit-any
+          const authResult = (fc.state as any).auth;
+          if (!authResult?.authenticated) {
+            return new Response(null, { status: 302, headers: { Location: `${adminPrefix}/login` } });
+          }
           if (page.permission) {
             // deno-lint-ignore no-explicit-any
-            const auth = (fc.state as any).auth as { authenticated?: boolean } | undefined;
-            if (!auth?.authenticated) {
-              return new Response(null, { status: 302, headers: { Location: `${adminPrefix}/login` } });
+            const ok = adminCtx.auth.hasPermission(authResult, page.permission as any);
+            if (!ok) {
+              return new Response("Forbidden", { status: 403 });
             }
           }
           // deno-lint-ignore no-explicit-any
