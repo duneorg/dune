@@ -20,6 +20,23 @@ export const handler = {
       if (!jsr || typeof jsr !== "string" || !jsr.startsWith("jsr:")) {
         return json({ error: "jsr specifier required (must start with jsr:)" }, 400);
       }
+      // Require a pinned version. Without this, the installed plugin floats
+      // on the registry and the next deploy may pull a different (potentially
+      // hostile) build of the same name. jsr:@scope/name@1.2.3 is OK;
+      // jsr:@scope/name without a version is rejected.
+      // Allow: jsr:@scope/name@x.y.z, jsr:@scope/name@x.y.z-tag, with optional
+      // sub-paths after the version (e.g. /mod.ts).
+      const PINNED_JSR_RE = /^jsr:@?[a-z0-9_.-]+\/[a-zA-Z0-9_.-]+@\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$/;
+      if (!PINNED_JSR_RE.test(jsr)) {
+        return json({
+          error: "jsr specifier must be pinned to a specific version (e.g. jsr:@scope/name@1.2.3)",
+        }, 400);
+      }
+      // Defence-in-depth: name and jsr go into site.yaml verbatim, so refuse
+      // anything weird that could perturb YAML serialization.
+      if (!/^[a-zA-Z0-9_@./-]{1,128}$/.test(name)) {
+        return json({ error: "Plugin name has invalid characters" }, 400);
+      }
 
       const siteRaw = await storage.readText("config/site.yaml").catch(() => "");
       const site = (parseYaml(siteRaw || "") ?? {}) as Record<string, unknown>;
