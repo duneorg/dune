@@ -411,13 +411,26 @@ export async function bootstrap(
   });
 
   // 13. Audit logger
+  // Resolve the audit log path under the site root. Reject absolute or
+  // ..-traversed paths that escape the root: an admin-supplied audit
+  // path that escapes (e.g. "/etc/cron.d/foo" or "../../etc/something")
+  // would let the audit logger overwrite arbitrary files at write time.
   let auditLogger: AuditLogger | null = null;
   if (adminConfig.enabled !== false && adminConfig.audit?.enabled !== false) {
-    const auditLogFile = adminConfig.audit?.logFile
-      ? (adminConfig.audit.logFile.startsWith("/")
-          ? adminConfig.audit.logFile
-          : join(root, adminConfig.audit.logFile))
+    const configuredPath = adminConfig.audit?.logFile;
+    const auditLogFile = configuredPath
+      ? join(root, configuredPath) // join() normalizes ".." so we can detect escapes below
       : join(root, runtimeDir, "audit.log");
+    // Reject if the resolved path escapes the site root. We use string-prefix
+    // containment (root + sep) which suffices for the file paths used here;
+    // the audit log is created during init() so realpath isn't an option yet.
+    const containmentRoot = root.endsWith("/") || root.endsWith("\\") ? root : root + "/";
+    if (!auditLogFile.startsWith(containmentRoot)) {
+      throw new Error(
+        `[dune] admin.audit.logFile must resolve under the site root. ` +
+        `Got: ${configuredPath} -> ${auditLogFile}`,
+      );
+    }
     auditLogger = new AuditLogger({ logFile: auditLogFile });
     await auditLogger.init();
   }
