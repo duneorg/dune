@@ -5,9 +5,17 @@
 
 import type { AdminState } from "../../types.ts";
 import type { FreshContext } from "fresh";
+import { csrfCheck } from "../api/_utils.ts";
 
 export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
+    // Defence-in-depth (LOW-1): SameSite=Lax cookies already block third-
+    // party POST forms from forging logout, but an explicit Origin check
+    // matches the rest of the mutating admin surface and protects against
+    // browser policy regressions.
+    const csrfDenied = csrfCheck(ctx);
+    if (csrfDenied) return csrfDenied;
+
     const { auth, sessions, prefix, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     if (authResult?.session) {
