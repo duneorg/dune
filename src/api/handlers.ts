@@ -175,7 +175,16 @@ async function routeApiRequest(
   if (path === "/api/search") {
     const q = url.searchParams.get("q");
     if (!q) return { items: [], total: 0, query: "" };
-    const limit = parseInt(url.searchParams.get("limit") ?? "20");
+    // Cap query length: long queries explode tokenization/fuzzy-match cost
+    // and create an unauthenticated CPU-DoS vector. 256 chars is far above
+    // any natural search query.
+    if (q.length > 256) {
+      return { items: [], total: 0, query: q.slice(0, 256), error: "Query too long" };
+    }
+    // Cap and floor the limit. parseInt accepts garbage as NaN, and very
+    // large limits force the search engine to allocate huge result arrays.
+    const rawLimit = parseInt(url.searchParams.get("limit") ?? "20", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
     const results = search.search(q, limit);
     return {
       items: results.map((r) => ({
