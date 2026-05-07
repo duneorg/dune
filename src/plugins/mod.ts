@@ -46,7 +46,7 @@
  *
  * @since 0.3.0
  */
-export const PLUGIN_API_VERSION = "1.1";
+export const PLUGIN_API_VERSION = "0.7";
 
 export { loadPlugins, loadPluginAdminConfigs } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
