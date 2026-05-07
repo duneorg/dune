@@ -22,7 +22,7 @@
  */
 
 import matter from "gray-matter";
-import { dirname, join } from "@std/path";
+import { dirname, join, SEPARATOR as SEP } from "@std/path";
 import { h } from "preact";
 import { render } from "preact-render-to-string";
 import type {
@@ -178,14 +178,49 @@ async function resolveColocaledImports(
     /^import\s+((?:\*\s+as\s+\w+|\{[^}]*\}|[\w]+)(?:\s*,\s*(?:\{[^}]*\}|[\w]+))*)\s+from\s+(['"])(\.\.?\/[^'"]+)\2\s*;?\r?\n?/gm;
 
   // First pass: collect all relative imports and load them.
+  // mdxDir is the trust boundary: only allow imports that resolve to files
+  // inside this directory. Otherwise an MDX page could import arbitrary
+  // server-side modules via `import x from "../../etc/something"` and
+  // execute their top-level code (CWE-22 + CWE-94).
+  let mdxDirCanonical: string;
+  try {
+    mdxDirCanonical = await Deno.realPath(mdxDir);
+  } catch {
+    // Page directory missing — drop all imports to fail safe.
+    return { source, components };
+  }
+  const containmentRoot = mdxDirCanonical.endsWith(SEP) ? mdxDirCanonical : mdxDirCanonical + SEP;
+
   let match: RegExpExecArray | null;
   const reScan = new RegExp(IMPORT_RE.source, "gm");
   while ((match = reScan.exec(source)) !== null) {
     const [, bindings, , specifier] = match;
 
-    // Resolve specifier relative to the MDX file's directory.
+    // Defense in depth: reject specifiers that contain ".." segments before
+    // doing any filesystem work. The regex already requires a leading "./"
+    // or "../"; we further require that no segment is "..".
+    const segments = specifier.split("/");
+    if (segments.some((s) => s === "..")) {
+      continue;
+    }
+
+    // Resolve specifier relative to the MDX file's directory and canonicalize
+    // via realPath so symlinks can't smuggle the import out of the page dir.
     // Deno's dynamic import requires an absolute file:// URL.
-    const absPath = join(mdxDir, specifier);
+    const candidatePath = join(mdxDir, specifier);
+    let absPath: string;
+    try {
+      absPath = await Deno.realPath(candidatePath);
+    } catch {
+      // Target doesn't exist; let MDX surface its own error.
+      continue;
+    }
+    if (!(absPath + SEP).startsWith(containmentRoot) && absPath !== mdxDirCanonical) {
+      // Resolved outside the page directory — refuse the import.
+      console.warn(`[mdx] refusing import outside page directory: ${specifier}`);
+      continue;
+    }
+
     let mod: Record<string, unknown>;
     try {
       mod = await import(`file://${absPath}`);
