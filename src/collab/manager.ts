@@ -88,9 +88,28 @@ export function createCollabManager(options: CollabManagerOptions): CollabManage
 
   // ── Load / get session ─────────────────────────────────────────────────────
 
+  /**
+   * Validate the docId points at a known page in the content index.
+   * docId arrives from the WebSocket query string (and from join messages),
+   * so it must be bound to a real `sourcePath` before any storage read or
+   * write. Without this, `../` in docId escapes contentDir and the autosave
+   * write at `doAutoSave` lands on arbitrary files.
+   */
+  function isKnownDocId(docId: string): boolean {
+    if (typeof docId !== "string" || docId.length === 0) return false;
+    if (docId.includes("\0") || docId.includes("..")) return false;
+    if (docId.startsWith("/") || docId.startsWith("\\")) return false;
+    for (const page of engine.pages) {
+      if (page.sourcePath === docId) return true;
+    }
+    return false;
+  }
+
   async function getOrCreateSession(
     docId: string,
   ): Promise<CollabSessionState | null> {
+    if (!isKnownDocId(docId)) return null;
+
     const existing = sessions.get(docId);
     if (existing) return existing;
 
