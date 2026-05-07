@@ -269,6 +269,22 @@ export async function createDuneApp(
   }
 
   /**
+   * Truncate and strip control characters from a user-supplied string before
+   * writing it to the server log. Prevents log-noise amplification (LOW-4)
+   * and CRLF / ANSI-escape injection from a malicious URL path.
+   *
+   * Refs: claudedocs/security-audit-2026-05.md LOW-4 (CWE-117).
+   */
+  function sanitizeForLog(s: string): string {
+    if (typeof s !== "string") return String(s);
+    // Strip C0 controls (incl. CR, LF, NUL) and DEL — they break log scrapers
+    // and can be used to inject fake log lines.
+    let cleaned = s.replace(/[\x00-\x1f\x7f]/g, "?");
+    if (cleaned.length > 256) cleaned = cleaned.slice(0, 256) + "…";
+    return cleaned;
+  }
+
+  /**
    * Constant-time equality check for short configuration tokens. Prevents
    * timing-side-channel probing of /health?token= and similar tokens. Both
    * arguments must already be the same length (caller's responsibility).
@@ -721,10 +737,11 @@ export async function createDuneApp(
         response = injectLiveReload(response);
       }
     } catch (err) {
+      const safePath = sanitizeForLog(url.pathname);
       if (debug) {
-        console.error(`✗ Error serving ${url.pathname}:`, err);
+        console.error(`✗ Error serving ${safePath}:`, err);
       } else {
-        console.error(`✗ Error serving ${url.pathname}: ${(err as Error).message ?? err}`);
+        console.error(`✗ Error serving ${safePath}: ${(err as Error).message ?? err}`);
       }
       response = withSecurityHeaders(
         renderErrorPage(500, "Server Error", "Something went wrong. Please try again later.", siteName),
