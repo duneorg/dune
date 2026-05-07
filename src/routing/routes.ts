@@ -101,13 +101,25 @@ export function duneRoutes(
       // TypeScript 5.7's generic typed-array signature requires an explicit
       // cast here.  A single cast (not double `as unknown as BodyInit`) is
       // sufficient and documents the intent clearly.
-      return new Response(media.data as BodyInit, {
-        headers: {
-          "Content-Type": media.contentType,
-          "Content-Length": String(media.size),
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
+      const headers: Record<string, string> = {
+        "Content-Type": media.contentType,
+        "Content-Length": String(media.size),
+        "Cache-Control": "public, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      };
+      // .html and .svg media are user-uploadable and execute as documents
+      // when navigated to directly. Serve them under a sandbox CSP so any
+      // embedded JS runs in an opaque origin — it can't read admin cookies
+      // or hit same-origin endpoints. allow-scripts keeps the auto-height
+      // postMessage feature working for legitimate co-located iframes.
+      if (
+        media.contentType.includes("text/html") ||
+        media.contentType.includes("image/svg+xml")
+      ) {
+        headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups";
+        headers["X-Frame-Options"] = "SAMEORIGIN";
+      }
+      return new Response(media.data as BodyInit, { headers });
     },
 
     /**

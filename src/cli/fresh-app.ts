@@ -553,13 +553,27 @@ export async function createDuneApp(
         const media = await engine.serveMedia(mediaPath);
         if (media) {
           const imageResult = await imageHandler(req);
-          response = imageResult ?? new Response(media.data as BodyInit, {
-            headers: {
+          if (imageResult) {
+            response = imageResult;
+          } else {
+            const headers: Record<string, string> = {
               "Content-Type": media.contentType,
               "Content-Length": String(media.size),
               "Cache-Control": "public, max-age=3600",
-            },
-          });
+              "X-Content-Type-Options": "nosniff",
+            };
+            // Sandbox HTML/SVG media so user-uploaded content can't read
+            // admin cookies or hit same-origin endpoints. See HIGH-12,
+            // HIGH-13.
+            if (
+              media.contentType.includes("text/html") ||
+              media.contentType.includes("image/svg+xml")
+            ) {
+              headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups";
+              headers["X-Frame-Options"] = "SAMEORIGIN";
+            }
+            response = new Response(media.data as BodyInit, { headers });
+          }
           metrics?.recordRequest(url.pathname, performance.now() - startMs, response.status >= 500);
           return response;
         }
