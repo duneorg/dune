@@ -5,9 +5,16 @@ import { h } from "preact";
 
 import type { AdminState } from "../../types.ts";
 import type { FreshContext } from "fresh";
+import { requirePermission } from "../api/_utils.ts";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
+    // Defence-in-depth (LOW-8): existing roles all include
+    // submissions.read so this is a no-op today, but explicitly checking
+    // means future role tightening can't silently leak submission data.
+    const denied = requirePermission(ctx, "submissions.read");
+    if (denied) return denied;
+
     const { submissions, prefix } = ctx.state.adminContext;
     if (!submissions) return ctx.render(<SubmissionsRoute data={{ forms: [], prefix }} />);
     const forms = await submissions.listForms();

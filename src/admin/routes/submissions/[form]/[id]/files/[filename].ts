@@ -2,6 +2,7 @@
 
 import type { AdminState } from "../../../../../types.ts";
 import type { FreshContext } from "fresh";
+import { requirePermission } from "../../../../api/_utils.ts";
 
 const SAFE_SEGMENT_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
@@ -13,6 +14,9 @@ function safeSegment(s: string): boolean {
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
+    const denied = requirePermission(ctx, "submissions.read");
+    if (denied) return denied;
+
     const { submissions, storage } = ctx.state.adminContext;
     if (!submissions) {
       return new Response("Submissions not enabled", { status: 501 });

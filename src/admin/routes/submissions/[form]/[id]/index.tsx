@@ -6,9 +6,13 @@ import { h } from "preact";
 import type { AdminState } from "../../../../types.ts";
 import type { FreshContext } from "fresh";
 import type { Submission } from "../../../../submissions.ts";
+import { requirePermission } from "../../../api/_utils.ts";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
+    const denied = requirePermission(ctx, "submissions.read");
+    if (denied) return denied;
+
     const { submissions, prefix } = ctx.state.adminContext;
     const { form, id } = ctx.params;
     if (!submissions) return new Response("Submissions not enabled", { status: 501 });
