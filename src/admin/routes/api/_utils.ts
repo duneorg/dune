@@ -54,6 +54,24 @@ export function serverError(err: unknown): Response {
   return json({ error: "Internal server error" }, 500);
 }
 
+function logAuthzDenial(
+  ctx: FreshContext<AdminState>,
+  event: "auth.csrf_denied" | "auth.permission_denied",
+  detail: Record<string, unknown>,
+): void {
+  const { auditLogger } = ctx.state.adminContext;
+  if (!auditLogger) return;
+  void auditLogger.log({
+    event,
+    actor: actorFromAuth(ctx.state.auth ?? {}),
+    ip: getClientIp(ctx.req),
+    userAgent: ctx.req.headers.get("user-agent") ?? null,
+    target: { type: "route", id: ctx.url.pathname },
+    detail,
+    outcome: "failure",
+  }).catch(() => {});
+}
+
 /** CSRF check: reject cross-origin mutating requests. */
 export function csrfCheck(ctx: FreshContext<AdminState>): Response | null {
   const method = ctx.req.method;
@@ -63,9 +81,11 @@ export function csrfCheck(ctx: FreshContext<AdminState>): Response | null {
   const requestHost = ctx.url.host;
   try {
     if (new URL(origin).host !== requestHost) {
+      logAuthzDenial(ctx, "auth.csrf_denied", { origin, method });
       return json({ error: "Forbidden: cross-origin request rejected" }, 403);
     }
   } catch {
+    logAuthzDenial(ctx, "auth.csrf_denied", { origin, method, parseError: true });
     return json({ error: "Forbidden: cross-origin request rejected" }, 403);
   }
   return null;
@@ -78,6 +98,7 @@ export function requirePermission(
 ): Response | null {
   const { auth } = ctx.state.adminContext;
   if (!auth.hasPermission(ctx.state.auth, permission)) {
+    logAuthzDenial(ctx, "auth.permission_denied", { permission });
     return json({ error: "Forbidden" }, 403);
   }
   return null;

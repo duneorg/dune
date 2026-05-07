@@ -20,6 +20,7 @@ export interface AuditTarget {
 export type AuditEventType =
   // Auth
   | "auth.login" | "auth.logout" | "auth.login_failed"
+  | "auth.csrf_denied" | "auth.permission_denied"
   // Pages
   | "page.create" | "page.update" | "page.delete" | "page.publish" | "page.workflow"
   // Config
