@@ -259,9 +259,19 @@ export async function handleIncomingWebhook(ctx: AdminContext, req: Request): Pr
     return t;
   };
 
-  const matched = incomingWebhooks.find(
-    (wh) => expandToken(wh.token) === token,
-  );
+  // Compare in constant time: equal-length byte comparison prevents an
+  // attacker from progressively recovering the configured token by
+  // measuring response timing.
+  const tokenBytes = new TextEncoder().encode(token);
+  const matched = incomingWebhooks.find((wh) => {
+    const candidate = new TextEncoder().encode(expandToken(wh.token));
+    if (candidate.byteLength !== tokenBytes.byteLength) return false;
+    let diff = 0;
+    for (let i = 0; i < candidate.byteLength; i++) {
+      diff |= candidate[i] ^ tokenBytes[i];
+    }
+    return diff === 0;
+  });
 
   if (!matched) {
     return json({ error: "Invalid token" }, 401);
