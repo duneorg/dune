@@ -8,7 +8,7 @@
 import { h } from "preact";
 import type { FreshContext } from "fresh";
 import type { AdminState } from "../types.ts";
-import { verifyPassword, DUMMY_HASH } from "../auth/passwords.ts";
+import { verifyPassword, DUMMY_HASH, needsRehash } from "../auth/passwords.ts";
 import { findOrProvisionUser } from "../auth/provisioner.ts";
 import { RateLimiter, clientIp } from "../../security/rate-limit.ts";
 
@@ -96,6 +96,15 @@ export const handler = {
         return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
       user = found;
+      // Transparently upgrade legacy (low-iteration) hashes to current cost.
+      // Never blocks the login on rehash failure — login succeeded already.
+      if (needsRehash(found.passwordHash)) {
+        try {
+          await users.changePassword(found.id, password);
+        } catch {
+          // Rehash is best-effort; surface in server logs but don't fail login.
+        }
+      }
     }
 
     await sessions.revokeAll(user.id);
