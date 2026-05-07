@@ -14,6 +14,38 @@ import { RateLimiter, clientIp } from "../../security/rate-limit.ts";
 
 const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 
+// Per-account lockout: 10 failed attempts within 15 minutes locks the
+// username for 15 minutes regardless of the source IP. Complements the
+// per-IP rate limiter — an attacker rotating IPs can still hit the
+// per-username limit, and a low-and-slow distributed attack will still
+// trigger the audit alarm.
+const LOGIN_LOCKOUT_THRESHOLD = 10;
+const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
+const accountFailures = new Map<string, number[]>();
+
+function recordAccountFailure(username: string): number {
+  const now = Date.now();
+  const lower = username.toLowerCase();
+  const arr = accountFailures.get(lower) ?? [];
+  // Drop attempts outside the rolling window
+  const recent = arr.filter((t) => now - t < LOGIN_LOCKOUT_WINDOW_MS);
+  recent.push(now);
+  accountFailures.set(lower, recent);
+  return recent.length;
+}
+
+function isAccountLocked(username: string): boolean {
+  const now = Date.now();
+  const arr = accountFailures.get(username.toLowerCase());
+  if (!arr) return false;
+  const recent = arr.filter((t) => now - t < LOGIN_LOCKOUT_WINDOW_MS);
+  return recent.length >= LOGIN_LOCKOUT_THRESHOLD;
+}
+
+function clearAccountFailures(username: string): void {
+  accountFailures.delete(username.toLowerCase());
+}
+
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
     const { auth, prefix } = ctx.state.adminContext;
@@ -78,11 +110,28 @@ export const handler = {
       return ctx.render(<LoginPage data={{ error: "Username and password required", next, prefix }} />, { status: 400 });
     }
 
+    // Per-account lockout — independent from per-IP rate limit.
+    if (isAccountLocked(username)) {
+      void auditLogger?.log({
+        event: "auth.login_failed",
+        actor: null,
+        ip: ip === "unknown" ? null : ip,
+        userAgent: ctx.req.headers.get("user-agent"),
+        target: { type: "user", id: username },
+        detail: { username, locked: true },
+        outcome: "failure",
+      }).catch(() => {});
+      // Use the same error message as a normal invalid-credentials response
+      // so the lockout doesn't double as a username-existence oracle.
+      return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 429 });
+    }
+
     let user!: import("../types.ts").AdminUser;
 
     if (authProvider) {
       const providerUser = await authProvider.authenticate({ username, password });
       if (!providerUser) {
+        recordAccountFailure(username);
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
         return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
@@ -92,6 +141,7 @@ export const handler = {
       const hashToVerify = found?.passwordHash ?? DUMMY_HASH;
       const valid = await verifyPassword(password, hashToVerify);
       if (!found || !found.enabled || !valid) {
+        recordAccountFailure(username);
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
         return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
@@ -109,6 +159,9 @@ export const handler = {
 
     await sessions.revokeAll(user.id);
     const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
+
+    // Successful login resets the per-account failure counter.
+    clearAccountFailures(username);
 
     void auditLogger?.log({ event: "auth.login", actor: { userId: user.id, username: user.username, name: user.name }, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: {}, outcome: "success" }).catch(() => {});
 
