@@ -5,6 +5,27 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.9.0] — 2026-05-07
+
+### Breaking
+
+- **Admin panel rewritten as Fresh 2 file-system routes** — The monolithic `createAdminHandler` and its 16 supporting `src/admin/ui/*.ts` files have been deleted (~12 700 lines removed). The admin panel is now implemented via `src/admin/routes/` (80 route files) with proper Fresh 2 middleware, layout, and 12 Preact island components. The admin URL structure and all existing functionality are preserved; only the internal implementation changed.
+  - `createAdminHandler` / `AdminServerConfig` removed from `@dune/core` public API.
+  - `src/cli/site-handler.ts` deleted. Framework integrators previously using `createProductionSiteHandler` or `createDevSiteContext` directly should migrate to `createDuneApp()` from `src/cli/fresh-app.ts`.
+- **`PLUGIN_API_VERSION` bumped to `"0.7"`** — Plugins that check for `"0.6"` with strict equality should update their guard.
+
+### Added
+
+- **`DunePlugin.publicRoutes`** — Plugins can register public-facing Fresh routes via `publicRoutes` instead of the `onRequest` hook. Each route is a proper Fresh handler with `ctx.render()`, middleware, and island support. Preferred for stable named endpoints.
+- **`DunePlugin.adminPages`** — Plugins can contribute pages to the admin panel. Each page is rendered inside the admin shell (sidebar, header, auth) automatically.
+- **Theme island auto-discovery** — `collectThemeIslands()` walks the full theme inheritance chain and registers all `islands/*.tsx` files automatically. Child themes can use parent islands without manual configuration.
+- **TSX content page island support** — `collectContentIslands()` scans TSX content pages for relative imports that resolve into any `islands/` directory and adds them to the bundle automatically.
+- **Headless mode** — `dune new --headless` scaffolds a headless Dune site. `mountDuneAdmin(app, ctx)` and `getDuneAdminIslands()` in `@dune/core/admin` let Fresh developers add Dune's admin panel to their own app without surrendering the `/*` catch-all. `getContent()` / `ContentApi` in `@dune/core/content` provide typed access to the content engine.
+- **Auth provider wired from config** — `admin.auth_provider` in `system.yaml` (`ldap` / `saml`) is now actually honoured at bootstrap. Previously `LocalAuthProvider` was always used regardless of config.
+- **`BootstrapOptions.authProvider`** — Pass a custom auth provider at startup to override both config and the local default (useful for OIDC, SSO).
+
+---
+
 ## [0.8.4] — 2026-05-04
 
 ### Fixed
