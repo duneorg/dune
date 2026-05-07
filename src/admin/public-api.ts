@@ -90,6 +90,11 @@ export async function handleFormSubmission(ctx: AdminContext, req: Request, form
       });
     }
 
+    // Body-size cap applies regardless of content-type — JSON used to bypass
+    // this guard and accept arbitrarily large payloads (MED-19, CWE-400).
+    const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
+    if (tooLarge) return tooLarge;
+
     // Parse body
     const contentType = req.headers.get("content-type") ?? "";
     const multiFields: Record<string, string[]> = {};
@@ -102,8 +107,6 @@ export async function handleFormSubmission(ctx: AdminContext, req: Request, form
         else if (Array.isArray(v)) multiFields[k] = v.filter((x) => typeof x === "string");
       }
     } else {
-      const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
-      if (tooLarge) return tooLarge;
       const formData = await req.formData();
       for (const [k, v] of formData.entries()) {
         if (typeof v === "string") {
@@ -361,6 +364,11 @@ export async function handleContactSubmission(ctx: AdminContext, req: Request): 
       });
     }
 
+    // Body-size cap applies regardless of content-type — JSON used to bypass
+    // this guard and accept arbitrarily large payloads (MED-19, CWE-400).
+    const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
+    if (tooLarge) return tooLarge;
+
     const contentType = req.headers.get("content-type") ?? "";
     const multiFields: Record<string, string[]> = {};
     const uploadedFiles: Array<{ key: string; file: File }> = [];
@@ -373,8 +381,6 @@ export async function handleContactSubmission(ctx: AdminContext, req: Request): 
       }
     } else {
       // application/x-www-form-urlencoded or multipart/form-data
-      const tooLarge = checkBodySize(req, MAX_SUBMISSION_BYTES);
-      if (tooLarge) return tooLarge;
       const formData = await req.formData();
       for (const [k, v] of formData.entries()) {
         if (typeof v === "string") {
