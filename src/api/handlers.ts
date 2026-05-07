@@ -67,41 +67,46 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // sites. The origin derived from site.url is always permitted; additional
     // origins can be added via site.cors_origins for headless/decoupled setups.
     const siteUrl = engine.site.url;
-    let primaryOrigin: string;
+    let primaryOrigin: string | null = null;
     try {
       primaryOrigin = new URL(siteUrl).origin;
     } catch {
-      // site.url is not set or invalid. Fall back to the request's own
-      // origin so the API still functions, but warn loudly — this means
-      // any origin can read the response, which is almost certainly not
-      // what the operator intended. Set `site.url` in site.yaml.
+      // site.url is missing or unparseable. Previously this fell back to
+      // reflecting the request origin, which effectively turned CORS off.
+      // Now we fail closed: emit no Access-Control-Allow-Origin header
+      // unless the request origin is in cors_origins.
       if (!warnedMissingSiteUrl) {
         console.warn(
-          "[dune] site.url is missing or invalid — API CORS falls back to reflecting the request origin. " +
-            "Set `site: { url: https://your-site }` in site.yaml to lock this down.",
+          "[dune] site.url is missing or invalid — API CORS will refuse cross-origin requests " +
+            "until `site: { url: https://your-site }` is set in site.yaml " +
+            "or specific origins are listed in `site.cors_origins`.",
         );
         warnedMissingSiteUrl = true;
       }
-      primaryOrigin = new URL(req.url).origin;
     }
     const extraOrigins = (engine.site.cors_origins ?? [])
       .map((o) => { try { return new URL(o).origin; } catch { return null; } })
       .filter(Boolean) as string[];
-    const allowedOrigins = new Set([primaryOrigin, ...extraOrigins]);
+    const allowedOrigins = new Set<string>([
+      ...(primaryOrigin ? [primaryOrigin] : []),
+      ...extraOrigins,
+    ]);
 
     const requestOrigin = req.headers.get("origin");
-    // Reflect the request origin back if it's in the allowed set; otherwise
-    // respond with the primary origin (the browser will block the request).
-    const corsOrigin = (requestOrigin && allowedOrigins.has(requestOrigin))
-      ? requestOrigin
-      : primaryOrigin;
+    const isAllowed = requestOrigin !== null && allowedOrigins.has(requestOrigin);
 
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": corsOrigin,
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+    // Build CORS headers. When the origin isn't allowed we emit no
+    // Access-Control-Allow-Origin header at all — the browser will block
+    // the cross-origin response. Same-origin and non-browser callers
+    // continue to work because they don't require ACAO.
+    const corsHeaders: Record<string, string> = {
       "Vary": "Origin",
     };
+    if (isAllowed) {
+      corsHeaders["Access-Control-Allow-Origin"] = requestOrigin!;
+      corsHeaders["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+      corsHeaders["Access-Control-Allow-Headers"] = "Content-Type";
+    }
 
     // Handle OPTIONS preflight
     if (req.method === "OPTIONS") {
