@@ -268,6 +268,20 @@ export async function createDuneApp(
     return items;
   }
 
+  /**
+   * Constant-time equality check for short configuration tokens. Prevents
+   * timing-side-channel probing of /health?token= and similar tokens. Both
+   * arguments must already be the same length (caller's responsibility).
+   */
+  function timingSafeStringEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+  }
+
   // ── Plugin onRequest sanitization helpers ────────────────────────────────
   // Headers stripped from the Request passed to plugin onRequest hooks.
   // These either carry session credentials (Cookie, Authorization) or could
@@ -357,14 +371,38 @@ export async function createDuneApp(
   });
 
   // 3. Health check
-  app.get("/health", () =>
-    Response.json({
-      status: "ok",
-      uptime: Math.floor((Date.now() - startTime) / 1000),
-      pages: engine.pages.length,
-      cache: pageCache ? pageCache.stats() : null,
-    }, { headers: { "Cache-Control": "no-cache" } })
-  );
+  //
+  // The default response is intentionally minimal — `{ "status": "ok" }`.
+  // Detailed runtime info (uptime, page count, cache stats) is useful for
+  // monitoring but useful for fingerprinting too. Operators who want the
+  // detailed body set system.health_token and call:
+  //
+  //     GET /health?detailed=true&token=<value>
+  //
+  // Comparison is constant-time so the token can't be probed character-by-
+  // character via response timing.
+  //
+  // Refs: claudedocs/security-audit-2026-05.md LOW-3 (CWE-200).
+  app.get("/health", (fc) => {
+    const detailed = fc.url.searchParams.get("detailed") === "true";
+    const token = fc.url.searchParams.get("token");
+    const configured = config.system?.health_token;
+    const tokenOk = typeof configured === "string" &&
+      configured.length > 0 &&
+      typeof token === "string" &&
+      token.length === configured.length &&
+      timingSafeStringEqual(token, configured);
+
+    if (detailed && tokenOk) {
+      return Response.json({
+        status: "ok",
+        uptime: Math.floor((Date.now() - startTime) / 1000),
+        pages: engine.pages.length,
+        cache: pageCache ? pageCache.stats() : null,
+      }, { headers: { "Cache-Control": "no-cache" } });
+    }
+    return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-cache" } });
+  });
 
   // 4. Sitemap
   app.get("/sitemap.xml", async (fc) => {

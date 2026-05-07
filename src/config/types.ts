@@ -541,6 +541,24 @@ export interface SystemConfig {
    * @since 1.0.0
    */
   trusted_proxies?: boolean;
+  /**
+   * Optional token gating the detailed `/health?detailed=true` response.
+   *
+   * When unset, /health always returns `{ "status": "ok" }` regardless of
+   * query parameters — the operator-friendly metrics (uptime, page count,
+   * cache stats) are not exposed publicly because they're useful for
+   * fingerprinting and DoS amplification.
+   *
+   * When set, callers can request the detailed body by passing the token:
+   *     GET /health?detailed=true&token=<value>
+   * Mismatched or missing tokens still get the minimal `{ status: "ok" }`
+   * response.
+   *
+   * Refs: claudedocs/security-audit-2026-05.md LOW-3 (CWE-200).
+   *
+   * @since 1.0.0
+   */
+  health_token?: string;
 }
 
 /** Theme configuration */
