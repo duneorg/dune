@@ -52,7 +52,10 @@ const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 /** GET /api/forms/:name — return the form schema as JSON. */
 export async function handleFormSchema(ctx: AdminContext, formName: string): Promise<Response> {
   const form = await loadForm(ctx.storage, "forms", formName);
-  if (!form) {
+  // Disabled forms are indistinguishable from missing forms to the public
+  // (MED-20): same 404 response so a public client can't enumerate the
+  // server's "this form exists but is paused" state.
+  if (!form || form.enabled === false) {
     return json({ error: `Form "${formName}" not found` }, 404);
   }
   // Return the public schema — omit internal server-side config (emails, webhooks)
@@ -77,6 +80,12 @@ export async function handleFormSubmission(ctx: AdminContext, req: Request, form
   const form = await loadForm(storage, "forms", formName);
   if (!form) {
     return json({ error: `Form "${formName}" not found` }, 404);
+  }
+  if (form.enabled === false) {
+    // Form is paused (MED-20). Refuse the submission with a generic
+    // 403 instead of 404 so legitimate authors who hit a disabled form
+    // get a clearer signal in client logs.
+    return json({ error: "Form is not currently accepting submissions" }, 403);
   }
 
   try {

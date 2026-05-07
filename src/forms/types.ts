@@ -101,6 +101,17 @@ export interface FormDefinition {
   /** Human-readable form title (used in admin UI and email subjects). */
   title: string;
   /**
+   * Whether this form is publicly active. Defaults to `true`.
+   *
+   * Set to `false` to take a form out of service without deleting the
+   * YAML file: GET /api/forms/:name returns 404, POST /api/forms/:name
+   * returns 403, and the form does not surface as accepting submissions.
+   * Existing submissions remain visible in the admin UI.
+   *
+   * Refs: claudedocs/security-audit-2026-05.md MED-20.
+   */
+  enabled?: boolean;
+  /**
    * URL to redirect to after a successful form submission.
    * Defaults to "/" if not specified.
    */
