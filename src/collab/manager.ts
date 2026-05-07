@@ -70,11 +70,52 @@ function parseFrontmatter(raw: string): Record<string, unknown> {
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 
+// ── Resource limits (MED-22, CWE-770) ────────────────────────────────────────
+//
+// Without these caps a single authenticated client can spin up an unbounded
+// number of WebSocket connections, push gigabyte-sized frames, or flood the
+// channel with thousands of operations per second — exhausting memory or
+// CPU on the server and starving legitimate collaborators.
+//
+// Caps are intentionally generous; "human-typing" usage stays well under them.
+
+/** Reject any WebSocket frame larger than this. Server rejects + closes. */
+const MAX_FRAME_BYTES = 64 * 1024;
+/** Concurrent connections from the same admin user across all docs. */
+const MAX_CONNECTIONS_PER_USER = 5;
+/** Token-bucket capacity per connection (roughly 50 messages / 5 s). */
+const RATE_BUCKET_SIZE = 50;
+/** Refill interval for the bucket (ms). One token per 100 ms = 10/s sustained. */
+const RATE_REFILL_INTERVAL_MS = 100;
+
+interface ConnectionRate {
+  tokens: number;
+  lastRefillAt: number;
+}
+
+function takeToken(rate: ConnectionRate): boolean {
+  const now = Date.now();
+  const elapsed = now - rate.lastRefillAt;
+  if (elapsed > 0) {
+    const refill = Math.floor(elapsed / RATE_REFILL_INTERVAL_MS);
+    if (refill > 0) {
+      rate.tokens = Math.min(RATE_BUCKET_SIZE, rate.tokens + refill);
+      rate.lastRefillAt = now;
+    }
+  }
+  if (rate.tokens <= 0) return false;
+  rate.tokens -= 1;
+  return true;
+}
+
 export function createCollabManager(options: CollabManagerOptions): CollabManager {
   const { storage, engine, history, contentDir } = options;
 
   // docId → CollabSessionState
   const sessions = new Map<string, CollabSessionState>();
+
+  // userId → live socket count (decremented on close).
+  const connectionsPerUser = new Map<string, number>();
 
   // ── Session eviction timer (every 5 minutes) ───────────────────────────────
   const _evictionTimer = setInterval(() => {
@@ -380,6 +421,14 @@ export function createCollabManager(options: CollabManagerOptions): CollabManage
         return new Response("Missing 'docId' query parameter", { status: 400 });
       }
 
+      // Per-user concurrent connection cap (MED-22). One human typically
+      // edits one or two docs at a time — allowing a handful of tabs is
+      // generous; allowing unbounded is a memory-exhaustion vector.
+      const live = connectionsPerUser.get(user.id) ?? 0;
+      if (live >= MAX_CONNECTIONS_PER_USER) {
+        return new Response("Too many concurrent connections", { status: 429 });
+      }
+
       // Upgrade must happen synchronously in the request handler
       let socket: WebSocket;
       let response: Response;
@@ -392,9 +441,24 @@ export function createCollabManager(options: CollabManagerOptions): CollabManage
         return new Response("WebSocket upgrade failed", { status: 500 });
       }
 
+      connectionsPerUser.set(user.id, live + 1);
+      const rate: ConnectionRate = { tokens: RATE_BUCKET_SIZE, lastRefillAt: Date.now() };
+
       const clientId = crypto.randomUUID();
       // Mutable ref so async handlers can share the current session
       const sessionRef: { current: CollabSessionState | null } = { current: null };
+
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        const session = sessionRef.current;
+        if (session) handleLeave(session, clientId);
+        sessionRef.current = null;
+        const remaining = (connectionsPerUser.get(user.id) ?? 1) - 1;
+        if (remaining <= 0) connectionsPerUser.delete(user.id);
+        else connectionsPerUser.set(user.id, remaining);
+      };
 
       socket.onopen = () => {
         // Auto-join the document on connection
@@ -403,9 +467,41 @@ export function createCollabManager(options: CollabManagerOptions): CollabManage
       };
 
       socket.onmessage = (event: MessageEvent) => {
+        const data = event.data;
+
+        // Frame-size guard — applies to text and binary frames alike (MED-22).
+        const size = typeof data === "string"
+          ? data.length
+          : data instanceof ArrayBuffer
+          ? data.byteLength
+          : (data as Uint8Array | undefined)?.byteLength ?? 0;
+        if (size > MAX_FRAME_BYTES) {
+          try {
+            socket.send(JSON.stringify({
+              type: "error",
+              code: "FRAME_TOO_LARGE",
+              message: `Frame exceeds ${MAX_FRAME_BYTES} bytes`,
+            }));
+          } catch { /* ignore */ }
+          try { socket.close(1009, "Message too big"); } catch { /* ignore */ }
+          return;
+        }
+
+        // Per-connection token-bucket rate limit (MED-22).
+        if (!takeToken(rate)) {
+          try {
+            socket.send(JSON.stringify({
+              type: "error",
+              code: "RATE_LIMITED",
+              message: "Slow down",
+            }));
+          } catch { /* ignore */ }
+          return;
+        }
+
         let msg: ClientMsg;
         try {
-          msg = JSON.parse(event.data as string) as ClientMsg;
+          msg = JSON.parse(data as string) as ClientMsg;
         } catch {
           try {
             socket.send(
@@ -420,17 +516,8 @@ export function createCollabManager(options: CollabManagerOptions): CollabManage
         });
       };
 
-      socket.onclose = () => {
-        const session = sessionRef.current;
-        if (session) handleLeave(session, clientId);
-        sessionRef.current = null;
-      };
-
-      socket.onerror = () => {
-        const session = sessionRef.current;
-        if (session) handleLeave(session, clientId);
-        sessionRef.current = null;
-      };
+      socket.onclose = cleanup;
+      socket.onerror = cleanup;
 
       return response;
     },
