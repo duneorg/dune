@@ -19,6 +19,13 @@ export interface AuthMiddlewareConfig {
    * this true is safe even in development on most modern browsers.
    */
   secure?: boolean;
+  /**
+   * Honor X-Forwarded-For / X-Real-IP when checking the session's IP-binding
+   * invariant. Default false. Only enable when the deployment terminates
+   * TLS at a known reverse proxy that overwrites these headers — otherwise
+   * a cookie thief can spoof the original IP via a forged header.
+   */
+  trustForwardedFor?: boolean;
 }
 
 export interface AuthMiddleware {
@@ -36,6 +43,7 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddlewa
   const { sessions, users } = config;
   const cookieName = config.cookieName ?? "dune_session";
   const secure = config.secure !== false; // default true
+  const trustForwardedFor = config.trustForwardedFor === true;
 
   async function authenticate(req: Request): Promise<AuthResult> {
     // Extract session ID from cookies
@@ -55,10 +63,18 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddlewa
     // IP binding: if the session was created with an IP, the current request
     // must come from the same IP. This mitigates session fixation and cookie
     // theft across network boundaries.
+    //
+    // Only honor X-Forwarded-For / X-Real-IP when the deployment opts in via
+    // system.trusted_proxies. Otherwise an attacker who steals a cookie can
+    // also send a forged forwarded header that matches the original session
+    // IP, and the binding check is meaningless.
     if (session.ip) {
-      const requestIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-        ?? req.headers.get("x-real-ip")
-        ?? undefined;
+      let requestIp: string | undefined;
+      if (trustForwardedFor) {
+        requestIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
+          ?? req.headers.get("x-real-ip")
+          ?? undefined;
+      }
       if (requestIp && requestIp !== session.ip) {
         return { authenticated: false, error: "Session IP mismatch" };
       }

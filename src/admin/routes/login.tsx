@@ -10,7 +10,7 @@ import type { FreshContext } from "fresh";
 import type { AdminState } from "../types.ts";
 import { verifyPassword, DUMMY_HASH } from "../auth/passwords.ts";
 import { findOrProvisionUser } from "../auth/provisioner.ts";
-import { RateLimiter } from "../../security/rate-limit.ts";
+import { RateLimiter, clientIp } from "../../security/rate-limit.ts";
 
 const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 
@@ -57,10 +57,12 @@ export const handler = {
       });
     }
 
-    // Login
-    const ip = ctx.req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-      ?? ctx.req.headers.get("x-real-ip")
-      ?? "unknown";
+    // Login. Rate-limit / lockout key is IP-based — only honor forwarded
+    // headers when the operator explicitly opts in via system.trusted_proxies.
+    // Otherwise an attacker can rotate X-Forwarded-For per attempt to evade
+    // the per-IP failed-login lockout.
+    const trustForwardedFor = config.system?.trusted_proxies === true;
+    const ip = clientIp(ctx.req, { trustForwardedFor });
 
     if (!loginRateLimiter.check(ip)) {
       const retryAfter = loginRateLimiter.retryAfter(ip);

@@ -382,7 +382,12 @@ export async function bootstrap(
   // (except on localhost in most browsers, where the browser grants an exception).
   // Default to true (production-safe); disable via the dev option or DUNE_ENV=dev.
   const secureCookies = !dev && Deno.env.get("DUNE_ENV") !== "dev";
-  const auth = createAuthMiddleware({ sessions, users, secure: secureCookies });
+  const auth = createAuthMiddleware({
+    sessions,
+    users,
+    secure: secureCookies,
+    trustForwardedFor: config.system?.trusted_proxies === true,
+  });
 
   const submissionManager = createSubmissionManager({
     storage,
