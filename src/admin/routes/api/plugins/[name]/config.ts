@@ -5,6 +5,36 @@ import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts
 import type { BlueprintField } from "../../../../../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 
+/**
+ * Validate a plugin name destined for a filesystem path
+ * (`data/plugins/<name>.json`). Defence-in-depth: callers also restrict
+ * writes to known plugins via the in-memory `hooks.plugins()` lookup, but
+ * a single bug there shouldn't become a path traversal.
+ *
+ * Allowed forms:
+ *   * unscoped:        `my-plugin`, `dune_blog`
+ *   * jsr/npm-scoped:  `@scope/name`, `@scope/sub.path`
+ *
+ * Refused:
+ *   * empty / over 128 chars / NUL / backslash
+ *   * leading `.` (so we can't write `.git/HEAD` etc.)
+ *   * any segment that is empty, `.`, or `..`
+ *   * any character outside `[A-Za-z0-9_@./-]`
+ *
+ * Refs: claudedocs/security-audit-2026-05.md LOW-5 (CWE-22).
+ */
+function isSafePluginName(name: string): boolean {
+  if (typeof name !== "string") return false;
+  if (name.length === 0 || name.length > 128) return false;
+  if (name.includes("\0") || name.includes("\\")) return false;
+  if (name.startsWith(".") || name.startsWith("/")) return false;
+  if (!/^[A-Za-z0-9_@-][A-Za-z0-9_@./-]*$/.test(name)) return false;
+  for (const seg of name.split("/")) {
+    if (seg.length === 0 || seg === "." || seg === "..") return false;
+  }
+  return true;
+}
+
 export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
@@ -14,11 +44,7 @@ export const handler = {
 
     const { hooks, storage, config } = ctx.state.adminContext;
     const pluginName = decodeURIComponent(ctx.params.name);
-    // Plugin names are interpolated into a filesystem path
-    // (data/plugins/<name>.json). Restrict to a charset that covers the
-    // jsr/npm scoped naming forms but excludes path-escape characters.
-    if (!pluginName || !/^[a-zA-Z0-9_@.][a-zA-Z0-9_@./-]{0,127}$/.test(pluginName) ||
-        pluginName.includes("..") || pluginName.includes("\\") || pluginName.includes("\0")) {
+    if (!isSafePluginName(pluginName)) {
       return json({ error: "Invalid plugin name" }, 400);
     }
 
