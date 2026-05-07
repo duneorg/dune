@@ -40,6 +40,24 @@ function isSafeFlexSegment(s: string): boolean {
   return SAFE_FLEX_SEGMENT_RE.test(s);
 }
 
+/**
+ * Parse a non-negative integer query parameter and clamp it to a sane range.
+ * - parseInt(null|undefined) -> def
+ * - NaN / non-finite -> def
+ * - clamps into [min, max]
+ *
+ * Used for limit/offset on the public API so attackers can't request huge
+ * pages or feed `slice(0, 999999999)` calls.
+ */
+function clampInt(raw: string | null, def: number, min: number, max: number): number {
+  if (raw === null || raw === undefined) return def;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return def;
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
+}
+
 export interface ApiHandlerOptions {
   engine: DuneEngine;
   collections: CollectionEngine;
@@ -305,8 +323,8 @@ async function routeApiRequest(
 }
 
 async function handlePageList(url: URL, engine: DuneEngine) {
-  const limit = parseInt(url.searchParams.get("limit") ?? "20");
-  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+  const limit = clampInt(url.searchParams.get("limit"), 20, 1, 200);
+  const offset = clampInt(url.searchParams.get("offset"), 0, 0, 1_000_000);
   const template = url.searchParams.get("template");
   const published = url.searchParams.get("published");
   const orderBy = url.searchParams.get("order");
@@ -444,8 +462,8 @@ async function handleCollectionQuery(
   const source = url.searchParams.get("source") ?? "@self.children";
   const orderBy = url.searchParams.get("order") ?? "date";
   const orderDir = (url.searchParams.get("dir") ?? "desc") as "asc" | "desc";
-  const limit = parseInt(url.searchParams.get("limit") ?? "20");
-  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+  const limit = clampInt(url.searchParams.get("limit"), 20, 1, 200);
+  const offset = clampInt(url.searchParams.get("offset"), 0, 0, 1_000_000);
   const template = url.searchParams.get("template");
 
   // Parse source
