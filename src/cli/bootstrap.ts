@@ -147,9 +147,25 @@ function resolveAuthProvider(
   users: UserManager,
 ): AuthProvider {
   if (!cfg || cfg.type === "local") return new LocalAuthProvider(users);
-  if (cfg.type === "ldap") return new LdapAuthProvider(cfg);
-  if (cfg.type === "saml") return new SamlAuthProvider(cfg);
-  return new LocalAuthProvider(users);
+  // The LDAP and SAML providers are unimplemented stubs whose
+  // authenticate() throws on call. Selecting them previously produced an
+  // admin DoS at first login attempt: every request to the login route
+  // crashed without a clear startup signal. Refuse to start so operators
+  // discover the misconfiguration up-front.
+  if (cfg.type === "ldap" || cfg.type === "saml") {
+    throw new Error(
+      `[dune] auth_provider.type "${cfg.type}" is not implemented in this release. ` +
+      `Set auth_provider.type to "local" (or remove the auth_provider section) ` +
+      `to use the built-in local password store. ` +
+      `LDAP and SAML are tracked for a future release.`,
+    );
+  }
+  // Any other unrecognized value is an admin typo — fail closed rather
+  // than silently fall back to local auth.
+  throw new Error(
+    `[dune] auth_provider.type "${(cfg as { type?: string }).type ?? "<missing>"}" is not recognized. ` +
+    `Valid values: "local" (default).`,
+  );
 }
 
 /**
