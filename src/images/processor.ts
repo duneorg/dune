@@ -7,6 +7,22 @@
  * v0.2: Addresses the image processing TODO from markdown.ts.
  */
 
+/**
+ * Hard cap on input bytes handed to sharp. 25 MiB is generous for any
+ * supported format; pixel-bomb files (small compressed payload, huge
+ * decoded dimensions) are caught separately by sharp's `limitInputPixels`.
+ *
+ * Refs: claudedocs/security-audit-2026-05.md MED-17 (CWE-400).
+ */
+const MAX_INPUT_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Hard cap on decoded pixels (width * height * channels-equivalent).
+ * 24M ≈ a 6000×4000 image; large enough for legitimate photography but
+ * blocks the classic 100k×100k pixel-bomb attack.
+ */
+const MAX_INPUT_PIXELS = 24_000_000;
+
 export interface ImageProcessingOptions {
   /** Target width in pixels */
   width?: number;
@@ -64,6 +80,11 @@ export function createImageProcessor(config: ImageProcessorConfig): ImageProcess
     input: Uint8Array,
     options: ImageProcessingOptions,
   ): Promise<ProcessedImage | null> {
+    // Refuse oversized inputs before sharp allocates.
+    if (input.byteLength > MAX_INPUT_BYTES) {
+      return null;
+    }
+
     // Validate dimensions against allowed sizes
     if (options.width && !isAllowedSize(options.width)) {
       return null;
@@ -75,7 +96,14 @@ export function createImageProcessor(config: ImageProcessorConfig): ImageProcess
     // Lazy-load Sharp
     const sharp = (await import("sharp")).default;
 
-    let pipeline = sharp(input);
+    // limitInputPixels protects against decoded pixel bombs (CWE-400).
+    // failOn:"truncated" rejects malformed inputs early instead of producing
+    // partial output. unlimited:false keeps libvips memory bounded.
+    let pipeline = sharp(input, {
+      limitInputPixels: MAX_INPUT_PIXELS,
+      failOn: "truncated",
+      unlimited: false,
+    });
 
     // Get original metadata for format detection
     const metadata = await pipeline.metadata();
@@ -141,8 +169,15 @@ export function createImageProcessor(config: ImageProcessorConfig): ImageProcess
     input: Uint8Array,
     options: Omit<ImageProcessingOptions, "width" | "height"> = {},
   ): Promise<ProcessedImage[]> {
+    if (input.byteLength > MAX_INPUT_BYTES) {
+      return [];
+    }
     const sharp = (await import("sharp")).default;
-    const metadata = await sharp(input).metadata();
+    const metadata = await sharp(input, {
+      limitInputPixels: MAX_INPUT_PIXELS,
+      failOn: "truncated",
+      unlimited: false,
+    }).metadata();
     const originalWidth = metadata.width ?? 0;
 
     const variants: ProcessedImage[] = [];
