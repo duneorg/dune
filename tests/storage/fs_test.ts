@@ -76,6 +76,61 @@ Deno.test("FileSystemAdapter: read non-existent file throws StorageError", async
   }
 });
 
+// === Path containment (MED-21, CWE-22) ===
+
+Deno.test("FileSystemAdapter: read refuses parent traversal segments", async () => {
+  const fs = await setup();
+  try {
+    await assertRejects(
+      () => fs.readText("../etc/passwd"),
+      Error,
+      "Path escapes storage root",
+    );
+  } finally {
+    await teardown();
+  }
+});
+
+Deno.test("FileSystemAdapter: write refuses absolute paths", async () => {
+  const fs = await setup();
+  try {
+    await assertRejects(
+      () => fs.write("/etc/evil.txt", "no"),
+      Error,
+      "Path escapes storage root",
+    );
+  } finally {
+    await teardown();
+  }
+});
+
+Deno.test("FileSystemAdapter: refuses NUL injection", async () => {
+  const fs = await setup();
+  try {
+    await assertRejects(
+      () => fs.write("ok.txt\0/../escape", "no"),
+      Error,
+      "Path escapes storage root",
+    );
+  } finally {
+    await teardown();
+  }
+});
+
+Deno.test("FileSystemAdapter: rename refuses traversal in either side", async () => {
+  const fs = await setup();
+  try {
+    await fs.write("ok.txt", "ok");
+    await assertRejects(
+      () => fs.rename("ok.txt", "../escaped.txt"),
+      Error,
+      "Path escapes storage root",
+    );
+  } finally {
+    await teardown();
+  }
+});
+
 // === Existence check ===
 
 Deno.test("FileSystemAdapter: exists returns true for existing file", async () => {

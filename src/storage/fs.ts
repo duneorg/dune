@@ -4,7 +4,7 @@
  */
 
 import { ensureDir } from "@std/fs";
-import { dirname, join, relative } from "@std/path";
+import { dirname, isAbsolute, join, normalize, relative, resolve, SEPARATOR } from "@std/path";
 import { StorageError } from "../core/errors.ts";
 import type {
   StorageAdapter,
@@ -13,15 +13,67 @@ import type {
   WatchEvent,
 } from "./types.ts";
 
+/**
+ * Defense-in-depth path-containment guard. Every caller is *supposed* to
+ * validate user-supplied input before it reaches storage, but a single
+ * missed validator (CRIT-1, CRIT-2, CRIT-3 from the May 2026 audit) becomes
+ * arbitrary filesystem read/write. This catches:
+ *   - absolute paths (`/etc/passwd`)
+ *   - traversal segments (`../../etc/passwd`)
+ *   - NUL injection (`secret\0.png`)
+ *   - paths that normalize outside rootDir
+ *
+ * Refs: claudedocs/security-audit-2026-05.md MED-21 (CWE-22).
+ */
+export class PathEscapeError extends StorageError {
+  constructor(path: string) {
+    super(`Path escapes storage root: ${path}`, path);
+    this.name = "PathEscapeError";
+  }
+}
+
 export class FileSystemAdapter implements StorageAdapter {
   private cacheDir: string;
+  private rootResolved: string;
 
   constructor(private rootDir: string) {
     this.cacheDir = join(rootDir, ".dune", "cache");
+    // Pre-resolve once so containment checks are cheap and consistent.
+    this.rootResolved = resolve(rootDir);
   }
 
+  /**
+   * Map a caller-supplied relative path to an absolute filesystem path,
+   * refusing anything that would escape rootDir.
+   *
+   * The check is intentionally string-level (not Deno.realPath-based) so
+   * it works on writes to paths that don't yet exist. Symlink-based
+   * escapes inside rootDir are out of scope here — a hostile admin who
+   * can plant symlinks already has filesystem write authority.
+   */
   private resolve(path: string): string {
-    return join(this.rootDir, path);
+    if (typeof path !== "string" || path.length === 0) {
+      throw new PathEscapeError(String(path));
+    }
+    if (path.includes("\0")) {
+      throw new PathEscapeError(path);
+    }
+    if (isAbsolute(path)) {
+      throw new PathEscapeError(path);
+    }
+    const normalized = normalize(path);
+    if (
+      normalized === ".." ||
+      normalized.startsWith(`..${SEPARATOR}`) ||
+      normalized.startsWith("../") // POSIX form even on Windows builds
+    ) {
+      throw new PathEscapeError(path);
+    }
+    const full = resolve(this.rootDir, normalized);
+    if (full !== this.rootResolved && !full.startsWith(this.rootResolved + SEPARATOR)) {
+      throw new PathEscapeError(path);
+    }
+    return full;
   }
 
   async read(path: string): Promise<Uint8Array> {
