@@ -29,6 +29,14 @@ import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 // DoS on /api/search, /api/collections, and /api/taxonomy/*.
 const apiRateLimiter = new RateLimiter(120, 60 * 1000);
 
+// Looser per-IP bucket for the in-memory read endpoints (/api/nav and
+// /api/config/site). These don't hit storage so they're cheap, but
+// unbounded scraping is still a small DoS amplifier and a fingerprinting
+// vector. 600/min/IP is well above legitimate frontend SSR usage.
+//
+// Refs: claudedocs/security-audit-2026-05.md LOW-2 (CWE-770).
+const cheapReadRateLimiter = new RateLimiter(600, 60 * 1000);
+
 // One-shot warning latch when `site.url` is missing — emit once per process.
 let warnedMissingSiteUrl = false;
 
@@ -131,8 +139,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // Rate limit expensive read endpoints. Cheap list/get for /api/nav and
-    // /api/config/site are exempt — they serve from an in-memory index.
+    // Rate limit expensive read endpoints (storage-backed). Cheap in-memory
+    // reads (/api/nav and /api/config/site) get a separate, looser bucket
+    // so legitimate frontends can render menus without churning the strict
+    // limiter, while unbounded scraping is still capped (LOW-2).
     if (
       path.startsWith("/api/search") ||
       path.startsWith("/api/collections") ||
@@ -146,6 +156,15 @@ export function createApiHandler(options: ApiHandlerOptions) {
           { error: "Too many requests" },
           429,
           { ...corsHeaders, "Retry-After": String(apiRateLimiter.retryAfter(ip)) },
+        );
+      }
+    } else if (path === "/api/nav" || path === "/api/config/site") {
+      const ip = clientIp(req);
+      if (!cheapReadRateLimiter.check(ip)) {
+        return jsonResponse(
+          { error: "Too many requests" },
+          429,
+          { ...corsHeaders, "Retry-After": String(cheapReadRateLimiter.retryAfter(ip)) },
         );
       }
     }
