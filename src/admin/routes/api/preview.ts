@@ -1,7 +1,7 @@
 /** POST /admin/api/preview */
 
 import type { AdminState } from "../../types.ts";
-import { requirePermission, serverError } from "./_utils.ts";
+import { requirePermission, serverError, csrfCheck } from "./_utils.ts";
 import type { FreshContext } from "fresh";
 
 function htmlResponse(html: string, status = 200): Response {
@@ -10,6 +10,8 @@ function htmlResponse(html: string, status = 200): Response {
 
 export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
+    const csrf = csrfCheck(ctx);
+    if (csrf) return csrf;
     const denied = requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
