@@ -3,6 +3,7 @@
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, validatePagePath, csrfCheck } from "../_utils.ts";
 import { fireContentWebhooks } from "../../../../admin/webhooks.ts";
+import { stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -39,10 +40,19 @@ export const handler = {
       }
 
       const ext = format === "mdx" ? ".mdx" : format === "tsx" ? ".tsx" : ".md";
-      let fm = `---\ntitle: "${title}"\ntemplate: ${template ?? "default"}\npublished: true\n`;
-      if (file && typeof file === "string") fm += `file: "${file}"\n`;
-      if (file_url && typeof file_url === "string") fm += `file_url: "${file_url}"\n`;
-      fm += `---\n`;
+      // Serialize frontmatter via @std/yaml to ensure correct quoting/
+      // escaping of special characters in title (regression fix for prior
+      // MED-4 — the rest of the admin uses stringify; this handler still
+      // string-concatenated, so a title with a colon, leading space, or
+      // quote could corrupt the resulting YAML and break the page.
+      const fmObj: Record<string, unknown> = {
+        title,
+        template: template ?? "default",
+        published: true,
+      };
+      if (file && typeof file === "string") fmObj.file = file;
+      if (file_url && typeof file_url === "string") fmObj.file_url = file_url;
+      const fm = `---\n${stringifyYaml(fmObj).trimEnd()}\n---\n`;
 
       const defaultContent = (file_url && typeof file_url === "string")
         ? `[⬇ ${title}](${file_url})\n`
