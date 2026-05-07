@@ -27,6 +27,24 @@
  *   Each entry adds a programmatic route under the admin prefix and an optional
  *   sidebar link. See `AdminPageRegistration` for the full type.
  *
+ * ## Trust model — read carefully
+ *
+ * Plugins are loaded via dynamic `import()` and execute in the same Deno
+ * process as the host with the same permissions. **Installing a plugin is
+ * equivalent to granting full administrative access to the site.**
+ *
+ * Specifically:
+ *
+ * - Plugins can read and write any file the Deno process can.
+ * - The `onRequest` hook receives a sanitized `Request` with `Cookie` and
+ *   `Authorization` headers stripped, and any `Set-Cookie` headers in
+ *   plugin-returned responses on admin paths are dropped. This is a
+ *   defence-in-depth measure — it does not prevent a hostile plugin from
+ *   reading sessions through other means (e.g. monkey-patching globals).
+ *   Treat plugins as fully trusted regardless.
+ * - Site administrators should only install plugins from sources they
+ *   review or trust the same way they trust their own code.
+ *
  * @example
  * ```ts
  * import { PLUGIN_API_VERSION } from "@dune/core/plugins";

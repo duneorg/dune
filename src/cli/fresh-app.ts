@@ -93,6 +93,7 @@ export async function createDuneApp(
   const startTime = Date.now();
   const siteName = engine.site.title;
   const feedEnabled = config.site.feed?.enabled !== false;
+  const adminPrefix = config.admin?.path ?? "/admin";
 
   const searchAnalyticsPath = join(
     config.admin?.runtimeDir ?? ".dune/admin",
@@ -267,19 +268,76 @@ export async function createDuneApp(
     return items;
   }
 
+  // ── Plugin onRequest sanitization helpers ────────────────────────────────
+  // Headers stripped from the Request passed to plugin onRequest hooks.
+  // These either carry session credentials (Cookie, Authorization) or could
+  // be used to forge identity in plugin-side auth checks. Plugins that need
+  // the authenticated user should use a post-auth hook instead.
+  const HOOK_STRIPPED_HEADERS = [
+    "cookie",
+    "authorization",
+    "x-forwarded-user",
+    "x-forwarded-email",
+    "x-real-user",
+  ];
+
+  function sanitizeRequestForHook(req: Request): Request {
+    const headers = new Headers(req.headers);
+    for (const name of HOOK_STRIPPED_HEADERS) {
+      headers.delete(name);
+    }
+    return new Request(req.url, {
+      method: req.method,
+      headers,
+      body: req.body,
+      // deno-lint-ignore no-explicit-any
+      ...(req.body ? { duplex: "half" } as any : {}),
+      redirect: req.redirect,
+      referrer: req.referrer,
+      referrerPolicy: req.referrerPolicy,
+      mode: req.mode,
+      credentials: req.credentials,
+      cache: req.cache,
+      integrity: req.integrity,
+      keepalive: req.keepalive,
+      signal: req.signal,
+    });
+  }
+
+  function stripSetCookieOnAdmin(res: Response, pathname: string, prefix: string): Response {
+    if (!pathname.startsWith(prefix)) return res;
+    if (!res.headers.has("set-cookie")) return res;
+    const headers = new Headers(res.headers);
+    headers.delete("set-cookie");
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
+  }
+
   // ── App assembly ──────────────────────────────────────────────────────────
   const app = new App<AdminState>();
 
   // 1. Static files — serves /_fresh/js/* from build cache + theme static files
   app.use(staticFiles());
 
-  // 2. Plugin onRequest hook — fires before all routing
+  // 2. Plugin onRequest hook — fires before all routing.
+  // The hook runs before admin auth, so we MUST strip credential-bearing
+  // headers from the Request passed to plugins. Without this, any installed
+  // plugin can read the admin session cookie and impersonate the user.
+  // Plugins that need authentication state should use a post-auth hook or
+  // the PluginApi `auth` surface, not raw cookies.
   app.use(async (fc) => {
     const startMs = performance.now();
-    const hookResult = await hooks.fire<Request | Response>("onRequest", fc.req);
+    const sanitizedReq = sanitizeRequestForHook(fc.req);
+    const hookResult = await hooks.fire<Request | Response>("onRequest", sanitizedReq);
     if (hookResult instanceof Response) {
-      metrics?.recordRequest(fc.url.pathname, performance.now() - startMs, hookResult.status >= 500);
-      return hookResult;
+      // Strip Set-Cookie from plugin-returned responses on admin paths so
+      // a plugin can't mint sessions that bypass the login flow.
+      const finalResponse = stripSetCookieOnAdmin(hookResult, fc.url.pathname, adminPrefix);
+      metrics?.recordRequest(fc.url.pathname, performance.now() - startMs, finalResponse.status >= 500);
+      return finalResponse;
     }
     return fc.next();
   });
