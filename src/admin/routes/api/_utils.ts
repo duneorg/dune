@@ -47,8 +47,41 @@ export function requirePermission(
   return null;
 }
 
+/**
+ * Validate a page-path-like string from a URL parameter.
+ *
+ * Rejects:
+ *   - Empty strings, paths longer than 1024 chars
+ *   - Absolute paths (leading `/` or `\`, drive letters)
+ *   - Null bytes (used to terminate paths early in some toolchains)
+ *   - URL-encoded `..` (we do not decode here; the caller must pass an
+ *     already-decoded string and we still scan for percent-encoded forms
+ *     defence-in-depth)
+ *   - Any segment that is empty, `.`, `..`, or contains characters outside
+ *     `[a-zA-Z0-9._@-]` (allows scoped names; nothing exotic)
+ *   - Backslashes (case-insensitive filesystems treat them as separators)
+ */
 export function validatePagePath(p: string): boolean {
-  return !p.includes("..") && !p.startsWith("/");
+  if (typeof p !== "string") return false;
+  if (p.length === 0 || p.length > 1024) return false;
+  if (p.includes("\0")) return false;
+  if (p.includes("\\")) return false;
+  if (p.startsWith("/")) return false;
+  // Defence-in-depth: refuse already-encoded ".." or null bytes that some
+  // callers may forget to decode.
+  const lower = p.toLowerCase();
+  if (lower.includes("%2e%2e") || lower.includes("%00")) return false;
+  // Reject Windows-style absolute paths (e.g. "C:\foo" already rejected by
+  // the backslash check; "C:/foo" is rejected here).
+  if (/^[a-zA-Z]:\//.test(p)) return false;
+
+  const segments = p.split("/");
+  for (const seg of segments) {
+    if (seg.length === 0) return false; // empty / repeated slashes
+    if (seg === "." || seg === "..") return false;
+    if (!/^[a-zA-Z0-9._@-]+$/.test(seg)) return false;
+  }
+  return true;
 }
 
 export function getClientIp(req: Request): string | null {
