@@ -8,7 +8,8 @@
  * with both filesystem and Deno KV backends).
  */
 
-import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
+import { stringify as stringifyYaml } from "@std/yaml";
+import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type {
   FlexRecord,

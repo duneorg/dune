@@ -3,7 +3,8 @@
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
 import { dirname } from "@std/path";
-import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
+import { stringify as stringifyYaml } from "@std/yaml";
+import { parseUserYaml as parseYaml } from "../../../../security/safe-yaml.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {

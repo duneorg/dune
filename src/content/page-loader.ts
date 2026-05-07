@@ -10,7 +10,7 @@
  */
 
 import { dirname, extname, join } from "@std/path";
-import { parse as parseYaml } from "@std/yaml";
+import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import { ContentError, StorageError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";

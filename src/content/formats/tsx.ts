@@ -13,7 +13,7 @@
  *   - Layout wrapping determined by frontmatter.layout
  */
 
-import { parse as parseYaml } from "@std/yaml";
+import { parseUserYaml as parseYaml } from "../../security/safe-yaml.ts";
 import { dirname, join } from "@std/path";
 import type {
   ContentFormatHandler,

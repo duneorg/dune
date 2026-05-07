@@ -2,7 +2,8 @@
 
 import type { AdminState } from "../../../../types.ts";
 import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck, validatePagePath } from "../../_utils.ts";
-import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
+import { stringify as stringifyYaml } from "@std/yaml";
+import { parseUserYaml as parseYaml } from "../../../../../security/safe-yaml.ts";
 import { validateFrontmatter } from "../../../../../blueprints/validator.ts";
 import { fireContentWebhooks } from "../../../../../admin/webhooks.ts";
 import type { PageFrontmatter } from "../../../../../content/types.ts";
