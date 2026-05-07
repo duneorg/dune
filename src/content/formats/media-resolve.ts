@@ -184,12 +184,22 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
       if (!mediaFile) return _match;
 
       const rewritten = `<iframe${before}src="${mediaFile.url}"${after}></iframe>`;
+      // Listener: validate origin (must be same-origin), source (must be the
+      // iframe we just emitted), shape (must be the dune envelope), and clamp
+      // height to a sane range so a hostile iframe can't resize the host
+      // arbitrarily for clickjacking or UI-redress attacks.
       const listener =
         `<script>(function(){` +
         `var f=document.currentScript.previousElementSibling;` +
+        `var SELF=window.location.origin;` +
         `window.addEventListener('message',function(e){` +
-        `if(e.data&&typeof e.data.__duneIframeHeight==='number'&&e.source===f.contentWindow)` +
-        `f.style.height=e.data.__duneIframeHeight+'px';` +
+        `if(e.origin!==SELF)return;` +
+        `if(e.source!==f.contentWindow)return;` +
+        `var d=e.data;` +
+        `if(!d||typeof d!=='object'||d.type!=='dune:height')return;` +
+        `var h=Number(d.height);` +
+        `if(!isFinite(h)||h<50||h>10000)return;` +
+        `f.style.height=h+'px';` +
         `});` +
         `})()</script>`;
       return `${rewritten}\n${listener}`;
@@ -211,8 +221,13 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
  */
 export const IFRAME_SENDER_SCRIPT =
   `<script>(function(){` +
-  `function r(){window.parent.postMessage(` +
-  `{__duneIframeHeight:document.documentElement.scrollHeight},'*'` +
+  // Resolve target origin from document.referrer (the embedding page).
+  // Falls back to refusing to send if no referrer (e.g. opened directly).
+  `var T=null;try{T=new URL(document.referrer).origin;}catch(_){}` +
+  // Use a structured envelope ({type, height}) so listeners can discriminate
+  // dune messages from arbitrary cross-origin chatter.
+  `function r(){if(!T)return;window.parent.postMessage(` +
+  `{type:'dune:height',height:document.documentElement.scrollHeight},T` +
   `);}` +
   `window.addEventListener('load',r);` +
   `window.addEventListener('resize',r);` +
