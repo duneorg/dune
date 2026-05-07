@@ -150,8 +150,13 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     root,
     islandDir,
     routeDir,
-    ...(allIslandSpecifiers.length > 0 ? { islandSpecifiers: allIslandSpecifiers } : {}),
   });
+
+  // Builder's constructor has no `islandSpecifiers` option — register them
+  // explicitly via registerIsland() after construction.
+  for (const spec of allIslandSpecifiers) {
+    builder.registerIsland(spec);
+  }
 
   await builder.listen(async () => {
     const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });

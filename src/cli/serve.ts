@@ -90,8 +90,13 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     root,
     islandDir,
     routeDir,
-    ...(allIslandSpecifiers.length > 0 ? { islandSpecifiers: allIslandSpecifiers } : {}),
   });
+
+  // Builder's constructor has no `islandSpecifiers` option — register them
+  // explicitly via registerIsland() after construction.
+  for (const spec of allIslandSpecifiers) {
+    builder.registerIsland(spec);
+  }
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 
   // Assemble the Fresh app with all Dune routes as middleware.
