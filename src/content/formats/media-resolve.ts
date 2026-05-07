@@ -51,6 +51,23 @@ function isNonRelative(href: string): boolean {
 }
 
 /**
+ * Identify URL-bearing attribute values whose scheme is unsafe in HTML.
+ * Used by the rewriter as defense-in-depth — the downstream sanitizer
+ * also strips these, but the sanitizer is bypassed in trusted_html and
+ * MDX trusted modes, so we belt-and-suspenders here.
+ *
+ * Allowed:
+ *   http: / https: / mailto: / tel: / relative paths / fragments / data:image/*
+ * Refused (replaced with about:blank):
+ *   javascript:, vbscript:, livescript:, data:text/html, data:image/svg+xml
+ */
+const UNSAFE_SCHEME_RE = /^\s*(javascript|vbscript|livescript|data:text\/html|data:image\/svg\+xml)/i;
+function neutralizeUnsafeScheme(value: string): string {
+  if (UNSAFE_SCHEME_RE.test(value)) return "about:blank";
+  return value;
+}
+
+/**
  * Rewrite relative image and link references in raw markdown/MDX text to
  * absolute `/content-media/…` URLs.
  *
@@ -103,61 +120,60 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
     },
   );
 
-  // Pass 3: HTML <img src="..."> tags embedded in markdown
+  // Pass 3: HTML <img src=...> tags embedded in markdown — both quote styles.
+  // Captures the quote character so we restore it on output and neutralize
+  // unsafe schemes (javascript:, vbscript:, data:text/html, data:image/svg+xml)
+  // before any rewrite. Defense-in-depth on top of the downstream sanitizer.
   result = result.replace(
-    /(<img\b[^>]*?\bsrc=")([^"]+)(")/gi,
-    (_match, before: string, src: string, after: string) => {
-      if (isNonRelative(src)) return `${before}${src}${after}`;
+    /(<img\b[^>]*?\bsrc=)(["'])([^"']+)\2/gi,
+    (_match, before: string, quote: string, src: string) => {
+      const safe = neutralizeUnsafeScheme(src);
+      if (safe !== src || isNonRelative(safe)) return `${before}${quote}${safe}${quote}`;
 
-      const bare = src.startsWith("./") ? src.slice(2) : src;
+      const bare = safe.startsWith("./") ? safe.slice(2) : safe;
       const [filename, query] = bare.split("?", 2);
       const mediaFile = ctx.media.get(filename);
       if (mediaFile) {
         const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
-        return `${before}${url}${after}`;
+        return `${before}${quote}${url}${quote}`;
       }
-
-      return `${before}${src}${after}`;
+      return `${before}${quote}${safe}${quote}`;
     },
   );
 
-  // Pass 4: HTML <a href="..."> tags embedded in markdown
+  // Pass 4: HTML <a href=...> tags embedded in markdown — both quote styles.
   result = result.replace(
-    /(<a\b[^>]*?\bhref=")([^"]+)(")/gi,
-    (_match, before: string, href: string, after: string) => {
-      if (isNonRelative(href)) return `${before}${href}${after}`;
+    /(<a\b[^>]*?\bhref=)(["'])([^"']+)\2/gi,
+    (_match, before: string, quote: string, href: string) => {
+      const safe = neutralizeUnsafeScheme(href);
+      if (safe !== href || isNonRelative(safe)) return `${before}${quote}${safe}${quote}`;
 
-      const bare = href.startsWith("./") ? href.slice(2) : href;
+      const bare = safe.startsWith("./") ? safe.slice(2) : safe;
       const [filename, query] = bare.split("?", 2);
       const mediaFile = ctx.media.get(filename);
       if (mediaFile) {
         const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
-        return `${before}${url}${after}`;
+        return `${before}${quote}${url}${quote}`;
       }
-
-      return `${before}${href}${after}`;
+      return `${before}${quote}${safe}${quote}`;
     },
   );
 
-  // Pass 5: <source src="...">, <audio src="...">, <video src="..."> elements.
-  //
-  // Handles both the common pattern (nested <source> inside <audio>/<video>) and
-  // the direct src attribute on <audio>/<video> itself. <source> is a void element
-  // so no closing tag matching is needed — just the opening tag's src attribute.
+  // Pass 5: <source src=...>, <audio src=...>, <video src=...> — both quote styles.
   result = result.replace(
-    /(<(?:source|audio|video)\b[^>]*?\bsrc=")([^"]+)(")/gi,
-    (_match, before: string, src: string, after: string) => {
-      if (isNonRelative(src)) return `${before}${src}${after}`;
+    /(<(?:source|audio|video)\b[^>]*?\bsrc=)(["'])([^"']+)\2/gi,
+    (_match, before: string, quote: string, src: string) => {
+      const safe = neutralizeUnsafeScheme(src);
+      if (safe !== src || isNonRelative(safe)) return `${before}${quote}${safe}${quote}`;
 
-      const bare = src.startsWith("./") ? src.slice(2) : src;
+      const bare = safe.startsWith("./") ? safe.slice(2) : safe;
       const [filename, query] = bare.split("?", 2);
       const mediaFile = ctx.media.get(filename);
       if (mediaFile) {
         const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
-        return `${before}${url}${after}`;
+        return `${before}${quote}${url}${quote}`;
       }
-
-      return `${before}${src}${after}`;
+      return `${before}${quote}${safe}${quote}`;
     },
   );
 
@@ -174,9 +190,10 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
   // Uses [\s\S]*? (lazy dotall) to reliably handle multiline opening tags
   // where attributes span multiple lines.
   result = result.replace(
-    /<iframe\b([\s\S]*?)\bsrc="([^"]+)"([\s\S]*?)>\s*<\/iframe>/gi,
-    (_match, before: string, src: string, after: string) => {
+    /<iframe\b([\s\S]*?)\bsrc=(["'])([^"']+)\2([\s\S]*?)>\s*<\/iframe>/gi,
+    (_match, before: string, _quote: string, src: string, after: string) => {
       if (isNonRelative(src)) return _match;
+      if (UNSAFE_SCHEME_RE.test(src)) return _match;
 
       const bare = src.startsWith("./") ? src.slice(2) : src;
       const [filename] = bare.split("?", 1);
