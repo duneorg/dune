@@ -520,6 +520,18 @@ export interface SystemConfig {
   };
   debug: boolean;
   timezone: string;
+  /**
+   * Trust the X-Forwarded-For / X-Real-IP request headers when extracting
+   * the client IP for rate limiting, account lockout, and audit logging.
+   * Only enable this when the deployment terminates TLS at a known reverse
+   * proxy (Caddy, nginx, Cloudflare, etc.) that overwrites these headers
+   * before forwarding. With direct internet exposure, leave it false (the
+   * default) — otherwise any client can send their own forwarded header
+   * and bypass per-IP rate limits or evade lockout.
+   *
+   * @since 1.0.0
+   */
+  trusted_proxies?: boolean;
 }
 
 /** Theme configuration */

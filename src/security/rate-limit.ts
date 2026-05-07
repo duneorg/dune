@@ -50,15 +50,29 @@ export class RateLimiter {
  * Extract a client IP from a Request for use as a rate-limit bucket key.
  * Falls back to "unknown" when no IP header is available.
  *
- * NOTE: `x-forwarded-for` / `x-real-ip` can be spoofed by clients unless the
- * deployment sits behind a trusted reverse proxy. Callers should only rely on
- * these headers when the edge is trusted.
+ * `x-forwarded-for` / `x-real-ip` can be spoofed by clients unless the
+ * deployment sits behind a trusted reverse proxy. By default we IGNORE
+ * those headers and fall back to "unknown" (which still rate-limits, but
+ * collapses every direct caller into a single bucket — that's intentional;
+ * the per-process rate limit then trips immediately under flood).
+ *
+ * Operators that terminate TLS at a known load balancer should set
+ * `system.trusted_proxies: true` (boolean) or list specific proxy
+ * addresses in their reverse proxy and configure the limiter via
+ * `clientIpFromRequest({ trustForwardedFor: true })`.
  */
-export function clientIp(req: Request): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  const real = req.headers.get("x-real-ip");
-  if (real) return real.trim();
+export interface ClientIpOptions {
+  /** Honor X-Forwarded-For / X-Real-IP. Only set when behind a trusted edge. */
+  trustForwardedFor?: boolean;
+}
+
+export function clientIp(req: Request, opts: ClientIpOptions = {}): string {
+  if (opts.trustForwardedFor) {
+    const fwd = req.headers.get("x-forwarded-for");
+    if (fwd) return fwd.split(",")[0].trim();
+    const real = req.headers.get("x-real-ip");
+    if (real) return real.trim();
+  }
   return "unknown";
 }
 

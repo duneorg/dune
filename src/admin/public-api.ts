@@ -15,7 +15,7 @@ import { loadForm } from "../forms/loader.ts";
 import { validateFormSubmission } from "../forms/validator.ts";
 import { checkUpload } from "../security/uploads.ts";
 import { checkBodySize } from "../security/body-limit.ts";
-import { RateLimiter } from "../security/rate-limit.ts";
+import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { encodeHex } from "@std/encoding/hex";
 import type { SubmissionFile } from "./submissions.ts";
 import type { WebhookNotificationConfig } from "../config/types.ts";
@@ -80,10 +80,8 @@ export async function handleFormSubmission(ctx: AdminContext, req: Request, form
   }
 
   try {
-    // Rate limit by IP
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-      ?? req.headers.get("x-real-ip")
-      ?? "unknown";
+    const trustForwardedFor = config.system?.trusted_proxies === true;
+    const ip = clientIp(req, { trustForwardedFor });
     if (!contactRateLimiter.check(ip)) {
       const retryAfter = contactRateLimiter.retryAfter(ip);
       return new Response(JSON.stringify({ error: "Too many requests" }), {
@@ -348,10 +346,10 @@ export async function handleContactSubmission(ctx: AdminContext, req: Request): 
     return json({ error: "Submissions not enabled" }, 501);
   }
   try {
-    // Rate limit by IP: 5 submissions per minute
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-      ?? req.headers.get("x-real-ip")
-      ?? "unknown";
+    // Rate limit by IP: 5 submissions per minute. Honor X-Forwarded-For
+    // only when system.trusted_proxies is set (otherwise clients can spoof).
+    const trustForwardedFor = config.system?.trusted_proxies === true;
+    const ip = clientIp(req, { trustForwardedFor });
     if (!contactRateLimiter.check(ip)) {
       const retryAfter = contactRateLimiter.retryAfter(ip);
       return new Response(JSON.stringify({ error: "Too many requests" }), {

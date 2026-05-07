@@ -120,6 +120,13 @@ export function validatePagePath(p: string): boolean {
   return true;
 }
 
+/**
+ * Best-effort client IP for audit logging. This is *audit only* —
+ * X-Forwarded-For / X-Real-IP can be spoofed by clients unless the
+ * deployment is behind a trusted proxy. Callers that need an IP for
+ * security decisions (rate limiting, lockout) should use the equivalent
+ * trusted-proxy-aware helper in src/security/rate-limit.ts.
+ */
 export function getClientIp(req: Request): string | null {
   return req.headers.get("x-forwarded-for")?.split(",")[0].trim()
     ?? req.headers.get("x-real-ip")
