@@ -134,8 +134,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       return jsonResponse(result, 200, corsHeaders);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return jsonResponse({ error: message }, 500, corsHeaders);
+      // Never reflect internal error strings on the public, unauthenticated
+      // API. Server-side log retains full context for operators.
+      console.error("[dune public-api]", path, err);
+      return jsonResponse({ error: "Internal server error" }, 500, corsHeaders);
     }
   };
 }

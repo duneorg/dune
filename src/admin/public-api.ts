@@ -31,7 +31,8 @@ function json(data: unknown, status = 200): Response {
 
 function serverError(err: unknown): Response {
   console.error("[dune public-api]", err);
-  return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  // Never reflect internal error strings on the public, unauthenticated API.
+  return json({ error: "Internal server error" }, 500);
 }
 
 // Hard ceiling on a single form submission body (multipart or urlencoded).
