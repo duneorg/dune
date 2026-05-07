@@ -107,10 +107,15 @@ export async function mountDuneAdmin(
   }
 
   // ── Public form / webhook API ───────────────────────────────────────────────
-  app.post("/api/contact", (fc) => handleContactSubmission(fc.req));
-  app.get("/api/forms/:name", (fc) => handleFormSchema(fc.params.name));
-  app.post("/api/forms/:name", (fc) => handleFormSubmission(fc.req, fc.params.name));
-  app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(fc.req));
+  // Bind handlers to the per-site adminContext via closure so multisite
+  // deployments can't leak across tenants via a process-wide singleton.
+  if (adminContext) {
+    const adminCtx = adminContext;
+    app.post("/api/contact", (fc) => handleContactSubmission(adminCtx, fc.req));
+    app.get("/api/forms/:name", (fc) => handleFormSchema(adminCtx, fc.params.name));
+    app.post("/api/forms/:name", (fc) => handleFormSubmission(adminCtx, fc.req, fc.params.name));
+    app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(adminCtx, fc.req));
+  }
 }
 
 /**

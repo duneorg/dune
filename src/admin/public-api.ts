@@ -8,7 +8,7 @@
  *   POST /api/webhook/incoming     — Token-authenticated incoming webhook
  */
 
-import { getAdminContext } from "./context.ts";
+import type { AdminContext } from "./context.ts";
 import { sendSubmissionEmail } from "./email.ts";
 import { sendWebhookNotification } from "./webhook.ts";
 import { loadForm } from "../forms/loader.ts";
@@ -45,8 +45,7 @@ const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /** GET /api/forms/:name — return the form schema as JSON. */
-export async function handleFormSchema(formName: string): Promise<Response> {
-  const ctx = getAdminContext();
+export async function handleFormSchema(ctx: AdminContext, formName: string): Promise<Response> {
   const form = await loadForm(ctx.storage, "forms", formName);
   if (!form) {
     return json({ error: `Form "${formName}" not found` }, 404);
@@ -63,8 +62,7 @@ export async function handleFormSchema(formName: string): Promise<Response> {
 }
 
 /** POST /api/forms/:name — validate and store a blueprint-driven form submission. */
-export async function handleFormSubmission(req: Request, formName: string): Promise<Response> {
-  const ctx = getAdminContext();
+export async function handleFormSubmission(ctx: AdminContext, req: Request, formName: string): Promise<Response> {
   const { storage, submissions, config } = ctx;
 
   if (!submissions) {
@@ -222,8 +220,7 @@ export async function handleFormSubmission(req: Request, formName: string): Prom
 // Matches token against config.admin.incoming_webhooks entries.
 // Token values starting with "$" are expanded from environment variables.
 // On match, dispatches the permitted actions requested in the body.
-export async function handleIncomingWebhook(req: Request): Promise<Response> {
-  const ctx = getAdminContext();
+export async function handleIncomingWebhook(ctx: AdminContext, req: Request): Promise<Response> {
   const { config, engine, auditLogger, imageCache } = ctx;
 
   const incomingWebhooks = config.admin?.incoming_webhooks;
@@ -324,8 +321,7 @@ export async function handleIncomingWebhook(req: Request): Promise<Response> {
 
 // ── Contact form submission handler (public) ──────────────────────────────────
 
-export async function handleContactSubmission(req: Request): Promise<Response> {
-  const ctx = getAdminContext();
+export async function handleContactSubmission(ctx: AdminContext, req: Request): Promise<Response> {
   const { storage, submissions, config } = ctx;
 
   if (!submissions) {
