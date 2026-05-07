@@ -5,6 +5,74 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.9.1] — 2026-05-07
+
+Security release. All findings are from the May 2026 internal audit. No breaking changes to public APIs.
+
+### Critical
+
+- **Path traversal in submission file download** — insufficient path validation on the file download endpoint allowed escape from the submissions directory. (CRIT-1)
+- **Path traversal in flex object API** — same class of issue in the flex content read endpoint. (CRIT-2)
+- **Collab WebSocket document scope not enforced** — authenticated users could open a collab session for paths outside the content index. Sessions are now bound to known page paths. (CRIT-3)
+- **Admin context leak in public API handlers (multisite)** — in multisite deployments, public REST handlers could resolve to the wrong site's admin context. Threaded through request state instead of a global. (CRIT-4)
+- **MDX co-located imports not path-contained** — import paths in MDX content were not restricted to the page's own directory. Confined to the page directory at load time. (CRIT-5)
+- **Plugin `onRequest` cookie access** — plugins could read the admin session cookie via `onRequest`. Access restricted; plugin trust model documented. (CRIT-6)
+
+### High
+
+- **Admin path validation hardened** — the page path validator was strengthened against bypass techniques and re-applied consistently across all path-bearing admin handlers. (HIGH-1, HIGH-2)
+- **Internal error details exposed on public routes** — unhandled exceptions returned internal error strings to unauthenticated callers. Responses scrubbed to generic messages; permission errors now return 403. (HIGH-3, HIGH-7)
+- **Missing CSRF checks on mutation endpoints** — several admin mutation handlers (preview, editor save, submissions, logout) lacked CSRF validation. (HIGH-4, LOW-1)
+- **Security headers missing on admin routes** — admin responses now emit a full set of security headers (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`). (HIGH-5, HIGH-6)
+- **Webhook token comparison not constant-time** — replaced with a constant-time comparison to prevent timing-based token recovery. (HIGH-8)
+- **Webhook body size uncapped** — incoming webhook payloads are now size-limited before parsing. (HIGH-9)
+- **iframe auto-resize `postMessage` origin not validated** — the resize listener accepted messages from any origin and replied without pinning the target origin. Both tightened to the document origin. (HIGH-10, HIGH-11)
+- **Inline HTML and SVG media not sandboxed** — HTML and SVG files served from the media store now include restrictive `Content-Security-Policy` headers; SVG served with correct content type. (HIGH-12, HIGH-13)
+- **MDX output not sanitized for non-admin authors** — MDX rendered output now goes through the same `trusted_html`-gated sanitizer as markdown. Also fixed a double-encoding bug in the sanitizer that corrupted image URLs containing query parameters. (HIGH-14)
+- **Collab WebSocket upgrade missing auth and origin checks** — the upgrade handshake now requires a matching `Origin` header and the `pages.update` permission. (HIGH-15, HIGH-16)
+- **`adminPages.permission` field not enforced at request time** — the permission declared on `AdminPageRegistration` was stored but never checked. Now validated on each request. (HIGH-17)
+- **Plugin-registered route paths not validated** — `publicRoutes.path` entries are now checked against reserved prefixes at bootstrap. (HIGH-18)
+- **Plugin island specifiers not path-contained** — island file paths supplied by plugins are now validated against path-containment rules. (HIGH-19)
+- **SSRF on outbound webhook delivery** — webhook target URLs are now checked against a scheme and host allowlist before delivery. (HIGH-20)
+- **`X-Forwarded-For` trusted by default** — forwarding headers are no longer used for rate-limiting or session IP binding unless `trusted_proxies` is explicitly configured. (HIGH-20, HIGH-21)
+- **Unimplemented `auth_provider.type` silently fell back to local auth** — startup now refuses if the configured auth provider type has no implementation. (HIGH-21)
+- **Search API query size unbounded** — query string length and result count are now capped. (HIGH-23)
+
+### Medium
+
+- **Page frontmatter serialized via string interpolation** — switched to `@std/yaml` stringify for safe YAML output on page create. (MED-1)
+- **`admin.path` config not validated at startup** — malformed admin path values are now rejected at bootstrap. (MED-2)
+- **CORS origin reflected unconditionally** — the public API now requires a valid, matching `site.url` before reflecting the `Origin` header. (MED-3)
+- **Audit log coverage gaps** — auth denial events (CSRF failures, permission checks) are now logged. Audit log path is contained within the site root. (MED-4, MED-5)
+- **Public API pagination not bounds-checked** — `limit` and `offset` parameters are now clamped to safe integer ranges. (MED-7)
+- **Unpublished page existence enumerable via public API** — 404 responses for unpublished pages are now indistinguishable from absent paths. (MED-8)
+- **External auth provider role claims not validated** — LDAP/SAML provisioner now validates role claims against the configured allowed role list. (MED-9)
+- **PBKDF2 iterations below OWASP 2024 minimum** — bumped to 600 000 iterations; existing hashes are transparently rehashed on next successful login. (MED-10)
+- **No per-account login lockout** — added a per-account lockout counter alongside the existing IP-based rate limit. (MED-11)
+- **Plugin install accepted unpinned versions** — `dune plugin:install` now requires a pinned version specifier. (MED-12)
+- **Theme install SSRF and integrity** — theme installation is now restricted to local registry slugs, with SSRF guards and archive hash verification. (MED-13)
+- **Plugin `onRequest` could intercept admin responses** — admin-prefix paths are now excluded from plugin `onRequest` short-circuit. (MED-14)
+- **Media URL rewriter gaps** — the href/src rewriter now handles single-quoted attributes and rejects unsafe URL schemes. (MED-15, MED-16)
+- **Image processing without input size limits** — uploaded images are now size-checked before being passed to the processing pipeline. (MED-17)
+- **Submission body size checked after parse** — the payload size cap now applies before JSON parsing. (MED-19)
+- **`FormDefinition.enabled` flag** — forms can now be disabled via `enabled: false`; the public submissions API returns 404 for disabled forms. (MED-20)
+- **`FileSystemAdapter` path-containment guard** — all storage operations now verify the resolved path remains within `rootDir`. (MED-21)
+- **Collab WebSocket resource limits** — per-connection limits added for frame size, simultaneous connections, and message rate. (MED-22)
+- **`withGuards()` helper for admin route handlers** — new utility composing auth, permission, and CSRF checks into a single call. (MED-23)
+- **Open redirect on post-login `?next=`** — redirect target is now restricted to same-origin paths. (MED-24)
+
+### Low
+
+- **`/api/nav` and `/api/config/site` unrate-limited** — rate limits added to the remaining unguarded public read endpoints. (LOW-2)
+- **`/health` information disclosure** — the health endpoint now returns a minimal response by default; detailed stats require a configurable `health_token`. (LOW-3)
+- **Log injection via request paths** — paths written to error logs are now sanitized (control characters removed, length capped). (LOW-4)
+- **Plugin name parameter validation tightened** — the plugin name segment in admin API routes enforces a strict allowlist and rejects path traversal via dot-segments. (LOW-5)
+- **Filesystem paths in MDX error logs** — internal paths are redacted from error logs in production. (LOW-6)
+- **Submission read endpoints missing permission check** — GET routes for submission data now require the `submissions.read` permission. (LOW-8)
+- **User-supplied YAML parsed with extended schema** — all user-facing YAML parsing now uses the `"core"` schema, disabling implicit type coercions. (LOW-10)
+
+---
+
 ## [0.9.0] — 2026-05-07
 
 ### Breaking
