@@ -164,3 +164,66 @@ export function actorFromAuth(
     name: authResult.user.name,
   };
 }
+
+// ── withGuards: declarative guard wrapper for admin handlers ─────────────────
+//
+// Most admin routes need the same three guards in the same order:
+//   1. csrfCheck()           — reject cross-origin mutating requests
+//   2. requirePermission()   — confirm the actor has the required permission
+//   3. validatePagePath()    — confirm a path-shaped URL parameter is safe
+//
+// Re-implementing this on every route is what caused HIGH-1, HIGH-4, and
+// MED-23 in the May 2026 audit (regressions of prior fixes). The wrapper
+// below makes the guards declarative, so adding a new mutating route can't
+// silently forget any of them. Existing routes are converted incrementally;
+// a Deno test (tests/admin/guards_test.ts) enforces that every mutating
+// handler invokes csrfCheck either directly or via withGuards.
+//
+// Refs: claudedocs/security-audit-2026-05.md MED-23 (CWE-264).
+
+export interface WithGuardsOptions {
+  /**
+   * Run csrfCheck. Defaults to true — pass false only on genuinely safe
+   * read-only handlers (which usually don't need this wrapper anyway).
+   */
+  csrf?: boolean;
+  /** Require the authenticated actor to hold this permission. */
+  permission?: AdminPermission;
+  /**
+   * Validate a URL-path-shaped parameter against validatePagePath().
+   * Pass the param name; e.g. `validatePath: "path"` for `/api/pages/:path`.
+   */
+  validatePath?: string;
+}
+
+export type GuardedHandler<P = Record<string, string>> = (
+  ctx: FreshContext<AdminState> & { params: P },
+) => Response | Promise<Response>;
+
+export function withGuards<P = Record<string, string>>(
+  opts: WithGuardsOptions,
+  handler: GuardedHandler<P>,
+): GuardedHandler<P> {
+  return async (ctx) => {
+    if (opts.csrf !== false) {
+      const csrfDenied = csrfCheck(ctx);
+      if (csrfDenied) return csrfDenied;
+    }
+    if (opts.permission) {
+      const permDenied = requirePermission(ctx, opts.permission);
+      if (permDenied) return permDenied;
+    }
+    if (opts.validatePath) {
+      const params = ctx.params as Record<string, string>;
+      const raw = params?.[opts.validatePath];
+      if (typeof raw !== "string" || !validatePagePath(raw)) {
+        return json({ error: "Invalid path" }, 400);
+      }
+    }
+    try {
+      return await handler(ctx);
+    } catch (err) {
+      return serverError(err);
+    }
+  };
+}
