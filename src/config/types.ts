@@ -234,6 +234,13 @@ export interface WebhookNotificationConfig {
    * Supports "$ENV_VAR" expansion.
    */
   secret?: string;
+  /**
+   * Allow delivery to private/loopback/link-local addresses. Defaults to
+   * false. Only set true for documented same-network use cases (e.g. an
+   * internal CI bot at 10.x). Without this opt-in, the SSRF guard refuses
+   * cloud-metadata, container-orchestrator, and intranet targets.
+   */
+  allow_private?: boolean;
 }
 
 /**
@@ -268,6 +275,8 @@ export interface WebhookEndpointConfig {
   enabled?: boolean;
   /** Optional human-readable label shown in delivery logs. */
   label?: string;
+  /** Allow delivery to private/loopback/link-local addresses. Default false. */
+  allow_private?: boolean;
 }
 
 /**
