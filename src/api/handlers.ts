@@ -32,6 +32,14 @@ const apiRateLimiter = new RateLimiter(120, 60 * 1000);
 // One-shot warning latch when `site.url` is missing — emit once per process.
 let warnedMissingSiteUrl = false;
 
+// Flex Object type/id segments are interpolated into filesystem paths
+// (`flex-objects/<type>/<id>.yaml`). Restrict to a conservative charset so
+// `..` / `/` / null bytes / encoded variants can never escape the flex root.
+const SAFE_FLEX_SEGMENT_RE = /^[A-Za-z0-9_-]{1,64}$/;
+function isSafeFlexSegment(s: string): boolean {
+  return SAFE_FLEX_SEGMENT_RE.test(s);
+}
+
 export interface ApiHandlerOptions {
   engine: DuneEngine;
   collections: CollectionEngine;
@@ -258,6 +266,7 @@ async function routeApiRequest(
     // GET /api/flex/:type — list all records for a type
     if (parts.length === 4) {
       const type = decodeURIComponent(parts[3]);
+      if (!isSafeFlexSegment(type)) return null;
       const schemas = await flex.loadSchemas();
       if (!schemas[type]) return null;
       const records = await flex.list(type);
@@ -268,6 +277,7 @@ async function routeApiRequest(
     if (parts.length === 5) {
       const type = decodeURIComponent(parts[3]);
       const id = decodeURIComponent(parts[4]);
+      if (!isSafeFlexSegment(type) || !isSafeFlexSegment(id)) return null;
       const schemas = await flex.loadSchemas();
       if (!schemas[type]) return null;
       const record = await flex.get(type, id);
