@@ -38,18 +38,35 @@ Deno.test("RateLimiter: retryAfter returns seconds remaining", () => {
   assert(retry >= 1 && retry <= 5);
 });
 
-Deno.test("clientIp: reads x-forwarded-for first entry", () => {
+// After MED-6 (trusted-proxy opt-in), forwarded headers are honored only
+// when the caller explicitly opts in. Each test exercises both modes.
+
+Deno.test("clientIp: ignores x-forwarded-for by default", () => {
   const req = new Request("http://x/", {
     headers: { "x-forwarded-for": "203.0.113.1, 198.51.100.1" },
   });
-  assertEquals(clientIp(req), "203.0.113.1");
+  assertEquals(clientIp(req), "unknown");
 });
 
-Deno.test("clientIp: falls back to x-real-ip", () => {
+Deno.test("clientIp: reads x-forwarded-for first entry when trusted", () => {
+  const req = new Request("http://x/", {
+    headers: { "x-forwarded-for": "203.0.113.1, 198.51.100.1" },
+  });
+  assertEquals(clientIp(req, { trustForwardedFor: true }), "203.0.113.1");
+});
+
+Deno.test("clientIp: ignores x-real-ip by default", () => {
   const req = new Request("http://x/", {
     headers: { "x-real-ip": "203.0.113.2" },
   });
-  assertEquals(clientIp(req), "203.0.113.2");
+  assertEquals(clientIp(req), "unknown");
+});
+
+Deno.test("clientIp: falls back to x-real-ip when trusted", () => {
+  const req = new Request("http://x/", {
+    headers: { "x-real-ip": "203.0.113.2" },
+  });
+  assertEquals(clientIp(req, { trustForwardedFor: true }), "203.0.113.2");
 });
 
 Deno.test("clientIp: returns 'unknown' when no header", () => {

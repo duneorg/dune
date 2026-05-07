@@ -146,7 +146,7 @@ Deno.test("WorkflowEngine: statusCounts returns correct counts", () => {
 Deno.test("Scheduler: schedule and list actions", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const scheduler = createScheduler({ storage, dataDir: tmpDir });
+  const scheduler = createScheduler({ storage, dataDir: "data" });
 
   const action = await scheduler.schedule({
     sourcePath: "test/page.md",
@@ -169,7 +169,7 @@ Deno.test("Scheduler: schedule and list actions", async () => {
 Deno.test("Scheduler: cancel removes action", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const scheduler = createScheduler({ storage, dataDir: tmpDir });
+  const scheduler = createScheduler({ storage, dataDir: "data" });
 
   const action = await scheduler.schedule({
     sourcePath: "test/page.md",
@@ -188,7 +188,7 @@ Deno.test("Scheduler: cancel removes action", async () => {
 Deno.test("Scheduler: listForPage filters by path", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const scheduler = createScheduler({ storage, dataDir: tmpDir });
+  const scheduler = createScheduler({ storage, dataDir: "data" });
 
   await scheduler.schedule({
     sourcePath: "page-a.md",
@@ -212,7 +212,7 @@ Deno.test("Scheduler: listForPage filters by path", async () => {
 Deno.test("Scheduler: tick executes due actions", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const scheduler = createScheduler({ storage, dataDir: tmpDir });
+  const scheduler = createScheduler({ storage, dataDir: "data" });
 
   // Schedule in the past
   await scheduler.schedule({
@@ -296,7 +296,7 @@ Deno.test("Diff: content to empty", () => {
 Deno.test("HistoryEngine: record and getHistory", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   await history.record({
     sourcePath: "test/page.md",
@@ -326,7 +326,7 @@ Deno.test("HistoryEngine: record and getHistory", async () => {
 Deno.test("HistoryEngine: getRevision returns specific revision", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   await history.record({
     sourcePath: "test/page.md",
@@ -357,7 +357,7 @@ Deno.test("HistoryEngine: getRevision returns specific revision", async () => {
 Deno.test("HistoryEngine: getLatest returns most recent", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   await history.record({
     sourcePath: "page.md",
@@ -382,7 +382,7 @@ Deno.test("HistoryEngine: getLatest returns most recent", async () => {
 Deno.test("HistoryEngine: diff between revisions", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   await history.record({
     sourcePath: "page.md",
@@ -407,7 +407,7 @@ Deno.test("HistoryEngine: diff between revisions", async () => {
 Deno.test("HistoryEngine: diffWithCurrent", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   await history.record({
     sourcePath: "page.md",
@@ -426,7 +426,7 @@ Deno.test("HistoryEngine: diffWithCurrent", async () => {
 Deno.test("HistoryEngine: getRevisionCount", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   assertEquals(await history.getRevisionCount("nonexistent.md"), 0);
 
@@ -450,7 +450,7 @@ Deno.test("HistoryEngine: getRevisionCount", async () => {
 Deno.test("HistoryEngine: getLatest for nonexistent page returns null", async () => {
   const tmpDir = Deno.makeTempDirSync();
   const storage = createStorage({ rootDir: tmpDir });
-  const history = createHistoryEngine({ storage, dataDir: tmpDir });
+  const history = createHistoryEngine({ storage, dataDir: "data" });
 
   const latest = await history.getLatest("nonexistent.md");
   assertEquals(latest, null);

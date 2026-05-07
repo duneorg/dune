@@ -11,7 +11,23 @@ export interface AuditActor {
 
 /** Target resource */
 export interface AuditTarget {
-  type: "page" | "user" | "config" | "plugin" | "theme" | "media" | "flex" | "form" | "system" | "comment";
+  type:
+    | "page"
+    | "user"
+    | "config"
+    | "plugin"
+    | "theme"
+    | "media"
+    | "flex"
+    | "form"
+    | "system"
+    | "comment"
+    /**
+     * Used by `logAuthzDenial()` (MED-4) when the denial is keyed to an
+     * HTTP route rather than a content target. `id` carries the request
+     * pathname.
+     */
+    | "route";
   /** Human-readable identifier (sourcePath for pages, userId for users, etc.) */
   id?: string;
 }
