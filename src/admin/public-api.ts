@@ -40,6 +40,10 @@ function serverError(err: unknown): Response {
 // allowance for boundaries, headers, and non-file fields.
 const MAX_SUBMISSION_BYTES = 55 * 1024 * 1024;
 
+// Webhook bodies are always small JSON envelopes — 1 MiB is generous and
+// shuts down trivially-large unauthenticated POSTs before req.json() runs.
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
+
 // Rate limiter: 5 submissions per IP per minute (shared across contact + form routes)
 const contactRateLimiter = new RateLimiter(5, 60 * 1000);
 
@@ -228,6 +232,11 @@ export async function handleIncomingWebhook(ctx: AdminContext, req: Request): Pr
   if (!incomingWebhooks || incomingWebhooks.length === 0) {
     return json({ error: "Incoming webhooks not configured" }, 501);
   }
+
+  // Cap body size before parsing JSON to prevent unauthenticated memory DoS:
+  // req.json() buffers the whole body before validating the token below.
+  const tooLarge = checkBodySize(req, MAX_WEBHOOK_BYTES);
+  if (tooLarge) return tooLarge;
 
   // Extract token from Authorization header (Bearer) or JSON body
   let token: string | null = null;
