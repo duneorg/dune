@@ -328,13 +328,27 @@ export async function createDuneApp(
   // plugin can read the admin session cookie and impersonate the user.
   // Plugins that need authentication state should use a post-auth hook or
   // the PluginApi `auth` surface, not raw cookies.
+  //
+  // We also refuse to honor plugin-returned Responses for admin paths.
+  // Otherwise the first plugin to return a Response can mint sessions or
+  // bypass _middleware (no auth, no CSRF, no security headers).
   app.use(async (fc) => {
     const startMs = performance.now();
     const sanitizedReq = sanitizeRequestForHook(fc.req);
     const hookResult = await hooks.fire<Request | Response>("onRequest", sanitizedReq);
     if (hookResult instanceof Response) {
+      // Path is under the admin prefix? Drop the plugin response, log a
+      // warning, and let admin routing handle the request normally.
+      if (fc.url.pathname.startsWith(adminPrefix)) {
+        console.warn(
+          `[dune] plugin onRequest tried to short-circuit admin path ${fc.url.pathname}; ignoring response.`,
+        );
+        await hookResult.body?.cancel().catch(() => {});
+        return fc.next();
+      }
       // Strip Set-Cookie from plugin-returned responses on admin paths so
-      // a plugin can't mint sessions that bypass the login flow.
+      // a plugin can't mint sessions that bypass the login flow. (Belt-and-
+      // suspenders: the admin-path branch above already short-circuits.)
       const finalResponse = stripSetCookieOnAdmin(hookResult, fc.url.pathname, adminPrefix);
       metrics?.recordRequest(fc.url.pathname, performance.now() - startMs, finalResponse.status >= 500);
       return finalResponse;
