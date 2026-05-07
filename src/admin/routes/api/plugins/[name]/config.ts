@@ -14,7 +14,13 @@ export const handler = {
 
     const { hooks, storage, config } = ctx.state.adminContext;
     const pluginName = decodeURIComponent(ctx.params.name);
-    if (!pluginName) return json({ error: "Plugin name required" }, 400);
+    // Plugin names are interpolated into a filesystem path
+    // (data/plugins/<name>.json). Restrict to a charset that covers the
+    // jsr/npm scoped naming forms but excludes path-escape characters.
+    if (!pluginName || !/^[a-zA-Z0-9_@.][a-zA-Z0-9_@./-]{0,127}$/.test(pluginName) ||
+        pluginName.includes("..") || pluginName.includes("\\") || pluginName.includes("\0")) {
+      return json({ error: "Invalid plugin name" }, 400);
+    }
 
     const plugin = hooks?.plugins().find((p) => p.name === pluginName);
     if (!plugin) return json({ error: "Plugin not found" }, 404);

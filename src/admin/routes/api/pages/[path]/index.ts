@@ -1,7 +1,7 @@
 /** GET + PUT + DELETE /admin/api/pages/:path */
 
 import type { AdminState } from "../../../../types.ts";
-import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck } from "../../_utils.ts";
+import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfCheck, validatePagePath } from "../../_utils.ts";
 import { stringify as stringifyYaml, parse as parseYaml } from "@std/yaml";
 import { validateFrontmatter } from "../../../../../blueprints/validator.ts";
 import { fireContentWebhooks } from "../../../../../admin/webhooks.ts";
@@ -31,6 +31,7 @@ export const handler = {
 
     const { engine } = ctx.state.adminContext;
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
     try {
       const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
       if (!pageIndex) return json({ error: "Page not found" }, 404);
@@ -54,6 +55,7 @@ export const handler = {
     const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
 
     try {
       const body = await ctx.req.json();
@@ -122,6 +124,7 @@ export const handler = {
     const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
 
     try {
       const page = engine.pages.find((p) => p.sourcePath === pagePath);

@@ -1,7 +1,7 @@
 /** GET + POST + DELETE /admin/api/staging/:path */
 
 import type { AdminState } from "../../../../types.ts";
-import { requirePermission, json, serverError, csrfCheck } from "../../_utils.ts";
+import { requirePermission, json, serverError, csrfCheck, validatePagePath } from "../../_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -12,6 +12,7 @@ export const handler = {
     if (!staging) return json({ error: "Staging not enabled" }, 501);
 
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
     const draft = await staging.get(pagePath);
     if (!draft) return json({ draft: null });
 
@@ -37,6 +38,7 @@ export const handler = {
     if (!staging) return json({ error: "Staging not enabled" }, 501);
 
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
     const authResult = ctx.state.auth;
     try {
       const body = await ctx.req.json() as { content?: string; frontmatter?: Record<string, unknown> };
@@ -60,7 +62,9 @@ export const handler = {
     if (denied) return denied;
     const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
-    await staging.discard(ctx.params.path);
+    const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
+    await staging.discard(pagePath);
     return json({ discarded: true });
   },
 };

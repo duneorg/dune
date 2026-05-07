@@ -8,7 +8,7 @@
  */
 
 import type { AdminState } from "../../../types.ts";
-import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
+import { requirePermission, json, serverError, csrfCheck, validatePagePath } from "../_utils.ts";
 import { stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
@@ -24,6 +24,7 @@ export const handler = {
     const rest = ctx.params.rest;
     const parts = rest.split("/");
     const pagePath = decodeURIComponent(parts[0]);
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
 
     try {
       if (parts.length === 1) {
@@ -74,6 +75,7 @@ export const handler = {
     }
 
     const pagePath = decodeURIComponent(parts[0]);
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
     const revNum = parseInt(parts[1], 10);
 
     try {

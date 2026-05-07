@@ -1,7 +1,7 @@
 /** GET /admin/api/workflow/status/:path */
 
 import type { AdminState } from "../../../../types.ts";
-import { requirePermission, json } from "../../_utils.ts";
+import { requirePermission, json, validatePagePath } from "../../_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -12,6 +12,7 @@ export const handler = {
     if (!workflow) return json({ error: "Workflow not enabled" }, 501);
 
     const pagePath = ctx.params.path;
+    if (!validatePagePath(pagePath)) return json({ error: "Invalid path" }, 400);
     const pageIndex = engine.pages.find((p) => p.sourcePath === pagePath);
     if (!pageIndex) return json({ error: "Page not found" }, 404);
 
