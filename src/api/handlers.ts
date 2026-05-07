@@ -331,13 +331,14 @@ async function handlePageList(url: URL, engine: DuneEngine) {
 
   let items = engine.pages.filter((p) => p.routable);
 
-  // Published filter
-  if (published !== null) {
-    const pub = published === "true";
-    items = items.filter((p) => p.published === pub);
-  } else {
-    items = items.filter((p) => p.published);
-  }
+  // Published filter — public API only ever returns published pages,
+  // regardless of the `published` query parameter. Previously
+  // ?published=false returned metadata for every draft, which exposed
+  // forthcoming titles, slugs, dates, and taxonomies to anonymous
+  // readers. Authenticated draft enumeration belongs on the admin API
+  // (under requirePermission("pages.read")), not here.
+  void published;
+  items = items.filter((p) => p.published);
 
   // Template filter
   if (template) {
