@@ -301,11 +301,13 @@ export interface TemplateProps {
 export interface ContentPageProps {
   site: SiteConfig;
   config: DuneConfig;
+  /** The page's own route, e.g. "/blog/hello-world" */
+  route: string;
   /** Helper to resolve co-located media URLs */
   media: MediaHelper;
   /** Collection results (if page has collection definition in frontmatter) */
   collection?: Collection;
-  /** URL parameters */
+  /** URL parameters — always empty for content pages (no parameterized routes) */
   params: Record<string, string>;
 }
 

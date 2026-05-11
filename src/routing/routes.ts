@@ -569,6 +569,7 @@ export function duneRoutes(
             h(Component as ComponentType<any>, {
               site: engine.site,
               config: engine.config,
+              route: page.route,
               media: createMediaHelper(page.media),
               params: {},
             }),
@@ -583,6 +584,7 @@ export function duneRoutes(
         const content = h(Component as ComponentType<any>, {
           site: engine.site,
           config: engine.config,
+          route: page.route,
           media: createMediaHelper(page.media),
           params: {},
         });
