@@ -32,6 +32,7 @@
  *   dune blueprint:list                — List all available blueprints (frontmatter schemas)
  *   dune blueprint:show <template>     — Show full field schema for a blueprint
  *   dune blueprint:validate <file>     — Validate a content file's frontmatter against its blueprint
+ *   dune upgrade                       — Update @dune/core to the latest version
  *   dune update:skills                 — Reinstall AI agent skill files from current package
  *   dune content:delete <route>        — Delete a content page by route (requires --confirm or --dry-run)
  */
@@ -61,6 +62,8 @@ import { contentCreateCommand } from "./cli/content-create.ts";
 import { blueprintCommands } from "./cli/blueprint.ts";
 import { updateSkillsCommand } from "./cli/update-skills.ts";
 import { contentDeleteCommand } from "./cli/content-delete.ts";
+import { checkForUpdates } from "./cli/upgrade-check.ts";
+import { upgradeCommand } from "./cli/upgrade.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -111,6 +114,7 @@ Commands:
   blueprint:show      Show full field schema for a template blueprint
   blueprint:validate  Validate a content file's frontmatter against its blueprint
 
+  upgrade             Update @dune/core to the latest version
   update:skills       Reinstall AI coding agent skill files from current package
 
   schema:export       Print JSON Schema for site.yaml to stdout
@@ -269,7 +273,7 @@ async function main() {
       await Deno.stat(siteDenoJson);
       const cmd = new Deno.Command(Deno.execPath(), {
         args: ["run", "-A", `--config=${siteDenoJson}`, import.meta.url, ...args],
-        env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1" },
+        env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
@@ -290,6 +294,7 @@ async function main() {
         break;
 
       case "dev":
+        checkForUpdates();
         await devCommand(root, {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
@@ -319,6 +324,7 @@ async function main() {
         break;
 
       case "serve":
+        checkForUpdates();
         await serveCommand(root, {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
@@ -474,6 +480,10 @@ async function main() {
           dryRun: options.dryRun === true,
           json: options.json === true,
         });
+        break;
+
+      case "upgrade":
+        await upgradeCommand(root, { debug: options.debug === true });
         break;
 
       case "deploy:init":
