@@ -9,7 +9,8 @@
     "./plugins": "./src/plugins/mod.ts",
     "./sections": "./src/sections/mod.ts",
     "./content": "./src/content/api.ts",
-    "./admin": "./src/admin/mount.ts"
+    "./admin": "./src/admin/mount.ts",
+    "./mcp": "./src/mcp/mod.ts"
   },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",

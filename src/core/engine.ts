@@ -74,6 +74,8 @@ export interface DuneEngine {
   taxonomyMap: Record<string, Record<string, string[]>>;
   /** Loaded blueprint definitions (template name → definition) */
   blueprints: BlueprintMap;
+  /** Storage adapter for reading and writing site files */
+  storage: StorageAdapter;
   /** Route resolver */
   router: RouteResolver;
   /** Theme loader */
@@ -499,6 +501,7 @@ export async function createDuneEngine(
     pages: [],
     taxonomyMap: {},
     blueprints: {},
+    storage,
     themeConfig: {},
     router: undefined as unknown as RouteResolver,
     themes: undefined as unknown as ThemeLoader,
