@@ -147,6 +147,35 @@ This is your first blog post. Edit it at \`content/02.blog/01.hello-world/post.m
 3. Add taxonomy pages for categories and tags
 `;
 
+/** VSCode settings — wires YAML schema for site.yaml autocompletion */
+const VSCODE_SETTINGS = `{
+  // Dune config schema — validates and autocompletes config/site.yaml
+  // Requires the Red Hat YAML extension (redhat.vscode-yaml)
+  "yaml.schemas": {
+    "http://localhost:3000/_dune/schema/config": [
+      "config/site.yaml",
+      "config/system.yaml",
+      "config/theme.yaml"
+    ]
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  }
+}
+`;
+
+/** Claude Code MCP server config for this site */
+const MCP_JSON = `{
+  "mcpServers": {
+    "dune": {
+      "command": "deno",
+      "args": ["run", "-A", "jsr:@dune/core/cli", "mcp:serve"],
+      "cwd": "."
+    }
+  }
+}
+`;
+
 const DENO_JSON = `{
   "imports": {
     "preact": "npm:preact@^10",
@@ -345,6 +374,9 @@ Welcome to your headless Dune site.
 Dune manages this content. Your **Fresh routes** control how it renders.
 `;
 
+import { copySkillFiles } from "./update-skills.ts";
+import { join as joinPath } from "@std/path";
+
 export async function newCommand(dir: string, options: { headless?: boolean } = {}) {
   if (options.headless) {
     return _newHeadlessCommand(dir);
@@ -360,6 +392,7 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await mkdirp(`${dir}/content/02.blog/01.hello-world`);
   await mkdirp(`${dir}/themes/starter/templates`);
   await mkdirp(`${dir}/themes/starter/components`);
+  await mkdirp(`${dir}/.vscode`);
 
   // Write files
   await Deno.writeTextFile(`${dir}/config/site.yaml`, SITE_YAML);
@@ -371,6 +404,11 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await Deno.writeTextFile(`${dir}/content/02.blog/blog.md`, BLOG_MD);
   await Deno.writeTextFile(`${dir}/content/02.blog/01.hello-world/post.md`, FIRST_POST);
   await Deno.writeTextFile(`${dir}/deno.json`, DENO_JSON);
+  await Deno.writeTextFile(`${dir}/.vscode/settings.json`, VSCODE_SETTINGS);
+  await Deno.writeTextFile(`${dir}/.mcp.json`, MCP_JSON);
+
+  // Install AI agent skill files into .claude/skills/
+  const skillsResult = await copySkillFiles(joinPath(dir, ".claude", "skills"), { force: true });
 
   const elapsed = (performance.now() - start).toFixed(0);
 
@@ -380,9 +418,14 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`    config/system.yaml`);
   console.log(`    content/01.home/default.md`);
   console.log(`    content/02.blog/blog.md`);
+  console.log(`    .vscode/settings.json   (YAML autocompletion for config/*.yaml)`);
+  console.log(`    .mcp.json               (Claude Code MCP server config)`);
   console.log(`    content/02.blog/01.hello-world/post.md`);
   console.log(`    themes/starter/`);
   console.log(`    deno.json`);
+  if (skillsResult.installed > 0) {
+    console.log(`    .claude/skills/         (${skillsResult.installed} AI agent skill files)`);
+  }
   console.log(`\n  Next steps:`);
   console.log(`    cd ${dir}`);
   console.log(`    deno task dev`);
@@ -399,6 +442,7 @@ async function _newHeadlessCommand(dir: string) {
   await mkdirp(`${dir}/routes/blog`);
   await mkdirp(`${dir}/islands`);
   await mkdirp(`${dir}/static`);
+  await mkdirp(`${dir}/.vscode`);
 
   // Config
   await Deno.writeTextFile(`${dir}/config/site.yaml`, HEADLESS_SITE_YAML);
@@ -419,9 +463,14 @@ async function _newHeadlessCommand(dir: string) {
   // Project files
   await Deno.writeTextFile(`${dir}/deno.json`, HEADLESS_DENO_JSON);
   await Deno.writeTextFile(`${dir}/main.ts`, HEADLESS_MAIN_TS);
+  await Deno.writeTextFile(`${dir}/.vscode/settings.json`, VSCODE_SETTINGS);
+  await Deno.writeTextFile(`${dir}/.mcp.json`, MCP_JSON);
 
   // Placeholder for developer's own islands
   await Deno.writeTextFile(`${dir}/islands/.gitkeep`, "");
+
+  // Install AI agent skill files into .claude/skills/
+  const skillsResult = await copySkillFiles(joinPath(dir, ".claude", "skills"), { force: true });
 
   const elapsed = (performance.now() - start).toFixed(0);
 
@@ -435,6 +484,9 @@ async function _newHeadlessCommand(dir: string) {
   console.log(`    routes/blog/[slug].tsx`);
   console.log(`    main.ts`);
   console.log(`    deno.json`);
+  if (skillsResult.installed > 0) {
+    console.log(`    .claude/skills/         (${skillsResult.installed} AI agent skill files)`);
+  }
   console.log(`\n  Architecture:`);
   console.log(`    Dune manages:  content/, admin panel, public API`);
   console.log(`    You own:       routes/, islands/, static/`);

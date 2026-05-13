@@ -7,12 +7,15 @@
  *   dune build                 — Build content index + validate config
  *   dune build --static        — Generate a fully static site (SSG)
  *   dune serve                 — Start production server
+ *   dune validate              — Whole-project lint: config, plugins, templates, schemas, content
  *   dune cache:clear           — Clear all caches
  *   dune cache:rebuild         — Rebuild content index from scratch
  *   dune config:show           — Display merged config with source annotations
  *   dune config:validate       — Validate all config files
  *   dune content:list          — List all pages with routes
  *   dune content:check         — Validate content (broken links, missing templates)
+ *   dune schema:export         — Print JSON Schema for site.yaml to stdout
+ *   dune mcp:serve             — Start MCP server over stdio for AI agent integration
  *   dune plugin:list           — List installed plugins
  *   dune plugin:install <src>  — Add a plugin to site.yaml
  *   dune plugin:remove <src>   — Remove a plugin from site.yaml
@@ -24,6 +27,13 @@
  *   dune migrate:from-wordpress <src>  — Import a WordPress WXR export
  *   dune migrate:from-markdown <src>   — Import a flat markdown folder
  *   dune migrate:from-hugo <src>       — Import a Hugo site
+ *   dune deploy:init <target>          — Scaffold deployment config (fly, docker, deno-deploy)
+ *   dune content:create <route>        — Scaffold a new content page at the given route
+ *   dune blueprint:list                — List all available blueprints (frontmatter schemas)
+ *   dune blueprint:show <template>     — Show full field schema for a blueprint
+ *   dune blueprint:validate <file>     — Validate a content file's frontmatter against its blueprint
+ *   dune update:skills                 — Reinstall AI agent skill files from current package
+ *   dune content:delete <route>        — Delete a content page by route (requires --confirm or --dry-run)
  */
 
 /** @module */
@@ -43,6 +53,14 @@ import {
   migrateFromMarkdown,
   migrateFromHugo,
 } from "./cli/migrate.ts";
+import { schemaExportCommand } from "./cli/schema.ts";
+import { validateCommand } from "./cli/validate.ts";
+import { mcpServeCommand } from "./cli/mcp.ts";
+import { deployInitCommand } from "./cli/deploy.ts";
+import { contentCreateCommand } from "./cli/content-create.ts";
+import { blueprintCommands } from "./cli/blueprint.ts";
+import { updateSkillsCommand } from "./cli/update-skills.ts";
+import { contentDeleteCommand } from "./cli/content-delete.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -75,6 +93,7 @@ Commands:
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server
+  validate            Whole-project lint: config, plugins, templates, schemas, content
 
   cache:clear         Clear all caches
   cache:rebuild       Rebuild content index from scratch
@@ -85,6 +104,18 @@ Commands:
   content:list        List all pages with routes and templates
   content:check       Check content for broken links, missing templates
   content:i18n-status Report translation coverage across languages
+  content:create      Scaffold a new content page at a given route
+  content:delete      Delete a content page by route (requires --confirm or --dry-run)
+
+  blueprint:list      List all blueprints (frontmatter schemas per template)
+  blueprint:show      Show full field schema for a template blueprint
+  blueprint:validate  Validate a content file's frontmatter against its blueprint
+
+  update:skills       Reinstall AI coding agent skill files from current package
+
+  schema:export       Print JSON Schema for site.yaml to stdout
+
+  mcp:serve           Start MCP server over stdio (for Claude Code / Cursor / etc.)
 
   plugin:list         List installed plugins and their hook subscriptions
   plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name")
@@ -99,10 +130,13 @@ Commands:
   migrate:from-markdown <src>   Import a flat folder of markdown files
   migrate:from-hugo <src>       Import a Hugo site (content/ folder)
 
+  deploy:init <target>          Scaffold deployment config (fly, docker, deno-deploy)
+
 Options:
   --port <n>          Server port (default: 3000)
   --root <dir>        Site root directory (default: .)
   --debug             Enable debug output
+  --json              Output machine-parseable JSON (build, content:*, config:*)
   --version, -V       Show version and install source
   --help, -h          Show this help message
 
@@ -120,6 +154,22 @@ Migration options (used with migrate:from-*):
   --dry-run           Report what would be imported without writing files
   --verbose           Print each imported page
   --trust-source      Skip HTML sanitization — only use for sources you fully trust
+
+Content create options (used with content:create):
+  --title <text>      Page title (default: derived from slug)
+  --template <name>   Template to use (default: default)
+  --flat              Create a flat file (slug.md) instead of slug/default.md
+  --publish           Mark the page as published (default: draft)
+
+Content delete options (used with content:delete):
+  --confirm           Confirm deletion without interactive prompt
+  --dry-run           Preview what would be deleted without actually deleting
+
+Deploy options (used with deploy:init):
+  --app <name>        App / service name (default: derived from site title)
+  --region <code>     Fly.io primary region code (default: iad)
+  --port <n>          Internal port (default: 3000)
+  --out <dir>         Output directory for generated files (default: site root)
 `;
 
 async function main() {
@@ -162,10 +212,34 @@ async function main() {
       options.includeDrafts = true;
     } else if (args[i] === "--verbose") {
       options.verbose = true;
+    } else if (args[i] === "--json") {
+      options.json = true;
     } else if (args[i] === "--dry-run") {
       options.dryRun = true;
     } else if (args[i] === "--trust-source") {
       options.trustSource = true;
+    } else if (args[i] === "--no-search") {
+      options.noSearch = true;
+    } else if (args[i] === "--app" && args[i + 1]) {
+      options.appName = args[++i];
+    } else if (args[i] === "--region" && args[i + 1]) {
+      options.region = args[++i];
+    } else if (args[i] === "--title" && args[i + 1]) {
+      options.title = args[++i];
+    } else if (args[i] === "--template" && args[i + 1]) {
+      options.template = args[++i];
+    } else if (args[i] === "--flat") {
+      options.flat = true;
+    } else if (args[i] === "--publish") {
+      options.publish = true;
+    } else if (args[i] === "--no-publish") {
+      options.noPublish = true;
+    } else if (args[i] === "--headless") {
+      options.headless = true;
+    } else if (args[i] === "--force") {
+      options.force = true;
+    } else if (args[i] === "--confirm") {
+      options.confirm = true;
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
@@ -222,6 +296,13 @@ async function main() {
         });
         break;
 
+      case "validate":
+        await validateCommand(root, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
+        break;
+
       case "build":
         await buildCommand(root, {
           debug: options.debug === true,
@@ -233,6 +314,7 @@ async function main() {
           hybrid: options.hybrid === true,
           includeDrafts: options.includeDrafts === true,
           verbose: options.verbose === true,
+          json: options.json === true,
         });
         break;
 
@@ -252,23 +334,45 @@ async function main() {
         break;
 
       case "config:show":
-        await configCommands.show(root);
+        await configCommands.show(root, { json: options.json === true });
         break;
 
       case "config:validate":
-        await configCommands.validate(root);
+        await configCommands.validate(root, { json: options.json === true });
         break;
 
       case "content:list":
-        await contentCommands.list(root, { debug: options.debug === true });
+        await contentCommands.list(root, { debug: options.debug === true, json: options.json === true });
         break;
 
       case "content:check":
-        await contentCommands.check(root, { debug: options.debug === true });
+        await contentCommands.check(root, { debug: options.debug === true, json: options.json === true });
         break;
 
       case "content:i18n-status":
         await i18nStatusCommand(root, { debug: options.debug === true });
+        break;
+
+      case "content:create":
+        await contentCreateCommand(root, options.positional as string, {
+          debug: options.debug === true,
+          title: options.title as string | undefined,
+          template: options.template as string | undefined,
+          flat: options.flat === true,
+          publish: options.publish === true,
+          json: options.json === true,
+        });
+        break;
+
+      case "schema:export":
+        await schemaExportCommand();
+        break;
+
+      case "mcp:serve":
+        await mcpServeCommand(root, {
+          debug: options.debug === true,
+          search: options.noSearch !== true,
+        });
         break;
 
       case "plugin:list":
@@ -332,6 +436,53 @@ async function main() {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+        });
+        break;
+
+      case "update:skills":
+        await updateSkillsCommand(root, {
+          debug: options.debug === true,
+          force: options.force === true,
+        });
+        break;
+
+      case "blueprint:list":
+        await blueprintCommands.list(root, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
+        break;
+
+      case "blueprint:show":
+        await blueprintCommands.show(root, options.positional as string, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
+        break;
+
+      case "blueprint:validate":
+        await blueprintCommands.validate(root, options.positional as string, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
+        break;
+
+      case "content:delete":
+        await contentDeleteCommand(root, options.positional as string, {
+          debug: options.debug === true,
+          confirm: options.confirm === true,
+          dryRun: options.dryRun === true,
+          json: options.json === true,
+        });
+        break;
+
+      case "deploy:init":
+        await deployInitCommand(root, options.positional as string, {
+          debug: options.debug === true,
+          port: options.port ? parseInt(options.port as string) : undefined,
+          appName: options.appName as string | undefined,
+          region: options.region as string | undefined,
+          out: options.outDir as string | undefined,
         });
         break;
 
