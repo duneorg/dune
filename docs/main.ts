@@ -113,6 +113,27 @@ async function main() {
         return new Response(null, { status: 204 });
       }
 
+      // System introspection
+      if (path.startsWith("/_dune/")) {
+        return await routes.systemHandler(req);
+      }
+
+      // llms.txt / llms-full.txt
+      if (path === "/llms.txt" || path === "/llms-full.txt") {
+        const filename = path === "/llms.txt" ? "llms.txt" : "llms-full.txt";
+        try {
+          const text = await Deno.readTextFile(join("docs/static", filename));
+          return new Response(text, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Cache-Control": "public, max-age=3600",
+            },
+          });
+        } catch {
+          return new Response("Not found", { status: 404 });
+        }
+      }
+
       // Content route — render JSX to HTML string
       const renderJsx = (jsx: unknown, statusCode = 200) => {
         const html = render(jsx as any);

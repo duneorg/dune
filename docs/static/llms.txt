@@ -1,0 +1,368 @@
+# Dune CMS — llms.txt
+
+Dune is a Deno-native, flat-file CMS with TypeScript throughout. Content lives in Markdown/MDX/TSX files. The core primitive is the plugin. The data layer uses a unified YAML schema format. Auth is built-in and sessionless-by-default.
+
+Full reference: https://dune.dev/docs
+Full llms context: https://dune.dev/llms-full.txt
+
+---
+
+## Project layout
+
+```
+my-site/
+  site.yaml               # all top-level config
+  content/                # Markdown, MDX, TSX pages
+    01.home/
+      default.md          # → route /
+    02.blog/
+      default.md          # → route /blog
+      01.hello-world.md   # → route /blog/hello-world
+    _drafts/              # non-routable (underscore prefix)
+  schemas/                # data model definitions (YAML)
+    comments.yaml
+    subscriptions.yaml
+  plugins/                # project plugins
+    comments.ts
+    newsletter.ts
+  jobs/                   # background jobs (auto-registered)
+    weekly-digest.ts
+  emails/                 # email templates
+    welcome.email.tsx
+    digest.email.mdx
+  themes/                 # rendering layer
+    default/
+      templates/
+        default.tsx
+        post.tsx
+      static/
+        style.css
+  data/                   # runtime data (flat files)
+    users/
+  .dune/                  # runtime scratch (gitignore this)
+```
+
+Numeric prefixes on folders/files control sort order and are stripped from routes. `default.md` inside a folder is that folder's index page. Underscore-prefixed folders are non-routable.
+
+---
+
+## site.yaml top-level keys
+
+```yaml
+site:
+  name: My Site
+  url: https://example.com
+  homepage: 01.home       # folder whose default.md serves as /
+
+auth:                     # public user auth (optional)
+  mode: dune              # or: external-jwt
+  userStore: local        # session | local | db
+  providers:
+    github: { clientId: "...", clientSecret: "..." }
+    magicLink: { enabled: true }
+
+content:
+  taxonomies: [tags, category]
+
+i18n:
+  defaultLanguage: en
+  languages: [en, de, fr]
+
+email:
+  from: "My Site <hello@example.com>"
+  provider: resend        # smtp | postmark | sendgrid
+  resend: { apiKey: "${RESEND_API_KEY}" }
+
+db:                       # optional — enables store: db schemas
+  url: "${DATABASE_URL}"
+
+system:
+  debug: false
+  port: 8000
+```
+
+---
+
+## Plugin shape
+
+Plugins are the extension primitive. One file per plugin in `plugins/`.
+
+```ts
+// plugins/my-plugin.ts
+import type { DunePlugin } from "@dune/core";
+
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+
+  hooks: {
+    onContentLoad: async (ctx, page) => {
+      // runs after every page is loaded into the index
+      ctx.logger.info(`Loaded: ${page.route}`);
+    },
+
+    onPageRender: async (ctx, page) => {
+      // runs before a page is rendered; can mutate page
+      page.frontmatter.processedAt = new Date().toISOString();
+    },
+
+    onAdminRoutes: (ctx, router) => {
+      // add custom admin API or UI routes
+      router.get("/admin/api/my-plugin/stats", requirePermission("admin"), async (req) => {
+        return Response.json({ count: 42 });
+      });
+    },
+  },
+} satisfies DunePlugin;
+```
+
+Hook context (`ctx`) provides: `ctx.content`, `ctx.email`, `ctx.db`, `ctx.config`, `ctx.logger`.
+
+Admin routes MUST use `requirePermission("admin")` + `csrfCheck()` guards. Both are imported from `@dune/core`.
+
+---
+
+## Auth
+
+Two modes, same `ctx.state.user` output.
+
+**mode: dune** — built-in session stack (OAuth + magic link, no passwords):
+```yaml
+auth:
+  mode: dune
+  userStore: local
+  providers:
+    github: { clientId: "${GITHUB_CLIENT_ID}", clientSecret: "${GITHUB_CLIENT_SECRET}" }
+    magicLink: { enabled: true }
+```
+
+**mode: external-jwt** — validate and trust (Clerk, Auth0, Supabase Auth):
+```yaml
+auth:
+  mode: external-jwt
+  jwt:
+    issuer: "https://your-app.clerk.accounts.dev"
+    jwksUrl: "https://your-app.clerk.accounts.dev/.well-known/jwks.json"
+    userClaims: { id: sub, email: email, name: name }
+```
+
+`ctx.state.user` is always `null` on unauthenticated requests (never undefined).
+
+Protect a route:
+```ts
+// routes/_middleware.ts
+export async function handler(req: Request, ctx: FreshContext) {
+  if (!ctx.state.user) return Response.redirect(new URL("/auth/login", req.url));
+  return ctx.next();
+}
+```
+
+Content gating via frontmatter (no manual middleware needed):
+```yaml
+---
+roles: member             # single group
+roles: [member, admin]    # any (OR)
+roles:
+  all: [member, verified] # all (AND)
+---
+```
+
+---
+
+## Schemas (data models)
+
+One YAML file per model in `schemas/`. `store:` is required.
+
+```yaml
+# schemas/comments.yaml
+name: comment
+store: local              # flat files — no DB required
+fields:
+  - name: body
+    type: string
+    required: true
+  - name: pageRoute
+    type: string
+  - name: author
+    type: string
+  - name: createdAt
+    type: datetime
+    default: now
+```
+
+Query interface (same shape for local and db):
+```ts
+import { local } from "@/db";
+
+const comments = await local.comments.find({
+  where: { pageRoute: "/blog/hello-world" },
+  orderBy: { field: "createdAt", dir: "desc" },
+  limit: 20,
+});
+
+await local.comments.create({ body: "Nice post!", pageRoute: "/blog/hello-world", author: "Alice" });
+```
+
+`store: db` uses `db.*` instead of `local.*`, stores UUIDs, and persists to the configured database.
+
+Run `dune codegen` after adding or changing a schema to regenerate TypeScript types and the `@/db` index.
+
+---
+
+## Background jobs
+
+One file per job in `jobs/`. Name the file after the job. Export `schedule` (cron) and a default handler.
+
+```ts
+// jobs/weekly-digest.ts
+import type { JobContext } from "@dune/core";
+
+export const schedule = "0 9 * * MON";
+
+export default async function handler(ctx: JobContext) {
+  const posts = await ctx.content.find({ type: "post", limit: 5 });
+  await ctx.email.send({
+    to: "subscribers@example.com",
+    subject: "Weekly digest",
+    template: "digest",
+    data: { posts, siteUrl: ctx.config.site.url },
+  });
+}
+```
+
+Jobs auto-register on startup. No imports or registration needed. View at `/admin/jobs`. Run manually: `dune jobs:run weekly-digest`.
+
+---
+
+## Email
+
+```ts
+await email.send({
+  to: "user@example.com",
+  subject: "Welcome!",
+  template: "welcome",    // resolves emails/welcome.email.{tsx,mdx,md}
+  data: { name: "Alice" },
+});
+```
+
+Template formats: `.email.tsx` (typed, `export type Data`), `.email.mdx` (prose-heavy), `.email.md` (`{{key}}` substitution).
+
+In development, email is never sent — written to `.dune/dev-email/` and visible at `/admin/email-preview`.
+
+---
+
+## Content queries
+
+```ts
+// In plugins, jobs, TSX templates:
+const posts = await ctx.content.find({
+  type: "blog",           // folder name with prefix stripped (02.blog/ → "blog")
+  where: { draft: false },
+  orderBy: "publishedAt",
+  limit: 10,
+});
+```
+
+`type` is the folder name without the numeric prefix. Never include the prefix.
+
+---
+
+## Key gotchas
+
+**Plugin file location**: `plugins/my-plugin.ts` — not `src/plugins/`, not nested subdirectories.
+
+**Admin route guards are not optional.** Every admin route must call `requirePermission("admin")` and `csrfCheck()`. There is no default protection.
+
+**Numeric prefix is stripped from routes.** `01.blog/01.hello-world.md` → `/blog/hello-world`. Never construct URLs using the prefix.
+
+**`default.md` is the folder index.** A file named `default.md` inside a folder maps to that folder's route. `index.md` is not special.
+
+**`type` in content queries is the stripped folder name.** Posts in `02.blog/` are `type: "blog"`. Never include the numeric prefix.
+
+**`store:` is required in schemas.** Omitting it is a validation error. Choose `local` (no DB) or `db` (requires `db:` config).
+
+**`local.*` vs `db.*` query interfaces.** `store: local` schemas use `local.comments.*`; `store: db` schemas use `db.comments.*`. Mixing them causes a runtime error.
+
+**Run `dune codegen` after schema changes.** Types and the `@/db` import are generated — they're not inferred at runtime.
+
+**Email `template:` is the base name only.** `template: "welcome"` not `"emails/welcome.email.tsx"`.
+
+**`ctx.state.user` is `null`, not `undefined`.**
+
+**TSX content pages run with full Deno permissions.** Gate `.tsx` format to trusted authors only.
+
+**`draft: true` is not a security gate.** Use `roles:` frontmatter for access control. Draft only controls index visibility.
+
+---
+
+## Common tasks
+
+| Task | Where to look |
+|------|---------------|
+| Add login/logout | dune-auth skill / auth config in site.yaml |
+| Gate content by role | Add `roles:` to frontmatter |
+| Check permission in code | `authz.check()` — dune-authz skill |
+| Define a data model | schemas/*.yaml — dune-schemas skill |
+| Write a plugin | plugins/*.ts — dune-plugin-authoring skill |
+| Schedule a recurring task | jobs/*.ts — dune-jobs skill |
+| Send email | `email.send()` — dune-email skill |
+| Create content | content/**/*.{md,mdx,tsx} — dune-content skill |
+| Query live engine from Claude | `dune mcp:serve` — dune-mcp skill |
+| Mutate content from agent | `POST /admin/api/dev/apply` (dev mode only) |
+| Read current page source | `GET /admin/api/page-source?route=/blog/post` |
+| Preview rendered output | `POST /admin/api/render-markdown` |
+| Scaffold new page | `dune content:create /blog/my-post` |
+| Discover frontmatter schema | `dune blueprint:show <template> --json` |
+
+Skills are installed in `.claude/skills/` — read them for code-complete domain reference.
+Run `dune update:skills` after upgrading to get updated skill files.
+
+---
+
+## Agent integration
+
+**MCP server** — start with `dune mcp:serve` (or via `.mcp.json`). Exposes tools:
+- `list_pages`, `get_page`, `search_content`, `get_taxonomy`
+- `get_config`, `get_runtime_info`, `list_templates`
+
+And resources: `dune://site/config`, `dune://site/schema`, `dune://content/pages`, `dune://content/taxonomy`.
+
+**Change API** — `POST /admin/api/dev/apply` (dev mode only, requires pages.update permission):
+- Batch write/delete/frontmatter-patch operations
+- `dry_run: true` for preview without writing
+- Validates YAML syntax, path traversal, and allowed extensions before writing
+
+**Read API** — `GET /admin/api/page-source?route=<route>` (requires pages.read permission):
+- Returns `{ route, sourcePath, format, content, frontmatter, body, mtime }`
+- Use before editing to get current content
+
+**Render API** — `POST /admin/api/render-markdown` (requires pages.read permission):
+- Body: `{ content: string, trusted?: boolean }`
+- Returns `{ html, frontmatter, warnings }` — preview without writing files
+- Validates YAML frontmatter and sanitizes output by default
+
+**System endpoints** — no auth required:
+- `GET /_dune/schema/config` — JSON Schema for site.yaml (for editor autocompletion)
+- `GET /admin/api/introspect` — live runtime state snapshot
+
+---
+
+## CLI reference
+
+```sh
+dune dev              # start dev server (watch mode)
+dune build            # production build
+dune build --static   # generate static site
+dune validate         # whole-project lint
+dune mcp:serve        # start MCP server over stdio for agent use
+dune schema:export    # print JSON Schema for site.yaml to stdout
+dune content:list     # list all pages as JSON (--json flag)
+dune content:create /blog/post   # scaffold new page (folder + default.md)
+dune content:create /blog/post --title "My Post" --template blog-post
+dune blueprint:list   # list all blueprints (frontmatter schemas)
+dune blueprint:show post --json  # full field schema for 'post' template
+dune config:show      # show merged config (--json flag)
+dune deploy:init fly  # scaffold fly.toml + Dockerfile for Fly.io
+dune deploy:init docker          # scaffold Dockerfile + docker-compose.yml
+dune update:skills    # reinstall AI coding agent skill files
+```

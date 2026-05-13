@@ -1,0 +1,1319 @@
+# Dune CMS — llms-full.txt
+
+This file contains comprehensive agent-oriented documentation for Dune CMS, including all skill files. For the concise version, see https://dune.dev/llms.txt
+
+---
+
+# PART 1: Quick Reference
+
+Dune is a Deno-native, flat-file CMS with TypeScript throughout. Content lives in Markdown/MDX/TSX files. The core primitive is the plugin. The data layer uses a unified YAML schema format. Auth is built-in and sessionless-by-default.
+
+Full docs: https://dune.dev/docs
+
+---
+
+## Project layout
+
+```
+my-site/
+  site.yaml               # all top-level config
+  content/                # Markdown, MDX, TSX pages
+    01.home/
+      default.md          # → route /
+    02.blog/
+      default.md          # → route /blog
+      01.hello-world.md   # → route /blog/hello-world
+    _drafts/              # non-routable (underscore prefix)
+  schemas/                # data model definitions (YAML)
+    comments.yaml
+    subscriptions.yaml
+  plugins/                # project plugins
+    comments.ts
+    newsletter.ts
+  jobs/                   # background jobs (auto-registered)
+    weekly-digest.ts
+  emails/                 # email templates
+    welcome.email.tsx
+    digest.email.mdx
+  themes/                 # rendering layer
+    default/
+      templates/
+        default.tsx
+        post.tsx
+      static/
+        style.css
+  data/                   # runtime data (flat files)
+    users/
+  .dune/                  # runtime scratch (gitignore this)
+```
+
+Numeric prefixes on folders/files control sort order and are stripped from routes. `default.md` inside a folder is that folder's index page. Underscore-prefixed folders are non-routable.
+
+---
+
+## site.yaml top-level keys
+
+```yaml
+site:
+  name: My Site
+  url: https://example.com
+  homepage: 01.home
+
+auth:
+  mode: dune              # or: external-jwt
+  userStore: local        # session | local | db
+  providers:
+    github: { clientId: "...", clientSecret: "..." }
+    magicLink: { enabled: true }
+
+content:
+  taxonomies: [tags, category]
+
+i18n:
+  defaultLanguage: en
+  languages: [en, de, fr]
+
+email:
+  from: "My Site <hello@example.com>"
+  provider: resend        # smtp | postmark | sendgrid
+  resend: { apiKey: "${RESEND_API_KEY}" }
+
+db:
+  url: "${DATABASE_URL}"
+
+system:
+  debug: false
+  port: 8000
+```
+
+---
+
+## CLI reference
+
+```sh
+dune dev              # start dev server (watch mode)
+dune build            # production build
+dune build --static   # generate static site
+dune validate         # whole-project lint
+dune codegen          # regenerate types from schemas
+dune jobs:run <name>  # run a job immediately
+dune deploy:init fly  # scaffold fly.toml for Fly.io
+dune update:skills    # reinstall skills from current package version
+```
+
+---
+
+## Common tasks
+
+| Task | Where to look |
+|------|---------------|
+| Add login/logout | Auth section below / dune-auth skill |
+| Gate content by role | Add `roles:` to frontmatter |
+| Check permission in code | `authz.check()` — dune-authz skill |
+| Define a data model | schemas/*.yaml — dune-schemas skill |
+| Write a plugin | plugins/*.ts — dune-plugin-authoring skill |
+| Schedule a recurring task | jobs/*.ts — dune-jobs skill |
+| Send email | `email.send()` — dune-email skill |
+| Create content | content/**/*.{md,mdx,tsx} — dune-content skill |
+
+---
+
+# PART 2: Skill Files
+
+The following sections are the complete Dune skill files installed into `.claude/skills/` by `dune new`. Each covers one domain with patterns, working examples, and gotchas.
+
+---
+
+# Skill: Dune Auth
+
+Public (non-admin) user authentication. Two modes — pick one in `site.yaml`. Both produce the same `ctx.state.user` shape; all middleware works identically regardless of mode.
+
+---
+
+## Mode 1: `dune` — built-in session stack
+
+Dune owns the session lifecycle. Credential verification is delegated to OAuth providers or magic link. **No passwords.**
+
+### Minimal config (OAuth only, no server-side user store)
+
+```yaml
+# site.yaml
+auth:
+  mode: dune
+  userStore: session       # OAuth claims encoded into cookie — no file or DB needed
+  session:
+    secret: "${SESSION_SECRET}"
+    ttl: 7d
+  providers:
+    github:
+      clientId: "${GITHUB_CLIENT_ID}"
+      clientSecret: "${GITHUB_CLIENT_SECRET}"
+```
+
+### With persistent user records + magic link (no DB required)
+
+```yaml
+auth:
+  mode: dune
+  userStore: local          # flat files at data/users/ + Deno KV index
+  providers:
+    github:
+      clientId: "${GITHUB_CLIENT_ID}"
+      clientSecret: "${GITHUB_CLIENT_SECRET}"
+    magicLink:
+      enabled: true         # passwordless — requires email config
+```
+
+### With pre-created local users (no OAuth)
+
+```yaml
+auth:
+  mode: dune
+  userStore: local
+  providers:
+    localUsers:
+      enabled: true         # users pre-created by admin in data/users/
+    magicLink:
+      enabled: true
+```
+
+`localUsers` is not a registration flow. Users are created by the admin (via `/admin/users/` or by editing files). Self-registration goes through an OAuth provider.
+
+### Routes generated by mode 1
+
+```
+GET  /auth/login               → provider selection (or direct redirect if one provider)
+GET  /auth/github              → begin OAuth flow
+GET  /auth/github/callback     → complete OAuth, create session, redirect
+GET  /auth/magic               → accept token from email link, create session
+POST /auth/magic/send          → generate + send magic link email
+POST /auth/logout              → destroy session
+```
+
+---
+
+## Mode 2: `external-jwt` — validate and trust
+
+Dune validates a JWT on each request, populates `ctx.state.user` from the claims, and does nothing else. No sessions, no OAuth flow, no user storage. The external service (Clerk, Auth0, Supabase Auth) owns everything.
+
+```yaml
+# site.yaml — Clerk example
+auth:
+  mode: external-jwt
+  jwt:
+    issuer: "https://your-app.clerk.accounts.dev"
+    audience: "your-app"
+    jwksUrl: "https://your-app.clerk.accounts.dev/.well-known/jwks.json"
+    userClaims:             # map JWT claims → ctx.state.user fields
+      id: sub
+      email: email
+      name: name
+```
+
+No routes generated. No sessions. No user records in Dune.
+
+---
+
+## `ctx.state.user` shape
+
+Both modes populate the same shape. Always check for null before accessing fields.
+
+```ts
+interface PublicUser {
+  id: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  provider: string;       // "github" | "google" | "magic-link" | "clerk" | ...
+  roles?: string[];       // group memberships — populated from JWT claims (external-jwt)
+                          // or from authz tuples (local/db userStore)
+  createdAt?: Date;       // absent in external-jwt mode
+}
+
+// ctx.state.user is null on unauthenticated requests — never undefined
+```
+
+---
+
+## Protecting routes
+
+### Redirect unauthenticated users
+
+```ts
+// routes/_middleware.ts  (or any nested _middleware.ts)
+import type { FreshContext } from "fresh";
+
+export async function handler(req: Request, ctx: FreshContext) {
+  if (!ctx.state.user) {
+    return Response.redirect(new URL("/auth/login", req.url));
+  }
+  return ctx.next();
+}
+```
+
+`ctx.state.user` is populated globally on every request — no opt-in middleware required to get the value. The middleware above only adds the redirect gate.
+
+### Require a specific role
+
+```ts
+import { authz } from "@/auth/authz.ts";
+
+export async function handler(req: Request, ctx: FreshContext) {
+  if (!ctx.state.user) {
+    return Response.redirect(new URL("/auth/login", req.url));
+  }
+  const allowed = await authz.check({
+    who: { type: "user", id: ctx.state.user.id },
+    canThey: "access",
+    onWhat: { type: "group", id: "member" },
+  });
+  if (!allowed) return new Response(null, { status: 403 });
+  return ctx.next();
+}
+```
+
+For content gating via frontmatter `roles:`, this check runs automatically in the page middleware — no manual wiring needed. See **dune-authz** skill.
+
+---
+
+## `userStore` tiers (mode: dune only)
+
+| Value | User records | When to use |
+|-------|-------------|-------------|
+| `session` | None — OAuth claims encoded in cookie | OAuth-only, no need to identify users across requests beyond the session |
+| `local` | `data/users/*.json` + Deno KV index | Default. No DB required. Supports localUsers, magicLink, OAuth. |
+| `db` | DB table | Opt-in. Requires `db-schema-layer`. Use at scale or when admin UI user management is needed. |
+
+`userStore: session` does not support `localUsers` — there's nowhere to store pre-created users. It only works with OAuth providers.
+
+---
+
+## Gotchas
+
+**No passwords.** Password auth is explicitly out of scope. Magic link covers the passwordless use case. If a user needs to log in without OAuth, use `localUsers` + `magicLink`.
+
+**`localUsers` always implies `userStore: local`.** You cannot use `localUsers` with `userStore: session` — users must exist somewhere before they can authenticate.
+
+**`ctx.state.user` is `null`, not `undefined`.** Always check `if (!ctx.state.user)`, not `if (ctx.state.user === undefined)`.
+
+**`external-jwt` eliminates user storage entirely.** Dune doesn't own user records, roles, or sessions in this mode. `ctx.state.user.roles` comes from JWT claims, not from `authz` tuples. Do not call `authz.addMember()` or `authz.allow()` expecting them to affect JWT claims.
+
+**Session secret must be set.** `SESSION_SECRET` must be a strong random value (32+ bytes). Omitting it or using a weak value is a security issue. Generate with: `openssl rand -base64 32`.
+
+**Magic link rate limiting.** `POST /auth/magic/send` has a fixed-window rate limit owned by Dune. If using an external provider (Clerk etc.) for magic links, rate limiting is that provider's concern.
+
+---
+
+# Skill: Dune Authorization (Polizy)
+
+Authorization in Dune uses [polizy](https://github.com/bratsos/polizy) — a Zanzibar-inspired relationship-based model. One `authz.check()` call covers everything: admin panel access, inline editing, content gating, route middleware, and resource-level permissions.
+
+For polizy's core concepts (`defineSchema()`, tuple model, check algorithm, `listAccessibleObjects`), see the polizy skills installed alongside this one. This skill covers Dune-specific wiring and patterns.
+
+---
+
+## The single authz file
+
+`src/auth/authz.ts` is scaffolded by `dune add polizy`. Do not create it manually. It has two sections:
+
+```ts
+// src/auth/authz.ts
+
+import { AuthSystem, defineSchema } from "polizy";
+import { AuthzLocalAdapter } from "@dune/core";  // or AuthzDbAdapter
+
+// Section 1: schema — store-agnostic, defines relations/actions/hierarchy
+const schema = defineSchema({
+  // ... see polizy skill for defineSchema() syntax
+  // Dune's default schema covers: admin, editor, author, member, owner
+  // Actions: access, pages.update, users.manage, media.upload, edit, ...
+});
+
+// Section 2: AuthSystem — wires the adapter from authzStore config
+export const authz = new AuthSystem({
+  schema,
+  storage: new AuthzLocalAdapter(),  // swapped to AuthzDbAdapter when authzStore: db
+});
+```
+
+Import `authz` from this file everywhere permission checks are needed:
+
+```ts
+import { authz } from "@/auth/authz.ts";
+```
+
+---
+
+## Config
+
+```yaml
+# site.yaml
+auth:
+  mode: dune
+  authzStore: local    # default — data/permissions/*.json + Deno KV index
+  # authzStore: db     # opt-in — requires db-schema-layer
+```
+
+`authzStore` is independent of `userStore`. You can have `userStore: session` and `authzStore: local`.
+
+---
+
+## Common check patterns
+
+All checks are async. Always `await`.
+
+### Admin panel access
+
+```ts
+const canAdmin = await authz.check({
+  who: { type: "user", id: ctx.state.user.id },
+  canThey: "access",
+  onWhat: { type: "app", id: "admin" },
+});
+```
+
+### Group membership (content gating, membership sites)
+
+```ts
+const isMember = await authz.check({
+  who: { type: "user", id: ctx.state.user.id },
+  canThey: "access",
+  onWhat: { type: "group", id: "member" },
+});
+```
+
+### Inline editing / resource-level permission
+
+```ts
+const canEdit = await authz.check({
+  who: { type: "user", id: ctx.state.user.id },
+  canThey: "edit",
+  onWhat: { type: "resource", id: pageRoute },
+});
+```
+
+### Specific admin action
+
+```ts
+const canManageUsers = await authz.check({
+  who: { type: "user", id: ctx.state.user.id },
+  canThey: "users.manage",
+  onWhat: { type: "app", id: "admin" },
+});
+```
+
+---
+
+## Granting permissions
+
+### Add user to a group
+
+```ts
+await authz.addMember({
+  member: { type: "user", id: userId },
+  group: { type: "group", id: "member" },
+});
+```
+
+Call this on successful OAuth login or payment to grant group access.
+
+### Grant a direct resource permission
+
+```ts
+await authz.allow({
+  who: { type: "user", id: userId },
+  canThey: "edit",
+  onWhat: { type: "resource", id: pageRoute },
+});
+```
+
+Use for per-resource grants (e.g., an OAuth user who is the owner of a specific page).
+
+---
+
+## Content gating via frontmatter
+
+For pages with `roles:` frontmatter, the check runs automatically in Dune's page middleware — **do not wire this manually**.
+
+```yaml
+# content/members/welcome.md
+---
+roles: member
+---
+```
+
+```yaml
+roles: [member, admin]        # OR — any of these is sufficient
+roles:
+  all: [member, verified]     # AND — user must belong to every group
+```
+
+Unauthenticated users are redirected to `/auth/login`. Authenticated users without the required role get a 403.
+
+---
+
+## Route middleware pattern
+
+For programmatic route protection (not frontmatter-based):
+
+```ts
+// routes/dashboard/_middleware.ts
+import { FreshContext } from "fresh";
+import { authz } from "@/auth/authz.ts";
+
+export async function handler(req: Request, ctx: FreshContext) {
+  if (!ctx.state.user) {
+    return Response.redirect(new URL("/auth/login", req.url));
+  }
+  const allowed = await authz.check({
+    who: { type: "user", id: ctx.state.user.id },
+    canThey: "access",
+    onWhat: { type: "group", id: "member" },
+  });
+  if (!allowed) return new Response(null, { status: 403 });
+  return ctx.next();
+}
+```
+
+---
+
+## Bootstrap path (existing admin users)
+
+On first startup after polizy is introduced, Dune derives initial tuples from the `role` field on existing user files (`admin | editor | author`). No manual migration step.
+
+```json
+// data/users/alice.json
+{ "id": "alice", "email": "alice@example.com", "role": "editor" }
+```
+
+→ Dune creates tuples equivalent to `authz.allow({ who: user:alice, canThey: "access", onWhat: app:admin })` and the editor-level action grants on first run.
+
+From then on, **tuples are the authority**. The `role` field becomes a legacy hint. Use `authz.allow()` and `authz.addMember()` to manage permissions going forward.
+
+---
+
+## Permission tuple storage
+
+`authzStore: local` stores tuples as JSON files:
+
+```
+data/permissions/
+  {id}.json   →  { id, subject, relation, object, condition? }
+```
+
+The Deno KV index covers hot lookup paths. If KV is lost, it rebuilds from files on startup (mtime comparison). Do not edit these files directly — use `authz.allow()`, `authz.addMember()`, `authz.revoke()` etc.
+
+---
+
+## Gotchas
+
+**`authz.check()` is async — always await it.** It makes multiple storage calls. Dropping the `await` returns a Promise, not a boolean, and your condition will always be truthy.
+
+**Do not manually check `ctx.state.user.roles` for group membership.** In `userStore: local` or `db` mode, `roles` reflects current group membership but going through `authz.check()` is the correct path — it handles hierarchy and inheritance. Direct `roles` array inspection bypasses that.
+
+**Content-gated pages: do not add manual `authz.check()` in `_middleware.ts`.** The page middleware reads `roles:` frontmatter and calls `authz.check()` automatically. Doubling up results in two checks and potentially inconsistent behavior.
+
+**`external-jwt` mode: authz tuples are irrelevant for roles.** In `external-jwt` mode, `ctx.state.user.roles` comes from JWT claims. `authz.addMember()` writes to the local/db tuple store, which is never consulted in this mode. Don't mix the two.
+
+**`src/auth/authz.ts` schema is yours to maintain.** `dune add polizy` scaffolds it; after that it's application code. When you add a new relation or action, update `defineSchema()` here. The adapter doesn't need to change.
+
+---
+
+# Skill: Dune Plugin Authoring
+
+Plugins extend Dune via hooks that fire at defined points in the content and request lifecycle. A plugin is a TypeScript module that exports a `DunePlugin` object. Agents frequently place plugin files in the wrong location or omit security guards on admin routes — both are addressed here.
+
+---
+
+## File location
+
+```
+plugins/
+  my-plugin/
+    mod.ts        ← entry point for multi-file plugins
+    admin.ts      ← admin route handlers (optional, import from mod.ts)
+    types.ts      ← shared types (optional)
+  simple-plugin.ts  ← single-file plugins can live here directly
+```
+
+Dune does not scan `plugins/` automatically — plugins must be registered (see below). Do not place plugin files anywhere else in the project.
+
+---
+
+## Registration
+
+```yaml
+# site.yaml
+plugins:
+  - src: plugins/my-plugin/mod.ts      # local plugin
+  - spec: jsr:@dune/blog@^1.2.0        # JSR plugin — pin the major version
+  - spec: npm:dune-comments@^2.0.0     # npm plugin
+```
+
+Local plugins use `src:`. Remote plugins use `spec:` with a pinned version. Unpinned plugin specs fail `dune validate`.
+
+---
+
+## Minimal plugin shape
+
+```ts
+// plugins/my-plugin/mod.ts
+import type { DunePlugin } from "@dune/core";
+
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+  hooks: {},
+} satisfies DunePlugin;
+```
+
+`satisfies DunePlugin` catches shape errors at compile time. Always use it.
+
+---
+
+## Hook context
+
+Every hook receives `ctx` as its first argument:
+
+```ts
+interface PluginContext {
+  content: ContentAPI;     // query the content index
+  email: EmailAPI;         // send transactional email
+  db: DbAPI;               // query app data (requires db-schema-layer)
+  config: SiteConfig;      // read site.yaml values
+  logger: Logger;          // structured logging
+}
+```
+
+---
+
+## Common hook patterns
+
+### React to content changes
+
+```ts
+hooks: {
+  onContentLoad: async (ctx) => {
+    const posts = await ctx.content.find({ type: "post" });
+    ctx.logger.info("plugin.content_loaded", { postCount: posts.length });
+  },
+}
+```
+
+### Cascade delete when a page is removed
+
+```ts
+hooks: {
+  onPageDelete: async (ctx, page) => {
+    await ctx.db.comments.delete({ where: { pageRoute: page.route } });
+    await ctx.db.reactions.delete({ where: { pageRoute: page.route } });
+  },
+}
+```
+
+### Send email on a content event
+
+```ts
+hooks: {
+  onPagePublish: async (ctx, page) => {
+    if (page.frontmatter.notifySubscribers) {
+      await ctx.email.send({
+        to: "list@example.com",
+        subject: `New post: ${page.title}`,
+        template: "new-post",
+        data: { title: page.title, route: page.route },
+      });
+    }
+  },
+}
+```
+
+### Modify page data before render
+
+```ts
+hooks: {
+  onPageRender: async (ctx, page) => {
+    page.data.relatedPosts = await ctx.content.find({
+      type: "post",
+      taxonomy: { category: page.frontmatter.category },
+      limit: 3,
+    });
+  },
+}
+```
+
+---
+
+## Admin routes
+
+**All admin routes require security guards. Omitting them is a HIGH severity vulnerability.**
+
+### GET route (read-only)
+
+```ts
+import type { DunePlugin, FreshContext } from "@dune/core";
+import { requirePermission } from "@dune/core";
+
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+  hooks: {
+    onAdminRoutes: (router) => {
+      router.get(
+        "/admin/my-plugin",
+        requirePermission("pages.view"),   // ← required
+        listHandler,
+      );
+    },
+  },
+} satisfies DunePlugin;
+```
+
+### POST route (mutation)
+
+```ts
+onAdminRoutes: (router) => {
+  router.post(
+    "/admin/api/my-plugin/action",
+    requirePermission("pages.update"),   // ← required
+    csrfCheck,                           // ← required on all mutations
+    actionHandler,
+  );
+},
+```
+
+```ts
+import { requirePermission, csrfCheck } from "@dune/core";
+```
+
+**Both `requirePermission` and `csrfCheck` are required on every mutation route.**
+
+### Permission reference
+
+| Action | Permission string |
+|--------|-----------------|
+| View any admin page | `"pages.view"` |
+| Create / update pages | `"pages.update"` |
+| Delete pages | `"pages.delete"` |
+| Manage users | `"users.manage"` |
+| Upload media | `"media.upload"` |
+| Manage plugins | `"plugins.manage"` |
+
+---
+
+## Testing a plugin
+
+```ts
+import { createTestHarness } from "@dune/testing";
+import myPlugin from "./plugins/my-plugin/mod.ts";
+
+const harness = await createTestHarness({
+  content: {
+    "01.home/default.md": "---\ntitle: Home\n---\nHello",
+  },
+  plugins: [myPlugin],
+});
+
+const page = await harness.render("/home");
+assertEquals(page.html.includes("Hello"), true);
+
+await harness.dispose();
+```
+
+---
+
+## Gotchas
+
+**Wrong file location.** Plugin files must be in `plugins/`. Placing them in `src/`, `routes/`, or the project root means they won't be found by `dune validate` and the plugin spec won't resolve correctly.
+
+**Forgetting `csrfCheck` on mutations.** Every `POST`, `PUT`, `PATCH`, `DELETE` admin route needs `csrfCheck`. GET routes do not. If in doubt, add it — it's a no-op on safe methods.
+
+**`requirePermission` does not replace `csrfCheck`.** They guard different things. Use both on every mutation route.
+
+**Hook context `db` requires db-schema-layer.** `ctx.db` is only available if `db-schema-layer` is configured. Check `ctx.config.db?.enabled` if your plugin needs to be db-optional.
+
+**`onAdminRoutes` fires before the server starts.** Do not perform async operations inside `onAdminRoutes` itself — only register routes. Async work belongs in the route handlers.
+
+**Hook errors do not crash the server.** An unhandled error in a hook is logged and skipped. Handle errors explicitly if your hook has required side effects.
+
+**Pin JSR/npm plugin versions.** `spec: jsr:@dune/blog` without a version pinned fails validation. Use `^major.minor.patch` at minimum.
+
+---
+
+# Skill: Dune Schema Layer
+
+All data models — whether file-backed or database-backed — are defined in `schemas/` using a unified YAML format. The `store:` field determines the runtime interface and backend. **`store:` is required; omitting it is an error.**
+
+```
+schemas/
+  posts.yaml       # store: local — YAML files, slug-as-id, local.* interface
+  comments.yaml    # store: db    — SQLite/KV/Postgres, UUID id, db.* interface
+```
+
+`flex-objects/` is the legacy directory (backwards-compatible, not for new models).
+
+---
+
+## Schema format
+
+```yaml
+# schemas/comments.yaml
+model: Comment
+store: db
+table: comments     # optional — defaults to snake_case plural of model name
+
+fields:
+  pageRoute:
+    type: string
+    required: true
+    maxLength: 1024
+    index: true
+
+  author:
+    type: string
+    required: true
+    maxLength: 256
+
+  body:
+    type: text
+    required: true
+
+  status:
+    type: string
+    enum: [pending, approved, rejected]
+    default: pending
+    index: true
+
+  createdAt:
+    type: datetime
+    default: now
+
+  updatedAt:
+    type: datetime
+    default: now
+    onUpdate: now
+```
+
+### Field types
+
+| Type | Notes |
+|------|-------|
+| `string` | Short text, maxLength applies |
+| `text` | Long text, no maxLength, textarea in admin UI |
+| `integer` | Whole numbers |
+| `number` | Floating point |
+| `boolean` | true / false |
+| `datetime` | ISO timestamp. `default: now`, `onUpdate: now` supported |
+| `json` | Arbitrary JSON blob |
+
+`id` is always auto-generated — never declare it in the schema.
+
+---
+
+## `store: local` — file-backed models
+
+Records live as YAML files in `content/<type>/`. The id is the filename stem (slug). Interface is `local.*`:
+
+```ts
+import { local } from "@/db";
+
+const posts = await local.posts.find({ where: { publishedAt: { isNull: false } } });
+const post  = await local.posts.findOne({ where: { id: "hello-world" } });
+const draft = await local.posts.create({ data: { title: "Draft", body: "..." } });
+await local.posts.update({ where: { id: "hello-world" }, data: { title: "Updated" } });
+await local.posts.delete({ where: { id: "old-post" } });
+```
+
+---
+
+## `store: db` — database-backed models
+
+Records live in the configured DB backend. The id is a UUID string. Interface is `db.*`:
+
+```ts
+import { db } from "@/db";
+
+const comments = await db.comments.find({
+  where: { pageRoute: "/blog/hello", status: "approved" },
+  orderBy: { field: "createdAt", dir: "desc" },
+  limit: 20,
+  offset: 0,
+});
+
+const created = await db.comments.create({
+  data: { pageRoute, author, body },
+});
+
+await db.comments.update({ where: { id }, data: { status: "approved" } });
+await db.comments.delete({ where: { id } });
+
+// upsert — use instead of find-then-create to avoid race conditions
+await db.subscribers.upsert({
+  where: { email },
+  create: { email, name },
+  update: { name },
+});
+```
+
+### `where` clause operators
+
+```ts
+where: { status: "approved" }                          // equality
+where: { createdAt: { gt: new Date("2026-01-01") } }  // comparison
+where: { status: { in: ["pending", "approved"] } }    // in list
+where: { email: { contains: "@example.com" } }        // string contains
+where: { deletedAt: { isNull: true } }                 // null check
+where: { OR: [{ status: "pending" }, { status: "approved" }] }  // explicit OR
+```
+
+Full operator list: `eq`, `ne`, `in`, `notIn`, `lt`, `lte`, `gt`, `gte`, `contains`, `startsWith`, `isNull`.
+
+### Escape hatches (transactions, aggregate queries)
+
+```ts
+import { getAdapter } from "@/db";
+import type { SqliteAdapter } from "@dune/core";
+
+await (getAdapter() as SqliteAdapter).transaction(async (tx) => {
+  await tx.execute("INSERT INTO orders ...", [...]);
+  await tx.execute("INSERT INTO audit_log ...", [...]);
+});
+```
+
+---
+
+## CRUD API generation
+
+```yaml
+# schemas/comments.yaml
+api:
+  enabled: true
+  auth: required
+  methods: [get, list]   # omit for full CRUD
+```
+
+Full CRUD generates: `GET /api/comments`, `GET /api/comments/:id`, `POST /api/comments`, `PUT /api/comments/:id`, `DELETE /api/comments/:id`.
+
+---
+
+## Codegen and migrations
+
+```sh
+dune codegen          # generates TypeScript types + @/db alias
+dune migrate:generate # generates SQL migration files
+dune migrate          # applies pending migrations
+```
+
+Always import from `@/db`, never relative paths.
+
+---
+
+## Gotchas
+
+**`store:` is required.** Omitting it in `schemas/` is an error.
+
+**`store: local` id is a slug, not a UUID.** `local.posts.findOne({ where: { id: "hello-world" } })` — the id is the filename stem.
+
+**`findOne` throws when more than one row matches.** Use `find` with `limit: 1` if you expect multiple rows.
+
+**Use `upsert` instead of find-then-create.** A `find` followed by a conditional `create` is a TOCTOU race under concurrent requests.
+
+**Always import from `@/db`, never relative paths.** If `@/db` isn't resolving, run `dune codegen`.
+
+**No relations in the query interface.** Do two queries. For cascade operations, use a plugin hook or the `getAdapter().transaction()` escape hatch.
+
+---
+
+# Skill: Dune Background Jobs
+
+Background jobs are cron-scheduled tasks defined as TypeScript files in `jobs/`. Dune scans `jobs/*.ts` on startup and auto-registers all files that export a `schedule` and a default handler. No registration step required.
+
+---
+
+## Job file format
+
+```ts
+// jobs/weekly-digest.ts
+import type { JobContext } from "@dune/core";
+
+export const schedule = "0 9 * * MON";   // cron expression — required
+
+export default async function handler(ctx: JobContext) {
+  const posts = await ctx.content.find({ type: "post", limit: 5 });
+  await ctx.email.send({
+    to: "subscribers@example.com",
+    subject: "Weekly digest",
+    template: "digest",
+    data: { posts },
+  });
+}
+```
+
+The job name is the filename stem (`weekly-digest`). One job per file.
+
+### Cron expression format
+
+```
+"0 9 * * MON"     every Monday at 09:00
+"0 0 * * *"       every day at midnight
+"*/15 * * * *"    every 15 minutes
+"0 2 1 * *"       1st of every month at 02:00
+```
+
+Standard five-field cron: `minute hour day-of-month month day-of-week`.
+
+---
+
+## Job context
+
+`JobContext` is the same surface as plugin hook context: `content`, `email`, `db`, `config`, `logger`.
+
+---
+
+## Admin panel
+
+`/admin/jobs` lists all registered jobs with `lastRun`, `nextRun`, `status`, `lastError`, and a manual trigger button.
+
+```sh
+dune jobs:list              # list all registered jobs with status
+dune jobs:run weekly-digest # trigger a job immediately
+```
+
+---
+
+## Error handling
+
+When a handler throws, Dune logs the error, records `status: errored` in Deno KV, and continues scheduling future runs — **no retry**.
+
+Handle expected errors explicitly:
+
+```ts
+export default async function handler(ctx: JobContext) {
+  try {
+    await sendDigest(ctx);
+  } catch (err) {
+    ctx.logger.error("jobs.digest_failed", { error: String(err) });
+  }
+}
+```
+
+---
+
+## Gotchas
+
+**`schedule` is required.** A file in `jobs/` without an exported `schedule` constant is silently ignored.
+
+**One job per file.** The job name comes from the filename stem.
+
+**No timeout enforcement.** Add your own timeout logic for jobs that call external services.
+
+**No retry on error.** The next scheduled run is the natural retry.
+
+**Multi-process duplicates.** If `workers > 1`, every worker runs every job. Use a single worker process or the BullMQ escape hatch for jobs that must not duplicate.
+
+---
+
+# Skill: Dune Email
+
+Transactional email through a single `email.send()` call. Dune owns the interface and template rendering; the delivery provider is swappable via config. In development, emails are never sent — they're written to disk and visible in the admin panel.
+
+---
+
+## Call surface
+
+```ts
+import { email } from "@dune/core";
+
+await email.send({
+  to: "user@example.com",
+  subject: "Your magic link",
+  template: "magic-link",      // resolves emails/magic-link.email.{tsx,mdx,md}
+  data: { link, expiresIn: "15 minutes" },
+});
+```
+
+`to` accepts a string or `string[]`. `template` is the base filename without the `.email.{ext}` suffix.
+
+---
+
+## Provider config
+
+```yaml
+# site.yaml
+email:
+  from: "My Site <hello@example.com>"
+  provider: resend
+  resend:
+    apiKey: "${RESEND_API_KEY}"
+```
+
+No provider config needed in development — dev-mode interception is automatic.
+
+---
+
+## Template formats
+
+### TSX (`.email.tsx`) — structural, fully typed
+
+```tsx
+// emails/magic-link.email.tsx
+export type Data = { link: string; expiresIn: string };
+
+export default ({ link, expiresIn }: Data) => (
+  <p>
+    Click <a href={link}>here</a> to log in. Link expires in {expiresIn}.
+  </p>
+);
+```
+
+`export type Data` types the `data:` field — TypeScript catches mismatches at the call site.
+
+### MDX (`.email.mdx`) — prose-heavy
+
+```mdx
+Hi {name},
+
+Here are this week's top posts:
+
+{posts.map(p => `- [${p.title}](${siteUrl}${p.route})`).join('\n')}
+```
+
+### Markdown (`.email.md`) — simplest
+
+```md
+Hi {{name}},
+
+Click [here]({{link}}) to log in.
+```
+
+Dune does `{{key}}` substitution from `data:`, then renders Markdown to HTML.
+
+---
+
+## Dev-mode interception
+
+In development, `email.send()` writes to `.dune/dev-email/` instead of sending. View at `/admin/email-preview`. **Clears on restart.**
+
+---
+
+## Common patterns
+
+```ts
+// Welcome email on first OAuth login (in a plugin hook):
+hooks: {
+  onUserCreate: async (ctx, user) => {
+    await ctx.email.send({
+      to: user.email,
+      subject: `Welcome to ${ctx.config.site.name}`,
+      template: "welcome",
+      data: { name: user.name ?? user.email },
+    });
+  },
+}
+```
+
+---
+
+## Gotchas
+
+**`template` is the base name only.** `template: "magic-link"` — not `"magic-link.email.tsx"`, not `"emails/magic-link"`.
+
+**`export type Data` is only meaningful in TSX templates.** MDX and MD have no type-checked `data:`.
+
+**MD uses `{{key}}`, not `{key}`.** `{link}` renders literally; `{{link}}` is substituted.
+
+**Dev mode never sends.** `email.send()` in development always writes to disk regardless of provider config.
+
+---
+
+# Skill: Dune Content
+
+Content conventions — file layout, naming, frontmatter, formats, templates, querying, taxonomy, and language variants.
+
+---
+
+## File layout and naming
+
+```
+content/
+  01.home/
+    default.md          → route: /
+  02.blog/
+    default.md          → route: /blog
+    01.hello-world.md   → route: /blog/hello-world
+  _components/          → non-routable (underscore prefix)
+  _drafts/              → non-routable
+```
+
+| Convention | Effect |
+|-----------|--------|
+| `01.` numeric prefix | Stripped from route; controls sort order |
+| `default.md` inside folder | That folder's index page |
+| `_name/` underscore prefix | Non-routable module folder |
+| `draft: true` in frontmatter | Excluded from index in production; visible in dev |
+
+---
+
+## Frontmatter reference
+
+```yaml
+---
+title: My Post
+description: SEO meta description
+template: post                    # theme template — defaults to "default"
+publishedAt: 2026-05-13
+draft: false
+tags: [deno, cms, tutorial]
+category: technical
+roles: member                     # content gating — see dune-authz skill
+---
+```
+
+### `roles:` syntax
+
+```yaml
+roles: member                     # single group (OR)
+roles: [member, admin]            # any of these (OR)
+roles:
+  all: [member, verified]         # all of these (AND)
+```
+
+Content gating is checked automatically — do not add manual middleware for content pages.
+
+---
+
+## Content formats
+
+### Markdown (`.md`) — safe for untrusted authors, HTML sanitized by default
+
+### MDX (`.mdx`) — Markdown with JSX component imports
+
+```mdx
+---
+title: Interactive Post
+---
+
+import { Chart } from "./Chart.tsx"
+
+## Results
+
+<Chart data={frontmatter.data} />
+```
+
+Co-located imports are confined to the page's directory.
+
+### TSX content pages (`.tsx`) — full Deno permissions, trusted authors only
+
+```tsx
+// content/blog/dashboard.tsx
+import type { ContentPageProps } from "@dune/content/types";
+import { db } from "@/db";
+
+export default async function Dashboard({ route, page }: ContentPageProps) {
+  const comments = await db.comments.find({ where: { pageRoute: route } });
+  return (
+    <article>
+      <h1>{page.title}</h1>
+      {comments.map(c => <div key={c.id}><p>{c.body}</p></div>)}
+    </article>
+  );
+}
+```
+
+---
+
+## Theme templates
+
+Templates live in `themes/<name>/templates/*.tsx`:
+
+```tsx
+// themes/default/templates/post.tsx
+import type { TemplateProps } from "@dune/content/types";
+
+export default async function PostTemplate({ page, content, site }: TemplateProps) {
+  return (
+    <article>
+      <h1>{page.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: content }} />
+    </article>
+  );
+}
+```
+
+| Prop | Type | Contents |
+|------|------|----------|
+| `page` | `PageMeta` | Frontmatter, route, template name, language |
+| `content` | `string` | Rendered HTML (from md/mdx source) |
+| `site` | `SiteConfig` | Values from `site.yaml` |
+
+---
+
+## Querying content
+
+```ts
+const posts = await ctx.content.find({
+  type: "blog",                    // folder name with prefix stripped
+  where: { draft: false },
+  orderBy: "publishedAt",
+  limit: 10,
+});
+
+const techPosts = await ctx.content.find({
+  type: "blog",
+  taxonomy: { category: "technical" },
+});
+
+const page = await ctx.content.findOne({ route: "/blog/hello-world" });
+```
+
+`type` maps to the folder name with the numeric prefix stripped.
+
+---
+
+## Taxonomy
+
+```yaml
+# site.yaml
+content:
+  taxonomies:
+    - tags
+    - category
+```
+
+```ts
+const allCategories = await ctx.content.getTaxonomyValues("category");
+const tagged = await ctx.content.find({ taxonomy: { tags: "deno" } });
+```
+
+---
+
+## Language variants
+
+```
+content/02.blog/
+  hello-world.md         → /blog/hello-world  (default language)
+  hello-world.de.md      → /de/blog/hello-world
+  hello-world.fr.md      → /fr/blog/hello-world
+```
+
+Language must be listed in `site.yaml` under `i18n.languages` to be detected.
+
+---
+
+## Gotchas
+
+**Numeric prefix is stripped from routes.** Never construct URLs using the prefix.
+
+**`default.md` is the folder index.** `index.md` is not special — it's a separate page.
+
+**Underscore folders are non-routable.** Do not put content that should be publicly accessible in a folder with an underscore prefix.
+
+**`type` in content queries is the stripped folder name.** Posts in `02.blog/` are `type: "blog"`.
+
+**`template:` in frontmatter must match an actual file in the active theme.** `dune validate` catches this.
+
+**TSX content pages require trusted authors.** They run with full Deno permissions — no sandbox.
+
+**Language code must be configured to be detected.** Without it in `site.yaml`, the code is treated as part of the slug.
+
+**`draft: true` behaves differently in dev vs production.** Don't rely on draft status as a security gate — use `roles:` frontmatter for access control.
