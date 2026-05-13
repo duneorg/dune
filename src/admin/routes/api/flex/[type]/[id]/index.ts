@@ -1,11 +1,13 @@
 /** GET + PUT + DELETE /admin/api/flex/:type/:id */
 
 import type { AdminState } from "../../../../../types.ts";
-import { json, serverError, csrfCheck } from "../../../_utils.ts";
+import { json, serverError, csrfCheck, requirePermission } from "../../../_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
+    const denied = requirePermission(ctx, "pages.read");
+    if (denied) return denied;
     const { flex } = ctx.state.adminContext;
     if (!flex) return json({ error: "Flex Objects not enabled" }, 501);
     const type = decodeURIComponent(ctx.params.type);
@@ -20,6 +22,8 @@ export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
+    const denied = requirePermission(ctx, "pages.update");
+    if (denied) return denied;
     const { flex } = ctx.state.adminContext;
     if (!flex) return json({ error: "Flex Objects not enabled" }, 501);
     const type = decodeURIComponent(ctx.params.type);
@@ -41,6 +45,8 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
+    const denied = requirePermission(ctx, "pages.delete");
+    if (denied) return denied;
     const { flex } = ctx.state.adminContext;
     if (!flex) return json({ error: "Flex Objects not enabled" }, 501);
     const type = decodeURIComponent(ctx.params.type);

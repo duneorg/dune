@@ -46,6 +46,16 @@ function log(msg: string) { console.log(msg); }
 function info(msg: string) { console.log(`  ${msg}`); }
 function warn(msg: string) { console.warn(`  ⚠️  ${msg}`); }
 
+/**
+ * Return false if a relative path contains any `..` segment or is absolute.
+ * Used to guard against path traversal in imported archives/directories that
+ * could overwrite files outside the target content directory.
+ */
+function isSafePath(rel: string): boolean {
+  if (rel.startsWith("/") || rel.startsWith("\\")) return false;
+  return !rel.split(/[/\\]/).some((seg) => seg === "..");
+}
+
 /** Slugify a string to URL-safe lowercase with hyphens */
 function slugify(s: string): string {
   return s
@@ -207,6 +217,7 @@ export async function migrateFromGrav(
   for await (const filePath of walk(gravPages)) {
     const ext = extname(filePath).toLowerCase();
     const rel = filePath.slice(gravPages.length).replace(/^\//, "");
+    if (!isSafePath(rel)) { result.skipped++; continue; }
 
     if (ext === ".md") {
       try {
@@ -477,6 +488,7 @@ export async function migrateFromMarkdown(
     for await (const filePath of walk(subSrc)) {
       const ext = extname(filePath).toLowerCase();
       const rel = filePath.slice(subSrc.length).replace(/^\//, "");
+      if (!isSafePath(rel)) { result.skipped++; continue; }
       if (ext === ".md") {
         try {
           const raw = await Deno.readTextFile(filePath);
@@ -632,6 +644,7 @@ export async function migrateFromHugo(
   for await (const filePath of walk(hugoContent)) {
     const rel = filePath.slice(hugoContent.length).replace(/^\//, "");
     const ext = extname(filePath).toLowerCase();
+    if (!isSafePath(rel)) { result.skipped++; continue; }
 
     if (ext === ".md") {
       try {
@@ -668,6 +681,7 @@ export async function migrateFromHugo(
     let staticCount = 0;
     for await (const filePath of walk(hugoStatic)) {
       const rel = filePath.slice(hugoStatic.length).replace(/^\//, "");
+      if (!isSafePath(rel)) continue;
       try {
         await copyFile(filePath, join(duneStatic, rel), dry);
         staticCount++;

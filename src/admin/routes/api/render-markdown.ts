@@ -57,7 +57,10 @@ export const handler = {
       }
 
       const rawContent: string = body.content;
-      const trusted: boolean = body.trusted === true;
+      // `trusted` skips HTML sanitization. Restrict to admin role only —
+      // pages.read (author/editor) is not sufficient.
+      const isAdmin = ctx.state.auth?.user?.role === "admin";
+      const trusted: boolean = body.trusted === true && isAdmin;
       const warnings: string[] = [];
 
       if (new TextEncoder().encode(rawContent).length > MAX_BYTES) {

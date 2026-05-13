@@ -1,7 +1,7 @@
 /** POST /admin/api/i18n/translate-page */
 
 import type { AdminState } from "../../../types.ts";
-import { json, serverError, csrfCheck } from "../_utils.ts";
+import { json, serverError, csrfCheck, requirePermission } from "../_utils.ts";
 import { dirname, basename } from "@std/path";
 import { parseContentFilename } from "../../../../content/path-utils.ts";
 import type { FreshContext } from "fresh";
@@ -17,6 +17,8 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
+    const denied = requirePermission(ctx, "pages.update");
+    if (denied) return denied;
 
     const { mt, storage, config, engine } = ctx.state.adminContext;
     if (!mt) return json({ error: "Machine translation not configured" }, 501);

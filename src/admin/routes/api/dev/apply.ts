@@ -84,8 +84,10 @@ interface ChangeResult {
   errors: string[];
 }
 
-// Valid plugin spec patterns
-const PLUGIN_SPEC_RE = /^(jsr:|npm:|https?:\/\/|file:).+/;
+// Valid plugin spec patterns — file: is intentionally excluded; local paths
+// could point outside the site root and would be written into site.yaml and
+// loaded on next restart. Use jsr:, npm:, or https: instead.
+const PLUGIN_SPEC_RE = /^(jsr:|npm:|https:\/\/).+/;
 
 /** Set a nested value on obj using dot-notation key. Mutates in place. */
 function setDeepKey(obj: Record<string, unknown>, key: string, value: unknown): void {

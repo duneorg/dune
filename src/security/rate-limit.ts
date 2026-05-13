@@ -20,8 +20,16 @@ export class RateLimiter {
     private readonly windowMs: number,
   ) {}
 
-  /** Returns true if the key is within the allowed rate, false if limited. */
+  /**
+   * Returns true if the key is within the allowed rate, false if limited.
+   * When key is "unknown" (no resolvable IP) the check is skipped and true
+   * is always returned — otherwise all clients without a proxy header share
+   * one bucket and a flood from one client can deny everyone else.
+   * Per-account or per-session limits should be the primary defence when IP
+   * resolution is unavailable.
+   */
   check(key: string): boolean {
+    if (key === "unknown") return true;
     const now = Date.now();
     const bucket = this.buckets.get(key);
 

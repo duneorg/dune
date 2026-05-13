@@ -1,7 +1,7 @@
 /** GET /admin/api/dashboard */
 
 import type { AdminState } from "../../types.ts";
-import { json } from "./_utils.ts";
+import { json, requirePermission } from "./_utils.ts";
 import type { FreshContext } from "fresh";
 
 function toUserInfo(u: { id: string; username: string; name: string; email: string; role: string; enabled: boolean }) {
@@ -10,6 +10,8 @@ function toUserInfo(u: { id: string; username: string; name: string; email: stri
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
+    const denied = requirePermission(ctx, "pages.read");
+    if (denied) return denied;
     const { engine } = ctx.state.adminContext;
     const authResult = ctx.state.auth;
     return json({

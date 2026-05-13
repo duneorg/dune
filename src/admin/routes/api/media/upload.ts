@@ -5,7 +5,7 @@ import { requirePermission, json, serverError, actorFromAuth, getClientIp, csrfC
 import { dirname } from "@std/path";
 import { isMediaFile, dirPathToRoute } from "../../../../content/path-utils.ts";
 import { getMimeType } from "../../../../content/page-loader.ts";
-import { checkBodySize } from "../../../../security/body-limit.ts";
+import { checkBodySize, limitedBody, BodyTooLargeError } from "../../../../security/body-limit.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -23,7 +23,11 @@ export const handler = {
       const tooLarge = checkBodySize(ctx.req, maxBodyBytes);
       if (tooLarge) return tooLarge;
 
-      const formData = await ctx.req.formData();
+      // Also enforce via streaming counter — catches chunked uploads that
+      // omit Content-Length and would otherwise bypass the pre-check above.
+      const formData = await new Response(limitedBody(ctx.req.body, maxBodyBytes), {
+        headers: { "content-type": ctx.req.headers.get("content-type") ?? "" },
+      }).formData();
       const file = formData.get("file");
       const pagePath = formData.get("pagePath");
 
@@ -63,6 +67,9 @@ export const handler = {
 
       return json({ ok: true, item: { name: safeName, url, type: mimeType, size: bytes.length, pagePath } });
     } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        return json({ error: "Request too large" }, 413);
+      }
       return serverError(err);
     }
   },

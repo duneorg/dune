@@ -3,6 +3,7 @@
 import type { AdminState } from "../../types.ts";
 import { requirePermission, serverError, csrfCheck } from "./_utils.ts";
 import type { FreshContext } from "fresh";
+import { sanitizeHtml } from "../../../security/sanitize-html.ts";
 
 function htmlResponse(html: string, status = 200): Response {
   return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
@@ -19,18 +20,21 @@ export const handler = {
     try {
       const body = await ctx.req.json();
       const { sourcePath, content } = body;
+      // Sanitize caller-supplied content before embedding in a text/html
+      // response — even authenticated editors must not inject arbitrary HTML.
+      const safeContent = content ? sanitizeHtml(String(content)) : "";
 
       if (!sourcePath) {
-        return htmlResponse(`<!DOCTYPE html><html><body>${content ?? ""}</body></html>`);
+        return htmlResponse(`<!DOCTYPE html><html><body>${safeContent}</body></html>`);
       }
 
-      const pageIndex = engine.pages.find((p) =>
-        p.sourcePath === sourcePath || p.sourcePath.includes(sourcePath)
-      );
+      // Exact match only — substring lookup is an IDOR (a fragment like "blog"
+      // would match an arbitrary page the caller did not intend).
+      const pageIndex = engine.pages.find((p) => p.sourcePath === sourcePath);
 
       if (!pageIndex) {
         return htmlResponse(
-          `<!DOCTYPE html><html><head><style>body{font-family:system-ui;padding:2rem;max-width:800px;margin:0 auto}</style></head><body>${content ?? ""}</body></html>`,
+          `<!DOCTYPE html><html><head><style>body{font-family:system-ui;padding:2rem;max-width:800px;margin:0 auto}</style></head><body>${safeContent}</body></html>`,
         );
       }
 

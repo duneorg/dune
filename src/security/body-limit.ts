@@ -6,12 +6,24 @@
  * upfront check a client can stream a multi-hundred-MB multipart body and
  * force Dune to allocate it all — a cheap memory DoS.
  *
- * `Content-Length` is client-provided and spoofable, but legitimate browsers
- * always set it accurately and the check costs nothing. Requests that lie about
- * the length (or omit it with `Transfer-Encoding: chunked`) are still subject
- * to whatever downstream per-field / per-file limits the handler enforces, so
- * this gate is defence-in-depth rather than the only line of defence.
+ * Two layers of defence are provided:
+ *
+ * 1. `checkBodySize()` — checks `Content-Length` before any parsing. Fast and
+ *    free, but spoofable and ineffective against chunked transfers.
+ *
+ * 2. `limitedBody()` — wraps the raw `Request.body` stream in a byte counter
+ *    that throws `BodyTooLargeError` as soon as `maxBytes` is exceeded,
+ *    regardless of how the body is framed. Use this for paths where chunked
+ *    uploads are a realistic concern.
  */
+
+export class BodyTooLargeError extends Error {
+  readonly status = 413;
+  constructor(maxBytes: number) {
+    super(`Request body exceeds ${maxBytes} bytes`);
+    this.name = "BodyTooLargeError";
+  }
+}
 
 /**
  * Return a 413 JSON response if the request's declared `Content-Length`
@@ -28,4 +40,38 @@ export function checkBodySize(req: Request, maxBytes: number): Response | null {
     });
   }
   return null;
+}
+
+/**
+ * Wrap a `ReadableStream<Uint8Array>` so that reading more than `maxBytes`
+ * total throws `BodyTooLargeError`. Pass the returned stream to
+ * `new Response(stream).formData()` (or `.arrayBuffer()` / `.text()`) to get
+ * a streaming size limit that works for both Content-Length and chunked
+ * transfers.
+ *
+ * Usage:
+ *   const body = limitedBody(req.body, maxBytes);
+ *   const formData = await new Response(body, {
+ *     headers: { "content-type": req.headers.get("content-type") ?? "" },
+ *   }).formData();
+ */
+export function limitedBody(
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  if (!stream) return new ReadableStream({ start(c) { c.close(); } });
+
+  let total = 0;
+  return stream.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          controller.error(new BodyTooLargeError(maxBytes));
+        } else {
+          controller.enqueue(chunk);
+        }
+      },
+    }),
+  );
 }

@@ -35,7 +35,12 @@ export interface WebhookDeliveryLog {
   endpointUrl: string;
   endpointLabel?: string;
   event: WebhookContentEvent;
-  payload: unknown;
+  /**
+   * Payload metadata stored for diagnostic purposes.
+   * Full content is intentionally omitted to avoid retaining PII (page body,
+   * form submission fields) in the delivery log for the 7-day retention window.
+   */
+  payloadSize: number;
   attempts: WebhookDeliveryAttempt[];
   /** "success" if any attempt succeeded; "failed" after all retries exhausted */
   finalStatus: "success" | "failed" | "pending";
@@ -161,7 +166,7 @@ async function deliverWithRetry(
     endpointUrl: endpoint.url,
     endpointLabel: endpoint.label,
     event,
-    payload,
+    payloadSize: body.length,
     attempts: [],
     finalStatus: "pending",
     createdAt: Date.now(),
