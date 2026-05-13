@@ -9,8 +9,8 @@
  *   dune upgrade
  */
 
-import { resolve, join } from "@std/path";
-import { isNewer } from "./upgrade-check.ts";
+import { resolve, join, dirname, fromFileUrl } from "@std/path";
+import { isNewer, fetchLatestVersion } from "./upgrade-check.ts";
 
 const JSR_META_URL = "https://jsr.io/@dune/core/meta.json";
 
@@ -22,6 +22,36 @@ export async function upgradeCommand(
   root: string,
   _options: UpgradeOptions = {},
 ): Promise<void> {
+  // Local source — git pull is the upgrade path
+  if (import.meta.url.startsWith("file://")) {
+    const duneDir = dirname(dirname(fromFileUrl(import.meta.url))); // src/cli/upgrade.ts → repo root
+
+    // Read local version from the repo's own deno.json
+    let localVersion: string | null = null;
+    try {
+      const denoJson = JSON.parse(await Deno.readTextFile(join(duneDir, "deno.json")));
+      localVersion = denoJson.version ?? null;
+    } catch { /* non-fatal */ }
+
+    // Check JSR for latest
+    const latest = await fetchLatestVersion();
+
+    if (localVersion) {
+      if (latest && isNewer(latest, localVersion)) {
+        console.log(`  ─  You're running Dune ${localVersion} from local source.`);
+        console.log(`     Dune ${latest} is available on JSR. To update:`);
+      } else {
+        console.log(`  ─  You're running Dune ${localVersion} from local source${latest ? " — up to date with JSR" : ""}.`);
+        console.log(`     To update to the latest commits:`);
+      }
+    } else {
+      console.log(`  ─  You're running Dune from local source.`);
+      console.log(`     To update:`);
+    }
+    console.log(`       git -C ${duneDir} pull`);
+    return;
+  }
+
   root = resolve(root);
   const denoJsonPath = join(root, "deno.json");
 

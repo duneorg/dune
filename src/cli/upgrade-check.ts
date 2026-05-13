@@ -48,7 +48,7 @@ async function writeCache(entry: CacheEntry): Promise<void> {
   }
 }
 
-async function fetchLatestVersion(): Promise<string | null> {
+export async function fetchLatestVersion(): Promise<string | null> {
   try {
     const res = await fetch(JSR_META_URL, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) return null;
