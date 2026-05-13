@@ -5,6 +5,49 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.10.0] — 2026-05-13
+
+### Added
+
+- **MCP server** (`dune mcp:serve`) — JSON-RPC 2.0 over stdio, compatible with Claude Code, Cursor, and any MCP-capable agent. Exposes nine tools (`list_pages`, `get_page`, `get_page_source`, `search_content`, `get_taxonomy`, `get_config`, `get_runtime_info`, `list_templates`, `list_blueprints`) and five resources (`dune://site/config`, `dune://site/schema`, `dune://content/pages`, `dune://content/taxonomy`, `dune://content/blueprints`).
+- **`dune upgrade`** — Updates the `@dune/core` specifier in `deno.json` to the latest JSR release. When running from a local source clone, prints the current version and the appropriate `git pull` command instead.
+- **`dune validate`** — Whole-project lint: config structure, plugin spec pinning, template references, schema files, and content integrity (missing titles, duplicate routes, future dates). Supports `--json`.
+- **`dune content:create <route>`** — Scaffold a new content page. Options: `--title`, `--template`, `--flat`, `--publish`, `--json`.
+- **`dune content:delete <route>`** — Delete a content page. Requires `--confirm` or `--dry-run`.
+- **`dune blueprint:list` / `blueprint:show` / `blueprint:validate`** — Inspect per-template frontmatter schemas from the CLI.
+- **`dune deploy:init <target>`** — Scaffold deployment configuration for `fly`, `docker`, or `deno-deploy`.
+- **`dune update:skills`** — Reinstall AI agent skill files from the current package into `.claude/skills/`.
+- **`dune schema:export`** — Print the JSON Schema for `site.yaml` to stdout.
+- **`GET /_dune/schema/config`** — HTTP equivalent of `schema:export`; returns the JSON Schema for `site.yaml`.
+- **`GET /admin/api/introspect`** — Live runtime snapshot: page counts, plugins, theme, forms, and config summary. Requires admin auth.
+- **`GET /admin/api/page-source`** — Return raw source (frontmatter + body) for a page by path. Requires `pages.read`.
+- **`POST /admin/api/render-markdown`** — Server-side markdown-to-HTML conversion through the full rendering pipeline. Requires `pages.read`.
+- **`POST /admin/api/dev/apply`** — Batched content and config mutations (`write`, `delete`, `frontmatter`, `config`, `plugin.install`). Dev mode only.
+- **`GET /health/live` and `/health/ready`** — Split liveness and readiness probes for container and load balancer health checks.
+- **`--json` flag** — Machine-readable output on `build`, `validate`, `content:list`, `content:check`, `content:create`, `content:delete`, `config:show`, `config:validate`, and all `blueprint:*` commands.
+- **Agent skill files** — `dune new` now installs `.claude/skills/` files covering content, MCP, plugin authoring, schemas, auth, authz, email, and jobs conventions. `dune update:skills` reinstalls them.
+- **`llms.txt` and `llms-full.txt`** — Served at `/_llms.txt` and `/_llms-full.txt`; structured documentation for agent ingestion.
+- **`DuneEngine.storage`** — `StorageAdapter` is now part of the public `DuneEngine` interface, accessible to plugins and tooling.
+
+### Fixed
+
+- TSX content page components now receive `page.route` correctly.
+- `dune upgrade` detects local source installs and redirects to `git pull` rather than attempting a `deno.json` rewrite.
+
+### Security
+
+- **Flex Object endpoint access control** — Role-based access control enforced on all Flex Object routes. (H1)
+- **i18n endpoint permission checks** — All i18n admin routes now require the appropriate permission. (M2, L3)
+- **Preview content handling hardened** — Preview fallback rendering and page access checks tightened. (M3, M5)
+- **Plugin specifier allowlist tightened** — Allowed URL schemes for plugin install and apply restricted. (M4)
+- **Migration importer path validation** — Path-containment checks added to all migration import handlers. (M6)
+- **Rate limit IP bucketing hardened** — IP resolution for rate-limit keys tightened. (L1)
+- **Dashboard endpoint permission check** — The admin dashboard endpoint now requires `pages.read`. (L2)
+- **Upload body size limit** — Oversized request bodies are now rejected during streaming, before buffering. (L4)
+- **Webhook delivery log sanitization** — Sensitive payload data is no longer written to delivery logs. (L5)
+
+---
+
 ## [0.9.1] — 2026-05-07
 
 Security release. All findings are from the May 2026 internal audit. No breaking changes to public APIs.
