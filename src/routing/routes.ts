@@ -71,6 +71,8 @@ export interface FlexDetailTemplateProps {
 export interface DuneRoutes {
   mediaHandler(req: Request): Promise<Response>;
   apiHandler(req: Request): Promise<Response>;
+  /** Handles /_dune/* system introspection endpoints. */
+  systemHandler(req: Request): Promise<Response>;
   contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>): Promise<Response>;
 }
 
@@ -304,6 +306,26 @@ export function duneRoutes(
         }
 
         return Response.json({ name, values: counts });
+      }
+
+      return Response.json({ error: "Not found" }, { status: 404 });
+    },
+
+    /**
+     * System introspection endpoints — /_dune/*.
+     * All responses are JSON. No authentication required (read-only metadata).
+     */
+    systemHandler: async (req: Request): Promise<Response> => {
+      const url = new URL(req.url);
+      const path = url.pathname;
+
+      // GET /_dune/schema/config — JSON Schema for site.yaml
+      if (path === "/_dune/schema/config") {
+        const { CONFIG_SCHEMA, SCHEMA_VERSION } = await import("../schema/config-schema.ts");
+        return Response.json(
+          { schemaVersion: SCHEMA_VERSION, schema: CONFIG_SCHEMA },
+          { headers: { "Cache-Control": "public, max-age=86400" } },
+        );
       }
 
       return Response.json({ error: "Not found" }, { status: 404 });

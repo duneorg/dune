@@ -420,6 +420,33 @@ export async function createDuneApp(
     return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-cache" } });
   });
 
+  // 3a. Liveness probe — is the process running and not deadlocked?
+  //     Always returns 200 as long as the event loop is responsive.
+  //     Kubernetes: livenessProbe.httpGet.path: /health/live
+  app.get("/health/live", () => {
+    return Response.json(
+      { status: "alive" },
+      { headers: { "Cache-Control": "no-cache" } },
+    );
+  });
+
+  // 3b. Readiness probe — is the engine ready to serve content?
+  //     Returns 200 once the content index is built, 503 otherwise.
+  //     Kubernetes: readinessProbe.httpGet.path: /health/ready
+  app.get("/health/ready", () => {
+    const ready = Array.isArray(engine.pages);
+    return Response.json(
+      {
+        status: ready ? "ready" : "not_ready",
+        pages: engine.pages.length,
+      },
+      {
+        status: ready ? 200 : 503,
+        headers: { "Cache-Control": "no-cache" },
+      },
+    );
+  });
+
   // 4. Sitemap
   app.get("/sitemap.xml", async (fc) => {
     if (!dev && sitemapGzip) {

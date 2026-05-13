@@ -26,10 +26,12 @@ export interface BuildOptions {
   includeDrafts?: boolean;
   /** Print each rendered route. */
   verbose?: boolean;
+  /** Output machine-parseable JSON instead of human-readable text. */
+  json?: boolean;
 }
 
 export async function buildCommand(root: string, options: BuildOptions = {}) {
-  const { debug = false } = options;
+  const { debug = false, json = false } = options;
 
   if (options.static) {
     await buildStaticCommand(root, options);
@@ -38,18 +40,42 @@ export async function buildCommand(root: string, options: BuildOptions = {}) {
 
   // ── Standard build (index + validate) ─────────────────────────────────────
 
-  console.log("🏜️  Dune — building site...\n");
+  if (!json) console.log("🏜️  Dune — building site...\n");
 
   const start = performance.now();
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, config, taxonomy } = ctx;
 
-  console.log("  🔧 Validating configuration...");
-  const errors = validateConfig(config);
-  if (errors.length > 0) {
+  if (!json) console.log("  🔧 Validating configuration...");
+  const configErrors = validateConfig(config);
+
+  const unpublished = engine.pages.filter((p) => !p.published).length;
+  const elapsedMs = Math.round(performance.now() - start);
+
+  if (json) {
+    // Collect taxonomy summary
+    const taxonomySummary: Record<string, number> = {};
+    for (const name of taxonomy.names()) {
+      taxonomySummary[name] = Object.keys(taxonomy.values(name)).length;
+    }
+    const output = {
+      success: configErrors.length === 0,
+      pagesIndexed: engine.pages.length,
+      published: engine.pages.filter((p) => p.published).length,
+      unpublished,
+      taxonomies: taxonomySummary,
+      configErrors,
+      elapsedMs,
+    };
+    console.log(JSON.stringify(output, null, 2));
+    if (configErrors.length > 0) Deno.exit(1);
+    return;
+  }
+
+  if (configErrors.length > 0) {
     console.log("  ⚠️  Config issues:");
-    for (const err of errors) console.log(`    ✗ ${err}`);
+    for (const err of configErrors) console.log(`    ✗ ${err}`);
   } else {
     console.log("  ✅ Configuration valid");
   }
@@ -61,34 +87,36 @@ export async function buildCommand(root: string, options: BuildOptions = {}) {
     console.log(`     ${name}: ${count} values`);
   }
 
-  const unpublished = engine.pages.filter((p) => !p.published).length;
   if (unpublished > 0) console.log(`  📝 ${unpublished} unpublished pages`);
 
-  const elapsed = (performance.now() - start).toFixed(0);
-  console.log(`\n  ✅ Build complete in ${elapsed}ms`);
+  console.log(`\n  ✅ Build complete in ${elapsedMs}ms`);
 }
 
 // ─── Static build ─────────────────────────────────────────────────────────────
 
 async function buildStaticCommand(root: string, options: BuildOptions): Promise<void> {
-  const { debug = false } = options;
+  const { debug = false, json = false } = options;
   const outDir = options.outDir ?? "dist";
   const concurrency = options.concurrency ?? 8;
   const incremental = !options.noIncremental;
   const hybrid = options.hybrid ?? false;
   const includeDrafts = options.includeDrafts ?? false;
-  const verbose = options.verbose ?? debug;
+  const verbose = (options.verbose ?? debug) && !json;
 
-  console.log(`🏜️  Dune — building static site → ${outDir}/\n`);
-  if (incremental) console.log("  📦 Incremental mode active (use --no-incremental to force full rebuild)\n");
+  if (!json) {
+    console.log(`🏜️  Dune — building static site → ${outDir}/\n`);
+    if (incremental) console.log("  📦 Incremental mode active (use --no-incremental to force full rebuild)\n");
+  }
 
   const bootstrapStart = performance.now();
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  console.log(
-    `  📄 ${ctx.engine.pages.length} pages indexed in ${
-      Math.round(performance.now() - bootstrapStart)
-    }ms`,
-  );
+  if (!json) {
+    console.log(
+      `  📄 ${ctx.engine.pages.length} pages indexed in ${
+        Math.round(performance.now() - bootstrapStart)
+      }ms`,
+    );
+  }
 
   const ssgOpts: SSGOptions = {
     outDir,
@@ -101,6 +129,22 @@ async function buildStaticCommand(root: string, options: BuildOptions): Promise<
   };
 
   const result = await buildStatic(root, ctx, ssgOpts);
+
+  if (json) {
+    const output = {
+      success: result.errors.length === 0,
+      outDir,
+      pagesRendered: result.pagesRendered,
+      pagesSkipped: result.pagesSkipped,
+      assetsWritten: result.assetsWritten,
+      hybrid,
+      errors: result.errors,
+      elapsedMs: result.elapsed,
+    };
+    console.log(JSON.stringify(output, null, 2));
+    if (result.errors.length > 0) Deno.exit(1);
+    return;
+  }
 
   // ── Summary ────────────────────────────────────────────────────────────────
 
