@@ -66,6 +66,12 @@ export interface DuneAppResult {
    * No-op in production.
    */
   notifyReload: () => void;
+  /**
+   * Signal that the process is shutting down.
+   * When true, /health/ready returns 503 so load balancers stop sending
+   * new traffic before the process exits.
+   */
+  setShuttingDown: (value: boolean) => void;
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────────
@@ -432,8 +438,19 @@ export async function createDuneApp(
 
   // 3b. Readiness probe — is the engine ready to serve content?
   //     Returns 200 once the content index is built, 503 otherwise.
+  //     Returns 503 during graceful shutdown so load balancers drain traffic
+  //     before the process exits.
   //     Kubernetes: readinessProbe.httpGet.path: /health/ready
+  let shuttingDown = false;
+  const setShuttingDown = (value: boolean) => { shuttingDown = value; };
+
   app.get("/health/ready", () => {
+    if (shuttingDown) {
+      return Response.json(
+        { status: "shutting_down" },
+        { status: 503, headers: { "Cache-Control": "no-cache" } },
+      );
+    }
     const ready = Array.isArray(engine.pages);
     return Response.json(
       {
@@ -779,5 +796,5 @@ export async function createDuneApp(
     return response;
   });
 
-  return { app, notifyReload };
+  return { app, notifyReload, setShuttingDown };
 }

@@ -8,6 +8,15 @@
  *
  * Multi-site mode delegates to MultisiteManager when config/sites.yaml is
  * present at the installation root.
+ *
+ * Graceful shutdown:
+ *   - SIGTERM / SIGINT stop accepting new connections via AbortController.
+ *   - The /health/ready probe returns 503 immediately so load balancers drain
+ *     traffic before the process exits.
+ *   - The server waits for existing connections to close (Deno.serve semantics).
+ *   - A 30-second safety-net poll ensures we exit even if Deno holds connections
+ *     open longer than expected (e.g. keep-alive sockets).
+ *   - The drain deadline can be tuned via DUNE_SHUTDOWN_TIMEOUT_MS env var.
  */
 
 import { join, resolve } from "@std/path";
@@ -22,12 +31,72 @@ export interface ServeOptions {
   debug?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Graceful-shutdown helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Wire SIGTERM and SIGINT to the provided shutdown callback.
+ * Returns a cleanup function that removes the listeners (used in tests).
+ *
+ * SIGINT is not available on Windows — the registration is wrapped in a
+ * try/catch so the rest of the shutdown logic still works on that platform.
+ */
+function registerSignalHandlers(onShutdown: (signal: string) => void): () => void {
+  const sigterm = () => onShutdown("SIGTERM");
+  const sigint  = () => onShutdown("SIGINT");
+
+  Deno.addSignalListener("SIGTERM", sigterm);
+  try {
+    Deno.addSignalListener("SIGINT", sigint);
+  } catch {
+    // SIGINT unavailable (Windows)
+  }
+
+  return () => {
+    try { Deno.removeSignalListener("SIGTERM", sigterm); } catch { /* ok */ }
+    try { Deno.removeSignalListener("SIGINT",  sigint);  } catch { /* ok */ }
+  };
+}
+
+/**
+ * Wait up to `deadlineMs` for `getInFlight()` to reach 0, polling every
+ * 50 ms. Logs a warning if the deadline expires with requests still in flight.
+ *
+ * The drain deadline defaults to 30 s but can be overridden at runtime:
+ *   DUNE_SHUTDOWN_TIMEOUT_MS=5000 dune serve
+ */
+async function drainInFlight(
+  getInFlight: () => number,
+  deadlineMs = 30_000,
+): Promise<void> {
+  const start = Date.now();
+  while (getInFlight() > 0 && Date.now() - start < deadlineMs) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  const remaining = getInFlight();
+  if (remaining > 0) {
+    console.warn(
+      `[dune] shutdown: ${remaining} request(s) still in flight after ${deadlineMs}ms, exiting anyway`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main command
+// ---------------------------------------------------------------------------
+
 export async function serveCommand(root: string, options: ServeOptions = {}) {
   const { port = 3000, debug = false } = options;
 
   // Resolve root to an absolute path immediately.  The CLI may pass a relative
   // path and we Deno.chdir() later, which would invalidate relative paths.
   root = resolve(root);
+
+  const drainDeadlineMs = parseInt(
+    Deno.env.get("DUNE_SHUTDOWN_TIMEOUT_MS") ?? "30000",
+    10,
+  ) || 30_000;
 
   // ── Multi-site detection ────────────────────────────────────────────────────
   // If config/sites.yaml exists at the root, delegate to MultisiteManager.
@@ -42,7 +111,42 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: false });
     console.log(`  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
-    Deno.serve({ port, handler: (req) => manager.handle(req) });
+
+    // ── Graceful shutdown (multi-site) ──────────────────────────────────────
+    const ac = new AbortController();
+    let shuttingDown = false;
+    let inFlight = 0;
+
+    const shutdown = (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`\n[dune] received ${signal}, draining connections...`);
+      ac.abort();
+    };
+
+    const cleanup = registerSignalHandlers(shutdown);
+
+    const server = Deno.serve(
+      {
+        port,
+        signal: ac.signal,
+        onListen: ({ port: p }) =>
+          console.log(`  🌐 http://localhost:${p} (${manager.siteCount()} sites)\n`),
+      },
+      async (req) => {
+        inFlight++;
+        try {
+          return await manager.handle(req);
+        } finally {
+          inFlight--;
+        }
+      },
+    );
+
+    await server.finished;
+    await drainInFlight(() => inFlight, drainDeadlineMs);
+    cleanup();
+    console.log("[dune] shutdown complete");
     return;
   }
 
@@ -111,7 +215,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 
   // Assemble the Fresh app with all Dune routes as middleware.
-  const { app } = await createDuneApp(ctx, { root, port, debug, dev: false });
+  const { app, setShuttingDown } = await createDuneApp(ctx, { root, port, debug, dev: false });
 
   // Attach the island build cache so staticFiles() can serve /_fresh/js/* chunks.
   applySnapshot(app);
@@ -122,5 +226,48 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
   console.log(`  🌐 http://localhost:${port}\n`);
 
-  Deno.serve({ port, handler: app.handler() });
+  // ── Graceful shutdown (single site) ──────────────────────────────────────
+  const ac = new AbortController();
+  let shuttingDown = false;
+  let inFlight = 0;
+
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // Signal the readiness probe immediately so load balancers drain traffic
+    // before the process exits.
+    setShuttingDown(true);
+    console.log(`\n[dune] received ${signal}, draining connections...`);
+    ac.abort();
+  };
+
+  const cleanup = registerSignalHandlers(shutdown);
+
+  const handler = app.handler();
+  const server = Deno.serve(
+    { port, signal: ac.signal },
+    async (req) => {
+      inFlight++;
+      try {
+        return await handler(req);
+      } finally {
+        inFlight--;
+      }
+    },
+  );
+
+  await server.finished;
+
+  // Safety-net drain poll — in normal operation inFlight is already 0 here
+  // because Deno.serve() waits for active requests to complete before resolving
+  // `server.finished`. The loop guards against edge cases (e.g. long-lived
+  // keep-alive connections that Deno closed before the handler returned).
+  await drainInFlight(() => inFlight, drainDeadlineMs);
+
+  // The AuditLogger writes each entry directly to disk via Deno.writeTextFile
+  // (append: true) — there is no in-memory write buffer to flush.  No explicit
+  // flush step is required here.
+
+  cleanup();
+  console.log("[dune] shutdown complete");
 }
