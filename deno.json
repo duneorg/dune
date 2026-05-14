@@ -10,7 +10,8 @@
     "./sections": "./src/sections/mod.ts",
     "./content": "./src/content/api.ts",
     "./admin": "./src/admin/mount.ts",
-    "./mcp": "./src/mcp/mod.ts"
+    "./mcp": "./src/mcp/mod.ts",
+    "./db": "./src/db/mod.ts"
   },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
@@ -29,7 +30,8 @@
     "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
     "sharp": "npm:sharp@^0.33",
     "nodemailer": "npm:nodemailer@^6",
-    "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2"
+    "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2",
+    "@db/sqlite": "jsr:@db/sqlite@^0.12"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",

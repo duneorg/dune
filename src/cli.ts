@@ -64,6 +64,12 @@ import { updateSkillsCommand } from "./cli/update-skills.ts";
 import { contentDeleteCommand } from "./cli/content-delete.ts";
 import { checkForUpdates } from "./cli/upgrade-check.ts";
 import { upgradeCommand } from "./cli/upgrade.ts";
+import {
+  codegenCommand,
+  migrateGenerateCommand,
+  migrateRunCommand,
+  migrateStatusCommand,
+} from "./cli/db.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -118,6 +124,11 @@ Commands:
   update:skills       Reinstall AI coding agent skill files from current package
 
   schema:export       Print JSON Schema for site.yaml to stdout
+
+  codegen             Generate TypeScript types from schemas/*.yaml
+  migrate:generate    Generate SQL migration files from schemas
+  migrate:run         Apply pending SQL migrations
+  migrate:status      Show applied/pending migration status
 
   mcp:serve           Start MCP server over stdio (for Claude Code / Cursor / etc.)
 
@@ -372,6 +383,22 @@ async function main() {
 
       case "schema:export":
         await schemaExportCommand();
+        break;
+
+      case "codegen":
+        await codegenCommand(root);
+        break;
+
+      case "migrate:generate":
+        await migrateGenerateCommand(root);
+        break;
+
+      case "migrate:run":
+        await migrateRunCommand(root);
+        break;
+
+      case "migrate:status":
+        await migrateStatusCommand(root);
         break;
 
       case "mcp:serve":
