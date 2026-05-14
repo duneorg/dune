@@ -13,7 +13,8 @@
     "./mcp": "./src/mcp/mod.ts",
     "./db": "./src/db/mod.ts",
     "./auth/api-guard": "./src/auth/api-guard.ts",
-    "./email": "./src/email/mod.ts"
+    "./email": "./src/email/mod.ts",
+    "./ui": "./src/ui/mod.ts"
   },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
