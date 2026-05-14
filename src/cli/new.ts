@@ -2,7 +2,8 @@
  * dune new [dir] — Scaffold a new Dune site.
  */
 
-const SITE_YAML = `title: My Dune Site
+const SITE_YAML = `# yaml-language-server: $schema=https://dune.dev/schema/config/1.0
+title: My Dune Site
 description: A flat-file CMS powered by Deno Fresh
 url: http://localhost:3000
 author:
@@ -197,7 +198,8 @@ const DENO_JSON = `{
 
 // ── Headless scaffold templates ───────────────────────────────────────────────
 
-const HEADLESS_SITE_YAML = `title: My Headless Site
+const HEADLESS_SITE_YAML = `# yaml-language-server: $schema=https://dune.dev/schema/config/1.0
+title: My Headless Site
 description: A Dune-powered Fresh site in headless mode
 url: http://localhost:3000
 author:
