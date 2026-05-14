@@ -17,6 +17,7 @@ import type {
   FlexSchemaMap,
   FlexValidationError,
 } from "./types.ts";
+import { applyMigrations, loadMigrations, type FlexMigration } from "./migrations.ts";
 
 // === Options ===
 
@@ -27,6 +28,12 @@ export interface FlexEngineOptions {
    * Defaults to "flex-objects" (relative to storage root).
    */
   schemasDir?: string;
+  /**
+   * Filesystem root used to locate migration files at `migrations/{type}/`.
+   * Defaults to the current working directory when not specified.
+   * Set to an empty string to disable automatic migrations.
+   */
+  root?: string;
 }
 
 // === Public interface ===
@@ -82,6 +89,19 @@ export interface FlexEngine {
 export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
   const { storage } = opts;
   const schemasDir = opts.schemasDir ?? "flex-objects";
+  const siteRoot = opts.root ?? Deno.cwd();
+
+  // ---------------------------------------------------------------------------
+  // Migration cache — keyed by type name; populated lazily on first access.
+  // ---------------------------------------------------------------------------
+  const migrationCache = new Map<string, FlexMigration[]>();
+
+  async function getMigrations(type: string): Promise<FlexMigration[]> {
+    if (migrationCache.has(type)) return migrationCache.get(type)!;
+    const migrations = await loadMigrations(siteRoot, type);
+    migrationCache.set(type, migrations);
+    return migrations;
+  }
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -136,6 +156,20 @@ export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
   // Schema loading
   // ---------------------------------------------------------------------------
 
+  /** Load a single schema by type name. Returns null if missing or malformed. */
+  async function loadSchema(type: string): Promise<FlexSchema | null> {
+    try {
+      const raw = await storage.readText(schemaPath(type));
+      const parsed = parseYaml(raw) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as unknown as FlexSchema;
+      }
+    } catch {
+      // Schema file missing or malformed.
+    }
+    return null;
+  }
+
   async function loadSchemas(): Promise<FlexSchemaMap> {
     const schemas: FlexSchemaMap = {};
 
@@ -171,6 +205,38 @@ export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
   // Record CRUD
   // ---------------------------------------------------------------------------
 
+  /**
+   * Run pending schema migrations against a loaded record.
+   * If any migrations ran, the updated record is written back to storage
+   * immediately (write-through) so subsequent reads skip re-migration.
+   */
+  async function migrateRecord(
+    type: string,
+    record: FlexRecord,
+    schema: FlexSchema | null,
+  ): Promise<FlexRecord> {
+    const targetVersion = schema?.version ?? 0;
+    if (targetVersion === 0) return record;
+
+    const migrations = await getMigrations(type);
+    if (migrations.length === 0) return record;
+
+    const { record: updated, migrated } = applyMigrations(
+      record as Record<string, unknown>,
+      migrations,
+      targetVersion,
+    );
+
+    if (migrated) {
+      const migratedRecord = updated as FlexRecord;
+      // Write back so future reads are already at the current version.
+      await storage.write(recordPath(type, migratedRecord._id), serializeRecord(migratedRecord));
+      return migratedRecord;
+    }
+
+    return record;
+  }
+
   async function list(type: string): Promise<FlexRecord[]> {
     let entries;
     try {
@@ -181,11 +247,15 @@ export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
 
     const yamlFiles = entries.filter((e) => e.isFile && e.name.endsWith(".yaml"));
 
+    // Load schema once for the whole list call.
+    const schema = await loadSchema(type);
+
     const records = await Promise.all(
       yamlFiles.map(async (entry) => {
         try {
           const raw = await storage.readText(`${recordDir(type)}/${entry.name}`);
-          return parseRecordFile(type, raw);
+          const record = parseRecordFile(type, raw);
+          return await migrateRecord(type, record, schema);
         } catch {
           return null;
         }
@@ -205,7 +275,9 @@ export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
       const exists = await storage.exists(recordPath(type, id));
       if (!exists) return null;
       const raw = await storage.readText(recordPath(type, id));
-      return parseRecordFile(type, raw);
+      const record = parseRecordFile(type, raw);
+      const schema = await loadSchema(type);
+      return await migrateRecord(type, record, schema);
     } catch {
       return null;
     }

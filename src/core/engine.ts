@@ -10,6 +10,7 @@
 
 import { join, dirname } from "@std/path";
 import { logger } from "./logger.ts";
+import { tracer } from "../tracing/mod.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
 import type {
@@ -467,34 +468,38 @@ export async function createDuneEngine(
    */
   function rebuild(): Promise<void> {
     rebuildChain = rebuildChain.then(async () => {
-      pageCache.clear();
-      themes.clearCache();
+      await tracer.startActiveSpan("engine.rebuild", { pageCount: pages.length }, async (span) => {
+        pageCache.clear();
+        themes.clearCache();
 
-      // Reload blueprints in case any changed on disk
-      if (blueprintsDir !== null) {
-        blueprints = await loadBlueprints(storage, blueprintsDir);
-      }
+        // Reload blueprints in case any changed on disk
+        if (blueprintsDir !== null) {
+          blueprints = await loadBlueprints(storage, blueprintsDir);
+        }
 
-      const result = await buildIndex({
-        storage,
-        contentDir,
-        formats,
-        siteHome: config.site.home,
-        supportedLanguages: config.system.languages?.supported,
-        defaultLanguage: config.system.languages?.default,
-        blueprints,
+        const result = await buildIndex({
+          storage,
+          contentDir,
+          formats,
+          siteHome: config.site.home,
+          supportedLanguages: config.system.languages?.supported,
+          defaultLanguage: config.system.languages?.default,
+          blueprints,
+        });
+        pages = result.pages;
+        taxonomyMap = result.taxonomyMap;
+        router.rebuild(pages, result.homeSlug);
+
+        span.setAttribute("pageCount", pages.length);
+
+        if (config.system.debug) {
+          logger.debug("index.rebuilt", { indexed: result.indexed, durationMs: result.duration });
+        }
+
+        if (hooks) {
+          await hooks.fire("onRebuild", {});
+        }
       });
-      pages = result.pages;
-      taxonomyMap = result.taxonomyMap;
-      router.rebuild(pages, result.homeSlug);
-
-      if (config.system.debug) {
-        logger.debug("index.rebuilt", { indexed: result.indexed, durationMs: result.duration });
-      }
-
-      if (hooks) {
-        await hooks.fire("onRebuild", {});
-      }
     });
     return rebuildChain;
   }

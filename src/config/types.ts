@@ -900,6 +900,38 @@ export interface SystemConfig {
    */
   trusted_proxies?: boolean;
   /**
+   * Distributed tracing configuration (OpenTelemetry-compatible).
+   * When enabled, the engine wraps key operations in spans and optionally
+   * exports them to an OTLP/HTTP collector.
+   *
+   * @example Jaeger via OTLP/HTTP
+   * ```yaml
+   * system:
+   *   tracing:
+   *     enabled: true
+   *     endpoint: http://localhost:4318/v1/traces
+   *     service_name: my-dune-site
+   * ```
+   */
+  tracing?: {
+    /**
+     * Enable distributed tracing (default: false).
+     * When false, a no-op tracer is used — zero runtime overhead.
+     */
+    enabled?: boolean;
+    /**
+     * OTLP/HTTP collector endpoint.
+     * When omitted, spans are only emitted as debug log lines.
+     * @example "http://localhost:4318/v1/traces"
+     */
+    endpoint?: string;
+    /**
+     * Service name attached to every span as the `service.name` resource attribute.
+     * Defaults to "dune".
+     */
+    service_name?: string;
+  };
+  /**
    * Optional token gating the detailed `/health?detailed=true` response.
    *
    * When unset, /health always returns `{ "status": "ok" }` regardless of

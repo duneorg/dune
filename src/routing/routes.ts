@@ -29,6 +29,7 @@ import type { SectionInstance } from "../sections/mod.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
 import { logger, generateRequestId } from "../core/logger.ts";
+import { tracer } from "../tracing/mod.ts";
 
 // Per-IP rate limit for public read endpoints (120 req/min).
 const publicRateLimiter = new RateLimiter(120, 60 * 1000);
@@ -414,6 +415,28 @@ export function duneRoutes(
       // does not mutate the global logger.
       const reqLog = logger.child({ requestId: generateRequestId(), pathname: url.pathname });
       reqLog.debug("request.start", { method: req.method });
+
+      // Start a per-request tracing span. Ended with the response status just
+      // before returning so every content request is observable via tracing.
+      const span = tracer.startSpan("http.request", { pathname: url.pathname });
+
+      /** Attach span status + end, then return the response. */
+      function respond(response: Response | Promise<Response>): Promise<Response> {
+        if (response instanceof Promise) {
+          return response.then((r) => {
+            span.setAttribute("status", r.status);
+            span.end();
+            return r;
+          }, (err: unknown) => {
+            span.setStatus("error", err instanceof Error ? err.message : String(err));
+            span.end();
+            throw err;
+          });
+        }
+        span.setAttribute("status", response.status);
+        span.end();
+        return Promise.resolve(response);
+      }
 
       // ── Search route ──────────────────────────────────────────────────────
       // Intercept /search before content resolution so it is always served,

@@ -35,6 +35,8 @@
  *   dune upgrade                       — Update @dune/core to the latest version
  *   dune update:skills                 — Reinstall AI agent skill files from current package
  *   dune content:delete <route>        — Delete a content page by route (requires --confirm or --dry-run)
+ *   dune backup [--output file.tar.gz] — Back up content, data, uploads, and config
+ *   dune restore <archive.tar.gz>      — Restore from a backup archive
  */
 
 /** @module */
@@ -70,6 +72,8 @@ import {
   migrateRunCommand,
   migrateStatusCommand,
 } from "./cli/db.ts";
+import { backupCommand, restoreCommand } from "./cli/backup.ts";
+import { flexMigrateCommand } from "./cli/flex-migrate.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -140,12 +144,16 @@ Commands:
   plugin:search       Search JSR for Dune plugins
   plugin:update       Update JSR plugins to their latest versions
 
+  migrate:flex [type]           Migrate Flex Object records to current schema version
   migrate:from-grav <src>       Import a Grav site (user/pages/ folder)
   migrate:from-wordpress <src>  Import a WordPress WXR export (.xml)
   migrate:from-markdown <src>   Import a flat folder of markdown files
   migrate:from-hugo <src>       Import a Hugo site (content/ folder)
 
   deploy:init <target>          Scaffold deployment config (fly, docker, deno-deploy)
+
+  backup [--output file.tar.gz] Back up content, data, uploads, and config
+  restore <archive.tar.gz>      Restore from a backup archive
 
 Options:
   --port <n>          Server port (default: 3000)
@@ -255,6 +263,10 @@ async function main() {
       options.force = true;
     } else if (args[i] === "--confirm") {
       options.confirm = true;
+    } else if (args[i] === "--yes" || args[i] === "-y") {
+      options.yes = true;
+    } else if (args[i] === "--output" && args[i + 1]) {
+      options.output = args[++i];
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
@@ -520,6 +532,18 @@ async function main() {
           appName: options.appName as string | undefined,
           region: options.region as string | undefined,
           out: options.outDir as string | undefined,
+        });
+        break;
+
+      case "backup":
+        await backupCommand(root, {
+          output: options.output as string | undefined,
+        });
+        break;
+
+      case "restore":
+        await restoreCommand(root, options.positional as string, {
+          yes: options.yes === true,
         });
         break;
 

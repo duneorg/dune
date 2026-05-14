@@ -42,6 +42,7 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
+import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
 import { join, resolve } from "@std/path";
@@ -487,6 +488,13 @@ export async function bootstrap(
       metrics.recordRebuild(0, engine.pages.length);
     });
   }
+
+  // 16.5. Distributed tracing — initialize global tracer from config.
+  initTracer({
+    enabled: config.system.tracing?.enabled ?? false,
+    endpoint: config.system.tracing?.endpoint,
+    serviceName: config.system.tracing?.service_name ?? "dune",
+  });
 
   // 16. CDN cache invalidation — purge affected routes after every rebuild.
   const cdnProvider = createCdnProvider(config.site.cdn);

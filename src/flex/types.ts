@@ -48,6 +48,14 @@ export interface FlexSchema {
    * Reuses BlueprintField definitions — same types, validation, and options.
    */
   fields: Record<string, BlueprintField>;
+  /**
+   * Current schema version.  Defaults to 0 when not specified.
+   *
+   * When a record is loaded whose `_schemaVersion` is below this value,
+   * pending migrations from `migrations/{type}/` are applied automatically
+   * and the record is written back to storage (lazy write-through migration).
+   */
+  version?: number;
 }
 
 /** Map of type name → schema (as loaded from disk, before any resolution). */
