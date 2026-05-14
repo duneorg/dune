@@ -500,6 +500,62 @@ export interface SiteConfig {
     userStore?: "local";
   };
   /**
+   * Transactional email configuration.
+   * Enables the `email.send()` API for plugins, route handlers, and TSX pages.
+   * Distinct from `admin.notifications.email` which is used for form submission
+   * notifications only.
+   *
+   * When omitted, the console provider is used (emails are logged to stdout).
+   *
+   * @example Resend
+   * ```yaml
+   * site:
+   *   email:
+   *     provider: resend
+   *     from: hello@example.com
+   *     resend:
+   *       apiKey: "$RESEND_API_KEY"
+   * ```
+   *
+   * @example SMTP
+   * ```yaml
+   * site:
+   *   email:
+   *     provider: smtp
+   *     from: hello@example.com
+   *     smtp:
+   *       host: smtp.example.com
+   *       port: 587
+   *       secure: false
+   *       user: "$SMTP_USER"
+   *       pass: "$SMTP_PASS"
+   * ```
+   */
+  email?: {
+    /**
+     * Email delivery provider.
+     * Defaults to "console" (logs to stdout — suitable for local development).
+     */
+    provider?: "smtp" | "resend" | "postmark" | "sendgrid" | "console";
+    /**
+     * Default from address for all outgoing emails.
+     * @example "hello@example.com"
+     */
+    from?: string;
+    smtp?: {
+      host: string;
+      port: number;
+      /** true = implicit TLS on port 465; false = STARTTLS on port 587 */
+      secure: boolean;
+      user: string;
+      /** Supports "$ENV_VAR" expansion */
+      pass: string;
+    };
+    resend?: { apiKey: string };
+    postmark?: { apiKey: string };
+    sendgrid?: { apiKey: string };
+  };
+  /**
    * Public file upload configuration.
    * Controls the `POST /api/upload` endpoint available to anonymous (or
    * authenticated) site visitors, separate from the admin media upload.
