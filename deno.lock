@@ -1,8 +1,10 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@db/sqlite@*": "0.13.0",
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.14",
+    "jsr:@denosaurs/plug@1": "1.1.0",
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@*": "2.2.2",
     "jsr:@fresh/core@2": "2.2.2",
@@ -10,6 +12,7 @@
     "jsr:@std/crypto@1": "1.0.5",
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
+    "jsr:@std/fmt@1": "1.0.9",
     "jsr:@std/fmt@^1.0.8": "1.0.9",
     "jsr:@std/fs@1": "1.0.23",
     "jsr:@std/fs@^1.0.19": "1.0.23",
@@ -19,6 +22,8 @@
     "jsr:@std/json@^1.0.2": "1.0.2",
     "jsr:@std/jsonc@^1.0.2": "1.0.2",
     "jsr:@std/media-types@^1.1.0": "1.1.0",
+    "jsr:@std/path@1": "1.1.4",
+    "jsr:@std/path@1.0": "1.0.9",
     "jsr:@std/path@^1.1.1": "1.1.4",
     "jsr:@std/path@^1.1.2": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
@@ -39,6 +44,7 @@
     "npm:marked@*": "15.0.12",
     "npm:marked@15": "15.0.12",
     "npm:nodemailer@6": "6.10.1",
+    "npm:postgres@*": "3.4.9",
     "npm:preact-render-to-string@6": "6.6.5_preact@10.28.3",
     "npm:preact-render-to-string@^6.6.3": "6.6.5_preact@10.28.3",
     "npm:preact@10": "10.28.3",
@@ -48,6 +54,13 @@
     "npm:sharp@0.33": "0.33.5"
   },
   "jsr": {
+    "@db/sqlite@0.13.0": {
+      "integrity": "4545c635e0b3d4ddfdc0f2240f932f24b8ad0178e9c2e3a0f9403e7b18ae2fb5",
+      "dependencies": [
+        "jsr:@denosaurs/plug",
+        "jsr:@std/path@1.0"
+      ]
+    },
     "@deno/esbuild-plugin@1.2.1": {
       "integrity": "df629467913adc1f960149fdfa3a3430ba8c20381c310fba096db244e6c3c9f6",
       "dependencies": [
@@ -58,6 +71,15 @@
     },
     "@deno/loader@0.3.14": {
       "integrity": "97bc63a6cc2d27a60bcdc953f588c5213331d866d44212eebb24cebfb9b011ca"
+    },
+    "@denosaurs/plug@1.1.0": {
+      "integrity": "eb2f0b7546c7bca2000d8b0282c54d50d91cf6d75cb26a80df25a6de8c4bc044",
+      "dependencies": [
+        "jsr:@std/encoding@1",
+        "jsr:@std/fmt@1",
+        "jsr:@std/fs@1",
+        "jsr:@std/path@1"
+      ]
     },
     "@fresh/build-id@1.0.1": {
       "integrity": "12a2ec25fd52ae9ec68c26848a5696cd1c9b537f7c983c7e56e4fb1e7e816c20",
@@ -71,7 +93,7 @@
         "jsr:@deno/esbuild-plugin",
         "jsr:@fresh/build-id",
         "jsr:@std/encoding@^1.0.10",
-        "jsr:@std/fmt",
+        "jsr:@std/fmt@^1.0.8",
         "jsr:@std/fs@^1.0.19",
         "jsr:@std/html",
         "jsr:@std/http",
@@ -131,6 +153,9 @@
     },
     "@std/media-types@1.1.0": {
       "integrity": "c9d093f0c05c3512932b330e3cc1fe1d627b301db33a4c2c2185c02471d6eaa4"
+    },
+    "@std/path@1.0.9": {
+      "integrity": "260a49f11edd3db93dd38350bf9cd1b4d1366afa98e81b86167b4e3dd750129e"
     },
     "@std/path@1.1.4": {
       "integrity": "1d2d43f39efb1b42f0b1882a25486647cb851481862dc7313390b2bb044314b5",
@@ -1229,6 +1254,9 @@
         "is-hexadecimal"
       ]
     },
+    "postgres@3.4.9": {
+      "integrity": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    },
     "preact-render-to-string@6.6.5_preact@10.28.3": {
       "integrity": "sha512-O6MHzYNIKYaiSX3bOw0gGZfEbOmlIDtDfWwN1JJdc/T3ihzRT6tGGSEWE088dWrEDGa1u7101q+6fzQnO9XCPA==",
       "dependencies": [
@@ -1643,6 +1671,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@db/sqlite@0.12",
       "jsr:@fresh/core@2",
       "jsr:@std/crypto@1",
       "jsr:@std/encoding@1",
