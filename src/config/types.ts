@@ -753,6 +753,28 @@ export interface SystemConfig {
      * @example ["summary", "tags", "author"]
      */
     customFields?: string[];
+    /** Per-field relevance weights. Higher = more important. Default weight: 1. */
+    fields?: {
+      title?: { weight: number };
+      summary?: { weight: number };
+      body?: { weight: number };
+      [field: string]: { weight: number } | undefined;
+    };
+    /**
+     * Flex Object type names to include in the search index.
+     * Records from these types are indexed alongside content pages.
+     * @example ["posts", "events"]
+     */
+    include_flex?: string[];
+    /** Facet definitions for filtering search results. */
+    facets?: Array<{
+      /** Dot-path into frontmatter, e.g. "taxonomy.category" or "template" */
+      field: string;
+    }>;
+    /** Return highlighted excerpts with match terms wrapped in <mark>. Default: true */
+    highlight?: boolean;
+    /** Character length of returned excerpts. Default: 160 */
+    excerpt_length?: number;
   };
   /**
    * Session persistence backend.

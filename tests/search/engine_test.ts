@@ -346,3 +346,51 @@ Deno.test("search.build: storage read failure falls back to metadata-only index"
   const results = engine.search("specialtitle");
   assertEquals(results.length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Tests — suggest
+// ---------------------------------------------------------------------------
+
+Deno.test("search.suggest: returns strings starting with prefix", async () => {
+  const page = makePage({ title: "Deno Runtime Guide", sourcePath: "01.deno/default.md" });
+  const engine = createSearchEngine({
+    pages: [page],
+    storage: makeStorage(),
+    contentDir: "content",
+    formats: makeFormats(),
+  });
+  await engine.build();
+  const suggestions = engine.suggest("den");
+  assertEquals(suggestions.length > 0, true);
+  for (const s of suggestions) {
+    assertEquals(s.toLowerCase().startsWith("den"), true);
+  }
+});
+
+Deno.test("search.suggest: returns empty for short prefix", async () => {
+  const page = makePage({ title: "Hello", sourcePath: "01.hello/default.md" });
+  const engine = createSearchEngine({
+    pages: [page],
+    storage: makeStorage(),
+    contentDir: "content",
+    formats: makeFormats(),
+  });
+  await engine.build();
+  assertEquals(engine.suggest("h"), []);
+  assertEquals(engine.suggest(""), []);
+});
+
+Deno.test("search.suggest: respects limit", async () => {
+  const pages = Array.from({ length: 10 }, (_, i) =>
+    makePage({ title: `Term${i} article`, sourcePath: `0${i}.t/default.md` })
+  );
+  const engine = createSearchEngine({
+    pages,
+    storage: makeStorage(),
+    contentDir: "content",
+    formats: makeFormats(),
+  });
+  await engine.build();
+  const suggestions = engine.suggest("ter", 3);
+  assertEquals(suggestions.length <= 3, true);
+});

@@ -21,6 +21,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import type { SearchEngine } from "../search/engine.ts";
+import { resolveFacetValue } from "../search/engine.ts";
 import { createSearchAnalytics } from "../search/analytics.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { renderSections } from "../sections/mod.ts";
@@ -217,7 +218,7 @@ export function duneRoutes(
       // GET /api/search — faceted full-text search
       if (path === "/api/search") {
         if (!search) {
-          return Response.json({ items: [], total: 0, query: "", filters: {} });
+          return Response.json({ results: [], total: 0, query: "", filters: {}, facets: {} });
         }
 
         const q = url.searchParams.get("q") ?? "";
@@ -230,6 +231,7 @@ export function duneRoutes(
           parseInt(url.searchParams.get("limit") ?? "20"),
           100,
         );
+        const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0"));
 
         // Collect taxonomy filters: taxonomy[category][]=news&taxonomy[tag][]=deno
         const taxonomyFilters: Record<string, string[]> = {};
@@ -242,8 +244,28 @@ export function duneRoutes(
           }
         }
 
+        // Collect facet filters: facet[template]=post&facet[taxonomy.category]=news
+        const facetFilters: Record<string, string> = {};
+        for (const [key, value] of url.searchParams.entries()) {
+          const match = key.match(/^facet\[([^\]]+)\]$/);
+          if (match) {
+            facetFilters[match[1]] = value;
+          }
+        }
+
+        // Determine configured facet fields from the engine config (passed via engine)
+        // We read facet fields from the engine's search config when available
+        const configuredFacetFields: string[] = (() => {
+          try {
+            const searchCfg = (engine.config as { system?: { search?: { facets?: Array<{ field: string }> } } }).system?.search;
+            return searchCfg?.facets?.map((f) => f.field) ?? [];
+          } catch {
+            return [];
+          }
+        })();
+
         // Fetch a larger candidate set then filter down
-        const raw = search.search(q, 200);
+        const raw = search.search(q, 500);
 
         const filtered = raw.filter(({ page: p }) => {
           if (filterTemplate && p.template !== filterTemplate) return false;
@@ -255,11 +277,54 @@ export function duneRoutes(
             const pageVals = p.taxonomy[taxName] ?? [];
             if (!vals.some((v) => pageVals.includes(v))) return false;
           }
+          // Apply facet filters
+          for (const [field, filterVal] of Object.entries(facetFilters)) {
+            // Build a synthetic frontmatter-like object for resolving dot-paths
+            const syntheticFm: Record<string, unknown> = {
+              template: p.template,
+              taxonomy: p.taxonomy,
+              date: p.date,
+              language: p.language,
+              published: p.published,
+            };
+            const val = resolveFacetValue(syntheticFm, field);
+            if (val === undefined) return false;
+            if (Array.isArray(val)) {
+              if (!val.includes(filterVal)) return false;
+            } else {
+              if (val !== filterVal) return false;
+            }
+          }
           return true;
         });
 
+        // Compute facet counts across all filtered results (before limit/offset)
+        const facets: Record<string, Record<string, number>> = {};
+        if (configuredFacetFields.length > 0) {
+          for (const field of configuredFacetFields) {
+            facets[field] = {};
+          }
+          for (const { page: p } of filtered) {
+            const syntheticFm: Record<string, unknown> = {
+              template: p.template,
+              taxonomy: p.taxonomy,
+              date: p.date,
+              language: p.language,
+              published: p.published,
+            };
+            for (const field of configuredFacetFields) {
+              const val = resolveFacetValue(syntheticFm, field);
+              if (val === undefined) continue;
+              const vals = Array.isArray(val) ? val : [val];
+              for (const v of vals) {
+                facets[field][v] = (facets[field][v] ?? 0) + 1;
+              }
+            }
+          }
+        }
+
         const resultCount = filtered.length;
-        const items = filtered.slice(0, limit).map(({ page: p, score, excerpt }) => ({
+        const items = filtered.slice(offset, offset + limit).map(({ page: p, score, excerpt, highlights }) => ({
           route: p.route,
           title: p.title,
           template: p.template,
@@ -267,6 +332,7 @@ export function duneRoutes(
           taxonomy: p.taxonomy,
           score,
           excerpt,
+          ...(highlights !== undefined ? { highlights } : {}),
         }));
 
         // Fire-and-forget analytics recording
@@ -277,7 +343,7 @@ export function duneRoutes(
         }
 
         return Response.json({
-          items,
+          results: items,
           total: resultCount,
           query: q,
           filters: {
@@ -288,6 +354,7 @@ export function duneRoutes(
             to: filterTo ?? undefined,
             taxonomy: Object.keys(taxonomyFilters).length ? taxonomyFilters : undefined,
           },
+          facets,
         });
       }
 
