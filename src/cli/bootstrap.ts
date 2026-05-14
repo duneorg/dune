@@ -45,6 +45,7 @@ import type { MachineTranslator } from "../mt/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
 import { join, resolve } from "@std/path";
+import { logger, initLogger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -197,6 +198,13 @@ export async function bootstrap(
     config.system.debug = true;
   }
 
+  // Initialize the global logger from config (config.system.logging) or env vars.
+  // Do this early so all subsequent bootstrap steps emit structured logs.
+  initLogger({
+    format: config.system.logging?.format,
+    level: config.system.logging?.level,
+  });
+
   // 3. Format handlers
   const formats = new FormatRegistry();
   formats.register(new MarkdownHandler());
@@ -219,16 +227,17 @@ export async function bootstrap(
         mdxHandler = new MdxHandler({ components: registry });
         if (debug) {
           const names = Object.keys(mod.default).join(", ");
-          console.log(`  ✓ MDX components loaded from theme: ${names}`);
+          logger.debug("mdx.components.loaded", { theme: config.theme.name, components: names });
         }
       } else {
-        console.warn(
-          `  ⚠️  ${mdxComponentsPath}: default export must be a plain object — MDX components not loaded`,
-        );
+        logger.warn("mdx.components.invalid", {
+          path: mdxComponentsPath,
+          message: "default export must be a plain object — MDX components not loaded",
+        });
         mdxHandler = new MdxHandler();
       }
     } catch (err) {
-      console.warn(`  ⚠️  Failed to load ${mdxComponentsPath}: ${err} — MDX components not loaded`);
+      logger.warn("mdx.components.load-failed", { path: mdxComponentsPath, error: String(err) });
       mdxHandler = new MdxHandler();
     }
   } else {
@@ -380,9 +389,11 @@ export async function bootstrap(
     try {
       const legacyEntries = await storage.list(legacyUsersDir);
       if (legacyEntries.some((e) => e.name.endsWith(".json"))) {
-        console.warn(`\n  ⚠️  Legacy admin users found in ${legacyUsersDir}/`);
-        console.warn(`     Users are now stored in ${dataDir}/users/ (git-tracked).`);
-        console.warn(`     Move your user files or a new default admin will be created.\n`);
+        logger.warn("admin.users.legacy-location", {
+          legacyDir: legacyUsersDir,
+          newDir: `${dataDir}/users`,
+          message: "Move user files or a new default admin will be created",
+        });
       }
     } catch { /* ignore */ }
   }

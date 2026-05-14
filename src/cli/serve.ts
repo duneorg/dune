@@ -21,6 +21,7 @@
 
 import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
+import { logger } from "../core/logger.ts";
 import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
@@ -166,7 +167,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     .filter((p): p is string => {
       if (!isValidPluginIslandSpecifier(p)) {
         if (p !== undefined) {
-          console.warn(`[dune] plugin island rejected (invalid path): ${JSON.stringify(p)}`);
+          logger.warn("plugin.island.rejected", { path: p });
         }
         return false;
       }

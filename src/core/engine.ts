@@ -9,6 +9,7 @@
  */
 
 import { join, dirname } from "@std/path";
+import { logger } from "./logger.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
 import type {
@@ -217,7 +218,7 @@ export async function createDuneEngine(
         new TextEncoder().encode(stringifyYaml(existing).trimEnd() + "\n"),
       );
     } catch (err) {
-      console.warn("[dune] switchTheme: could not persist to site.yaml:", err);
+      logger.warn("theme.switch.persist-failed", { error: String(err) });
     }
 
     // Reload theme config for the new theme
@@ -279,7 +280,10 @@ export async function createDuneEngine(
     if (blueprintsDir !== null) {
       blueprints = await loadBlueprints(storage, blueprintsDir);
       if (config.system.debug && Object.keys(blueprints).length > 0) {
-        console.log(`[dune] Loaded ${Object.keys(blueprints).length} blueprint(s): ${Object.keys(blueprints).join(", ")}`);
+        logger.debug("blueprints.loaded", {
+          count: Object.keys(blueprints).length,
+          names: Object.keys(blueprints).join(", "),
+        });
       }
     }
 
@@ -297,11 +301,12 @@ export async function createDuneEngine(
     taxonomyMap = result.taxonomyMap;
 
     if (config.system.debug) {
-      console.log(
-        `[dune] Indexed ${result.indexed} pages in ${result.duration}ms` +
-        ` (home: ${result.homeSlug})` +
-        (result.errors.length > 0 ? ` (${result.errors.length} errors)` : ""),
-      );
+      logger.debug("index.built", {
+        indexed: result.indexed,
+        durationMs: result.duration,
+        home: result.homeSlug,
+        errors: result.errors.length,
+      });
     }
 
     // Create route resolver
@@ -484,7 +489,7 @@ export async function createDuneEngine(
       router.rebuild(pages, result.homeSlug);
 
       if (config.system.debug) {
-        console.log(`[dune] Rebuilt index: ${result.indexed} pages in ${result.duration}ms`);
+        logger.debug("index.rebuilt", { indexed: result.indexed, durationMs: result.duration });
       }
 
       if (hooks) {

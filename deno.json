@@ -14,7 +14,8 @@
     "./db": "./src/db/mod.ts",
     "./auth/api-guard": "./src/auth/api-guard.ts",
     "./email": "./src/email/mod.ts",
-    "./ui": "./src/ui/mod.ts"
+    "./ui": "./src/ui/mod.ts",
+    "./logger": "./src/core/logger.ts"
   },
   "imports": {
     "fresh": "jsr:@fresh/core@^2",

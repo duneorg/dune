@@ -28,6 +28,7 @@ import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
+import { logger, generateRequestId } from "../core/logger.ts";
 
 // Per-IP rate limit for public read endpoints (120 req/min).
 const publicRateLimiter = new RateLimiter(120, 60 * 1000);
@@ -408,6 +409,11 @@ export function duneRoutes(
       renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>,
     ): Promise<Response> => {
       const url = new URL(req.url);
+      // Bind a per-request correlation ID for structured log lines emitted
+      // during this request. The child logger is local to this invocation and
+      // does not mutate the global logger.
+      const reqLog = logger.child({ requestId: generateRequestId(), pathname: url.pathname });
+      reqLog.debug("request.start", { method: req.method });
 
       // ── Search route ──────────────────────────────────────────────────────
       // Intercept /search before content resolution so it is always served,

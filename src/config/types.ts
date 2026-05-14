@@ -868,6 +868,23 @@ export interface SystemConfig {
      */
     slowQueryThresholdMs?: number;
   };
+  /**
+   * Structured logging configuration.
+   */
+  logging?: {
+    /**
+     * Log output format.
+     * "text" — human-readable with ANSI colours (default in dev)
+     * "json" — NDJSON one-object-per-line (default in prod / Deno Deploy)
+     */
+    format?: "text" | "json";
+    /**
+     * Minimum log level to emit.
+     * Lines below this level are suppressed.
+     * Default: "info"
+     */
+    level?: "debug" | "info" | "warn" | "error";
+  };
   debug: boolean;
   timezone: string;
   /**
