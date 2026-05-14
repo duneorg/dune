@@ -515,6 +515,42 @@ export interface SystemConfig {
      */
     customFields?: string[];
   };
+  /**
+   * Session persistence backend.
+   * Defaults to "local" (file-backed, single-process). Use "kv" for Deno Deploy
+   * or multi-isolate environments, and "redis" for traditional multi-process
+   * deployments behind a load balancer.
+   *
+   * @example
+   * ```yaml
+   * system:
+   *   session_store:
+   *     type: kv
+   * ```
+   *
+   * @example Redis
+   * ```yaml
+   * system:
+   *   session_store:
+   *     type: redis
+   *     url: "$REDIS_URL"
+   * ```
+   */
+  session_store?: {
+    /**
+     * Backend type:
+     *   "local" — file-backed via StorageAdapter (default)
+     *   "kv"    — Deno KV (auto-selected on Deno Deploy)
+     *   "redis" — Redis via ioredis (requires url)
+     */
+    type?: "local" | "kv" | "redis";
+    /**
+     * Redis connection URL. Required when type === "redis".
+     * Supports "$ENV_VAR" expansion.
+     * @example "redis://localhost:6379"
+     */
+    url?: string;
+  };
   /** Performance metrics collection settings. */
   metrics?: {
     /**

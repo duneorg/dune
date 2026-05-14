@@ -12,29 +12,28 @@ import { verifyPassword, DUMMY_HASH, needsRehash } from "../auth/passwords.ts";
 import { findOrProvisionUser } from "../auth/provisioner.ts";
 import { RateLimiter, clientIp } from "../../security/rate-limit.ts";
 
+// Module-level fallback limiter — used when no rateLimitStore is injected via
+// AdminContext (single-process deployments, tests, etc.).
 const loginRateLimiter = new RateLimiter(5, 15 * 60 * 1000);
 
-// Per-account lockout: 10 failed attempts within 15 minutes locks the
-// username for 15 minutes regardless of the source IP. Complements the
-// per-IP rate limiter — an attacker rotating IPs can still hit the
-// per-username limit, and a low-and-slow distributed attack will still
-// trigger the audit alarm.
+// Per-account lockout fallback (in-process Map, single-process only).
+// When a RateLimitStore is present on AdminContext, store-backed methods are
+// used instead and these module-level structures are bypassed.
 const LOGIN_LOCKOUT_THRESHOLD = 10;
 const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
 const accountFailures = new Map<string, number[]>();
 
-function recordAccountFailure(username: string): number {
+function recordAccountFailureFallback(username: string): number {
   const now = Date.now();
   const lower = username.toLowerCase();
   const arr = accountFailures.get(lower) ?? [];
-  // Drop attempts outside the rolling window
   const recent = arr.filter((t) => now - t < LOGIN_LOCKOUT_WINDOW_MS);
   recent.push(now);
   accountFailures.set(lower, recent);
   return recent.length;
 }
 
-function isAccountLocked(username: string): boolean {
+function isAccountLockedFallback(username: string): boolean {
   const now = Date.now();
   const arr = accountFailures.get(username.toLowerCase());
   if (!arr) return false;
@@ -42,7 +41,7 @@ function isAccountLocked(username: string): boolean {
   return recent.length >= LOGIN_LOCKOUT_THRESHOLD;
 }
 
-function clearAccountFailures(username: string): void {
+function clearAccountFailuresFallback(username: string): void {
   accountFailures.delete(username.toLowerCase());
 }
 
@@ -99,7 +98,7 @@ export const handler = {
   },
 
   async POST(ctx: FreshContext<AdminState>) {
-    const { auth, users, sessions, prefix, auditLogger, authProvider, config } = ctx.state.adminContext;
+    const { auth, users, sessions, prefix, auditLogger, authProvider, config, rateLimitStore } = ctx.state.adminContext;
     const adminConfig = config.admin!;
     const url = ctx.url;
 
@@ -131,14 +130,31 @@ export const handler = {
 
     // Login. Rate-limit / lockout key is IP-based — only honor forwarded
     // headers when the operator explicitly opts in via system.trusted_proxies.
-    // Otherwise an attacker can rotate X-Forwarded-For per attempt to evade
-    // the per-IP failed-login lockout.
     const trustForwardedFor = config.system?.trusted_proxies === true;
     const ip = clientIp(ctx.req, { trustForwardedFor });
 
-    if (!loginRateLimiter.check(ip)) {
-      const retryAfter = loginRateLimiter.retryAfter(ip);
-      return ctx.render(<LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/`, prefix }} />, { status: 429 });
+    // Use the store-backed rate limiter when available; fall back to the
+    // module-level in-process limiter for single-process deployments.
+    if (rateLimitStore) {
+      const { allowed, retryAfter } = await rateLimitStore.check(
+        ip,
+        5,
+        15 * 60 * 1000,
+      );
+      if (!allowed) {
+        return ctx.render(
+          <LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/`, prefix }} />,
+          { status: 429 },
+        );
+      }
+    } else {
+      if (!loginRateLimiter.check(ip)) {
+        const retryAfter = loginRateLimiter.retryAfter(ip);
+        return ctx.render(
+          <LoginPage data={{ error: `Too many login attempts. Try again in ${retryAfter} seconds.`, next: `${prefix}/`, prefix }} />,
+          { status: 429 },
+        );
+      }
     }
 
     const formData = await ctx.req.formData();
@@ -151,7 +167,12 @@ export const handler = {
     }
 
     // Per-account lockout — independent from per-IP rate limit.
-    if (isAccountLocked(username)) {
+    const accountKey = username.toLowerCase();
+    const locked = rateLimitStore
+      ? await rateLimitStore.isLocked(accountKey, LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_WINDOW_MS)
+      : isAccountLockedFallback(username);
+
+    if (locked) {
       void auditLogger?.log({
         event: "auth.login_failed",
         actor: null,
@@ -161,8 +182,6 @@ export const handler = {
         detail: { username, locked: true },
         outcome: "failure",
       }).catch(() => {});
-      // Use the same error message as a normal invalid-credentials response
-      // so the lockout doesn't double as a username-existence oracle.
       return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 429 });
     }
 
@@ -171,7 +190,11 @@ export const handler = {
     if (authProvider) {
       const providerUser = await authProvider.authenticate({ username, password });
       if (!providerUser) {
-        recordAccountFailure(username);
+        if (rateLimitStore) {
+          await rateLimitStore.recordFailure(accountKey, LOGIN_LOCKOUT_WINDOW_MS);
+        } else {
+          recordAccountFailureFallback(username);
+        }
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
         return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
@@ -181,13 +204,16 @@ export const handler = {
       const hashToVerify = found?.passwordHash ?? DUMMY_HASH;
       const valid = await verifyPassword(password, hashToVerify);
       if (!found || !found.enabled || !valid) {
-        recordAccountFailure(username);
+        if (rateLimitStore) {
+          await rateLimitStore.recordFailure(accountKey, LOGIN_LOCKOUT_WINDOW_MS);
+        } else {
+          recordAccountFailureFallback(username);
+        }
         void auditLogger?.log({ event: "auth.login_failed", actor: null, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: { username }, outcome: "failure" }).catch(() => {});
         return ctx.render(<LoginPage data={{ error: "Invalid credentials", next, prefix }} />, { status: 401 });
       }
       user = found;
       // Transparently upgrade legacy (low-iteration) hashes to current cost.
-      // Never blocks the login on rehash failure — login succeeded already.
       if (needsRehash(found.passwordHash)) {
         try {
           await users.changePassword(found.id, password);
@@ -201,7 +227,11 @@ export const handler = {
     const session = await sessions.create(user.id, ip === "unknown" ? undefined : ip);
 
     // Successful login resets the per-account failure counter.
-    clearAccountFailures(username);
+    if (rateLimitStore) {
+      await rateLimitStore.clearFailures(accountKey);
+    } else {
+      clearAccountFailuresFallback(username);
+    }
 
     void auditLogger?.log({ event: "auth.login", actor: { userId: user.id, username: user.username, name: user.name }, ip: ip === "unknown" ? null : ip, userAgent: ctx.req.headers.get("user-agent"), target: null, detail: {}, outcome: "success" }).catch(() => {});
 

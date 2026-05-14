@@ -1,19 +1,40 @@
 /**
  * Session management — create, validate, and revoke admin sessions.
  *
- * Sessions are stored as JSON files in .dune/admin/sessions/ (gitignored).
- * This is ephemeral runtime state — losing sessions only means users must log in again.
- * Each session has a crypto-random ID used as the session cookie value.
+ * The SessionManager wraps a SessionStore (file-backed, KV, or Redis) and
+ * adds the session-creation logic (random ID generation, expiry calculation).
+ * The public SessionManager interface is unchanged — all call sites continue
+ * to work without modification.
+ *
+ * For the legacy single-process file-backed store, pass a LocalSessionStore
+ * via the `store` option. When `storage` + `sessionsDir` are provided instead,
+ * a LocalSessionStore is created automatically (backward-compatible path).
  */
 
 import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../../storage/types.ts";
 import type { AdminSession } from "../types.ts";
+import type { SessionStore } from "../../session/types.ts";
+import { createLocalSessionStore } from "../../session/local.ts";
+
+export type { SessionStore };
 
 export interface SessionManagerConfig {
-  storage: StorageAdapter;
-  /** Directory for session files (e.g. ".dune/admin/sessions") */
-  sessionsDir: string;
+  /**
+   * Pre-constructed session store. When provided, `storage` and `sessionsDir`
+   * are ignored.
+   */
+  store?: SessionStore;
+  /**
+   * StorageAdapter for the local (file-backed) store.
+   * Required when `store` is not supplied.
+   */
+  storage?: StorageAdapter;
+  /**
+   * Directory for session files when using the local backend.
+   * E.g. ".dune/admin/sessions"
+   */
+  sessionsDir?: string;
   /** Session lifetime in seconds */
   lifetime: number;
 }
@@ -32,10 +53,27 @@ export interface SessionManager {
 }
 
 /**
- * Create a session manager backed by the storage adapter.
+ * Create a session manager backed by the given store.
+ *
+ * When `config.store` is not supplied, falls back to constructing a
+ * LocalSessionStore from `config.storage` + `config.sessionsDir`, preserving
+ * the original file-backed behaviour for existing callers.
  */
 export function createSessionManager(config: SessionManagerConfig): SessionManager {
-  const { storage, sessionsDir, lifetime } = config;
+  const { lifetime } = config;
+
+  const store: SessionStore = config.store ?? (() => {
+    if (!config.storage) {
+      throw new Error(
+        "[dune] createSessionManager: either 'store' or 'storage' must be provided.",
+      );
+    }
+    return createLocalSessionStore({
+      storage: config.storage,
+      sessionsDir: config.sessionsDir ?? ".dune/admin/sessions",
+      lifetime,
+    });
+  })();
 
   async function create(userId: string, ip?: string): Promise<AdminSession> {
     const id = await generateSessionId();
@@ -45,95 +83,28 @@ export function createSessionManager(config: SessionManagerConfig): SessionManag
       id,
       userId,
       createdAt: now,
-      expiresAt: now + (lifetime * 1000),
+      expiresAt: now + lifetime * 1000,
       ip,
     };
 
-    const path = `${sessionsDir}/${id}.json`;
-    const data = new TextEncoder().encode(JSON.stringify(session));
-    await storage.write(path, data);
-
+    await store.set(session);
     return session;
   }
 
   async function get(sessionId: string): Promise<AdminSession | null> {
-    const path = `${sessionsDir}/${sessionId}.json`;
-
-    try {
-      if (!(await storage.exists(path))) return null;
-
-      const data = await storage.read(path);
-      const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
-
-      // Check expiration
-      if (session.expiresAt < Date.now()) {
-        // Clean up expired session
-        await storage.delete(path);
-        return null;
-      }
-
-      return session;
-    } catch {
-      return null;
-    }
+    return store.get(sessionId);
   }
 
   async function revoke(sessionId: string): Promise<void> {
-    const path = `${sessionsDir}/${sessionId}.json`;
-    try {
-      await storage.delete(path);
-    } catch {
-      // Already deleted — fine
-    }
+    await store.delete(sessionId);
   }
 
   async function revokeAll(userId: string): Promise<void> {
-    try {
-      const entries = await storage.list(sessionsDir);
-      for (const entry of entries) {
-        if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
-        const path = `${sessionsDir}/${entry.name}`;
-        try {
-          const data = await storage.read(path);
-          const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
-          if (session.userId === userId) {
-            await storage.delete(path);
-          }
-        } catch {
-          // Skip corrupt files
-        }
-      }
-    } catch {
-      // Sessions dir may not exist yet
-    }
+    await store.deleteByUserId(userId);
   }
 
   async function cleanup(): Promise<number> {
-    let cleaned = 0;
-    try {
-      const entries = await storage.list(sessionsDir);
-      const now = Date.now();
-
-      for (const entry of entries) {
-        if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
-        const path = `${sessionsDir}/${entry.name}`;
-        try {
-          const data = await storage.read(path);
-          const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
-          if (session.expiresAt < now) {
-            await storage.delete(path);
-            cleaned++;
-          }
-        } catch {
-          // Corrupt file — remove it
-          await storage.delete(path);
-          cleaned++;
-        }
-      }
-    } catch {
-      // Sessions dir doesn't exist
-    }
-    return cleaned;
+    return store.cleanup();
   }
 
   return { create, get, revoke, revokeAll, cleanup };
