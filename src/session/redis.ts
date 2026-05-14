@@ -131,7 +131,7 @@ export async function createRedisSessionStoreFromUrl(
   // Cast through unknown because the ioredis type declaration uses a class
   // with overloaded constructors that TypeScript cannot directly narrow to our
   // minimal RedisClient interface without the intermediate cast.
-  const mod = await import("npm:ioredis");
+  const mod = await import("npm:ioredis@^5");
   const RedisClass = (mod.default ?? mod) as unknown as new (url: string) => RedisClient;
   const client = new RedisClass(url);
   return createRedisSessionStore({ client, lifetimeSec });

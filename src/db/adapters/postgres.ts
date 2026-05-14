@@ -25,7 +25,7 @@ let _sqlClient: PostgresClient | null = null;
 
 async function getClient(url: string): Promise<PostgresClient> {
   if (_sqlClient) return _sqlClient;
-  const mod = await import("npm:postgres") as unknown as PostgresMod;
+  const mod = await import("npm:postgres@^3.4") as unknown as PostgresMod;
   _sqlClient = new mod.default(url);
   return _sqlClient;
 }

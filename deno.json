@@ -35,7 +35,9 @@
     "sharp": "npm:sharp@^0.33",
     "nodemailer": "npm:nodemailer@^6",
     "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2",
-    "@db/sqlite": "jsr:@db/sqlite@^0.12"
+    "@db/sqlite": "jsr:@db/sqlite@^0.12",
+    "postgres": "npm:postgres@^3.4",
+    "ioredis": "npm:ioredis@^5"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",
