@@ -42,6 +42,8 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
+import { createCdnProvider } from "../cdn/providers/mod.ts";
+import { CdnManager } from "../cdn/manager.ts";
 import { join, resolve } from "@std/path";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -472,6 +474,28 @@ export async function bootstrap(
   if (metricsEnabled) {
     hooks.on("onRebuild", async () => {
       metrics.recordRebuild(0, engine.pages.length);
+    });
+  }
+
+  // 16. CDN cache invalidation — purge affected routes after every rebuild.
+  const cdnProvider = createCdnProvider(config.site.cdn);
+  if (cdnProvider && config.site.cdn?.base_url) {
+    const cdnManager = new CdnManager({
+      provider: cdnProvider,
+      baseUrl: config.site.cdn.base_url,
+    });
+    hooks.on("onRebuild", async () => {
+      try {
+        // Purge all known public routes after a full rebuild.
+        // Engine pages are already updated by the time onRebuild fires.
+        const routes = engine.pages.map((p) => p.route);
+        await cdnManager.purgeRoutes(routes);
+        if (config.system.debug) {
+          console.log(`[dune] cdn: purged ${routes.length} route(s) via ${cdnProvider.name}`);
+        }
+      } catch (err) {
+        console.warn(`[dune] cdn: purge failed: ${err}`);
+      }
     });
   }
 

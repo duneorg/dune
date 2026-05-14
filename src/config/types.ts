@@ -426,6 +426,50 @@ export interface SiteConfig {
     changefreq?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
   };
   /**
+   * CDN cache invalidation configuration.
+   * After each content rebuild, Dune purges affected routes from the CDN edge
+   * cache so visitors see updated content without waiting for TTL expiry.
+   *
+   * @example Cloudflare
+   * ```yaml
+   * site:
+   *   cdn:
+   *     provider: cloudflare
+   *     base_url: https://example.com
+   *     cloudflare:
+   *       zoneId: "$CF_ZONE_ID"
+   *       apiToken: "$CF_API_TOKEN"
+   * ```
+   *
+   * @example BunnyCDN
+   * ```yaml
+   * site:
+   *   cdn:
+   *     provider: bunny
+   *     base_url: https://example.com
+   *     bunny:
+   *       apiKey: "$BUNNY_API_KEY"
+   * ```
+   */
+  cdn?: {
+    /** CDN provider to use for cache invalidation. */
+    provider?: "cloudflare" | "fastly" | "bunny" | "custom";
+    /**
+     * Base URL of the site as seen by the CDN.
+     * Used to build absolute purge URLs from site-relative routes.
+     * @example "https://example.com"
+     */
+    base_url?: string;
+    cloudflare?: { zoneId: string; apiToken: string };
+    fastly?: { serviceId: string; apiKey: string };
+    bunny?: { apiKey: string; pullZoneId?: string };
+    /**
+     * Custom provider: receives POST with body { urls: string[] }.
+     * api_token is sent as Authorization: Bearer {api_token} when present.
+     */
+    custom?: { purge_url: string; api_token?: string };
+  };
+  /**
    * Trust raw HTML in authored content.
    *
    * When `false` (default), HTML inside markdown bodies and page-builder
