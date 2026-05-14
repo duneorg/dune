@@ -93,9 +93,12 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
   /**
    * GET /payments/portal
    *
-   * Requires an authenticated site user and a customerId query parameter
-   * (the Stripe customer ID, e.g. cus_xxx). Redirects to the Stripe billing
+   * Requires an authenticated site user. Redirects to the Stripe billing
    * portal so the user can manage their subscription.
+   *
+   * The Stripe customer ID is read exclusively from the user's stored profile
+   * (set by the webhook handler after a successful checkout). It is never
+   * accepted from query parameters to prevent IDOR attacks.
    */
   async function portal(req: Request): Promise<Response> {
     const user = getSiteUser(req);
@@ -103,10 +106,15 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const url = new URL(req.url);
-    const customerId = url.searchParams.get("customerId");
+    // Use only the verified customer ID stored on the user profile.
+    // Accepting customerId from client input (query param, body, etc.) would
+    // allow any authenticated user to open a billing portal for any customer.
+    const customerId = user.stripeCustomerId;
     if (!customerId) {
-      return Response.json({ error: "Missing customerId query parameter" }, { status: 400 });
+      return Response.json(
+        { error: "No billing account found. Please complete a purchase first." },
+        { status: 404 },
+      );
     }
 
     let result;

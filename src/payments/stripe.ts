@@ -174,6 +174,11 @@ export function createStripePaymentProvider(
 
     if (!timestamp || !expectedSig) return null;
 
+    // Reject stale webhooks to prevent replay attacks.
+    // Stripe's own SDK uses a 300-second (5-minute) tolerance.
+    const webhookAge = Math.abs(Date.now() / 1000 - Number(timestamp));
+    if (!Number.isFinite(webhookAge) || webhookAge > 300) return null;
+
     // Stripe signs: "{timestamp}.{rawBody}"
     const signedPayload = `${timestamp}.${rawBody}`;
     const computedSig = await hmacSha256Hex(secret, signedPayload);

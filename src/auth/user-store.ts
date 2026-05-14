@@ -17,7 +17,7 @@ export interface SiteUserStore {
   create(user: SiteUserCreate): Promise<SiteUser>;
   update(
     id: string,
-    updates: Partial<Pick<SiteUser, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled">>,
+    updates: Partial<Pick<SiteUser, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled" | "stripeCustomerId">>,
   ): Promise<SiteUser | null>;
   list(opts?: { limit?: number; offset?: number }): Promise<SiteUser[]>;
   delete(id: string): Promise<boolean>;

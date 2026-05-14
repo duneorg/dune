@@ -17,7 +17,8 @@ import { createLocalSiteUserStore } from "./user-store.ts";
 import { createSiteAuthMiddleware, createSiteSessionManager } from "./middleware.ts";
 import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
-import type { SiteUser } from "./types.ts";
+import { SITE_USER_HEADER, type SiteUser } from "./types.ts";
+import { InMemoryMagicTokenStore } from "./magic-link.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -89,9 +90,21 @@ export async function mountDuneAuth(
 
   // ── Magic link ─────────────────────────────────────────────────────────────
   const magicEnabled = authConfig?.providers?.magicLink?.enabled === true && mode === "dune";
-  // Default secret from env for convenience; prod deployments should set auth.jwt.secret or
-  // a dedicated magic link secret in site.yaml / environment.
-  const magicSecret = Deno.env.get("DUNE_AUTH_SECRET") ?? "insecure-default-change-in-production";
+  const envSecret = Deno.env.get("DUNE_AUTH_SECRET");
+
+  if (magicEnabled && !envSecret) {
+    // Magic links are HMAC-signed with this secret. An insecure default allows
+    // anyone who knows the default to forge magic link tokens.
+    throw new Error(
+      "[dune/auth] Magic links are enabled but DUNE_AUTH_SECRET is not set. " +
+        "Set DUNE_AUTH_SECRET to a cryptographically random secret of at least " +
+        "32 bytes before enabling magic links in production.",
+    );
+  }
+
+  // Fall back to an empty string only in code paths where magicEnabled is false
+  // (the token store and sign function will not be called).
+  const magicSecret = envSecret ?? "";
 
   // ── Email sender ────────────────────────────────────────────────────────────
   // Reuse the admin SMTP config if present, same pattern as admin/email.ts
@@ -117,6 +130,11 @@ export async function mountDuneAuth(
     }
   }
 
+  // ── Magic token store (single-use enforcement) ─────────────────────────────
+  // Use an in-memory store by default. Multi-process deployments should inject
+  // a shared store (KV, Redis) via the authConfig extension points.
+  const magicTokenStore = magicEnabled ? new InMemoryMagicTokenStore() : undefined;
+
   // ── Routes ─────────────────────────────────────────────────────────────────
   const routes = createAuthRoutes({
     userStore,
@@ -128,11 +146,37 @@ export async function mountDuneAuth(
     mode,
     sendEmail,
     trustForwardedFor,
+    magicTokenStore,
   });
 
   // ── Register global middleware — populates ctx.state.siteUser ───────────────
+  //
+  // Security: strip any externally-supplied x-dune-site-user header before
+  // resolving the user from the session/JWT. Without this an external caller
+  // could forge the header and impersonate any site user in handlers that read
+  // it via getSiteUser() or requireAuth().
+  //
+  // After resolving the real user, inject the header back so that downstream
+  // plain-Request handlers (content gating, API guards, payment routes) can
+  // read the verified user without access to Fresh's ctx.state.
   app.use(async (fc) => {
-    (fc.state as any).siteUser = await authMiddleware.resolveUser(fc.req);
+    // Build a clean header set with any externally-supplied header removed.
+    const cleanHeaders = new Headers(fc.req.headers);
+    cleanHeaders.delete(SITE_USER_HEADER);
+    const cleanReq = new Request(fc.req, { headers: cleanHeaders });
+
+    // Resolve the real user from the session cookie / JWT only.
+    const user = await authMiddleware.resolveUser(cleanReq);
+
+    // Re-inject the resolved user so downstream handlers can call getSiteUser(req).
+    if (user) {
+      cleanHeaders.set(SITE_USER_HEADER, JSON.stringify(user));
+    }
+    // Replace the request on the context so all downstream handlers see the
+    // sanitised + enriched version.
+    (fc as any).req = new Request(fc.req, { headers: cleanHeaders });
+
+    (fc.state as any).siteUser = user;
     return fc.next();
   });
 

@@ -65,8 +65,12 @@ export class PostgresAdapter implements DbAdapter {
       const rows = await this.#sql.unsafe(sql, params);
       return rows as R[];
     } catch (err) {
+      // Do NOT include `sql` in the error message — it can contain table names,
+      // column names, or literal values that reveal internal schema details to
+      // callers. Log a sanitised message; callers should never expose this error
+      // to end users.
       throw new Error(
-        `PostgresAdapter query error: ${err instanceof Error ? err.message : String(err)}\nSQL: ${sql}`,
+        `PostgresAdapter query error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

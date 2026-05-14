@@ -224,10 +224,29 @@ export async function handleUpload(
   const uuid = encodeHex(crypto.getRandomValues(new Uint8Array(16)));
   const storedFilename = `${uuid}${storedExt}`;
 
-  // Validate storageSubpath against traversal (belt-and-suspenders).
-  const safeSub = config.storageSubpath.replace(/\.\./g, "").replace(/^\/+/, "");
-  const storagePath = `${dataDir}/uploads/${safeSub ? safeSub + "/" : ""}${storedFilename}`;
-  const publicUrl = `/uploads/${safeSub ? safeSub + "/" : ""}${storedFilename}`;
+  // Validate storageSubpath against path traversal using a URL-normalisation
+  // containment check.
+  //
+  // The naive replace(/\.\./g, "") approach is bypassable (e.g. "....//foo"
+  // becomes "./foo" after the substitution, which still traverses upward).
+  // Using URL normalisation resolves all ".." segments canonically.
+  const rawSub = config.storageSubpath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const uploadsBase = new URL(`${dataDir}/uploads/`, "file:///");
+  const candidateRel = rawSub
+    ? `${dataDir}/uploads/${rawSub}/${storedFilename}`
+    : `${dataDir}/uploads/${storedFilename}`;
+  const candidate = new URL(candidateRel, "file:///");
+
+  if (!candidate.pathname.startsWith(uploadsBase.pathname)) {
+    return new Response(
+      JSON.stringify({ error: "Invalid storage sub-path" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Derive safe paths from the validated URL (pathname starts with "/").
+  const storagePath = candidate.pathname.slice(1); // strip leading "/" → relative path
+  const publicUrl = `/uploads/${candidate.pathname.slice(uploadsBase.pathname.length)}`;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   await storage.write(storagePath, bytes);

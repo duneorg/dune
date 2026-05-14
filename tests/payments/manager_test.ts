@@ -210,7 +210,7 @@ Deno.test("handleWebhook: checkout.session.completed assigns role to user", asyn
 });
 
 Deno.test("handleWebhook: does not duplicate role if already present", async () => {
-  const user = makeUser({ id: "user-abc", roles: ["member"] });
+  const user = makeUser({ id: "user-abc", roles: ["member"], stripeCustomerId: "cus_test" });
   const event: WebhookEvent = {
     type: "checkout.session.completed",
     userId: "user-abc",

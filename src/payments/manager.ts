@@ -127,23 +127,31 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
   }
 
   async function handleCheckoutCompleted(event: WebhookEvent): Promise<void> {
-    const { userId, productId } = event;
+    const { userId, productId, customerId } = event;
 
     // Nothing to do if metadata fields are missing
     if (!userId || !productId) return;
-
-    const product = findProduct(productId);
-    if (!product?.role) return;
 
     // Look up the user — tolerate deletion / concurrent updates
     const user = await userStore.getById(userId);
     if (!user) return;
 
-    // Assign the role if it's not already present
-    if (!user.roles.includes(product.role)) {
-      await userStore.update(userId, {
-        roles: [...user.roles, product.role],
-      });
+    const updates: Parameters<typeof userStore.update>[1] = {};
+
+    // Store the Stripe customer ID so the billing portal handler can look it
+    // up securely without accepting it from client-controlled input.
+    if (customerId && user.stripeCustomerId !== customerId) {
+      updates.stripeCustomerId = customerId;
+    }
+
+    // Assign the product role if configured and not already present.
+    const product = findProduct(productId);
+    if (product?.role && !user.roles.includes(product.role)) {
+      updates.roles = [...user.roles, product.role];
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await userStore.update(userId, updates);
     }
   }
 

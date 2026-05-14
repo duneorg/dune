@@ -37,13 +37,34 @@ function stripHtml(html: string): string {
 }
 
 /**
+ * Escape HTML special characters in a string.
+ *
+ * Applied to interpolated values in Markdown/HTML email templates to prevent
+ * user-controlled data (e.g. display names, email addresses) from injecting
+ * raw HTML into the generated email.
+ */
+function escHtmlValue(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * Replace `{{key}}` placeholders with values from `data`.
- * Unknown keys are left as-is.
+ *
+ * Values are HTML-escaped before insertion. This prevents user-controlled
+ * data (names, emails, etc.) from injecting raw HTML into Markdown templates
+ * whose output is rendered as HTML by the email client.
+ *
+ * Unknown keys are left as-is (the `{{key}}` literal).
  */
 function interpolate(template: string, data: Record<string, unknown>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
     if (Object.prototype.hasOwnProperty.call(data, key)) {
-      return String(data[key]);
+      return escHtmlValue(String(data[key]));
     }
     return `{{${key}}}`;
   });

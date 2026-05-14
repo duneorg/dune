@@ -208,6 +208,13 @@ export interface RedisRateLimitClient {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<unknown>;
   ttl(key: string): Promise<number>;
+  /**
+   * SET key value [NX] [EX seconds]
+   *
+   * Returns the value that was set, or null when NX was specified and the key
+   * already existed (i.e. the SET was not performed).
+   */
+  set(key: string, value: string, ...args: string[]): Promise<string | null>;
   lpush(key: string, ...values: string[]): Promise<unknown>;
   lrange(key: string, start: number, stop: number): Promise<string[]>;
   del(...keys: string[]): Promise<unknown>;
@@ -219,9 +226,12 @@ const FAIL_PREFIX = "dune:fail:";
 /**
  * Redis-backed rate-limit store using an ioredis-compatible client.
  *
- * Rate limiting uses INCR + EXPIRE (set on first increment) which is
- * eventually consistent under extreme concurrency but safe enough for
- * HTTP login throttling where the window is measured in minutes.
+ * Rate limiting uses an atomic SET NX EX + INCR pattern:
+ *   1. SET key 1 NX EX windowSecs  → initialises a new window atomically
+ *   2. If the key already existed, INCR it and check against the limit
+ *
+ * This avoids the race in the plain INCR+EXPIRE pattern where a concurrent
+ * request can INCR before EXPIRE runs, creating a key that never expires.
  *
  * Failure tracking uses a Redis List of timestamps; isLocked() filters
  * to within the rolling window client-side.
@@ -235,12 +245,19 @@ export class RedisRateLimitStore implements RateLimitStore {
     windowMs: number,
   ): Promise<{ allowed: boolean; retryAfter: number }> {
     const rlKey = `${RL_PREFIX}${key}`;
-    const count = await this.client.incr(rlKey);
+    const windowSecs = String(Math.ceil(windowMs / 1000));
 
-    if (count === 1) {
-      // First request in this window — set the expiry.
-      await this.client.expire(rlKey, Math.ceil(windowMs / 1000));
+    // Attempt to atomically initialise a new window.
+    // SET NX EX returns "OK" when the key was created, null when it already existed.
+    const initialised = await this.client.set(rlKey, "1", "NX", "EX", windowSecs);
+
+    if (initialised !== null) {
+      // New window, first request — always allowed.
+      return { allowed: true, retryAfter: 0 };
     }
+
+    // Key already exists — increment and check.
+    const count = await this.client.incr(rlKey);
 
     if (count > maxRequests) {
       const ttl = await this.client.ttl(rlKey);

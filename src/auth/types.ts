@@ -14,6 +14,11 @@ export interface SiteUser {
   createdAt: number;    // ms timestamp
   lastSeenAt: number;
   enabled: boolean;
+  /**
+   * Stripe customer ID assigned after a successful checkout.
+   * Used by the billing portal handler — never accepted from client input.
+   */
+  stripeCustomerId?: string;
 }
 
 export type SiteUserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "enabled"> & {

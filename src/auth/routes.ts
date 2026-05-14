@@ -20,7 +20,7 @@ import type { SiteUser } from "./types.ts";
 import type { SiteUserStore } from "./user-store.ts";
 import type { SiteAuthMiddleware } from "./middleware.ts";
 import { OAUTH_STATE_COOKIE } from "./middleware.ts";
-import { createMagicLink, verifyMagicToken } from "./magic-link.ts";
+import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
 import type { OAuthProvider } from "./providers/types.ts";
 import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit.ts";
 
@@ -34,6 +34,12 @@ export interface AuthRoutesConfig {
   mode: "dune" | "external-jwt";
   sendEmail?: (to: string, subject: string, text: string, html: string) => Promise<void>;
   trustForwardedFor?: boolean;
+  /**
+   * Optional single-use token store for magic links.
+   * When provided, each magic link token can only be used once.
+   * Recommended for production deployments.
+   */
+  magicTokenStore?: MagicTokenStore;
 }
 
 export interface AuthRouteHandlers {
@@ -60,14 +66,17 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     mode,
     sendEmail,
     trustForwardedFor = false,
+    magicTokenStore,
   } = config;
 
   // ── Login page ─────────────────────────────────────────────────────────────
 
-  function login(_req: Request, siteUser: SiteUser | null): Response {
+  function login(req: Request, siteUser: SiteUser | null): Response {
     if (siteUser) {
-      // Already logged in
-      return new Response(null, { status: 302, headers: { Location: "/" } });
+      // Already logged in — honour a sanitised ?next= redirect target.
+      const url = new URL(req.url);
+      const next = sanitizeNext(url.searchParams.get("next"));
+      return new Response(null, { status: 302, headers: { Location: next } });
     }
 
     if (mode === "external-jwt") {
@@ -149,20 +158,41 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       const { accessToken } = await provider.exchangeCode(code, redirectUri);
       const profile = await provider.getUser(accessToken);
 
-      // Upsert user: look up by (provider, providerId), fall back to email
+      // Upsert user: look up by (provider, providerId) first for returning users.
       let user = await userStore.getByProvider(providerName, profile.id);
+      const foundByProvider = !!user;
+
       if (!user) {
         user = await userStore.getByEmail(profile.email);
       }
 
+      if (user && !foundByProvider) {
+        // An account with this email already exists but was created with a
+        // different authentication method (e.g. magic link or another OAuth
+        // provider). Auto-linking would allow account takeover — an attacker
+        // who creates an OAuth account sharing the victim's email address
+        // would silently inherit their session.
+        //
+        // Require the user to log in with their original method and link
+        // accounts explicitly through their account settings.
+        return new Response(
+          loginHtml(
+            [...providers.keys()],
+            magicLinkEnabled,
+            `An account with ${escHtml(profile.email)} already exists. ` +
+              `Please log in with your original method to link this ${providerName} account.`,
+          ),
+          { status: 409, headers: { "Content-Type": "text/html; charset=utf-8" } },
+        );
+      }
+
       if (user) {
-        // Update profile info — email may have changed, providerId may be missing
+        // Found by provider — update profile info (e.g. avatar may have changed).
         await userStore.update(user.id, {
           name: profile.name ?? user.name,
           avatarUrl: profile.avatarUrl ?? user.avatarUrl,
           lastSeenAt: Date.now(),
         });
-        // Also update provider/providerId if linking
         user = (await userStore.getById(user.id))!;
       } else {
         // Create new user
@@ -183,6 +213,9 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       const ip = clientIp(req, { trustForwardedFor });
       const sessionId = await middleware.createSession(user.id, ip || undefined);
 
+      // OAuth state does not carry a `next` param (adding it would require
+      // encoding it in the state cookie). Fall back to "/" for now; callers
+      // that need post-OAuth redirect should use a server-side session key.
       return new Response(null, {
         status: 302,
         headers: {
@@ -241,8 +274,10 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
           console.error("[dune/auth] Failed to send magic link email:", err);
         });
       } else {
-        // No email provider — log for development convenience
-        console.log(`[dune/auth] Magic link for ${email}: ${link}`);
+        // No email provider — log for development convenience only.
+        // Truncate to avoid full tokens appearing in log aggregation tools.
+        const devLink = link.length > 100 ? link.slice(0, 100) + "…" : link;
+        console.log(`[dune/auth] Magic link for ${email}: ${devLink}`);
       }
     } catch (err) {
       console.error("[dune/auth] Magic link generation error:", err);
@@ -266,7 +301,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       return loginErrorResponse("Missing token");
     }
 
-    const result = await verifyMagicToken(token, magicLinkSecret);
+    const result = await verifyMagicToken(token, magicLinkSecret, magicTokenStore);
     if (!result) {
       return loginErrorResponse("Invalid or expired link — please request a new one");
     }
@@ -292,10 +327,13 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     const ip = clientIp(req, { trustForwardedFor });
     const sessionId = await middleware.createSession(user.id, ip || undefined);
 
+    // Honour a sanitised ?next= query parameter for post-verify redirect.
+    const nextParam = sanitizeNext(url.searchParams.get("next"));
+
     return new Response(null, {
       status: 302,
       headers: {
-        Location: "/",
+        Location: nextParam,
         "Set-Cookie": middleware.createSessionCookie(sessionId),
       },
     });
@@ -412,6 +450,25 @@ function loginErrorResponse(message: string): Response {
 
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Sanitize a `?next=` redirect target to prevent open-redirect attacks.
+ *
+ * Only relative paths that start with `/` and do not start with `//`
+ * (scheme-relative URLs) are accepted. Everything else — external URLs,
+ * `javascript:` URIs, scheme-relative URLs, data: URIs — falls back to `/`.
+ *
+ * Matching the admin panel's sanitizeNext pattern.
+ */
+function sanitizeNext(next: string | null | undefined): string {
+  if (!next) return "/";
+  const trimmed = next.trim();
+  // Must start with "/" but not "//" (scheme-relative = external redirect).
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return "/";
+  // Reject anything that looks like a protocol after stripping leading slashes.
+  if (/^\/[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(trimmed)) return "/";
+  return trimmed;
 }
 
 function generateState(): string {

@@ -126,9 +126,22 @@ function createActiveTracer(config: TracingConfig): Tracer {
   const endpoint = config.endpoint;
   const serviceName = config.serviceName ?? "dune";
 
-  // Simple module-level "current trace" tracking. This is not full async
-  // context propagation (that would require AsyncLocalStorage), but it
-  // provides currentTraceId() for log correlation on a best-effort basis.
+  // ⚠️  KNOWN LIMITATION — not request-scoped.
+  //
+  // `currentTraceId` is a closure-scoped variable, not an AsyncLocalStorage
+  // value. Under concurrent requests each new span assignment overwrites the
+  // previous value, so `currentTraceId()` returns the ID of whichever span
+  // started most recently across ALL in-flight requests, not the one
+  // associated with the current request.
+  //
+  // Consequence: log correlation via `currentTraceId()` is best-effort only.
+  // It works reliably in development (where requests are typically sequential)
+  // but will be inaccurate in production under load.
+  //
+  // To fix properly: replace `currentTraceId` with an AsyncLocalStorage<string>
+  // and run each span callback inside `als.run(spanData.traceId, fn)`.
+  // This is intentionally deferred — it requires a larger refactor and the
+  // current behaviour is safe (no security impact, only observability accuracy).
   let currentTraceId: string | null = null;
 
   function createSpanObject(name: string, attrs: Record<string, string | number | boolean>): SpanData {
