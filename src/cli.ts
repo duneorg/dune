@@ -413,6 +413,13 @@ async function main() {
         await migrateStatusCommand(root);
         break;
 
+      case "migrate:flex":
+        await flexMigrateCommand(root, {
+          type: options.positional as string | undefined,
+          dryRun: options.dryRun === true,
+        });
+        break;
+
       case "mcp:serve":
         await mcpServeCommand(root, {
           debug: options.debug === true,
