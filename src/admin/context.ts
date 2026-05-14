@@ -23,6 +23,7 @@ import type { ImageCache } from "../images/cache.ts";
 import type { AuditLogger } from "../audit/mod.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
+import type { RateLimitStore } from "../security/rate-limit-store.ts";
 
 export type { AdminPageRegistration };
 
@@ -49,6 +50,13 @@ export interface AdminContext {
   auditLogger?: AuditLogger;
   metrics?: MetricsCollector;
   mt?: MachineTranslator | null;
+  /**
+   * Rate-limit store for IP-based throttling and per-account lockout.
+   * When present, login.tsx uses this store instead of its module-level
+   * in-process Maps, making rate limiting effective across multiple processes.
+   * Defaults to undefined (falls back to in-process LocalRateLimitStore behaviour).
+   */
+  rateLimitStore?: RateLimitStore;
   /**
    * Plugin-contributed admin pages, collected at bootstrap.
    * The Fresh app registers these as programmatic routes after fsRoutes().

@@ -20,7 +20,10 @@ import { createImageCache } from "../images/cache.ts";
 import { createImageHandler } from "../images/handler.ts";
 import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
+import { createSessionStore } from "../session/mod.ts";
 import { createAuthMiddleware } from "../admin/auth/middleware.ts";
+import { LocalRateLimitStore } from "../security/rate-limit-store.ts";
+import type { RateLimitStore } from "../security/rate-limit-store.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
 import { LdapAuthProvider } from "../admin/auth/ldap-provider.ts";
 import { SamlAuthProvider } from "../admin/auth/saml-provider.ts";
@@ -382,11 +385,30 @@ export async function bootstrap(
     } catch { /* ignore */ }
   }
 
-  const sessions = createSessionManager({
+  // Session store — resolve backend from config, defaulting to local file-backed.
+  // createSessionStore is async (may open a KV handle), so we await it here.
+  const sessionStoreCfg = config.system?.session_store;
+  const resolvedSessionStore = await createSessionStore({
+    type: sessionStoreCfg?.type ?? "local",
+    redisUrl: sessionStoreCfg?.url
+      ? (sessionStoreCfg.url.startsWith("$")
+        ? Deno.env.get(sessionStoreCfg.url.slice(1))
+        : sessionStoreCfg.url)
+      : undefined,
     storage,
     sessionsDir: `${runtimeDir}/sessions`,
     lifetime: adminConfig.sessionLifetime,
   });
+
+  const sessions = createSessionManager({
+    store: resolvedSessionStore,
+    lifetime: adminConfig.sessionLifetime,
+  });
+
+  // Rate-limit store — always LocalRateLimitStore for now; operators can
+  // replace this by constructing a KVRateLimitStore or RedisRateLimitStore
+  // and passing it via a custom bootstrap wrapper.
+  const rateLimitStore: RateLimitStore = new LocalRateLimitStore();
 
   // Auth provider — select based on BootstrapOptions injection first, then
   // admin.auth_provider config, falling back to local passwords.
@@ -481,6 +503,7 @@ export async function bootstrap(
       auditLogger: auditLogger ?? undefined,
       metrics: metricsEnabled ? metrics : undefined,
       mt,
+      rateLimitStore,
       pluginPages: pluginAdminPages.length > 0 ? pluginAdminPages : undefined,
     };
     initAdminContext(adminContextObj);

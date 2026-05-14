@@ -1,11 +1,26 @@
 /**
- * In-memory token-bucket style rate limiter.
+ * Rate limiting utilities.
  *
- * Keyed by an arbitrary string bucket (usually an IP address). State lives
- * in a single process — sufficient for single-instance deployments. For
- * multi-instance production behind a load balancer, swap in a KV-backed
- * implementation with the same interface.
+ * `RateLimiter` can operate in two modes:
+ *
+ *   1. Legacy synchronous mode (no store): the constructor takes `maxRequests`
+ *      and `windowMs` directly. `check()` is synchronous and state lives in
+ *      the current process only. This preserves exact backward compatibility
+ *      for all existing call sites.
+ *
+ *   2. Store-backed async mode: pass a `RateLimitStore` to the constructor.
+ *      `checkAsync()` delegates to the store and is safe for multi-process
+ *      deployments. `recordFailure()`, `isLocked()`, and `clearFailures()`
+ *      are delegating wrappers over the store's methods.
+ *
+ * When `login.tsx` uses the store-backed path it calls `checkAsync()` (async)
+ * instead of `check()` (sync). The sync path is kept intact so existing tests
+ * and other callers continue to work without modification.
  */
+
+import type { RateLimitStore } from "./rate-limit-store.ts";
+
+export type { RateLimitStore } from "./rate-limit-store.ts";
 
 interface RateLimitBucket {
   count: number;
@@ -14,19 +29,31 @@ interface RateLimitBucket {
 
 export class RateLimiter {
   private buckets = new Map<string, RateLimitBucket>();
-
-  constructor(
-    private readonly maxRequests: number,
-    private readonly windowMs: number,
-  ) {}
+  private readonly store?: RateLimitStore;
+  private readonly _maxRequests: number;
+  private readonly _windowMs: number;
 
   /**
-   * Returns true if the key is within the allowed rate, false if limited.
+   * @param maxRequests Maximum requests allowed per window
+   * @param windowMs    Window length in milliseconds
+   * @param store       Optional RateLimitStore for multi-process deployments
+   */
+  constructor(maxRequests: number, windowMs: number, store?: RateLimitStore) {
+    this._maxRequests = maxRequests;
+    this._windowMs = windowMs;
+    this.store = store;
+  }
+
+  /**
+   * Synchronous in-process check. Returns true if the key is within the
+   * allowed rate, false if limited.
+   *
    * When key is "unknown" (no resolvable IP) the check is skipped and true
    * is always returned — otherwise all clients without a proxy header share
    * one bucket and a flood from one client can deny everyone else.
-   * Per-account or per-session limits should be the primary defence when IP
-   * resolution is unavailable.
+   *
+   * This method uses only the in-process bucket map regardless of whether a
+   * store is configured. Use `checkAsync()` for the store-backed path.
    */
   check(key: string): boolean {
     if (key === "unknown") return true;
@@ -34,11 +61,11 @@ export class RateLimiter {
     const bucket = this.buckets.get(key);
 
     if (!bucket || now >= bucket.resetAt) {
-      this.buckets.set(key, { count: 1, resetAt: now + this.windowMs });
+      this.buckets.set(key, { count: 1, resetAt: now + this._windowMs });
       return true;
     }
 
-    if (bucket.count >= this.maxRequests) {
+    if (bucket.count >= this._maxRequests) {
       return false;
     }
 
@@ -46,11 +73,58 @@ export class RateLimiter {
     return true;
   }
 
+  /**
+   * Async check delegating to the configured store.
+   * Falls back to the synchronous in-process check when no store is set.
+   */
+  async checkAsync(key: string): Promise<{ allowed: boolean; retryAfter: number }> {
+    if (key === "unknown") return { allowed: true, retryAfter: 0 };
+
+    if (this.store) {
+      return this.store.check(key, this._maxRequests, this._windowMs);
+    }
+
+    // No store — delegate to the sync method for single-process behaviour.
+    const allowed = this.check(key);
+    const retryAfter = allowed ? 0 : this.retryAfter(key);
+    return { allowed, retryAfter };
+  }
+
   /** Returns the number of seconds until the window resets for a key. */
   retryAfter(key: string): number {
     const bucket = this.buckets.get(key);
     if (!bucket) return 0;
     return Math.ceil(Math.max(0, bucket.resetAt - Date.now()) / 1000);
+  }
+
+  // ── Failure tracking (delegates to store when present) ─────────────────────
+
+  /**
+   * Record a failure event for `key`. Returns the total failure count within
+   * the configured window.
+   *
+   * Falls back to a no-op returning 0 when no store is configured (the
+   * per-account lockout in login.tsx maintains its own Map in that case).
+   */
+  async recordFailure(key: string, windowMs?: number): Promise<number> {
+    if (!this.store) return 0;
+    return this.store.recordFailure(key, windowMs ?? this._windowMs);
+  }
+
+  /**
+   * Returns true if the failure count for `key` within `windowMs` is at or
+   * above `threshold`.
+   */
+  async isLocked(key: string, threshold: number, windowMs?: number): Promise<boolean> {
+    if (!this.store) return false;
+    return this.store.isLocked(key, threshold, windowMs ?? this._windowMs);
+  }
+
+  /** Clear failure history for `key` (e.g. on successful login). */
+  async clearFailures(key: string): Promise<void> {
+    if (this.store) {
+      await this.store.clearFailures(key);
+    }
   }
 }
 
