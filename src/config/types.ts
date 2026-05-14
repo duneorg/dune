@@ -665,6 +665,29 @@ export interface SystemConfig {
      */
     warm?: boolean;
   };
+  /**
+   * Runtime feature flags — toggle features without code changes.
+   *
+   * Values can be:
+   *   - `true` / `false` — static toggle
+   *   - `"env:VAR_NAME"` — read from environment variable at startup
+   *     (truthy when the var is set to "1", "true", or "yes")
+   *
+   * @example
+   * ```yaml
+   * flags:
+   *   comments: true
+   *   new_editor: false
+   *   beta_search: env:ENABLE_BETA_SEARCH
+   * ```
+   *
+   * Read flags with the `flag()` helper:
+   * ```ts
+   * import { flag } from "@dune/core";
+   * if (flag("comments")) { ... }
+   * ```
+   */
+  flags?: Record<string, boolean | string>;
   /** Full-text search configuration. */
   search?: {
     /**

@@ -178,6 +178,15 @@ export type {
   HookRegistry,
 } from "./hooks/types.ts";
 
+// ── Feature Flags ──────────────────────────────────────────────────────────
+
+/**
+ * Check whether a named feature flag is enabled.
+ * Returns `false` for unknown flags.
+ * @since 0.10.0
+ */
+export { flag, initFlags, allFlags } from "./flags/mod.ts";
+
 // ── Search ─────────────────────────────────────────────────────────────────
 
 export { createSearchEngine } from "./search/engine.ts";
