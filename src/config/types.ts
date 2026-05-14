@@ -437,6 +437,68 @@ export interface SiteConfig {
    * not import content from external sources (WordPress WXR, Grav, etc.).
    */
   trusted_html?: boolean;
+  /**
+   * Public site authentication configuration.
+   * Enables visitor logins via OAuth, magic links, or external JWT.
+   * Completely separate from the admin auth subsystem.
+   *
+   * @example GitHub OAuth
+   * ```yaml
+   * site:
+   *   auth:
+   *     providers:
+   *       github:
+   *         clientId: "$GITHUB_CLIENT_ID"
+   *         clientSecret: "$GITHUB_CLIENT_SECRET"
+   * ```
+   *
+   * @example External JWT (Clerk, Auth0, etc.)
+   * ```yaml
+   * site:
+   *   auth:
+   *     mode: external-jwt
+   *     jwt:
+   *       jwksUrl: "https://your-tenant.clerk.accounts.dev/.well-known/jwks.json"
+   * ```
+   */
+  auth?: {
+    /**
+     * Authentication mode.
+     * "dune" — built-in OAuth and/or magic link (default).
+     * "external-jwt" — validate Bearer JWT tokens from an external provider.
+     */
+    mode?: "dune" | "external-jwt";
+    /** OAuth provider credentials. */
+    providers?: {
+      github?: { clientId: string; clientSecret: string };
+      google?: { clientId: string; clientSecret: string };
+      discord?: { clientId: string; clientSecret: string };
+      magicLink?: { enabled: boolean };
+    };
+    /** JWT verification options — used when mode is "external-jwt". */
+    jwt?: {
+      /** HMAC-SHA256 shared secret for HS256 tokens. */
+      secret?: string;
+      /** JWKS endpoint URL for RS256 tokens (Clerk, Auth0, etc.). */
+      jwksUrl?: string;
+      /** JWT claim containing the user ID. Default: "sub". */
+      userIdClaim?: string;
+      /** JWT claim containing the user email. Default: "email". */
+      emailClaim?: string;
+      /** JWT claim containing role(s) (string or string[]). Default: "roles". */
+      rolesClaim?: string;
+    };
+    /**
+     * Session lifetime in seconds. Default: 2592000 (30 days).
+     * Not used in external-jwt mode (sessions are stateless).
+     */
+    sessionLifetime?: number;
+    /**
+     * User store backend. Only "local" (flat-file) is supported in this release.
+     * A database-backed store is planned for a future release.
+     */
+    userStore?: "local";
+  };
 }
 
 /** System-level configuration (engine behavior) */
