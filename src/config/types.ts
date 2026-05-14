@@ -499,6 +499,40 @@ export interface SiteConfig {
      */
     userStore?: "local";
   };
+  /**
+   * Public file upload configuration.
+   * Controls the `POST /api/upload` endpoint available to anonymous (or
+   * authenticated) site visitors, separate from the admin media upload.
+   *
+   * @example
+   * ```yaml
+   * uploads:
+   *   max_size_mb: 5
+   *   allowed_types: ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+   *   require_auth: false
+   * ```
+   */
+  uploads?: {
+    /**
+     * Maximum upload size in megabytes.
+     * Requests with a declared Content-Length above this limit are rejected
+     * with HTTP 413 before the body is buffered. Default: 10.
+     */
+    maxSizeMb?: number;
+    /**
+     * MIME types permitted for upload.
+     * Defaults to common images (JPEG, PNG, WebP, GIF, AVIF) plus PDF.
+     * The server derives the MIME type from the file extension — the
+     * client-supplied type is never trusted.
+     */
+    allowedTypes?: string[];
+    /**
+     * Require a logged-in site user to upload.
+     * When `true`, requests without a valid session token are rejected
+     * with HTTP 401. Default: false (anonymous upload permitted).
+     */
+    requireAuth?: boolean;
+  };
 }
 
 /** System-level configuration (engine behavior) */

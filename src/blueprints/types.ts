@@ -75,6 +75,61 @@ export interface BlueprintField {
   options?: Record<string, string>;
   /** Extra type-specific validation constraints. */
   validate?: BlueprintFieldValidation;
+  /**
+   * File upload configuration — only meaningful when `type` is `"file"`.
+   * Allows per-field control over size limits, MIME type allowlist,
+   * and storage sub-path for blueprint-driven upload fields.
+   */
+  upload?: BlueprintFileUploadConfig;
+}
+
+/**
+ * Per-field file upload configuration for blueprint fields of type `"file"`.
+ * These settings are enforced server-side; the client's declared MIME type
+ * and filename are never trusted.
+ *
+ * @example
+ * ```yaml
+ * fields:
+ *   avatar:
+ *     type: file
+ *     label: Profile Photo
+ *     required: true
+ *     upload:
+ *       max_size_mb: 2
+ *       allowed_types: ["image/jpeg", "image/png", "image/webp"]
+ *       storage: "user-uploads/avatars"
+ *       public_url: true
+ * ```
+ */
+export interface BlueprintFileUploadConfig {
+  /**
+   * Maximum allowed file size in megabytes.
+   * Files exceeding this limit are rejected with HTTP 413.
+   * Default: 5
+   */
+  max_size_mb?: number;
+  /**
+   * Permitted MIME types.
+   * The server derives the actual MIME type from the file extension (not the
+   * client-supplied Content-Type) using the same allowlist as the global
+   * upload security module.
+   *
+   * Specify as an array of MIME type strings.
+   * @example ["image/jpeg", "image/png", "image/webp"]
+   */
+  allowed_types?: string[];
+  /**
+   * Sub-path within the uploads directory where files are stored.
+   * Must not contain path traversal sequences.
+   * @example "user-uploads/avatars"
+   */
+  storage?: string;
+  /**
+   * Whether to include the public URL in the upload response.
+   * Default: true
+   */
+  public_url?: boolean;
 }
 
 export interface BlueprintFieldValidation {
