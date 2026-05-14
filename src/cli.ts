@@ -74,6 +74,7 @@ import {
 } from "./cli/db.ts";
 import { backupCommand, restoreCommand } from "./cli/backup.ts";
 import { flexMigrateCommand } from "./cli/flex-migrate.ts";
+import { generateCommand, generateList } from "./cli/generate.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -151,6 +152,13 @@ Commands:
   migrate:from-hugo <src>       Import a Hugo site (content/ folder)
 
   deploy:init <target>          Scaffold deployment config (fly, docker, deno-deploy)
+
+  generate --list               List all available generators
+  generate:plugin <name>        Scaffold a plugin in plugins/{name}/index.ts
+  generate:route <name>         Create a content page at content/{name}.md
+  generate:form <name>          Create a blueprint schema at schemas/{name}.yaml
+  generate:theme <name>         Scaffold a theme at themes/{name}/
+  generate:schema <name>        Create a Flex Object schema at flex-objects/{name}.yaml
 
   backup [--output file.tar.gz] Back up content, data, uploads, and config
   restore <archive.tar.gz>      Restore from a backup archive
@@ -551,6 +559,20 @@ async function main() {
       case "restore":
         await restoreCommand(root, options.positional as string, {
           yes: options.yes === true,
+        });
+        break;
+
+      case "generate":
+        generateList();
+        break;
+
+      case "generate:plugin":
+      case "generate:route":
+      case "generate:form":
+      case "generate:theme":
+      case "generate:schema":
+        await generateCommand(root, command, options.positional as string, {
+          force: options.force === true,
         });
         break;
 
