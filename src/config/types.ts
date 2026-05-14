@@ -533,6 +533,70 @@ export interface SiteConfig {
      */
     requireAuth?: boolean;
   };
+  /**
+   * Payment provider configuration.
+   * When present, Dune registers three payment routes:
+   *   POST /payments/checkout/:productId
+   *   POST /payments/webhook
+   *   GET  /payments/portal
+   *
+   * Only "stripe" is supported as a provider in this release.
+   * Secret values support "$ENV_VAR" expansion.
+   *
+   * @example
+   * ```yaml
+   * site:
+   *   payments:
+   *     provider: stripe
+   *     secret_key: "$STRIPE_SECRET_KEY"
+   *     webhook_secret: "$STRIPE_WEBHOOK_SECRET"
+   *     products:
+   *       - id: membership
+   *         name: Monthly Membership
+   *         price_id: price_xxx
+   *         role: member
+   *         mode: subscription
+   * ```
+   */
+  payments?: {
+    /**
+     * Payment provider name.
+     * Only "stripe" is supported in this release.
+     */
+    provider?: "stripe";
+    /**
+     * Provider secret key. Supports "$ENV_VAR" expansion.
+     * For Stripe: sk_live_xxx or sk_test_xxx.
+     */
+    secret_key?: string;
+    /**
+     * Webhook signing secret. Supports "$ENV_VAR" expansion.
+     * For Stripe: whsec_xxx from the Stripe dashboard.
+     */
+    webhook_secret?: string;
+    /**
+     * Products available for purchase.
+     * Each product maps to a provider-side price and an optional Dune role.
+     */
+    products?: Array<{
+      /** Site-defined product identifier, used in the checkout URL. */
+      id: string;
+      /** Human-readable product name. */
+      name: string;
+      /** Provider price ID (e.g. Stripe price_xxx). */
+      price_id: string;
+      /**
+       * Role to assign to the user upon successful payment.
+       * Must match a role string used in content gating rules.
+       */
+      role?: string;
+      /**
+       * Checkout mode: "subscription" (recurring) or "payment" (one-time).
+       * Defaults to "subscription".
+       */
+      mode?: "subscription" | "payment";
+    }>;
+  };
 }
 
 /** System-level configuration (engine behavior) */
