@@ -26,6 +26,7 @@ import { generateSearchPage } from "../search/page.ts";
 import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
 
 // Per-IP rate limit for public read endpoints (120 req/min).
 const publicRateLimiter = new RateLimiter(120, 60 * 1000);
@@ -574,6 +575,19 @@ export function duneRoutes(
       }
 
       const page = result.page;
+
+      // ── Role-based content gating ───────────────────────────────────────────
+      // Check frontmatter `roles` before rendering. If the page declares access
+      // requirements, enforce them using the SiteUser resolved by the public
+      // auth middleware (injected via x-dune-site-user header).
+      {
+        const rolesSpec = parseRolesSpec(page.frontmatter.roles);
+        if (rolesSpec !== null) {
+          const gateResponse = enforceRolesFromRequest(req, rolesSpec);
+          if (gateResponse !== null) return gateResponse;
+        }
+      }
+      // ───────────────────────────────────────────────────────────────────────
 
       // Format-aware rendering
       if (page.format === "tsx") {

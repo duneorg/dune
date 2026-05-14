@@ -20,6 +20,42 @@ export type SiteUserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | 
   enabled?: boolean;
 };
 
+/**
+ * Header name used by the public auth middleware to communicate the resolved
+ * SiteUser to downstream handlers (content gating, API guards, etc.).
+ *
+ * The middleware serialises the user as JSON into this header after validating
+ * the session cookie. Treat as trusted only when set by the same process —
+ * a reverse proxy should strip it from inbound external requests.
+ *
+ * @internal
+ */
+export const SITE_USER_HEADER = "x-dune-site-user";
+
+/**
+ * Extract the SiteUser from a request, if one was injected by the public auth
+ * middleware. Returns null when the user is unauthenticated or the header is
+ * absent or malformed.
+ */
+export function getSiteUser(req: Request): SiteUser | null {
+  const raw = req.headers.get(SITE_USER_HEADER);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.id === "string" &&
+      Array.isArray(parsed.roles)
+    ) {
+      return parsed as SiteUser;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Public user session stored in the site session directory. */
 export interface SiteSession {
   id: string;
