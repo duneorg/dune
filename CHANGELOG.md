@@ -5,6 +5,48 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.11.0] — 2026-05-15
+
+### Added
+
+- **Public site user authentication** — OAuth providers (GitHub, Google, Discord), magic-link email, and external JWT. Configurable under `auth:` in `site.yaml`. Exposes `SiteUser` to templates and plugins via the auth context.
+- **Role-based content gating** — `roles:` frontmatter key restricts pages to specific roles. Unauthenticated visitors are redirected; unauthorized users receive 403.
+- **DB schema layer** — Schema-first data modelling via `schema:` YAML files. `Repository<T>` API with `create`, `find`, `findOne`, `update`, `delete`, `count`, and `upsert`. Adapters for Deno KV, SQLite, and PostgreSQL. Schema migrations via `dune migrate:generate`, `migrate:run`, and `migrate:status`.
+- **CRUD API generation** — `dune generate:schema <name>` scaffolds schema YAML, repository, and API route handler in one step.
+- **Session and rate-limit store abstraction** — Session and rate-limit counters are backed by pluggable store interfaces (KV and Redis implementations), enabling multi-process and multi-machine deployments.
+- **Payments** — `PaymentProvider` plugin interface with a Stripe implementation. Covers checkout session creation, webhook handling (role assignment on successful payment), and billing portal. Configurable under `payments:` in `site.yaml`.
+- **Public file upload** — `POST /api/upload` endpoint with configurable size limits, allowed types, and storage subpath. Secured by optional auth and per-type permission.
+- **Runtime feature flags** — `flag(name)` and `allFlags()` helpers; `env:` value syntax reads flags from environment variables at runtime. Configurable under `flags:` in `site.yaml`.
+- **Transactional email** — `email.send()` plugin API with Markdown template support. Provider implementations for SMTP, Resend, Postmark, SendGrid, and a console (dev) sink. Configurable under `email:` in `site.yaml`.
+- **Search improvements** — Configurable per-field weights, faceted search (config + API + response), snippet highlights, configurable `excerpt_length`, and Flex Object indexing. Existing `GET /api/search` response extended with `facets` and `highlights` fields.
+- **CDN cache invalidation** — Plugin hooks trigger cache purge requests on content publish/update. Built-in support for Cloudflare, Fastly, Bunny, and a custom webhook target. Configurable under `system.cdn`.
+- **Zero-downtime graceful shutdown** — The server drains in-flight requests before exiting. Drain timeout is configurable; integrates with systemd, Docker, Kubernetes, and Fly.io lifecycle hooks.
+- **Structured logging** — Configurable log format (`text` or `json`), log level (`debug`, `info`, `warn`, `error`), and per-environment overrides. JSON output includes request IDs and trace correlation. Configurable under `system.logging`.
+- **Distributed tracing** — OTLP trace export to any compatible backend (Jaeger, Tempo, Honeycomb, Datadog). Configurable sampling rate and service name under `system.tracing`. Log entries include `traceId` for correlation.
+- **Backup and restore** — `dune backup` archives content, config, flex data, schemas, and uploads to a timestamped `.tar.gz`. `dune restore <file>` unpacks into the site root. Both support `--dry-run`.
+- **`dune migrate:flex`** — Migrate Flex Object records to a new schema version. Supports lazy write-through (on next read) or eager migration via the CLI.
+- **`dune generate:*` scaffolding** — `generate:plugin`, `generate:route`, `generate:form`, `generate:theme`, and `generate:schema` scaffold the respective component into the project.
+- **`@dune/core/ui` component package** — Public-site Preact components: `SearchBar`, `LoginForm`, `ProfileCard`, `CommentSection`, `SubscriptionForm`, and `FormRenderer`. Importable from `@dune/core/ui` in theme TSX.
+- **yaml-language-server schema annotation** — Generated `site.yaml` files now include a `# yaml-language-server: $schema=…` comment for in-editor validation and autocompletion.
+
+### Security
+
+- **OAuth account takeover via email matching** — An attacker controlling an OAuth provider account with a matching email could silently take over a local user account. Provider identity is now bound to the original sign-in provider; cross-provider email matching is blocked. (Critical)
+- **Magic link tokens not enforced as single-use** — Tokens could be reused after the first redemption. A nonce store now marks tokens consumed on first use. (High)
+- **Broken constant-time comparison in magic-link verification** — The HMAC comparison used a non-constant-time equality check, enabling timing-based token recovery. Replaced with `timingSafeEqual`. (High)
+- **Forged site-user identity header accepted** — Requests could supply a crafted `x-dune-site-user` header to impersonate any user. The header is now stripped from all inbound requests before auth middleware runs. (High)
+- **IDOR in billing portal** — The portal endpoint accepted a client-supplied Stripe customer ID, allowing access to another user's billing session. The stored `stripeCustomerId` is now used exclusively. (High)
+- **Stripe webhook replay attack** — Webhook events lacked timestamp validation, allowing indefinite replay of captured events. Stripe's `Webhook-Timestamp` header is now validated against a configurable tolerance window. (High)
+- **Upload path traversal via URL-normalisation** — URL-encoded path components in the upload subpath could escape the configured storage directory after normalisation. The resolved path is now containment-checked against the storage root. (High)
+- **Open-redirect in auth callback** — The `next` query parameter in auth flows was not validated, enabling redirect to an arbitrary external URL after login. `sanitizeNext()` now restricts the target to same-origin paths. (Medium)
+- **Magic links usable without `DUNE_AUTH_SECRET`** — If the secret was absent, magic links fell back to an insecure derivation. Startup now aborts if magic links are enabled and `DUNE_AUTH_SECRET` is not set. (Medium)
+- **Email template value injection** — Interpolated values in Markdown email templates were rendered without escaping, allowing injection of arbitrary Markdown or HTML. Values are now HTML-escaped before interpolation. (Medium)
+- **Redis rate-limit counter race condition** — `INCR` followed by `EXPIRE` was not atomic; a crash between the two commands left keys without TTL. Replaced with a single `SET NX EX` command. (Medium)
+- **Raw SQL in PostgreSQL adapter error messages** — Failed query errors included the full SQL statement, which could leak schema or data details in logs. Error messages are now scrubbed to query type and table name only. (Low)
+- **Tracing `currentTraceId` not request-scoped** — The tracer uses a closure-level variable for `currentTraceId`; under concurrent requests the value reflects the most-recently-started span across all in-flight requests. Documented as best-effort log correlation; an `AsyncLocalStorage`-based fix is tracked for a future release. (Low)
+
+---
+
 ## [0.10.0] — 2026-05-13
 
 ### Added
