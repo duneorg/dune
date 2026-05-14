@@ -5,7 +5,7 @@
 /** @module */
 
 import { join } from "@std/path";
-import type { DbFieldDef, DbFieldType, DbSchema } from "./types.ts";
+import type { ApiMethod, DbFieldDef, DbFieldType, DbSchema } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Type mapping
@@ -124,6 +124,177 @@ function generateIndexFile(schemas: DbSchema[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// API route generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate the `src/routes/api/{tableName}/index.ts` file (list + create).
+ * Respects the methods listed in schema.api.methods.
+ */
+function generateApiIndexFile(schema: DbSchema): string {
+  const api = schema.api!;
+  const modelLower = camelCase(schema.model);
+  const authMode = `"${api.auth}"`;
+  const methods = new Set<ApiMethod>(api.methods);
+  const lines: string[] = [
+    "// GENERATED — do not edit. Run `dune codegen` to regenerate.",
+    "",
+    `import { db } from "@/db";`,
+    `import type { ${schema.model}Create } from "@/db/types/${modelLower}.ts";`,
+    `import { requireAuth } from "jsr:@dune/core/auth/api-guard";`,
+    "",
+  ];
+
+  if (methods.has("list")) {
+    lines.push(`export async function GET(req: Request): Promise<Response> {`);
+    lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
+    lines.push(`  if (authResult.error) return authResult.error;`);
+    lines.push(``);
+    lines.push(`  const url = new URL(req.url);`);
+    lines.push(`  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20"), 100);`);
+    lines.push(`  const offset = parseInt(url.searchParams.get("offset") ?? "0");`);
+    lines.push(`  const records = await db.${schema.table}.find({ limit, offset });`);
+    lines.push(`  const total = await db.${schema.table}.count();`);
+    lines.push(`  return Response.json({ data: records, total, limit, offset });`);
+    lines.push(`}`);
+    lines.push("");
+  }
+
+  if (methods.has("create")) {
+    lines.push(`export async function POST(req: Request): Promise<Response> {`);
+    lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
+    lines.push(`  if (authResult.error) return authResult.error;`);
+    lines.push(``);
+    lines.push(`  const body = await req.json().catch(() => null);`);
+    lines.push(`  if (!body) return Response.json({ error: "Invalid JSON" }, { status: 400 });`);
+    lines.push(`  const record = await db.${schema.table}.create(body as ${schema.model}Create);`);
+    lines.push(`  return Response.json(record, { status: 201 });`);
+    lines.push(`}`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Generate the `src/routes/api/{tableName}/[id].ts` file (get, update, delete).
+ * Respects the methods listed in schema.api.methods and ownership checks.
+ */
+function generateApiIdFile(schema: DbSchema): string {
+  const api = schema.api!;
+  const authMode = `"${api.auth}"`;
+  const isOwner = api.auth === "owner";
+  const ownerField = api.ownerField ?? "userId";
+  const methods = new Set<ApiMethod>(api.methods);
+  const lines: string[] = [
+    "// GENERATED — do not edit. Run `dune codegen` to regenerate.",
+    "",
+    `import { db } from "@/db";`,
+    `import type { ${schema.model}Update } from "@/db/types/${camelCase(schema.model)}.ts";`,
+    `import { requireAuth } from "jsr:@dune/core/auth/api-guard";`,
+    "",
+  ];
+
+  if (methods.has("get")) {
+    lines.push(`export async function GET(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
+    lines.push(`  if (authResult.error) return authResult.error;`);
+    lines.push(``);
+    lines.push(`  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+    lines.push(`  if (!record) return Response.json({ error: "Not found" }, { status: 404 });`);
+    if (isOwner) {
+      lines.push(`  if ((record as any).${ownerField} !== authResult.user!.id) {`);
+      lines.push(`    return Response.json({ error: "Forbidden" }, { status: 403 });`);
+      lines.push(`  }`);
+    }
+    lines.push(`  return Response.json(record);`);
+    lines.push(`}`);
+    lines.push("");
+  }
+
+  if (methods.has("update")) {
+    lines.push(`export async function PUT(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
+    lines.push(`  if (authResult.error) return authResult.error;`);
+    lines.push(``);
+    if (isOwner) {
+      lines.push(`  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+      lines.push(`  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });`);
+      lines.push(`  if ((existing as any).${ownerField} !== authResult.user!.id) {`);
+      lines.push(`    return Response.json({ error: "Forbidden" }, { status: 403 });`);
+      lines.push(`  }`);
+      lines.push(``);
+    }
+    lines.push(`  const body = await req.json().catch(() => null);`);
+    lines.push(`  if (!body) return Response.json({ error: "Invalid JSON" }, { status: 400 });`);
+    lines.push(`  const result = await db.${schema.table}.update(params.id, body as ${schema.model}Update);`);
+    lines.push(`  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`);
+    lines.push(`  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+    lines.push(`  return Response.json(record);`);
+    lines.push(`}`);
+    lines.push("");
+  }
+
+  if (methods.has("delete")) {
+    lines.push(`export async function DELETE(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
+    lines.push(`  if (authResult.error) return authResult.error;`);
+    lines.push(``);
+    if (isOwner) {
+      lines.push(`  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+      lines.push(`  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });`);
+      lines.push(`  if ((existing as any).${ownerField} !== authResult.user!.id) {`);
+      lines.push(`    return Response.json({ error: "Forbidden" }, { status: 403 });`);
+      lines.push(`  }`);
+      lines.push(``);
+    }
+    lines.push(`  const result = await db.${schema.table}.delete(params.id);`);
+    lines.push(`  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`);
+    lines.push(`  return new Response(null, { status: 204 });`);
+    lines.push(`}`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Generate REST API route files for all schemas that have `api.enabled: true`.
+ * Writes into `{siteRoot}/src/routes/api/{tableName}/`.
+ *
+ * Files are overwritten on each codegen run — they are generated, not user-edited.
+ */
+export async function generateApiRoutes(
+  schemas: DbSchema[],
+  siteRoot: string,
+): Promise<string[]> {
+  const written: string[] = [];
+
+  for (const schema of schemas) {
+    if (!schema.api?.enabled) continue;
+
+    const apiDir = join(siteRoot, "src", "routes", "api", schema.table);
+    await Deno.mkdir(apiDir, { recursive: true });
+
+    const methods = new Set<ApiMethod>(schema.api.methods);
+
+    if (methods.has("list") || methods.has("create")) {
+      const indexPath = join(apiDir, "index.ts");
+      await Deno.writeTextFile(indexPath, generateApiIndexFile(schema));
+      written.push(indexPath);
+    }
+
+    if (methods.has("get") || methods.has("update") || methods.has("delete")) {
+      const idPath = join(apiDir, "[id].ts");
+      await Deno.writeTextFile(idPath, generateApiIdFile(schema));
+      written.push(idPath);
+    }
+  }
+
+  return written;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -153,6 +324,7 @@ export function generateCode(schemas: DbSchema[]): CodegenResult {
  * Write generated files to `root` directory.
  *
  * Creates `src/db/types/` if it does not exist.
+ * Also writes API route files for schemas with `api.enabled: true`.
  */
 export async function writeGeneratedFiles(
   root: string,
@@ -169,6 +341,10 @@ export async function writeGeneratedFiles(
     await Deno.writeTextFile(absPath, content);
     written.push(absPath);
   }
+
+  // Generate API routes for schemas that have api.enabled: true
+  const apiWritten = await generateApiRoutes(schemas, root);
+  written.push(...apiWritten);
 
   return written;
 }

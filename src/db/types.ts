@@ -104,6 +104,29 @@ export interface DbFieldDef {
   onUpdate?: "now";
 }
 
+/** Valid HTTP method names for CRUD API generation. */
+export type ApiMethod = "get" | "list" | "create" | "update" | "delete";
+
+/** API generation options embedded in a schema YAML `api:` block. */
+export interface DbSchemaApi {
+  /** Whether to generate REST endpoints for this model. */
+  enabled: boolean;
+  /**
+   * Authentication mode:
+   * - "none"     — public; no authentication required
+   * - "required" — any authenticated site user
+   * - "owner"    — record's ownerField must match the authenticated user's id
+   */
+  auth: "none" | "required" | "owner";
+  /** Which HTTP operations to expose. Defaults to all five. */
+  methods: ApiMethod[];
+  /**
+   * Field name that stores the owner's user id.
+   * Required when auth is "owner".
+   */
+  ownerField?: string;
+}
+
 export interface DbSchema {
   /** TypeScript model name (e.g. "Comment"). */
   model: string;
@@ -111,4 +134,6 @@ export interface DbSchema {
   table: string;
   /** Ordered list of field definitions (id is never in this list). */
   fields: DbFieldDef[];
+  /** Optional REST API generation configuration. */
+  api?: DbSchemaApi;
 }

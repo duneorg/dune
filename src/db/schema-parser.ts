@@ -6,7 +6,7 @@
 
 import { parse as parseYaml } from "@std/yaml";
 import { join } from "@std/path";
-import type { DbFieldDef, DbFieldType, DbSchema } from "./types.ts";
+import type { ApiMethod, DbFieldDef, DbFieldType, DbSchema, DbSchemaApi } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Raw YAML shape (user-authored)
@@ -22,10 +22,21 @@ interface RawFieldDef {
   onUpdate?: string;
 }
 
+const VALID_AUTH_MODES = ["none", "required", "owner"] as const;
+const VALID_API_METHODS: ApiMethod[] = ["get", "list", "create", "update", "delete"];
+
+interface RawApiBlock {
+  enabled?: unknown;
+  auth?: unknown;
+  methods?: unknown;
+  ownerField?: unknown;
+}
+
 interface RawSchema {
   model: string;
   table?: string;
   fields: Record<string, RawFieldDef>;
+  api?: RawApiBlock;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +55,74 @@ const VALID_TYPES: DbFieldType[] = [
 
 function isValidType(t: string): t is DbFieldType {
   return (VALID_TYPES as string[]).includes(t);
+}
+
+/** Parse and validate the optional `api:` block in a raw schema. */
+function parseApiBlock(
+  raw: RawApiBlock,
+  sourceHint: string,
+  fieldNames: Set<string>,
+): DbSchemaApi {
+  const enabled = raw.enabled !== undefined ? Boolean(raw.enabled) : true;
+
+  // auth
+  if (raw.auth === undefined) {
+    throw new Error(`${sourceHint}: api block must specify "auth" (one of: ${VALID_AUTH_MODES.join(", ")})`);
+  }
+  if (typeof raw.auth !== "string" || !(VALID_AUTH_MODES as readonly string[]).includes(raw.auth)) {
+    throw new Error(
+      `${sourceHint}: api.auth must be one of ${VALID_AUTH_MODES.join(", ")} (got "${raw.auth}")`,
+    );
+  }
+  const auth = raw.auth as DbSchemaApi["auth"];
+
+  // methods
+  let methods: ApiMethod[];
+  if (raw.methods === undefined) {
+    methods = [...VALID_API_METHODS];
+  } else {
+    if (!Array.isArray(raw.methods)) {
+      throw new Error(`${sourceHint}: api.methods must be an array`);
+    }
+    methods = [];
+    for (const m of raw.methods as unknown[]) {
+      if (typeof m !== "string" || !(VALID_API_METHODS as string[]).includes(m)) {
+        throw new Error(
+          `${sourceHint}: api.methods contains invalid value "${m}". Valid: ${VALID_API_METHODS.join(", ")}`,
+        );
+      }
+      methods.push(m as ApiMethod);
+    }
+    if (methods.length === 0) {
+      throw new Error(`${sourceHint}: api.methods must not be empty`);
+    }
+  }
+
+  // ownerField — required when auth is "owner"
+  let ownerField: string | undefined;
+  if (auth === "owner") {
+    if (raw.ownerField === undefined || raw.ownerField === null) {
+      throw new Error(
+        `${sourceHint}: api.ownerField is required when api.auth is "owner"`,
+      );
+    }
+    if (typeof raw.ownerField !== "string" || !raw.ownerField.trim()) {
+      throw new Error(`${sourceHint}: api.ownerField must be a non-empty string`);
+    }
+    ownerField = raw.ownerField.trim();
+    if (!fieldNames.has(ownerField)) {
+      throw new Error(
+        `${sourceHint}: api.ownerField "${ownerField}" is not a field in this schema`,
+      );
+    }
+  } else if (raw.ownerField !== undefined) {
+    // Accepted but ignored for non-owner modes
+    if (typeof raw.ownerField === "string" && raw.ownerField.trim()) {
+      ownerField = raw.ownerField.trim();
+    }
+  }
+
+  return { enabled, auth, methods, ownerField };
 }
 
 /** Convert a model name like "Comment" to a table name "comments". */
@@ -132,7 +211,17 @@ export function parseRawSchema(raw: unknown, sourceHint = "<unknown>"): DbSchema
     fields.push(field);
   }
 
-  return { model, table, fields };
+  // Parse optional api: block
+  let api: DbSchemaApi | undefined;
+  if (r.api !== undefined) {
+    if (!r.api || typeof r.api !== "object" || Array.isArray(r.api)) {
+      throw new Error(`${sourceHint}: schema "${model}" api block must be an object`);
+    }
+    const fieldNames = new Set(fields.map((f) => f.name));
+    api = parseApiBlock(r.api as RawApiBlock, sourceHint, fieldNames);
+  }
+
+  return { model, table, fields, ...(api !== undefined ? { api } : {}) };
 }
 
 /** Parse a YAML string into a DbSchema. Throws on parse or validation error. */
