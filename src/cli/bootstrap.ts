@@ -42,6 +42,9 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
+import { createDuneAuthSystem, bootstrapAdminTuples } from "../auth/authz.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
+import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
@@ -115,6 +118,14 @@ export interface BootstrapResult {
    * singleton bug where the last-bootstrapped site overwrites the global.
    */
   adminContext: import("../admin/context.ts").AdminContext | null;
+  /**
+   * Pre-created authz system. Present when auth.mode is "dune" and authzStore is "local".
+   * `mountDuneAuth()` reuses this rather than creating a second instance, so that
+   * admin-user tuples and site-user tuples share the same in-memory index.
+   */
+  authz?: DuneAuthSystem;
+  /** Paired adapter for the authz system above — needed for hasTuple / bootstrap. */
+  authzAdapter?: AuthzLocalAdapter;
 }
 
 export interface BootstrapOptions {
@@ -441,6 +452,36 @@ export async function bootstrap(
     trustForwardedFor: config.system?.trusted_proxies === true,
   });
 
+  // Authorization (polizy) — create the authz bundle and bootstrap admin users.
+  // Site-user tuples are bootstrapped later in mountDuneAuth() once the site
+  // user store is available. Both bootstrap calls use this same adapter so they
+  // share the in-memory tuple index.
+  //
+  // Reading auth mode from site config (public auth, not the admin auth provider).
+  // deno-lint-ignore no-explicit-any
+  const _siteAuthCfg = ((config.site as any).auth) as
+    | Record<string, unknown>
+    | undefined;
+  const _siteAuthMode = (_siteAuthCfg?.mode as string | undefined) ?? "dune";
+  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined) ?? "local";
+
+  let bootstrappedAuthz: DuneAuthSystem | undefined;
+  let bootstrappedAuthzAdapter: AuthzLocalAdapter | undefined;
+
+  if (adminConfig.enabled && _siteAuthMode === "dune" && _authzStoreCfg === "local") {
+    try {
+      const bundle = createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+      bootstrappedAuthz = bundle.authz;
+      bootstrappedAuthzAdapter = bundle.adapter;
+      const allAdminUsers = await users.list();
+      await bootstrapAdminTuples(bootstrappedAuthz, bootstrappedAuthzAdapter, allAdminUsers);
+    } catch (err) {
+      console.warn("[dune/authz] Admin authz bootstrap failed, falling back to ROLE_PERMISSIONS:", err);
+      bootstrappedAuthz = undefined;
+      bootstrappedAuthzAdapter = undefined;
+    }
+  }
+
   const submissionManager = createSubmissionManager({
     storage,
     submissionsDir: `${dataDir}/submissions`,
@@ -548,6 +589,7 @@ export async function bootstrap(
       mt,
       rateLimitStore,
       pluginPages: pluginAdminPages.length > 0 ? pluginAdminPages : undefined,
+      authz: bootstrappedAuthz,
     };
     initAdminContext(adminContextObj);
   }
@@ -585,5 +627,7 @@ export async function bootstrap(
     pluginAdminPages,
     pluginPublicRoutes,
     adminContext: adminContextObj,
+    authz: bootstrappedAuthz,
+    authzAdapter: bootstrappedAuthzAdapter,
   };
 }

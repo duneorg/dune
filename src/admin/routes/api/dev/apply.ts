@@ -296,7 +296,7 @@ export const handler = {
     }
 
     // Permission check
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
     const { config } = ctx.state.adminContext;

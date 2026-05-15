@@ -6,7 +6,7 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { comments } = ctx.state.adminContext;
     const authResult = ctx.state.auth;

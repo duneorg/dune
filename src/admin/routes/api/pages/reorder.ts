@@ -9,7 +9,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
     const { engine, storage, config } = ctx.state.adminContext;

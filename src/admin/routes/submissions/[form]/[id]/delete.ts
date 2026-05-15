@@ -15,7 +15,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "submissions.delete");
+    const denied = await requirePermission(ctx, "submissions.delete");
     if (denied) return denied;
 
     const { submissions, prefix } = ctx.state.adminContext;

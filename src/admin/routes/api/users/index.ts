@@ -8,7 +8,7 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "users.read");
+    const denied = await requirePermission(ctx, "users.read");
     if (denied) return denied;
     const { users } = ctx.state.adminContext;
     try {
@@ -22,7 +22,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "users.create");
+    const denied = await requirePermission(ctx, "users.create");
     if (denied) return denied;
 
     const { users, auditLogger } = ctx.state.adminContext;
@@ -56,6 +56,17 @@ export const handler = {
         role,
         name: name ?? username,
       });
+
+      // Sync the new user's role into the authz tuple store immediately so
+      // they can access the admin panel without waiting for a restart + bootstrap.
+      const { authz } = ctx.state.adminContext;
+      if (authz) {
+        await authz.allow({
+          who: { type: "user", id: user.id },
+          toBe: role,
+          onWhat: { type: "app", id: "admin" },
+        }).catch(() => {});
+      }
 
       void auditLogger?.log({
         event: "user.create",

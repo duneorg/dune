@@ -7,8 +7,8 @@ import { sectionRegistry } from "../../../sections/mod.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
-  GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     return json(sectionRegistry.all());
   },

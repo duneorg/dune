@@ -304,6 +304,8 @@ export {
   createDuneAuthSystem,
   /** Bootstrap permission tuples from existing SiteUser roles[]. @since 1.0.0 */
   bootstrapRoleTuples,
+  /** Bootstrap permission tuples for existing AdminUser records. @since 1.0.0 */
+  bootstrapAdminTuples,
 } from "./auth/authz.ts";
 export type {
   /** The Dune-configured AuthSystem type. @since 1.0.0 */

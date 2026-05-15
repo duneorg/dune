@@ -35,7 +35,7 @@ export const handler = {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
 
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
     try {

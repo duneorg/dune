@@ -9,7 +9,7 @@ import { requirePermission } from "../../api/_utils.ts";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "submissions.read");
+    const denied = await requirePermission(ctx, "submissions.read");
     if (denied) return denied;
 
     const { submissions, prefix } = ctx.state.adminContext;

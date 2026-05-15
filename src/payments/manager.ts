@@ -13,6 +13,7 @@
 import type { CheckoutSession, PaymentProvider, Product, WebhookEvent } from "./types.ts";
 import type { SiteUserStore } from "../auth/user-store.ts";
 import type { SiteUser } from "../auth/types.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -29,6 +30,12 @@ export interface PaymentManagerConfig {
   userStore: SiteUserStore;
   /** Base URL of the site, e.g. "https://example.com". Used to build redirect URLs. */
   baseUrl: string;
+  /**
+   * Optional authz system. When provided, `authz.addMember()` is called alongside
+   * `userStore.update()` so that role grants are reflected in the authz tuple store
+   * immediately — not deferred until the next restart + bootstrap.
+   */
+  authz?: DuneAuthSystem;
 }
 
 export interface PaymentManager {
@@ -80,7 +87,7 @@ export interface PaymentManager {
  * ```
  */
 export function createPaymentManager(config: PaymentManagerConfig): PaymentManager {
-  const { provider, products, webhookSecret, userStore, baseUrl } = config;
+  const { provider, products, webhookSecret, userStore, baseUrl, authz } = config;
 
   /** Look up a product by its site-defined ID. */
   function findProduct(productId: string): Product | undefined {
@@ -146,12 +153,24 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
 
     // Assign the product role if configured and not already present.
     const product = findProduct(productId);
-    if (product?.role && !user.roles.includes(product.role)) {
-      updates.roles = [...user.roles, product.role];
+    const roleToGrant = product?.role;
+    if (roleToGrant && !user.roles.includes(roleToGrant)) {
+      updates.roles = [...user.roles, roleToGrant];
     }
 
     if (Object.keys(updates).length > 0) {
       await userStore.update(userId, updates);
+    }
+
+    // Sync the new role into the authz tuple store so the grant takes effect
+    // immediately without waiting for a restart + bootstrap.
+    if (roleToGrant && updates.roles && authz) {
+      await authz.addMember({
+        member: { type: "user", id: userId },
+        group: { type: "group", id: roleToGrant },
+      }).catch((err) => {
+        console.warn(`[dune/payments] authz.addMember failed for user ${userId}, role ${roleToGrant}:`, err);
+      });
     }
   }
 

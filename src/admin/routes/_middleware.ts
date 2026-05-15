@@ -92,11 +92,25 @@ export async function handler(
   const authResult = await auth.authenticate(ctx.req);
   ctx.state.auth = authResult;
 
-  if (!authResult.authenticated && !PUBLIC_PATHS.has(adminRelative)) {
-    const loginUrl = `${prefix === "/" ? "" : prefix}/login?next=${encodeURIComponent(pathname)}`;
-    return withSecurityHeaders(
-      new Response(null, { status: 302, headers: { Location: loginUrl } }),
-    );
+  if (!authResult.authenticated) {
+    if (!PUBLIC_PATHS.has(adminRelative)) {
+      const loginUrl = `${prefix === "/" ? "" : prefix}/login?next=${encodeURIComponent(pathname)}`;
+      return withSecurityHeaders(
+        new Response(null, { status: 302, headers: { Location: loginUrl } }),
+      );
+    }
+  } else if (authResult.user && adminCtx.authz && !PUBLIC_PATHS.has(adminRelative)) {
+    // When polizy is wired, it is the authority for admin panel access.
+    // Falls back gracefully: if authz is not set, ROLE_PERMISSIONS remains the authority.
+    // An authenticated user whose tuple has been revoked is denied before reaching routes.
+    const canAccess = await adminCtx.authz.check({
+      who: { type: "user", id: authResult.user.id },
+      canThey: "access",
+      onWhat: { type: "app", id: "admin" },
+    });
+    if (!canAccess) {
+      return withSecurityHeaders(new Response("Forbidden", { status: 403 }));
+    }
   }
 
   const res = await ctx.next();

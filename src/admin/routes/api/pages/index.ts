@@ -7,8 +7,8 @@ import { stringify as stringifyYaml } from "@std/yaml";
 import type { FreshContext } from "fresh";
 
 export const handler = {
-  GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { engine } = ctx.state.adminContext;
     return json({
@@ -25,7 +25,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.create");
+    const denied = await requirePermission(ctx, "pages.create");
     if (denied) return denied;
 
     const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;

@@ -8,7 +8,7 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "media.read");
+    const denied = await requirePermission(ctx, "media.read");
     if (denied) return denied;
 
     const { engine } = ctx.state.adminContext;
@@ -35,7 +35,7 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "media.delete");
+    const denied = await requirePermission(ctx, "media.delete");
     if (denied) return denied;
 
     const { storage, config, auditLogger } = ctx.state.adminContext;

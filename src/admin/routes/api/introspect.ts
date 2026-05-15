@@ -33,7 +33,7 @@ function getDuneVersion(): string {
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const permDenied = requirePermission(ctx, "config.read");
+    const permDenied = await requirePermission(ctx, "config.read");
     if (permDenied) return permDenied;
 
     const { engine, config, hooks } = ctx.state.adminContext;

@@ -5,8 +5,8 @@ import { requirePermission, json, validatePagePath } from "../../_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
-  GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { workflow, engine } = ctx.state.adminContext;
     if (!workflow) return json({ error: "Workflow not enabled" }, 501);

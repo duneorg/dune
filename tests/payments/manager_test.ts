@@ -8,12 +8,14 @@
 import {
   assertEquals,
   assertRejects,
+  assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { createPaymentManager } from "../../src/payments/manager.ts";
 import type { PaymentProvider, CheckoutSession, WebhookEvent, Product } from "../../src/payments/types.ts";
 import type { SiteUserStore } from "../../src/auth/user-store.ts";
 import type { SiteUser, SiteUserCreate } from "../../src/auth/types.ts";
+import { createDuneAuthSystem } from "../../src/auth/authz.ts";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -278,4 +280,140 @@ Deno.test("portal: returns billing portal URL", async () => {
   const user = makeUser();
   const result = await manager.portal(user, "cus_test_123");
   assertEquals(result.url, "https://billing.stripe.com/session/bps_mock");
+});
+
+// ---------------------------------------------------------------------------
+// handleWebhook() — authz integration
+// ---------------------------------------------------------------------------
+
+/** Minimal in-memory StorageAdapter for authz tests (same pattern as authz_test.ts). */
+function makeStorage() {
+  const files = new Map<string, Uint8Array>();
+  return {
+    async read(path: string) {
+      const data = files.get(path);
+      if (!data) throw new Error(`Not found: ${path}`);
+      return data;
+    },
+    async readText(path: string) { return new TextDecoder().decode(await (this as any).read(path)); },
+    async write(path: string, data: Uint8Array | string) {
+      files.set(path, typeof data === "string" ? new TextEncoder().encode(data) : data);
+    },
+    async exists(path: string) { return files.has(path); },
+    async delete(path: string) { files.delete(path); },
+    async rename(oldPath: string, newPath: string) {
+      const data = files.get(oldPath);
+      if (!data) throw new Error(`Not found: ${oldPath}`);
+      files.set(newPath, data);
+      files.delete(oldPath);
+    },
+    async list(dir: string) {
+      const entries = [];
+      for (const [path] of files) {
+        if (path.startsWith(dir + "/") && !path.slice(dir.length + 1).includes("/")) {
+          entries.push({ name: path.slice(dir.length + 1), path, isFile: true, isDirectory: false });
+        }
+      }
+      return entries;
+    },
+    async listRecursive(dir: string) { return (this as any).list(dir); },
+    async stat(path: string) {
+      return { isFile: files.has(path), isDirectory: false, size: files.get(path)?.length ?? 0, mtime: 0 };
+    },
+    async getJSON<T>(key: string): Promise<T | null> {
+      const data = files.get(`__json__/${key}`);
+      if (!data) return null;
+      return JSON.parse(new TextDecoder().decode(data));
+    },
+    async setJSON<T>(key: string, value: T): Promise<void> {
+      files.set(`__json__/${key}`, new TextEncoder().encode(JSON.stringify(value)));
+    },
+    async deleteJSON(key: string): Promise<void> { files.delete(`__json__/${key}`); },
+    watch(_path: string, _cb: unknown) { return () => {}; },
+  } as import("../../src/storage/types.ts").StorageAdapter;
+}
+
+Deno.test("handleWebhook: authz.addMember called when role is granted", async () => {
+  const storage = makeStorage();
+  const { authz } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  const user = makeUser({ id: "user-new", roles: [] });
+  const event: WebhookEvent = {
+    type: "checkout.session.completed",
+    userId: "user-new",
+    productId: "membership",
+    raw: {},
+  };
+
+  const provider = new MockPaymentProvider();
+  provider.parseWebhookResult = event;
+  const userStore = new MockUserStore();
+  userStore.users.set(user.id, user);
+
+  const manager = createPaymentManager({
+    provider,
+    products: [makeProduct()],
+    webhookSecret: "whsec_test",
+    userStore,
+    baseUrl: "https://example.com",
+    authz,
+  });
+
+  const req = new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" });
+  await manager.handleWebhook(req);
+
+  // Role should be in both userStore and authz
+  const updatedUser = await userStore.getById("user-new");
+  assertEquals(updatedUser?.roles.includes("member"), true);
+
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "user-new" },
+      canThey: "access",
+      onWhat: { type: "group", id: "member" },
+    }),
+    true,
+  );
+});
+
+Deno.test("handleWebhook: authz not called when role already present", async () => {
+  const storage = makeStorage();
+  const { authz } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  // Pre-grant the role — userStore already has it, webhook is a duplicate
+  const user = makeUser({ id: "user-dup", roles: ["member"] });
+  const event: WebhookEvent = {
+    type: "checkout.session.completed",
+    userId: "user-dup",
+    productId: "membership",
+    raw: {},
+  };
+
+  const provider = new MockPaymentProvider();
+  provider.parseWebhookResult = event;
+  const userStore = new MockUserStore();
+  userStore.users.set(user.id, user);
+
+  const manager = createPaymentManager({
+    provider,
+    products: [makeProduct()],
+    webhookSecret: "whsec_test",
+    userStore,
+    baseUrl: "https://example.com",
+    authz,
+  });
+
+  await manager.handleWebhook(new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }));
+
+  // No userStore update (role already present), no authz tuple written
+  assertEquals(userStore.updateCalls.length, 0);
+  // authz check should still be false — no tuple was created
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "user-dup" },
+      canThey: "access",
+      onWhat: { type: "group", id: "member" },
+    }),
+    false,
+  );
 });

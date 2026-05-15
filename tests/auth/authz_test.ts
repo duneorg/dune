@@ -10,7 +10,7 @@
 
 import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { AuthzLocalAdapter } from "../../src/auth/authz-adapter-local.ts";
-import { createDuneAuthSystem, bootstrapRoleTuples } from "../../src/auth/authz.ts";
+import { createDuneAuthSystem, bootstrapRoleTuples, bootstrapAdminTuples } from "../../src/auth/authz.ts";
 import { setGatingAuthz, checkRolesAsync } from "../../src/auth/gating.ts";
 import type { SiteUser } from "../../src/auth/types.ts";
 
@@ -247,6 +247,75 @@ Deno.test("bootstrapRoleTuples: idempotent — does not duplicate tuples", async
 
   const tuples = await adapter.findTuples({ subject: { type: "user", id: "u1" } });
   assertEquals(tuples.length, 1);
+});
+
+// ── bootstrapAdminTuples ──────────────────────────────────────────────────────
+
+Deno.test("bootstrapAdminTuples: grants admin access via 'access' action", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  await bootstrapAdminTuples(authz, adapter, [
+    { id: "admin-1", role: "admin" },
+    { id: "editor-1", role: "editor" },
+    { id: "author-1", role: "author" },
+  ]);
+
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "admin-1" }, canThey: "access", onWhat: { type: "app", id: "admin" } }),
+    true,
+  );
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "editor-1" }, canThey: "access", onWhat: { type: "app", id: "admin" } }),
+    true,
+  );
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "author-1" }, canThey: "access", onWhat: { type: "app", id: "admin" } }),
+    true,
+  );
+});
+
+Deno.test("bootstrapAdminTuples: admin has users.manage, editor does not", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  await bootstrapAdminTuples(authz, adapter, [
+    { id: "admin-1", role: "admin" },
+    { id: "editor-1", role: "editor" },
+  ]);
+
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "admin-1" }, canThey: "users.manage", onWhat: { type: "app", id: "admin" } }),
+    true,
+  );
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "editor-1" }, canThey: "users.manage", onWhat: { type: "app", id: "admin" } }),
+    false,
+  );
+});
+
+Deno.test("bootstrapAdminTuples: idempotent — does not duplicate tuples", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+  const adminUsers = [{ id: "admin-1", role: "admin" }];
+
+  await bootstrapAdminTuples(authz, adapter, adminUsers);
+  await bootstrapAdminTuples(authz, adapter, adminUsers);
+
+  const tuples = await adapter.findTuples({ subject: { type: "user", id: "admin-1" } });
+  assertEquals(tuples.length, 1);
+});
+
+Deno.test("bootstrapAdminTuples: unknown user has no admin access", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  await bootstrapAdminTuples(authz, adapter, [{ id: "admin-1", role: "admin" }]);
+
+  assertStrictEquals(
+    await authz.check({ who: { type: "user", id: "nobody" }, canThey: "access", onWhat: { type: "app", id: "admin" } }),
+    false,
+  );
 });
 
 // ── checkRolesAsync with live authz ──────────────────────────────────────────

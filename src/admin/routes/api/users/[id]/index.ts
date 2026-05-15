@@ -9,7 +9,7 @@ export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "users.update");
+    const denied = await requirePermission(ctx, "users.update");
     if (denied) return denied;
 
     const { users, auditLogger } = ctx.state.adminContext;
@@ -37,6 +37,45 @@ export const handler = {
       if (role !== undefined) updates.role = role;
       if (enabled !== undefined) updates.enabled = Boolean(enabled);
 
+      // Sync authz tuples. Read the current user record once for both checks.
+      // Done before the store update so the current role is still readable.
+      const { authz } = ctx.state.adminContext;
+      if (authz && (role !== undefined || enabled !== undefined)) {
+        const existing = await users.getById(userId);
+        if (existing) {
+          if (role !== undefined) {
+            // Role change: revoke old relation, grant new one.
+            await authz.disallowAllMatching({
+              who: { type: "user", id: userId },
+              was: existing.role as "admin" | "editor" | "author",
+              onWhat: { type: "app", id: "admin" },
+            }).catch(() => {});
+            await authz.allow({
+              who: { type: "user", id: userId },
+              toBe: role,
+              onWhat: { type: "app", id: "admin" },
+            });
+          }
+          if (enabled !== undefined) {
+            if (!enabled) {
+              // Disabling: revoke all admin app tuples so authz.check() fails even
+              // if session auth is somehow bypassed (defence-in-depth).
+              await authz.disallowAllMatching({
+                who: { type: "user", id: userId },
+              }).catch(() => {});
+            } else if (enabled && !existing.enabled) {
+              // Re-enabling: restore the tuple for their current (or newly set) role.
+              const effectiveRole = (role ?? existing.role) as "admin" | "editor" | "author";
+              await authz.allow({
+                who: { type: "user", id: userId },
+                toBe: effectiveRole,
+                onWhat: { type: "app", id: "admin" },
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+
       const updated = await users.update(userId, updates);
       if (!updated) return json({ error: "User not found" }, 404);
 
@@ -59,7 +98,7 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "users.delete");
+    const denied = await requirePermission(ctx, "users.delete");
     if (denied) return denied;
 
     const { users, auditLogger } = ctx.state.adminContext;
@@ -69,6 +108,13 @@ export const handler = {
     try {
       if (authResult.user?.id === userId) {
         return json({ error: "Cannot delete your own account" }, 400);
+      }
+      // Remove all authz tuples for the deleted user so no stale permissions remain.
+      const { authz } = ctx.state.adminContext;
+      if (authz) {
+        await authz.disallowAllMatching({
+          who: { type: "user", id: userId },
+        }).catch(() => {});
       }
       const deleted = await users.delete(userId);
       if (!deleted) return json({ error: "User not found" }, 404);

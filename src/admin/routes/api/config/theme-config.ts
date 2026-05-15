@@ -6,8 +6,8 @@ import type { BlueprintField } from "../../../../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
-  GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "config.read");
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "config.read");
     if (denied) return denied;
     const { engine } = ctx.state.adminContext;
     const manifest = engine.themes.theme.manifest;
@@ -21,7 +21,7 @@ export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "config.update");
+    const denied = await requirePermission(ctx, "config.update");
     if (denied) return denied;
 
     const { engine, storage, config } = ctx.state.adminContext;

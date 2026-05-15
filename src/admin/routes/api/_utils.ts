@@ -91,13 +91,36 @@ export function csrfCheck(ctx: FreshContext<AdminState>): Response | null {
   return null;
 }
 
-/** Permission check — returns 403 response if denied, null if allowed. */
-export function requirePermission(
+/**
+ * Permission check — returns 403 response if denied, null if allowed.
+ *
+ * When the polizy authz system is wired (auth.mode = "dune", authzStore = "local"),
+ * uses `authz.check()` as the authority. Falls back to `ROLE_PERMISSIONS` when
+ * authz is not configured (external-jwt mode or headless setups without authz).
+ */
+export async function requirePermission(
   ctx: FreshContext<AdminState>,
   permission: AdminPermission,
-): Response | null {
-  const { auth } = ctx.state.adminContext;
-  if (!auth.hasPermission(ctx.state.auth, permission)) {
+): Promise<Response | null> {
+  const { auth, authz } = ctx.state.adminContext;
+  const authResult = ctx.state.auth;
+
+  if (authz && authResult.authenticated && authResult.user) {
+    // deno-lint-ignore no-explicit-any
+    const allowed = await authz.check({
+      who: { type: "user", id: authResult.user.id },
+      canThey: permission as any,
+      onWhat: { type: "app", id: "admin" },
+    });
+    if (!allowed) {
+      logAuthzDenial(ctx, "auth.permission_denied", { permission });
+      return json({ error: "Forbidden" }, 403);
+    }
+    return null;
+  }
+
+  // Fallback: ROLE_PERMISSIONS (external-jwt mode or authz not configured)
+  if (!auth.hasPermission(authResult, permission)) {
     logAuthzDenial(ctx, "auth.permission_denied", { permission });
     return json({ error: "Forbidden" }, 403);
   }
@@ -210,7 +233,7 @@ export function withGuards<P = Record<string, string>>(
       if (csrfDenied) return csrfDenied;
     }
     if (opts.permission) {
-      const permDenied = requirePermission(ctx, opts.permission);
+      const permDenied = await requirePermission(ctx, opts.permission);
       if (permDenied) return permDenied;
     }
     if (opts.validatePath) {

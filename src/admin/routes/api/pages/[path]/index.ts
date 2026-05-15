@@ -27,7 +27,7 @@ async function maybeGitCommit(
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
     const { engine } = ctx.state.adminContext;
@@ -50,7 +50,7 @@ export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
     const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;
@@ -119,7 +119,7 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.delete");
+    const denied = await requirePermission(ctx, "pages.delete");
     if (denied) return denied;
 
     const { engine, storage, config, hooks, auditLogger } = ctx.state.adminContext;

@@ -20,6 +20,8 @@ import { createProviders } from "./providers/mod.ts";
 import { SITE_USER_HEADER, type SiteUser } from "./types.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { createDuneAuthSystem, bootstrapRoleTuples } from "./authz.ts";
+import type { DuneAuthSystem } from "./authz.ts";
+import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -28,6 +30,12 @@ type FreshApp = App<any>;
 export interface PublicAuthContext {
   /** Resolve the current site user from a request (null if not authenticated) */
   resolveUser: (req: Request) => Promise<SiteUser | null>;
+  /**
+   * The configured authz system, or null in external-jwt mode.
+   * Pass to `mountPaymentRoutes()` so the payment manager can call
+   * `authz.addMember()` when a role is granted after a successful payment.
+   */
+  authz: DuneAuthSystem | null;
 }
 
 /**
@@ -90,19 +98,28 @@ export async function mountDuneAuth(
   //
   // Only create authz when running in "dune" mode — external-JWT mode derives
   // roles from JWT claims; authz tuple store is irrelevant there.
+  //
+  // When bootstrap() already created the authz bundle (the normal full-stack path),
+  // reuse it so admin-user and site-user tuples share the same in-memory index.
+  // For headless setups that call mountDuneAuth() without a prior bootstrap()
+  // (e.g. testing or custom servers), a fresh bundle is created here.
+  let mountAuthz: DuneAuthSystem | null = null;
   if (mode === "dune") {
     const authzStoreCfg = authConfig?.authzStore ?? "local";
     if (authzStoreCfg === "local") {
-      const { authz, adapter: authzAdapter } = createDuneAuthSystem(
-        { authzStore: "local", dataDir },
-        storage,
-      );
-      setGatingAuthz(authz);
+      const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
+      const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
+      const bundle = (existingAuthz && existingAdapter)
+        ? { authz: existingAuthz, adapter: existingAdapter }
+        : createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
 
-      // Bootstrap from existing users' roles[] — idempotent
+      setGatingAuthz(bundle.authz);
+      mountAuthz = bundle.authz;
+
+      // Bootstrap from existing site users' roles[] — idempotent
       try {
         const allUsers = await userStore.list();
-        await bootstrapRoleTuples(authz, authzAdapter, allUsers);
+        await bootstrapRoleTuples(bundle.authz, bundle.adapter, allUsers);
       } catch {
         // Bootstrap failure must not prevent startup — gating falls back to array check
       }
@@ -243,6 +260,7 @@ export async function mountDuneAuth(
 
   return {
     resolveUser: (req) => authMiddleware.resolveUser(req),
+    authz: mountAuthz,
   };
 }
 

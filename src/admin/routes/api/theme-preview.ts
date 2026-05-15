@@ -17,7 +17,7 @@ function escapeHtml(s: string): string {
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "config.read");
+    const denied = await requirePermission(ctx, "config.read");
     if (denied) return denied;
 
     const { engine } = ctx.state.adminContext;

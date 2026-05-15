@@ -121,3 +121,32 @@ export async function bootstrapRoleTuples(
     }
   }
 }
+
+/**
+ * Bootstrap permission tuples for existing AdminUser records.
+ *
+ * Each admin user gets a direct relation tuple on `{ type: "app", id: "admin" }`
+ * matching their role ("admin", "editor", or "author"). Idempotent — skips
+ * tuples that already exist.
+ *
+ * Called by `bootstrap()` during startup. Role changes and deletes are kept in
+ * sync via the admin user route handlers in `src/admin/routes/api/users/`.
+ */
+export async function bootstrapAdminTuples(
+  authz: DuneAuthSystem,
+  adapter: AuthzLocalAdapter,
+  adminUsers: Array<{ id: string; role: string }>,
+): Promise<void> {
+  for (const user of adminUsers) {
+    const subject = { type: "user" as const, id: user.id };
+    const object = { type: "app" as const, id: "admin" };
+    const exists = await adapter.hasTuple(subject, user.role, object);
+    if (!exists) {
+      await authz.allow({
+        who: subject,
+        toBe: user.role as "admin" | "editor" | "author",
+        onWhat: object,
+      });
+    }
+  }
+}

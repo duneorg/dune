@@ -32,7 +32,7 @@ import { parse as parseYaml } from "@std/yaml";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
 
     const { engine, storage, config } = ctx.state.adminContext;

@@ -9,8 +9,8 @@ function toUserInfo(u: { id: string; username: string; name: string; email: stri
 }
 
 export const handler = {
-  GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { engine } = ctx.state.adminContext;
     const authResult = ctx.state.auth;

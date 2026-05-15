@@ -6,7 +6,7 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { flex } = ctx.state.adminContext;
     if (!flex) return json({ error: "Flex Objects not enabled" }, 501);
@@ -20,7 +20,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
     const { flex } = ctx.state.adminContext;
     if (!flex) return json({ error: "Flex Objects not enabled" }, 501);

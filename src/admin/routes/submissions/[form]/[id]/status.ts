@@ -18,7 +18,7 @@ export const handler = {
     if (csrf) return csrf;
     // Status update (mark as read / archive) is editorial workflow —
     // align with the read permission rather than requiring delete.
-    const denied = requirePermission(ctx, "submissions.read");
+    const denied = await requirePermission(ctx, "submissions.read");
     if (denied) return denied;
 
     const { submissions, prefix } = ctx.state.adminContext;

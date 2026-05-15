@@ -25,7 +25,7 @@ async function loadRegistry(): Promise<RegistryTheme[]> {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice());
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -35,7 +35,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "config.update");
+    const denied = await requirePermission(ctx, "config.update");
     if (denied) return denied;
 
     const { storage } = ctx.state.adminContext;

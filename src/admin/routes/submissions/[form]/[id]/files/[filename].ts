@@ -14,7 +14,7 @@ function safeSegment(s: string): boolean {
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "submissions.read");
+    const denied = await requirePermission(ctx, "submissions.read");
     if (denied) return denied;
 
     const { submissions, storage } = ctx.state.adminContext;

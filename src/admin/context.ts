@@ -24,6 +24,7 @@ import type { AuditLogger } from "../audit/mod.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
 import type { RateLimitStore } from "../security/rate-limit-store.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
 
 export type { AdminPageRegistration };
 
@@ -50,6 +51,12 @@ export interface AdminContext {
   auditLogger?: AuditLogger;
   metrics?: MetricsCollector;
   mt?: MachineTranslator | null;
+  /**
+   * Polizy authz system, present when auth.mode is "dune" and authzStore is "local".
+   * Used for admin panel access enforcement and role-change tuple sync.
+   * When undefined, ROLE_PERMISSIONS is the sole authority.
+   */
+  authz?: DuneAuthSystem;
   /**
    * Rate-limit store for IP-based throttling and per-account lockout.
    * When present, login.tsx uses this store instead of its module-level

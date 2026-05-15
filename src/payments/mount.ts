@@ -18,6 +18,7 @@
 import type { App } from "fresh";
 import type { SiteConfig } from "../config/types.ts";
 import type { SiteUserStore } from "../auth/user-store.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
 import { createStripePaymentProvider } from "./stripe.ts";
 import { createPaymentManager } from "./manager.ts";
 import { createPaymentRoutes } from "./routes.ts";
@@ -33,6 +34,14 @@ export interface PaymentMountConfig {
   userStore: SiteUserStore;
   /** Base URL of the site (e.g. "https://example.com") for redirect URLs. */
   baseUrl: string;
+  /**
+   * Optional authz system. When provided, the payment manager calls
+   * `authz.addMember()` immediately after a role is granted via a webhook,
+   * keeping the tuple store in sync without waiting for a restart + bootstrap.
+   *
+   * Pass `publicAuthCtx.authz` from the `mountDuneAuth()` return value.
+   */
+  authz?: DuneAuthSystem | null;
 }
 
 /**
@@ -42,7 +51,7 @@ export interface PaymentMountConfig {
  * This allows sites that don't use payments to load without any extra config.
  */
 export function mountPaymentRoutes(app: FreshApp, config: PaymentMountConfig): void {
-  const { siteConfig, userStore, baseUrl } = config;
+  const { siteConfig, userStore, baseUrl, authz } = config;
   const paymentsConfig = siteConfig.payments;
 
   // No-op when payments is not configured or provider is absent
@@ -79,6 +88,7 @@ export function mountPaymentRoutes(app: FreshApp, config: PaymentMountConfig): v
     webhookSecret,
     userStore,
     baseUrl,
+    authz: authz ?? undefined,
   });
 
   const handlers = createPaymentRoutes(manager);

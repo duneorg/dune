@@ -6,7 +6,7 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   async GET(ctx: FreshContext<AdminState>) {
-    const denied = requirePermission(ctx, "pages.read");
+    const denied = await requirePermission(ctx, "pages.read");
     if (denied) return denied;
     const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);
@@ -31,7 +31,7 @@ export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
 
     const { staging } = ctx.state.adminContext;
@@ -58,7 +58,7 @@ export const handler = {
   async DELETE(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "pages.update");
+    const denied = await requirePermission(ctx, "pages.update");
     if (denied) return denied;
     const { staging } = ctx.state.adminContext;
     if (!staging) return json({ error: "Staging not enabled" }, 501);

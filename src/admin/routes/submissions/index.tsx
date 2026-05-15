@@ -12,7 +12,7 @@ export const handler = {
     // Defence-in-depth (LOW-8): existing roles all include
     // submissions.read so this is a no-op today, but explicitly checking
     // means future role tightening can't silently leak submission data.
-    const denied = requirePermission(ctx, "submissions.read");
+    const denied = await requirePermission(ctx, "submissions.read");
     if (denied) return denied;
 
     const { submissions, prefix } = ctx.state.adminContext;

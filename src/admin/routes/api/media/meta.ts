@@ -11,7 +11,7 @@ export const handler = {
   async PUT(ctx: FreshContext<AdminState>) {
     const csrf = csrfCheck(ctx);
     if (csrf) return csrf;
-    const denied = requirePermission(ctx, "media.upload");
+    const denied = await requirePermission(ctx, "media.upload");
     if (denied) return denied;
 
     const { storage, config } = ctx.state.adminContext;
