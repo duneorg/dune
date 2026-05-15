@@ -381,3 +381,97 @@ Deno.test("checkRolesAsync: empty array spec → any authenticated user (no auth
     setGatingAuthz(null);
   }
 });
+
+// ── external-jwt lazy provisioning via bootstrapRoleTuples ───────────────────
+// In external-jwt + authzStore:local mode, mountDuneAuth() calls
+// bootstrapRoleTuples(authz, adapter, [user]) on first appearance. These tests
+// verify that pattern works correctly for a single user.
+
+Deno.test("external-jwt provisioning: JWT roles seed group membership tuples", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  const user = makeUser("ext-user-1", ["member", "premium"]);
+  await bootstrapRoleTuples(authz, adapter, [user]);
+
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "ext-user-1" },
+      canThey: "access",
+      onWhat: { type: "group", id: "member" },
+    }),
+    true,
+  );
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "ext-user-1" },
+      canThey: "access",
+      onWhat: { type: "group", id: "premium" },
+    }),
+    true,
+  );
+});
+
+Deno.test("external-jwt provisioning: user with no JWT roles gets no tuples", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  const user = makeUser("ext-user-2", []);
+  await bootstrapRoleTuples(authz, adapter, [user]);
+
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "ext-user-2" },
+      canThey: "access",
+      onWhat: { type: "group", id: "member" },
+    }),
+    false,
+  );
+});
+
+Deno.test("external-jwt provisioning: repeated calls are idempotent (no duplicate tuples)", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  const user = makeUser("ext-user-3", ["member"]);
+  // Simulate multiple requests before the in-process set guards kick in
+  await bootstrapRoleTuples(authz, adapter, [user]);
+  await bootstrapRoleTuples(authz, adapter, [user]);
+  await bootstrapRoleTuples(authz, adapter, [user]);
+
+  const tuples = await adapter.findTuples({ subject: { type: "user", id: "ext-user-3" } });
+  assertEquals(tuples.length, 1);
+});
+
+Deno.test("external-jwt provisioning: gating uses authz.check() — not roles[] — when authz wired", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+  setGatingAuthz(authz);
+  try {
+    // User's JWT says "member" but no tuple has been provisioned yet
+    const unprovisioned = makeUser("ext-user-4", ["member"]);
+    assertStrictEquals(await checkRolesAsync(unprovisioned, "member"), false);
+
+    // After lazy provisioning, the tuple exists and check passes
+    await bootstrapRoleTuples(authz, adapter, [unprovisioned]);
+    assertStrictEquals(await checkRolesAsync(unprovisioned, "member"), true);
+  } finally {
+    setGatingAuthz(null);
+  }
+});
+
+Deno.test("external-jwt provisioning: a different user's tuples don't affect another", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  await bootstrapRoleTuples(authz, adapter, [makeUser("ext-user-5", ["member"])]);
+
+  assertStrictEquals(
+    await authz.check({
+      who: { type: "user", id: "ext-user-6" },
+      canThey: "access",
+      onWhat: { type: "group", id: "member" },
+    }),
+    false,
+  );
+});

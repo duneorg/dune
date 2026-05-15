@@ -91,32 +91,41 @@ export async function mountDuneAuth(
   });
 
   // ── Authorization (polizy) ─────────────────────────────────────────────────
-  // Build the authz system and wire it into content gating. Bootstrap derives
-  // initial tuples from existing users' roles[] arrays so that sites upgrading
-  // from the simple array-check model get correct behaviour without a manual
-  // migration step.
+  // Local polizy authz is the default in "dune" mode and an explicit opt-in in
+  // "external-jwt" mode (set authzStore: local in site.yaml to enable).
   //
-  // Only create authz when running in "dune" mode — external-JWT mode derives
-  // roles from JWT claims; authz tuple store is irrelevant there.
+  // external-jwt + authzStore:local — JWT claims seed initial group-membership
+  // tuples on first user appearance; polizy is the authority from that point.
+  // Role changes in the external IdP are NOT auto-synced — wire a webhook to
+  // authz.addMember() / authz.disallowAllMatching() to keep them in sync.
+  // Stale tuples for deleted users are bounded by the JWT TTL (tokens expire,
+  // so deleted users cannot present a valid JWT to reach gated content).
   //
   // When bootstrap() already created the authz bundle (the normal full-stack path),
   // reuse it so admin-user and site-user tuples share the same in-memory index.
   // For headless setups that call mountDuneAuth() without a prior bootstrap()
   // (e.g. testing or custom servers), a fresh bundle is created here.
   let mountAuthz: DuneAuthSystem | null = null;
-  if (mode === "dune") {
-    const authzStoreCfg = authConfig?.authzStore ?? "local";
-    if (authzStoreCfg === "local") {
-      const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
-      const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
-      const bundle = (existingAuthz && existingAdapter)
-        ? { authz: existingAuthz, adapter: existingAdapter }
-        : createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+  let mountAdapter: AuthzLocalAdapter | null = null;
 
-      setGatingAuthz(bundle.authz);
-      mountAuthz = bundle.authz;
+  const authzStoreCfg = mode === "dune"
+    ? (authConfig?.authzStore ?? "local")   // default local in dune mode
+    : authConfig?.authzStore;               // must be explicit in external-jwt mode
 
-      // Bootstrap from existing site users' roles[] — idempotent
+  if (authzStoreCfg === "local") {
+    const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
+    const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
+    const bundle = (existingAuthz && existingAdapter)
+      ? { authz: existingAuthz, adapter: existingAdapter }
+      : createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+
+    setGatingAuthz(bundle.authz);
+    mountAuthz = bundle.authz;
+    mountAdapter = bundle.adapter;
+
+    if (mode === "dune") {
+      // Bulk-bootstrap from existing site users' roles[] — idempotent.
+      // In external-jwt mode users are lazily provisioned per-request instead.
       try {
         const allUsers = await userStore.list();
         await bootstrapRoleTuples(bundle.authz, bundle.adapter, allUsers);
@@ -205,6 +214,12 @@ export async function mountDuneAuth(
   // After resolving the real user, inject the header back so that downstream
   // plain-Request handlers (content gating, API guards, payment routes) can
   // read the verified user without access to Fresh's ctx.state.
+
+  // Track external-jwt users provisioned this process lifetime.
+  // Prevents re-provisioning on every request; hasTuple() idempotency in the
+  // adapter prevents duplicate tuples across process restarts.
+  const externalUsersProvisioned = new Set<string>();
+
   app.use(async (fc) => {
     // Build a clean header set with any externally-supplied header removed.
     const cleanHeaders = new Headers(fc.req.headers);
@@ -213,6 +228,17 @@ export async function mountDuneAuth(
 
     // Resolve the real user from the session cookie / JWT only.
     const user = await authMiddleware.resolveUser(cleanReq);
+
+    // Lazy-provision polizy tuples for external-jwt users on first appearance.
+    // JWT role claims seed initial group memberships so that authz.check() and
+    // content gating work without manual tuple management. Awaited so the user
+    // has correct permissions on their very first request.
+    if (user && mountAuthz && mountAdapter && mode === "external-jwt") {
+      if (!externalUsersProvisioned.has(user.id)) {
+        externalUsersProvisioned.add(user.id);
+        await bootstrapRoleTuples(mountAuthz, mountAdapter, [user]).catch(() => {});
+      }
+    }
 
     // Re-inject the resolved user so downstream handlers can call getSiteUser(req).
     if (user) {

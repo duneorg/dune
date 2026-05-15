@@ -463,12 +463,17 @@ export async function bootstrap(
     | Record<string, unknown>
     | undefined;
   const _siteAuthMode = (_siteAuthCfg?.mode as string | undefined) ?? "dune";
-  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined) ?? "local";
+  // In "dune" mode authzStore defaults to "local".
+  // In "external-jwt" mode authzStore must be explicitly opted into — no default,
+  // because an external JWT provider owns roles in that topology and we must not
+  // silently create a local tuple store that would never be consulted.
+  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined)
+    ?? (_siteAuthMode === "dune" ? "local" : undefined);
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | undefined;
 
-  if (adminConfig.enabled && _siteAuthMode === "dune" && _authzStoreCfg === "local") {
+  if (adminConfig.enabled && _authzStoreCfg === "local") {
     try {
       const bundle = createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
       bootstrappedAuthz = bundle.authz;
