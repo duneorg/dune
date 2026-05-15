@@ -10,10 +10,29 @@
  *     all: [member, verified]
  *   roles: []                  # authenticated-only (any logged-in user)
  *   # absent                   # public access — no check performed
+ *
+ * When a polizy AuthSystem is wired via `setGatingAuthz()`, role checks go
+ * through `authz.check()` for full hierarchy and group membership support.
+ * Without an authz instance the fallback direct `user.roles[]` array check
+ * is used — same semantics, no polizy dependency.
  */
 
 import type { SiteUser } from "./types.ts";
 import { getSiteUser } from "./types.ts";
+import type { DuneAuthSystem } from "./authz.ts";
+
+// ── Module-level authz instance ────────────────────────────────────────────────
+
+let _authz: DuneAuthSystem | null = null;
+
+/**
+ * Wire the polizy AuthSystem into the gating layer.
+ * Called by `mountDuneAuth()` after constructing the AuthSystem.
+ * Pass `null` to revert to the simple array-check fallback.
+ */
+export function setGatingAuthz(authz: DuneAuthSystem | null): void {
+  _authz = authz;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,7 +103,10 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
 // ── Checking ──────────────────────────────────────────────────────────────────
 
 /**
- * Determine whether a `SiteUser` satisfies a `RolesSpec`.
+ * Sync fallback role check against the user's `roles[]` array.
+ *
+ * Used directly by tests and as a fallback when no authz instance is
+ * configured. Does not support group hierarchy or inheritance.
  *
  * - `null` user → always denied (regardless of spec)
  * - `string` spec → user must have that exact role
@@ -110,6 +132,63 @@ export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
   return spec.all.every((r) => user.roles.includes(r));
 }
 
+/**
+ * Async role check — goes through polizy `authz.check()` when an AuthSystem
+ * is configured, otherwise falls back to `checkRoles()`.
+ *
+ * Using authz.check() enables group hierarchy, inheritance, and any custom
+ * relation logic defined in the schema.
+ */
+export async function checkRolesAsync(
+  user: SiteUser | null,
+  spec: RolesSpec,
+): Promise<boolean> {
+  if (user === null) return false;
+
+  // Empty array spec → any authenticated user, no authz lookup needed
+  if (Array.isArray(spec) && spec.length === 0) return true;
+
+  if (_authz === null) {
+    // No authz configured — fall back to direct array check
+    return checkRoles(user, spec);
+  }
+
+  const subject = { type: "user" as const, id: user.id };
+
+  if (typeof spec === "string") {
+    // Single role: check if user can "access" the named group
+    return _authz.check({
+      who: subject,
+      canThey: "access",
+      onWhat: { type: "group", id: spec },
+    });
+  }
+
+  if (Array.isArray(spec)) {
+    // OR: user must be able to access at least one of the listed groups
+    for (const role of spec) {
+      const ok = await _authz.check({
+        who: subject,
+        canThey: "access",
+        onWhat: { type: "group", id: role },
+      });
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  // AND: user must be able to access every listed group
+  for (const role of spec.all) {
+    const ok = await _authz.check({
+      who: subject,
+      canThey: "access",
+      onWhat: { type: "group", id: role },
+    });
+    if (!ok) return false;
+  }
+  return true;
+}
+
 // ── Enforcement ───────────────────────────────────────────────────────────────
 
 /**
@@ -120,16 +199,18 @@ export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
  *   - Unauthenticated user with a spec present → 302 to `/auth/login?next=<url>`
  *   - Authenticated user with insufficient roles → 403 plain text
  *
+ * Uses `authz.check()` when a polizy AuthSystem is configured (wired via
+ * `setGatingAuthz()`), otherwise falls back to the direct array check.
+ *
  * Callers should return the `Response` immediately when it is non-null.
  */
-export function enforceRoles(
+export async function enforceRoles(
   req: Request,
   user: SiteUser | null,
   spec: RolesSpec,
-): Response | null {
-  if (checkRoles(user, spec)) {
-    return null; // access granted
-  }
+): Promise<Response | null> {
+  const granted = await checkRolesAsync(user, spec);
+  if (granted) return null;
 
   if (user === null) {
     // Redirect unauthenticated visitors to the login page with a return URL.
@@ -154,10 +235,10 @@ export function enforceRoles(
  *
  * Returns `null` when access is granted, or a Response to return to the client.
  */
-export function enforceRolesFromRequest(
+export async function enforceRolesFromRequest(
   req: Request,
   spec: RolesSpec,
-): Response | null {
+): Promise<Response | null> {
   const user = getSiteUser(req);
   return enforceRoles(req, user, spec);
 }

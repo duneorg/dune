@@ -679,7 +679,7 @@ export function duneRoutes(
       {
         const rolesSpec = parseRolesSpec(page.frontmatter.roles);
         if (rolesSpec !== null) {
-          const gateResponse = enforceRolesFromRequest(req, rolesSpec);
+          const gateResponse = await enforceRolesFromRequest(req, rolesSpec);
           if (gateResponse !== null) return gateResponse;
         }
       }

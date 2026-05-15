@@ -294,3 +294,24 @@ export type {
   /** @since 0.6.0 */
   MultisiteConfig,
 } from "./multisite/mod.ts";
+
+// ── Authorization (polizy) ─────────────────────────────────────────────────
+
+export {
+  /** Flat-file implementation of the polizy StorageAdapter. @since 1.0.0 */
+  AuthzLocalAdapter,
+  /** Create a Dune AuthSystem backed by the configured storage tier. @since 1.0.0 */
+  createDuneAuthSystem,
+  /** Bootstrap permission tuples from existing SiteUser roles[]. @since 1.0.0 */
+  bootstrapRoleTuples,
+} from "./auth/authz.ts";
+export type {
+  /** The Dune-configured AuthSystem type. @since 1.0.0 */
+  DuneAuthSystem,
+  /** Return type of createDuneAuthSystem(). @since 1.0.0 */
+  DuneAuthBundle,
+  /** Config for createDuneAuthSystem(). @since 1.0.0 */
+  AuthzConfig,
+  /** The Dune polizy schema type. @since 1.0.0 */
+  DuneAuthzSchema,
+} from "./auth/authz.ts";

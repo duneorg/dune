@@ -13,6 +13,7 @@
     "./mcp": "./src/mcp/mod.ts",
     "./db": "./src/db/mod.ts",
     "./auth/api-guard": "./src/auth/api-guard.ts",
+    "./auth/authz": "./src/auth/authz.ts",
     "./email": "./src/email/mod.ts",
     "./ui": "./src/ui/mod.ts",
     "./logger": "./src/core/logger.ts"
@@ -37,7 +38,8 @@
     "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2",
     "@db/sqlite": "jsr:@db/sqlite@^0.12",
     "postgres": "npm:postgres@^3.4",
-    "ioredis": "npm:ioredis@^5"
+    "ioredis": "npm:ioredis@^5",
+    "polizy": "npm:polizy@^0.2.0"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",

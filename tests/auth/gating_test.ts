@@ -187,11 +187,11 @@ Deno.test("checkRoles: AND spec — user with none of the required roles → den
   );
 });
 
-// ── enforceRoles ──────────────────────────────────────────────────────────────
+// ── enforceRoles (async — uses authz.check() or falls back to checkRoles) ─────
 
-Deno.test("enforceRoles: null user + spec → 302 redirect to /auth/login", () => {
+Deno.test("enforceRoles: null user + spec → 302 redirect to /auth/login", async () => {
   const req = makeRequest("http://site.example.com/members-only");
-  const resp = enforceRoles(req, null, "member");
+  const resp = await enforceRoles(req, null, "member");
   assertEquals(resp?.status, 302);
   assertEquals(
     resp?.headers.get("Location"),
@@ -199,9 +199,9 @@ Deno.test("enforceRoles: null user + spec → 302 redirect to /auth/login", () =
   );
 });
 
-Deno.test("enforceRoles: null user + spec with query string → next includes query", () => {
+Deno.test("enforceRoles: null user + spec with query string → next includes query", async () => {
   const req = makeRequest("http://site.example.com/page?foo=bar");
-  const resp = enforceRoles(req, null, "member");
+  const resp = await enforceRoles(req, null, "member");
   assertEquals(resp?.status, 302);
   assertEquals(
     resp?.headers.get("Location"),
@@ -209,49 +209,49 @@ Deno.test("enforceRoles: null user + spec with query string → next includes qu
   );
 });
 
-Deno.test("enforceRoles: authenticated user lacking roles → 403", () => {
+Deno.test("enforceRoles: authenticated user lacking roles → 403", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser(["editor"]), "member");
+  const resp = await enforceRoles(req, makeUser(["editor"]), "member");
   assertEquals(resp?.status, 403);
   assertEquals(resp?.headers.get("Content-Type"), "text/plain; charset=utf-8");
 });
 
-Deno.test("enforceRoles: authenticated user with sufficient role → null (granted)", () => {
+Deno.test("enforceRoles: authenticated user with sufficient role → null (granted)", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser(["member"]), "member");
+  const resp = await enforceRoles(req, makeUser(["member"]), "member");
   assertStrictEquals(resp, null);
 });
 
-Deno.test("enforceRoles: authenticated user satisfies OR spec → null (granted)", () => {
+Deno.test("enforceRoles: authenticated user satisfies OR spec → null (granted)", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser(["admin"]), ["member", "admin"]);
+  const resp = await enforceRoles(req, makeUser(["admin"]), ["member", "admin"]);
   assertStrictEquals(resp, null);
 });
 
-Deno.test("enforceRoles: authenticated user satisfies AND spec → null (granted)", () => {
+Deno.test("enforceRoles: authenticated user satisfies AND spec → null (granted)", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser(["member", "verified"]), {
+  const resp = await enforceRoles(req, makeUser(["member", "verified"]), {
     all: ["member", "verified"],
   });
   assertStrictEquals(resp, null);
 });
 
-Deno.test("enforceRoles: authenticated user fails AND spec → 403", () => {
+Deno.test("enforceRoles: authenticated user fails AND spec → 403", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser(["member"]), {
+  const resp = await enforceRoles(req, makeUser(["member"]), {
     all: ["member", "verified"],
   });
   assertEquals(resp?.status, 403);
 });
 
-Deno.test("enforceRoles: authenticated user on empty-array spec → null (granted)", () => {
+Deno.test("enforceRoles: authenticated user on empty-array spec → null (granted)", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, makeUser([]), []);
+  const resp = await enforceRoles(req, makeUser([]), []);
   assertStrictEquals(resp, null);
 });
 
-Deno.test("enforceRoles: null user on empty-array spec → 302 (not authenticated)", () => {
+Deno.test("enforceRoles: null user on empty-array spec → 302 (not authenticated)", async () => {
   const req = makeRequest();
-  const resp = enforceRoles(req, null, []);
+  const resp = await enforceRoles(req, null, []);
   assertEquals(resp?.status, 302);
 });

@@ -19,6 +19,8 @@ import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
 import { SITE_USER_HEADER, type SiteUser } from "./types.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
+import { createDuneAuthSystem, bootstrapRoleTuples } from "./authz.ts";
+import { setGatingAuthz } from "./gating.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -79,6 +81,33 @@ export async function mountDuneAuth(
     sessionLifetime: sessionLifetimeSec,
     trustForwardedFor,
   });
+
+  // ── Authorization (polizy) ─────────────────────────────────────────────────
+  // Build the authz system and wire it into content gating. Bootstrap derives
+  // initial tuples from existing users' roles[] arrays so that sites upgrading
+  // from the simple array-check model get correct behaviour without a manual
+  // migration step.
+  //
+  // Only create authz when running in "dune" mode — external-JWT mode derives
+  // roles from JWT claims; authz tuple store is irrelevant there.
+  if (mode === "dune") {
+    const authzStoreCfg = authConfig?.authzStore ?? "local";
+    if (authzStoreCfg === "local") {
+      const { authz, adapter: authzAdapter } = createDuneAuthSystem(
+        { authzStore: "local", dataDir },
+        storage,
+      );
+      setGatingAuthz(authz);
+
+      // Bootstrap from existing users' roles[] — idempotent
+      try {
+        const allUsers = await userStore.list();
+        await bootstrapRoleTuples(authz, authzAdapter, allUsers);
+      } catch {
+        // Bootstrap failure must not prevent startup — gating falls back to array check
+      }
+    }
+  }
 
   // ── OAuth providers ─────────────────────────────────────────────────────────
   const providersCfg = authConfig?.providers ?? {};
@@ -243,4 +272,6 @@ interface SiteAuthConfig {
   };
   sessionLifetime?: number;
   userStore?: "local";
+  /** Storage tier for permission tuples. Default: "local". */
+  authzStore?: "local";
 }
