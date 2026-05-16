@@ -215,10 +215,19 @@ export async function mountDuneAuth(
   // plain-Request handlers (content gating, API guards, payment routes) can
   // read the verified user without access to Fresh's ctx.state.
 
-  // Track external-jwt users provisioned this process lifetime.
-  // Prevents re-provisioning on every request; hasTuple() idempotency in the
-  // adapter prevents duplicate tuples across process restarts.
-  const externalUsersProvisioned = new Set<string>();
+  // Track the last-seen role fingerprint for each external-jwt user.
+  // Key: userId  Value: sorted+joined roles string (e.g. "editor,member")
+  //
+  // On every request we compare the fingerprint derived from the current JWT
+  // against the stored value. When they differ (first appearance, role grant,
+  // or role revocation in the external IdP), we fully reconcile the user's
+  // polizy tuples:
+  //   1. disallowAllMatching — wipes stale tuples that the IdP has revoked
+  //   2. bootstrapRoleTuples — re-seeds from the fresh JWT role claims
+  //
+  // This ensures revoked IdP roles are reflected in authz within one request
+  // of the user presenting a new token, bounded by the JWT TTL.
+  const externalUserRoleFingerprints = new Map<string, string>();
 
   app.use(async (fc) => {
     // Build a clean header set with any externally-supplied header removed.
@@ -229,13 +238,20 @@ export async function mountDuneAuth(
     // Resolve the real user from the session cookie / JWT only.
     const user = await authMiddleware.resolveUser(cleanReq);
 
-    // Lazy-provision polizy tuples for external-jwt users on first appearance.
-    // JWT role claims seed initial group memberships so that authz.check() and
-    // content gating work without manual tuple management. Awaited so the user
-    // has correct permissions on their very first request.
+    // Reconcile polizy tuples for external-jwt users when their role set changes.
+    // We compare a deterministic fingerprint of the JWT's roles claim against the
+    // last-seen fingerprint. A mismatch means roles were granted or revoked in the
+    // IdP — wipe and re-seed so authz reflects the authoritative JWT state.
     if (user && mountAuthz && mountAdapter && mode === "external-jwt") {
-      if (!externalUsersProvisioned.has(user.id)) {
-        externalUsersProvisioned.add(user.id);
+      const roleFingerprint = [...user.roles].sort().join(",");
+      if (externalUserRoleFingerprints.get(user.id) !== roleFingerprint) {
+        externalUserRoleFingerprints.set(user.id, roleFingerprint);
+        // Revoke all existing group-membership tuples for this user, then
+        // re-seed from the current JWT claims. Awaited so the user has the
+        // correct permissions on this very request.
+        await mountAuthz.disallowAllMatching({
+          who: { type: "user", id: user.id },
+        }).catch(() => {});
         await bootstrapRoleTuples(mountAuthz, mountAdapter, [user]).catch(() => {});
       }
     }

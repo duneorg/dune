@@ -42,6 +42,18 @@ export class AuthzLocalAdapter {
   /** In-memory tuple index — rebuilt from disk on first access */
   private readonly tuples: Map<string, PolizyStoredTuple> = new Map();
   private loaded = false;
+  /**
+   * In-flight load promise — shared by all concurrent callers so they all await
+   * the same disk scan rather than each returning immediately with an empty index.
+   *
+   * Without this cache, the following race is possible:
+   *   1. Call A: `this.loaded` is false → sets `this.loaded = true` (sync), starts
+   *      `this.storage.list()` (async, yields the event loop).
+   *   2. Call B: `this.loaded` is now true → returns immediately.
+   *   3. Call B proceeds to use `this.tuples`, which is still empty.
+   *   4. Call A eventually completes and populates `this.tuples` — too late for B.
+   */
+  private loadPromise: Promise<void> | null = null;
 
   constructor(config: { storage: DuneStorage; dataDir: string }) {
     this.storage = config.storage;
@@ -50,27 +62,34 @@ export class AuthzLocalAdapter {
 
   // ── Lazy index load ─────────────────────────────────────────────────────────
 
-  private async ensureLoaded(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
-    try {
-      const entries = await this.storage.list(this.permissionsDir);
-      await Promise.all(
-        entries
-          .filter((e) => e.isFile && e.name.endsWith(".json"))
-          .map(async (e) => {
-            try {
-              const raw = await this.storage.read(e.path);
-              const tuple = JSON.parse(new TextDecoder().decode(raw)) as PolizyStoredTuple;
-              if (tuple.id) this.tuples.set(tuple.id, tuple);
-            } catch {
-              // Skip corrupt files — log would be nice but we avoid the logger dep
-            }
-          }),
-      );
-    } catch {
-      // Permissions directory doesn't exist yet — that's fine; writes will create it
-    }
+  private ensureLoaded(): Promise<void> {
+    if (this.loaded) return Promise.resolve();
+    if (this.loadPromise !== null) return this.loadPromise;
+
+    this.loadPromise = (async () => {
+      try {
+        const entries = await this.storage.list(this.permissionsDir);
+        await Promise.all(
+          entries
+            .filter((e) => e.isFile && e.name.endsWith(".json"))
+            .map(async (e) => {
+              try {
+                const raw = await this.storage.read(e.path);
+                const tuple = JSON.parse(new TextDecoder().decode(raw)) as PolizyStoredTuple;
+                if (tuple.id) this.tuples.set(tuple.id, tuple);
+              } catch {
+                // Skip corrupt files — log would be nice but we avoid the logger dep
+              }
+            }),
+        );
+      } catch {
+        // Permissions directory doesn't exist yet — that's fine; writes will create it
+      } finally {
+        this.loaded = true;
+      }
+    })();
+
+    return this.loadPromise;
   }
 
   // ── StorageAdapter methods ──────────────────────────────────────────────────
@@ -98,11 +117,28 @@ export class AuthzLocalAdapter {
       if (this.matchesFilter(tuple, filter)) {
         try {
           await this.storage.delete(`${this.permissionsDir}/${id}.json`);
-        } catch {
-          // Already gone — safe to ignore
+          // Only remove from the in-memory index once the disk write succeeds.
+          // This ensures that if the disk operation fails (e.g. a transient I/O
+          // error), the tuple is not silently dropped from the index: on the next
+          // process restart the file will still be present and the tuple will be
+          // reloaded — stale permissions are the safe-fail direction here.
+          this.tuples.delete(id);
+          count++;
+        } catch (err) {
+          // File already gone is fine — remove from in-memory index so the two
+          // stores stay consistent. Any other storage error is logged and the
+          // in-memory entry is left intact so a restart can reload from disk.
+          const isGone = err instanceof Error &&
+            (err.message.includes("ENOENT") ||
+             err.message.includes("not found") ||
+             err.message.includes("No such file"));
+          if (isGone) {
+            this.tuples.delete(id);
+            count++;
+          } else {
+            console.warn(`[dune/authz] Failed to delete tuple ${id} from disk:`, err);
+          }
         }
-        this.tuples.delete(id);
-        count++;
       }
     }
     return count;

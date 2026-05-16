@@ -479,7 +479,12 @@ export async function bootstrap(
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
       const allAdminUsers = await users.list();
-      await bootstrapAdminTuples(bootstrappedAuthz, bootstrappedAuthzAdapter, allAdminUsers);
+      // Only bootstrap tuples for enabled users. Disabled users have already had
+      // their tuples revoked at disable-time (admin user route). Seeding tuples for
+      // disabled users here would re-grant permissions that were intentionally revoked,
+      // allowing authz.check() to pass for users who are blocked at the session layer.
+      const enabledAdminUsers = allAdminUsers.filter((u) => u.enabled !== false);
+      await bootstrapAdminTuples(bootstrappedAuthz, bootstrappedAuthzAdapter, enabledAdminUsers);
     } catch (err) {
       console.warn("[dune/authz] Admin authz bootstrap failed, falling back to ROLE_PERMISSIONS:", err);
       bootstrappedAuthz = undefined;

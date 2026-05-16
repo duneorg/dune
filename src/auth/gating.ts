@@ -29,6 +29,20 @@ let _authz: DuneAuthSystem | null = null;
  * Wire the polizy AuthSystem into the gating layer.
  * Called by `mountDuneAuth()` after constructing the AuthSystem.
  * Pass `null` to revert to the simple array-check fallback.
+ *
+ * ⚠️  MULTISITE LIMITATION
+ * This is a process-wide singleton. In a multisite deployment where multiple
+ * sites share the same Deno process and each calls `mountDuneAuth()`, only the
+ * **last** site to call `setGatingAuthz()` will have its authz instance used by
+ * `checkRolesAsync` / `enforceRoles`. All earlier sites will use the wrong
+ * (last-registered) authz instance, causing cross-site privilege leakage.
+ *
+ * Workaround: in multisite setups, call `enforceRoles(req, user, spec, authz)`
+ * with the per-site `authz` argument directly rather than relying on the global.
+ *
+ * A proper fix requires making the authz instance request-scoped (e.g. via a
+ * per-request context map keyed on site origin) — tracked as a future
+ * improvement.
  */
 export function setGatingAuthz(authz: DuneAuthSystem | null): void {
   _authz = authz;
@@ -138,17 +152,25 @@ export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
  *
  * Using authz.check() enables group hierarchy, inheritance, and any custom
  * relation logic defined in the schema.
+ *
+ * @param authzOverride - Optional per-site AuthSystem. Pass the site-specific
+ *   `authz` instance in multisite deployments to bypass the process-wide
+ *   singleton set by `setGatingAuthz()`. See the warning on `setGatingAuthz`.
  */
 export async function checkRolesAsync(
   user: SiteUser | null,
   spec: RolesSpec,
+  authzOverride?: DuneAuthSystem | null,
 ): Promise<boolean> {
   if (user === null) return false;
 
   // Empty array spec → any authenticated user, no authz lookup needed
   if (Array.isArray(spec) && spec.length === 0) return true;
 
-  if (_authz === null) {
+  // Use the per-call override when provided; fall back to the process-wide singleton.
+  const effectiveAuthz = authzOverride !== undefined ? authzOverride : _authz;
+
+  if (effectiveAuthz === null) {
     // No authz configured — fall back to direct array check
     return checkRoles(user, spec);
   }
@@ -157,7 +179,7 @@ export async function checkRolesAsync(
 
   if (typeof spec === "string") {
     // Single role: check if user can "access" the named group
-    return _authz.check({
+    return effectiveAuthz.check({
       who: subject,
       canThey: "access",
       onWhat: { type: "group", id: spec },
@@ -202,14 +224,18 @@ export async function checkRolesAsync(
  * Uses `authz.check()` when a polizy AuthSystem is configured (wired via
  * `setGatingAuthz()`), otherwise falls back to the direct array check.
  *
+ * @param authzOverride - Optional per-site AuthSystem for multisite deployments.
+ *   See the warning on `setGatingAuthz`.
+ *
  * Callers should return the `Response` immediately when it is non-null.
  */
 export async function enforceRoles(
   req: Request,
   user: SiteUser | null,
   spec: RolesSpec,
+  authzOverride?: DuneAuthSystem | null,
 ): Promise<Response | null> {
-  const granted = await checkRolesAsync(user, spec);
+  const granted = await checkRolesAsync(user, spec, authzOverride);
   if (granted) return null;
 
   if (user === null) {
@@ -234,11 +260,15 @@ export async function enforceRoles(
  * one call.
  *
  * Returns `null` when access is granted, or a Response to return to the client.
+ *
+ * @param authzOverride - Optional per-site AuthSystem for multisite deployments.
+ *   See the warning on `setGatingAuthz`.
  */
 export async function enforceRolesFromRequest(
   req: Request,
   spec: RolesSpec,
+  authzOverride?: DuneAuthSystem | null,
 ): Promise<Response | null> {
   const user = getSiteUser(req);
-  return enforceRoles(req, user, spec);
+  return enforceRoles(req, user, spec, authzOverride);
 }

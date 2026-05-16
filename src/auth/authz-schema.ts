@@ -43,8 +43,17 @@ export const duneAuthzSchema = defineSchema({
   },
   actionToRelations: {
     // ── Site-user actions ──────────────────────────────────────────────────
-    /** General access (read/view). Satisfied by any role. */
-    access: ["member", "admin", "editor", "author", "owner"],
+    /** General access (read/view). Satisfied by group membership or admin-tier roles.
+     *
+     *  `owner` is intentionally excluded: it is a per-resource direct grant used for
+     *  inline editing (`edit` action). Including it here would allow a user who owns
+     *  a specific resource (e.g. a page) to pass *group-based* content gating checks
+     *  — a confused-deputy that grants unintended access to gated content.
+     *
+     *  If an owner should also be able to access gated content, grant them the
+     *  appropriate group membership (e.g. `authz.addMember(...)`) explicitly.
+     */
+    access: ["member", "admin", "editor", "author"],
     /** Write/edit access on a specific resource */
     edit: ["owner", "admin", "editor"],
 

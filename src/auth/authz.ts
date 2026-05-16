@@ -78,7 +78,19 @@ export function createDuneAuthSystem(
   config: AuthzConfig,
   storage: StorageAdapter,
 ): DuneAuthBundle {
+  // Warn when dataDir is not provided. The default "data" is a relative path that
+  // resolves against the process CWD, which is unpredictable in headless or test
+  // contexts. Callers should always pass an explicit absolute path (e.g. the site
+  // root joined with the configured dataDir). bootstrap() always does this; custom
+  // server setups should follow the same pattern.
   const dataDir = config.dataDir ?? "data";
+  if (!config.dataDir) {
+    console.warn(
+      "[dune/authz] createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
+      "(relative to process CWD). Pass an explicit absolute path to avoid resolving " +
+      "permissions to the wrong directory in non-standard server setups.",
+    );
+  }
   const adapter = new AuthzLocalAdapter({ storage, dataDir });
   const authz = new AuthSystem({
     schema: duneAuthzSchema,

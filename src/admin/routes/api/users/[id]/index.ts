@@ -49,7 +49,9 @@ export const handler = {
               who: { type: "user", id: userId },
               was: existing.role as "admin" | "editor" | "author",
               onWhat: { type: "app", id: "admin" },
-            }).catch(() => {});
+            }).catch((err) => {
+              console.warn(`[dune/authz] disallowAllMatching failed on role change for user ${userId}:`, err);
+            });
             await authz.allow({
               who: { type: "user", id: userId },
               toBe: role,
@@ -62,7 +64,9 @@ export const handler = {
               // if session auth is somehow bypassed (defence-in-depth).
               await authz.disallowAllMatching({
                 who: { type: "user", id: userId },
-              }).catch(() => {});
+              }).catch((err) => {
+                console.warn(`[dune/authz] disallowAllMatching failed on disable for user ${userId}:`, err);
+              });
             } else if (enabled && !existing.enabled) {
               // Re-enabling: restore the tuple for their current (or newly set) role.
               const effectiveRole = (role ?? existing.role) as "admin" | "editor" | "author";
@@ -70,7 +74,9 @@ export const handler = {
                 who: { type: "user", id: userId },
                 toBe: effectiveRole,
                 onWhat: { type: "app", id: "admin" },
-              }).catch(() => {});
+              }).catch((err) => {
+                console.warn(`[dune/authz] allow failed on re-enable for user ${userId}:`, err);
+              });
             }
           }
         }
@@ -114,7 +120,9 @@ export const handler = {
       if (authz) {
         await authz.disallowAllMatching({
           who: { type: "user", id: userId },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.warn(`[dune/authz] disallowAllMatching failed on delete for user ${userId}:`, err);
+        });
       }
       const deleted = await users.delete(userId);
       if (!deleted) return json({ error: "User not found" }, 404);
