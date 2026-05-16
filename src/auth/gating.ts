@@ -189,7 +189,7 @@ export async function checkRolesAsync(
   if (Array.isArray(spec)) {
     // OR: user must be able to access at least one of the listed groups
     for (const role of spec) {
-      const ok = await _authz.check({
+      const ok = await effectiveAuthz.check({
         who: subject,
         canThey: "access",
         onWhat: { type: "group", id: role },
@@ -201,7 +201,7 @@ export async function checkRolesAsync(
 
   // AND: user must be able to access every listed group
   for (const role of spec.all) {
-    const ok = await _authz.check({
+    const ok = await effectiveAuthz.check({
       who: subject,
       canThey: "access",
       onWhat: { type: "group", id: role },
