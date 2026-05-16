@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.12.0] — 2026-05-16
+
+### Added
+
+- **Polizy-backed authorization** — relationship-based access control via [polizy](https://github.com/bratsos/polizy). `createDuneAuthSystem()` returns an `authz` handle with `check()`, `allow()`, `addMember()`, and `delete()`. Admin permissions are now enforced through `authz.check()` rather than static role constants. Configure via `auth.authzStore` in `site.yaml`.
+- **`auth.mode: external-jwt` with local authz** — combine an external identity provider (via JWT) for authentication with Dune's polizy authz store for authorization. Role tuples are seeded from JWT claims on first sign-in and kept in sync on role changes.
+- **`@dune/core/auth/authz` export** — `AuthzLocalAdapter` and related types are now part of the public package surface.
+
+---
+
 ## [0.11.0] — 2026-05-15
 
 ### Added
