@@ -108,7 +108,7 @@ Commands:
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server
-  validate            Whole-project lint: config, plugins, templates, schemas, content
+  validate            Whole-project lint: config, plugins, templates, schemas, content, skills
 
   cache:clear         Clear all caches
   cache:rebuild       Rebuild content index from scratch
@@ -343,6 +343,7 @@ async function main() {
         await validateCommand(root, {
           debug: options.debug === true,
           json: options.json === true,
+          skills: options.skills === false ? false : undefined, // undefined = auto-detect
         });
         break;
 

@@ -19,12 +19,18 @@ export interface ValidateOptions {
   debug?: boolean;
   /** Output machine-parseable JSON instead of human-readable text. */
   json?: boolean;
+  /**
+   * Check code blocks in .claude/skills/*.md against live hook names and
+   * permission strings. Reports unknown identifiers as warnings.
+   * Automatically enabled when .claude/skills/ exists; pass false to skip.
+   */
+  skills?: boolean;
 }
 
 /** A single validation finding. */
 export interface ValidateFinding {
   /** Category of the check that produced this finding. */
-  category: "config" | "plugin" | "template" | "schema" | "content";
+  category: "config" | "plugin" | "template" | "schema" | "content" | "skills";
   /** Severity: error = blocks build, warning = advisory. */
   severity: "error" | "warning";
   /** Human-readable description. */
@@ -33,11 +39,136 @@ export interface ValidateFinding {
   source?: string;
 }
 
+// ── Skills check constants ────────────────────────────────────────────────────
+
+const VALID_HOOK_EVENTS = new Set([
+  "onConfigLoaded", "onStorageReady", "onContentIndexReady",
+  "onRequest", "onRouteResolved", "onPageLoaded", "onCollectionResolved",
+  "onBeforeRender", "onAfterRender", "onResponse",
+  "onMarkdownProcess", "onMarkdownProcessed", "onMediaDiscovered",
+  "onCacheHit", "onCacheMiss", "onCacheInvalidate",
+  "onApiRequest", "onApiResponse",
+  "onRebuild", "onThemeSwitch",
+  "onPageCreate", "onPageUpdate", "onPageDelete", "onWorkflowChange",
+]);
+
+const VALID_PERMISSIONS = new Set([
+  "pages.create", "pages.read", "pages.update", "pages.delete",
+  "media.upload", "media.read", "media.delete",
+  "users.create", "users.read", "users.update", "users.delete",
+  "config.read", "config.update",
+  "submissions.read", "submissions.delete",
+  "admin.access",
+]);
+
+/**
+ * Extract TypeScript/JavaScript code blocks from a Markdown string.
+ * Returns the raw code from each fenced block tagged as ts/typescript/js/javascript.
+ */
+function extractCodeBlocks(md: string): string[] {
+  const blocks: string[] = [];
+  const fence = /^```(?:ts|typescript|js|javascript)\n([\s\S]*?)^```/gm;
+  let m: RegExpExecArray | null;
+  while ((m = fence.exec(md)) !== null) {
+    blocks.push(m[1]);
+  }
+  return blocks;
+}
+
+/**
+ * Scan a block of code for hook event names and permission strings,
+ * returning any that aren't in the known-valid sets.
+ */
+function scanCodeBlock(code: string): { unknownHooks: string[]; unknownPerms: string[] } {
+  const unknownHooks: string[] = [];
+  const unknownPerms: string[] = [];
+
+  // hooks.on("eventName") and hooks.on('eventName')
+  const hookRe = /hooks\.on\(\s*["']([^"']+)["']/g;
+  let m: RegExpExecArray | null;
+  while ((m = hookRe.exec(code)) !== null) {
+    if (!VALID_HOOK_EVENTS.has(m[1])) unknownHooks.push(m[1]);
+  }
+
+  // requirePermission(ctx, "perm.name") and requirePermission(ctx, 'perm.name')
+  const permRe = /requirePermission\([^,]+,\s*["']([^"']+)["']/g;
+  while ((m = permRe.exec(code)) !== null) {
+    if (!VALID_PERMISSIONS.has(m[1])) unknownPerms.push(m[1]);
+  }
+
+  return { unknownHooks, unknownPerms };
+}
+
+async function checkSkills(
+  root: string,
+  findings: ValidateFinding[],
+  json: boolean,
+): Promise<void> {
+  const skillsDir = join(root, ".claude", "skills");
+
+  let files: string[] = [];
+  try {
+    for await (const entry of Deno.readDir(skillsDir)) {
+      if (entry.isFile && entry.name.endsWith(".md")) {
+        files.push(join(skillsDir, entry.name));
+      }
+    }
+  } catch {
+    // .claude/skills/ doesn't exist — nothing to check
+    if (!json) console.log("  ℹ️  Skills: no .claude/skills/ directory found — skipped");
+    return;
+  }
+
+  files = files.sort();
+  const skillFindings: ValidateFinding[] = [];
+
+  for (const filePath of files) {
+    const rel = filePath.slice(root.length + 1);
+    const content = await Deno.readTextFile(filePath).catch(() => "");
+    const blocks = extractCodeBlocks(content);
+
+    for (const block of blocks) {
+      const { unknownHooks, unknownPerms } = scanCodeBlock(block);
+      for (const hook of unknownHooks) {
+        skillFindings.push({
+          category: "skills",
+          severity: "warning",
+          message: `Unknown hook event "${hook}" — not in HookEvent union (may be a future API)`,
+          source: rel,
+        });
+        findings.push(skillFindings.at(-1)!);
+      }
+      for (const perm of unknownPerms) {
+        skillFindings.push({
+          category: "skills",
+          severity: "warning",
+          message: `Unknown permission "${perm}" — not in AdminPermission union (may be a future API)`,
+          source: rel,
+        });
+        findings.push(skillFindings.at(-1)!);
+      }
+    }
+  }
+
+  if (!json) {
+    if (skillFindings.length === 0) {
+      console.log(`  ✅ Skills valid (${files.length} file(s) checked)`);
+    } else {
+      console.log(`  ⚠️  Skills: ${skillFindings.length} warning(s) across ${files.length} file(s)`);
+      for (const f of skillFindings) {
+        console.log(`     ⚠ ${f.source}: ${f.message}`);
+      }
+    }
+  }
+}
+
 export async function validateCommand(
   root: string,
   options: ValidateOptions = {},
 ): Promise<void> {
   const { debug = false, json = false } = options;
+  // skills check: run when explicitly requested, or auto-detect (default true)
+  const runSkills = options.skills !== false;
 
   if (!json) console.log("🏜️  Dune — validating project...\n");
 
@@ -311,6 +442,11 @@ export async function validateCommand(
         }
       }
     }
+  }
+
+  // ── 6. Skills sync check ─────────────────────────────────────────────────
+  if (runSkills) {
+    await checkSkills(root, findings, json);
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
