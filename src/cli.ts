@@ -75,6 +75,7 @@ import {
 import { backupCommand, restoreCommand } from "./cli/backup.ts";
 import { flexMigrateCommand } from "./cli/flex-migrate.ts";
 import { generateCommand, generateList } from "./cli/generate.ts";
+import { addCommand } from "./cli/add.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -160,6 +161,11 @@ Commands:
   generate:theme <name>         Scaffold a theme at themes/{name}/
   generate:schema <name>        Create a Flex Object schema at flex-objects/{name}.yaml
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
+
+  add <package>                 Add a package to deno.json imports with scaffolding
+                                Examples: dune add polizy
+                                          dune add npm:some-lib@^2.0.0
+                                          dune add jsr:@scope/pkg
 
   backup [--output file.tar.gz] Back up content, data, uploads, and config
   restore <archive.tar.gz>      Restore from a backup archive
@@ -497,6 +503,12 @@ async function main() {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+        });
+        break;
+
+      case "add":
+        await addCommand(root, options.positional as string, {
+          force: options.force === true,
         });
         break;
 
