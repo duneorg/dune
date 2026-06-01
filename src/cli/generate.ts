@@ -14,6 +14,7 @@ import { join, resolve } from "@std/path";
 
 export interface GenerateOptions {
   force?: boolean;
+  permission?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -267,6 +268,65 @@ export default function DefaultTemplate({ page }: PageProps) {
 }
 
 /**
+ * generate:admin-route <name>
+ * Creates src/admin/routes/api/{name}.ts with a standard AdminState handler,
+ * requirePermission guard, and json() helper already imported.
+ *
+ * Options:
+ *   --permission <perm>   Pre-wire the requirePermission() guard (default: "pages.read")
+ */
+export async function generateAdminRoute(
+  root: string,
+  name: string,
+  opts: GenerateOptions & { permission?: string } = {},
+): Promise<void> {
+  const slug = name
+    .split("/")
+    .map((seg) => slugify(seg))
+    .filter(Boolean)
+    .join("/");
+
+  if (!slug) {
+    console.error("  ✗ Invalid route name.");
+    Deno.exit(1);
+  }
+
+  const permission = opts.permission ?? "pages.read";
+  const outPath = join(root, "src", "admin", "routes", "api", `${slug}.ts`);
+
+  await guardCollision(outPath, root, opts.force ?? false);
+
+  const content = `/** GET /admin/api/${slug} */
+
+import type { AdminState } from "../../types.ts";
+import { requirePermission, json } from "./_utils.ts";
+import type { FreshContext } from "fresh";
+
+export const handler = {
+  async GET(ctx: FreshContext<AdminState>) {
+    const denied = await requirePermission(ctx, "${permission}");
+    if (denied) return denied;
+
+    // TODO: implement
+    return json({ ok: true });
+  },
+};
+`;
+
+  await Deno.mkdir(join(root, "src", "admin", "routes", "api", ...slug.split("/").slice(0, -1)), {
+    recursive: true,
+  });
+  await Deno.writeTextFile(outPath, content);
+
+  const rel = `src/admin/routes/api/${slug}.ts`;
+  console.log(`🏜️  Dune — generate:admin-route\n`);
+  console.log(`  ✅ ${rel}`);
+  console.log(`     Route:      GET /admin/api/${slug}`);
+  console.log(`     Permission: ${permission}`);
+  console.log(`\n  Adjust the handler methods and permission as needed.`);
+}
+
+/**
  * generate:schema <name>
  * Creates flex-objects/{name}.yaml with a Flex Object schema.
  */
@@ -315,6 +375,7 @@ const GENERATORS: Record<string, string> = {
   "generate:form": "Create a blueprint schema at schemas/{name}.yaml",
   "generate:theme": "Scaffold a theme at themes/{name}/",
   "generate:schema": "Create a Flex Object schema at flex-objects/{name}.yaml",
+  "generate:admin-route": "Scaffold an admin API route in src/admin/routes/api/{name}.ts",
 };
 
 export function generateList(): void {
@@ -365,6 +426,10 @@ export async function generateCommand(
 
     case "generate:schema":
       await generateSchema(root, name, opts);
+      break;
+
+    case "generate:admin-route":
+      await generateAdminRoute(root, name, opts);
       break;
 
     default:

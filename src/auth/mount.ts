@@ -57,7 +57,7 @@ export async function mountDuneAuth(
 
   const mode = authConfig?.mode ?? "dune";
   const sessionLifetimeSec = authConfig?.sessionLifetime ?? 30 * 24 * 60 * 60;
-  const userStoreType = authConfig?.userStore ?? "local";
+  const userStoreType = (authConfig?.userStore ?? "local") as "local" | "session";
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
@@ -123,9 +123,10 @@ export async function mountDuneAuth(
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
 
-    if (mode === "dune") {
+    if (mode === "dune" && userStoreType !== "session") {
       // Bulk-bootstrap from existing site users' roles[] — idempotent.
-      // In external-jwt mode users are lazily provisioned per-request instead.
+      // Skipped in "session" mode (no persistent user records to bootstrap from)
+      // and in external-jwt mode (users are lazily provisioned per-request instead).
       try {
         const allUsers = await userStore.list();
         await bootstrapRoleTuples(bundle.authz, bundle.adapter, allUsers);
@@ -190,6 +191,19 @@ export async function mountDuneAuth(
   // a shared store (KV, Redis) via the authConfig extension points.
   const magicTokenStore = magicEnabled ? new InMemoryMagicTokenStore() : undefined;
 
+  // ── Startup warning: session userStore + payments is a lossy combination ──────
+  // Payments grant roles by calling userStore.update() + authz.addMember().
+  // In session mode there is no persistent record to update — the role is stored
+  // in the authz tuple (survives restarts) but NOT reflected in the user's
+  // session-embedded roles[] until they log out and back in.
+  if (userStoreType === "session" && (config as any).payments?.enabled) {
+    console.warn(
+      "[dune/auth] userStore: session + payments: enabled — role grants after payment " +
+        "will NOT be reflected in the user's session until they log out and log in again. " +
+        "Consider userStore: local to persist role assignments across sessions.",
+    );
+  }
+
   // ── Routes ─────────────────────────────────────────────────────────────────
   const routes = createAuthRoutes({
     userStore,
@@ -199,6 +213,7 @@ export async function mountDuneAuth(
     magicLinkSecret: magicSecret,
     siteUrl,
     mode,
+    userStoreType,
     sendEmail,
     trustForwardedFor,
     magicTokenStore,

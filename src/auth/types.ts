@@ -68,4 +68,11 @@ export interface SiteSession {
   createdAt: number;
   expiresAt: number;
   ip?: string;
+  /**
+   * Full user object embedded in the session.
+   * Set when userStore is "session" — no persistent user record exists,
+   * so the SiteUser is synthesised from OAuth/magic-link claims at login
+   * and carried in the session for the lifetime of the cookie.
+   */
+  embeddedUser?: SiteUser;
 }

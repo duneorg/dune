@@ -20,7 +20,7 @@ export const SITE_COOKIE_NAME = "dune_auth";
 export const OAUTH_STATE_COOKIE = "dune_oauth_state";
 
 export interface SiteSessionManager {
-  create(userId: string, ip?: string): Promise<SiteSession>;
+  create(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<SiteSession>;
   get(sessionId: string): Promise<SiteSession | null>;
   revoke(sessionId: string): Promise<void>;
 }
@@ -43,7 +43,7 @@ export interface SiteAuthMiddleware {
   /** Return a Set-Cookie header value that clears the session cookie */
   clearSessionCookie(): string;
   /** Create a new session for a user, return session ID */
-  createSession(userId: string, ip?: string): Promise<string>;
+  createSession(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<string>;
   /** Destroy a session */
   destroySession(sessionId: string): Promise<void>;
   /** Build an OAuth state cookie (10 min) */
@@ -86,6 +86,11 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
       if (requestIp && requestIp !== session.ip) return null;
     }
 
+    // userStore: session — identity is embedded in the session, no disk lookup.
+    if (session.embeddedUser) {
+      return session.embeddedUser.enabled !== false ? session.embeddedUser : null;
+    }
+
     const user = await userStore.getById(session.userId);
     if (!user || !user.enabled) return null;
 
@@ -126,8 +131,8 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     return `${SITE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
   }
 
-  async function createSession(userId: string, ip?: string): Promise<string> {
-    const session = await sessions.create(userId, ip);
+  async function createSession(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<string> {
+    const session = await sessions.create(userId, ip, embeddedUser);
     return session.id;
   }
 
@@ -168,7 +173,7 @@ export function createSiteSessionManager(config: {
 }): SiteSessionManager {
   const { storage, sessionsDir, lifetime } = config;
 
-  async function create(userId: string, ip?: string): Promise<SiteSession> {
+  async function create(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<SiteSession> {
     const id = await generateSessionId();
     const now = Date.now();
     const session: SiteSession = {
@@ -177,6 +182,7 @@ export function createSiteSessionManager(config: {
       createdAt: now,
       expiresAt: now + lifetime * 1000,
       ip,
+      ...(embeddedUser !== undefined ? { embeddedUser } : {}),
     };
     await storage.write(
       `${sessionsDir}/${id}.json`,

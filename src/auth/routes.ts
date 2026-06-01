@@ -32,6 +32,8 @@ export interface AuthRoutesConfig {
   magicLinkSecret: string;
   siteUrl: string;
   mode: "dune" | "external-jwt";
+  /** Storage tier for user records. "session" means no persistent records — identity is embedded in the session cookie. */
+  userStoreType?: "local" | "session";
   sendEmail?: (to: string, subject: string, text: string, html: string) => Promise<void>;
   trustForwardedFor?: boolean;
   /**
@@ -64,6 +66,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     magicLinkSecret,
     siteUrl,
     mode,
+    userStoreType = "local",
     sendEmail,
     trustForwardedFor = false,
     magicTokenStore,
@@ -158,60 +161,82 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       const { accessToken } = await provider.exchangeCode(code, redirectUri);
       const profile = await provider.getUser(accessToken);
 
-      // Upsert user: look up by (provider, providerId) first for returning users.
-      let user = await userStore.getByProvider(providerName, profile.id);
-      const foundByProvider = !!user;
+      const ip = clientIp(req, { trustForwardedFor });
+      let sessionId: string;
 
-      if (!user) {
-        user = await userStore.getByEmail(profile.email);
-      }
-
-      if (user && !foundByProvider) {
-        // An account with this email already exists but was created with a
-        // different authentication method (e.g. magic link or another OAuth
-        // provider). Auto-linking would allow account takeover — an attacker
-        // who creates an OAuth account sharing the victim's email address
-        // would silently inherit their session.
-        //
-        // Require the user to log in with their original method and link
-        // accounts explicitly through their account settings.
-        return new Response(
-          loginHtml(
-            [...providers.keys()],
-            magicLinkEnabled,
-            `An account with ${escHtml(profile.email)} already exists. ` +
-              `Please log in with your original method to link this ${providerName} account.`,
-          ),
-          { status: 409, headers: { "Content-Type": "text/html; charset=utf-8" } },
-        );
-      }
-
-      if (user) {
-        // Found by provider — update profile info (e.g. avatar may have changed).
-        await userStore.update(user.id, {
-          name: profile.name ?? user.name,
-          avatarUrl: profile.avatarUrl ?? user.avatarUrl,
-          lastSeenAt: Date.now(),
-        });
-        user = (await userStore.getById(user.id))!;
-      } else {
-        // Create new user
-        user = await userStore.create({
+      if (userStoreType === "session") {
+        // No persistent user record — synthesise identity from OAuth claims and
+        // embed it in the session. User ID is stable across sessions for the
+        // same OAuth identity: "{provider}:{providerId}".
+        const syntheticUser: SiteUser = {
+          id: `${providerName}:${profile.id}`,
           email: profile.email,
           name: profile.name,
           avatarUrl: profile.avatarUrl,
           provider: providerName,
           providerId: profile.id,
           roles: [],
-        });
-      }
+          createdAt: Date.now(),
+          lastSeenAt: Date.now(),
+          enabled: true,
+        };
+        sessionId = await middleware.createSession(syntheticUser.id, ip || undefined, syntheticUser);
+      } else {
+        // userStoreType: "local" — upsert a persistent user record.
 
-      if (!user.enabled) {
-        return new Response("Account disabled", { status: 403 });
-      }
+        let user = await userStore.getByProvider(providerName, profile.id);
+        const foundByProvider = !!user;
 
-      const ip = clientIp(req, { trustForwardedFor });
-      const sessionId = await middleware.createSession(user.id, ip || undefined);
+        if (!user) {
+          user = await userStore.getByEmail(profile.email);
+        }
+
+        if (user && !foundByProvider) {
+          // An account with this email already exists but was created with a
+          // different authentication method (e.g. magic link or another OAuth
+          // provider). Auto-linking would allow account takeover — an attacker
+          // who creates an OAuth account sharing the victim's email address
+          // would silently inherit their session.
+          //
+          // Require the user to log in with their original method and link
+          // accounts explicitly through their account settings.
+          return new Response(
+            loginHtml(
+              [...providers.keys()],
+              magicLinkEnabled,
+              `An account with ${escHtml(profile.email)} already exists. ` +
+                `Please log in with your original method to link this ${providerName} account.`,
+            ),
+            { status: 409, headers: { "Content-Type": "text/html; charset=utf-8" } },
+          );
+        }
+
+        if (user) {
+          // Found by provider — update profile info (e.g. avatar may have changed).
+          await userStore.update(user.id, {
+            name: profile.name ?? user.name,
+            avatarUrl: profile.avatarUrl ?? user.avatarUrl,
+            lastSeenAt: Date.now(),
+          });
+          user = (await userStore.getById(user.id))!;
+        } else {
+          // Create new user
+          user = await userStore.create({
+            email: profile.email,
+            name: profile.name,
+            avatarUrl: profile.avatarUrl,
+            provider: providerName,
+            providerId: profile.id,
+            roles: [],
+          });
+        }
+
+        if (!user.enabled) {
+          return new Response("Account disabled", { status: 403 });
+        }
+
+        sessionId = await middleware.createSession(user.id, ip || undefined);
+      }
 
       // OAuth state does not carry a `next` param (adding it would require
       // encoding it in the state cookie). Fall back to "/" for now; callers
@@ -307,25 +332,41 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     }
 
     const { email } = result;
+    const ip = clientIp(req, { trustForwardedFor });
+    let sessionId: string;
 
-    // Upsert user
-    let user = await userStore.getByEmail(email);
-    if (!user) {
-      user = await userStore.create({
+    if (userStoreType === "session") {
+      // No persistent user record — synthesise identity from the verified email.
+      // User ID is stable: "magic:{email}".
+      const syntheticUser: SiteUser = {
+        id: `magic:${email}`,
         email,
         provider: "magic",
         roles: [],
-      });
+        createdAt: Date.now(),
+        lastSeenAt: Date.now(),
+        enabled: true,
+      };
+      sessionId = await middleware.createSession(syntheticUser.id, ip || undefined, syntheticUser);
     } else {
-      await userStore.update(user.id, { lastSeenAt: Date.now() });
-    }
+      // userStoreType: "local" — upsert a persistent user record.
+      let user = await userStore.getByEmail(email);
+      if (!user) {
+        user = await userStore.create({
+          email,
+          provider: "magic",
+          roles: [],
+        });
+      } else {
+        await userStore.update(user.id, { lastSeenAt: Date.now() });
+      }
 
-    if (!user.enabled) {
-      return new Response("Account disabled", { status: 403 });
-    }
+      if (!user.enabled) {
+        return new Response("Account disabled", { status: 403 });
+      }
 
-    const ip = clientIp(req, { trustForwardedFor });
-    const sessionId = await middleware.createSession(user.id, ip || undefined);
+      sessionId = await middleware.createSession(user.id, ip || undefined);
+    }
 
     // Honour a sanitised ?next= query parameter for post-verify redirect.
     const nextParam = sanitizeNext(url.searchParams.get("next"));

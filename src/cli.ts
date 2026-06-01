@@ -159,6 +159,7 @@ Commands:
   generate:form <name>          Create a blueprint schema at schemas/{name}.yaml
   generate:theme <name>         Scaffold a theme at themes/{name}/
   generate:schema <name>        Create a Flex Object schema at flex-objects/{name}.yaml
+  generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
 
   backup [--output file.tar.gz] Back up content, data, uploads, and config
   restore <archive.tar.gz>      Restore from a backup archive
@@ -571,8 +572,10 @@ async function main() {
       case "generate:form":
       case "generate:theme":
       case "generate:schema":
+      case "generate:admin-route":
         await generateCommand(root, command, options.positional as string, {
           force: options.force === true,
+          permission: options.permission as string | undefined,
         });
         break;
 

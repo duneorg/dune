@@ -538,10 +538,14 @@ export interface SiteConfig {
      */
     sessionLifetime?: number;
     /**
-     * User store backend. Only "local" (flat-file) is supported in this release.
-     * A database-backed store is planned for a future release.
+     * User store backend.
+     *   "local"   — flat-file records in data/users/ (default)
+     *   "session" — no server-side records; identity synthesised from OAuth/magic-link
+     *               claims and embedded in the session cookie. Roles assigned after
+     *               login (e.g. via payment) are not reflected until the user logs
+     *               out and back in. A database-backed store is planned.
      */
-    userStore?: "local";
+    userStore?: "local" | "session";
   };
   /**
    * Transactional email configuration.
