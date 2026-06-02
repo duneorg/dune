@@ -98,7 +98,7 @@ export default function EmailPreviewPage({ data }: { data: PageData }) {
                   <iframe
                     srcDoc={selected.html}
                     style="width:100%;height:500px;border:0;display:block"
-                    sandbox="allow-same-origin"
+                    sandbox=""
                   />
                 </div>
               )
@@ -147,8 +147,12 @@ export const handler = {
 
     emails.sort((a, b) => b.timestamp - a.timestamp);
 
-    // Load the selected email's HTML when ?id= is provided
-    const selectedId = ctx.url.searchParams.get("id");
+    // Load the selected email's HTML when ?id= is provided.
+    // Validate id against the same allowlist as the API route ([name]/run.ts):
+    // only word characters and hyphens. This prevents path traversal before
+    // the value is embedded in a filesystem path (e.g. "../../data/users/x").
+    const selectedIdRaw = ctx.url.searchParams.get("id");
+    const selectedId = selectedIdRaw && /^[\w-]+$/.test(selectedIdRaw) ? selectedIdRaw : null;
     let selected: PageData["selected"] = null;
     if (selectedId) {
       try {

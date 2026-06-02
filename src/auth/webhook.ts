@@ -32,8 +32,8 @@ export interface WebhookConfig {
 
 // ── Signature verification ────────────────────────────────────────────────────
 
-/** Replay window for Clerk svix timestamps: 5 minutes. */
-const SVIX_TOLERANCE_MS = 5 * 60 * 1000;
+/** Replay window for all timestamp-bearing webhooks: 5 minutes. */
+const WEBHOOK_TOLERANCE_MS = 5 * 60 * 1000;
 
 /**
  * Constant-time hex comparison.
@@ -74,9 +74,14 @@ async function verifyClerk(req: Request, secret: string): Promise<Uint8Array | n
 
   if (!msgId || !msgTimestamp || !msgSignature) return null;
 
-  // Replay protection
-  const ts = Number(msgTimestamp) * 1000;
-  if (Math.abs(Date.now() - ts) > SVIX_TOLERANCE_MS) return null;
+  // Replay protection — reject stale webhooks.
+  // Parse the timestamp carefully: Number("abc") = NaN, and NaN comparisons are
+  // always false, which would silently skip the replay guard. We reject explicitly
+  // when the parsed value is not finite.
+  const tsSeconds = Number(msgTimestamp);
+  if (!Number.isFinite(tsSeconds)) return null;
+  const tsMs = tsSeconds * 1000;
+  if (Math.abs(Date.now() - tsMs) > WEBHOOK_TOLERANCE_MS) return null;
 
   const body = new Uint8Array(await req.arrayBuffer());
   const toSign = `${msgId}.${msgTimestamp}.${new TextDecoder().decode(body)}`;
@@ -99,12 +104,19 @@ async function verifyClerk(req: Request, secret: string): Promise<Uint8Array | n
 
 /**
  * Verify an Auth0 or generic webhook using x-hub-signature-256 style.
+ *
+ * Replay protection: checks `timestampHeader` when provided. Auth0 sends
+ * `x-auth0-timestamp` (Unix seconds); generic provider uses `x-timestamp`.
+ * If the header is absent we cannot check staleness — the HMAC signature
+ * still protects authenticity but replay is possible if the secret is exposed.
+ *
  * Returns the raw body on success, null on failure.
  */
 async function verifyHubSignature(
   req: Request,
   secret: string,
   headerName: string,
+  timestampHeader?: string,
 ): Promise<Uint8Array | null> {
   const sigHeader = req.headers.get(headerName);
   if (!sigHeader) return null;
@@ -112,6 +124,18 @@ async function verifyHubSignature(
   const prefix = "sha256=";
   if (!sigHeader.startsWith(prefix)) return null;
   const provided = sigHeader.slice(prefix.length);
+
+  // Replay protection — only enforced when the provider sends a timestamp header.
+  // Number("abc") = NaN and NaN comparisons always return false, so we must
+  // check isFinite explicitly to avoid silently skipping the guard.
+  if (timestampHeader) {
+    const tsRaw = req.headers.get(timestampHeader);
+    if (tsRaw !== null) {
+      const tsSeconds = Number(tsRaw);
+      if (!Number.isFinite(tsSeconds)) return null;
+      if (Math.abs(Date.now() / 1000 - tsSeconds) > WEBHOOK_TOLERANCE_MS / 1000) return null;
+    }
+  }
 
   const body = new Uint8Array(await req.arrayBuffer());
   const expected = await hmacHex(secret, body);
@@ -187,13 +211,16 @@ export async function handleWebhook(req: Request, deps: WebhookHandlerDeps): Pro
       body = await verifyClerk(req, config.secret);
       break;
     case "auth0":
-      body = await verifyHubSignature(req, config.secret, "x-hub-signature-256");
+      // Auth0 Management API sends x-auth0-timestamp (Unix seconds).
+      body = await verifyHubSignature(req, config.secret, "x-hub-signature-256", "x-auth0-timestamp");
       break;
     case "generic":
+      // Generic providers vary; check x-timestamp when present, skip when absent.
       body = await verifyHubSignature(
         req,
         config.secret,
         config.signatureHeader ?? "x-dune-signature",
+        "x-timestamp",
       );
       break;
   }

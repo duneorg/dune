@@ -33,6 +33,7 @@ import {
   generateRoute,
   generateForm,
   generateTheme,
+  type GenerateOptions,
 } from "../cli/generate.ts";
 
 export interface WriteToolDeps {
@@ -42,6 +43,29 @@ export interface WriteToolDeps {
   root: string;
   /** Content directory, relative to root (default: "content"). */
   contentDir: string;
+}
+
+// ── Path safety ──────────────────────────────────────────────────────────────
+
+/**
+ * Validate that a caller-supplied relative path stays within a given base
+ * directory using URL-normalisation containment.
+ *
+ * `path.includes("..")` is insufficient — it doesn't catch absolute paths
+ * or OS-specific traversal variants. URL-normalisation resolves all `.` and
+ * `..` segments before the prefix check, giving a robust single control point.
+ *
+ * Returns the safe storage path (relative, no leading slash) on success,
+ * or null if the path would escape the base.
+ */
+function safePath(baseDir: string, userPath: string): string | null {
+  // Strip any leading slashes so the path is always relative
+  const stripped = userPath.replace(/^\/+/, "");
+  const base = new URL(`${baseDir}/`, "file:///");
+  const candidate = new URL(`${baseDir}/${stripped}`, "file:///");
+  if (!candidate.pathname.startsWith(base.pathname)) return null;
+  // Return as a relative path (strip the leading "/")
+  return candidate.pathname.slice(1);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -100,15 +124,13 @@ function makeWritePageHandler(deps: WriteToolDeps): ToolHandler {
     const path = String(args.path ?? "").trim();
     const content = String(args.content ?? "");
     if (!path) return err("path is required");
-    if (path.includes("..")) return err("path must not contain '..'");
 
-    const filePath = join(deps.root, deps.contentDir, path);
+    const storagePath = safePath(deps.contentDir, path);
+    if (!storagePath) return err("path must stay within the content directory");
+
     try {
-      await deps.storage.write(
-        join(deps.contentDir, path),
-        new TextEncoder().encode(content),
-      );
-      return ok(`Written: ${filePath}`);
+      await deps.storage.write(storagePath, new TextEncoder().encode(content));
+      return ok(`Written: ${storagePath}`);
     } catch (e) {
       return err(`Failed to write ${path}: ${e}`);
     }
@@ -135,10 +157,14 @@ function makeDeletePageHandler(deps: WriteToolDeps): ToolHandler {
     let storagePath: string | null = null;
 
     if (args.route) {
+      // Route lookup goes through the engine index — only known pages can be deleted.
       storagePath = routeToSourcePath(deps.engine, String(args.route));
       if (!storagePath) return err(`No page found at route "${args.route}"`);
     } else if (args.path) {
-      storagePath = join(deps.contentDir, String(args.path));
+      // Explicit path — validate with URL-normalisation containment so ".." and
+      // absolute paths cannot escape the content directory.
+      storagePath = safePath(deps.contentDir, String(args.path));
+      if (!storagePath) return err("path must stay within the content directory");
     } else {
       return err("Provide either route or path");
     }
@@ -179,10 +205,11 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
     let storagePath: string | null = null;
 
     if (args.path) {
-      // Explicit path — used for newly written pages not yet in the engine index
-      const p = String(args.path).trim();
-      if (p.includes("..")) return err("path must not contain '..'");
-      storagePath = join(deps.contentDir, p);
+      // Explicit path — used for newly written pages not yet in the engine index.
+      // Use URL-normalisation containment so ".." and absolute paths cannot
+      // escape the content directory.
+      storagePath = safePath(deps.contentDir, String(args.path).trim());
+      if (!storagePath) return err("path must stay within the content directory");
     } else if (args.route) {
       const route = String(args.route);
       storagePath = routeToSourcePath(deps.engine, route);
@@ -384,22 +411,19 @@ const SCAFFOLD_THEME_META: McpTool = {
 };
 
 function makeScaffoldHandler(
-  fn: (root: string, name: string) => Promise<void>,
+  fn: (root: string, name: string, opts?: GenerateOptions) => Promise<void>,
   deps: WriteToolDeps,
 ): ToolHandler {
   return async (args) => {
     const name = String(args.name ?? "").trim();
     if (!name) return err("name is required");
     try {
-      // Capture stdout to return as tool result
-      const originalLog = console.log;
+      // Capture output by passing a scoped logger through GenerateOptions.
+      // Each generator reads opts.log ?? console.log so no global state is
+      // touched — concurrent scaffold calls, job ticks, and audit flushes
+      // all write to their own sinks without interference.
       const lines: string[] = [];
-      console.log = (...a: unknown[]) => { lines.push(a.join(" ")); };
-      try {
-        await fn(deps.root, name);
-      } finally {
-        console.log = originalLog;
-      }
+      await fn(deps.root, name, { log: (msg) => lines.push(msg) });
       return ok(lines.join("\n"));
     } catch (e) {
       return err(String(e));

@@ -20,21 +20,24 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   root = resolve(root);
   const { json = false } = opts;
 
-  const jobDefs = await scanJobs(root);
+  // Load config first so we can pass the explicit jobs list to scanJobs.
+  const storage = createStorage({ rootDir: root });
+  const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
+
+  const declaredJobs = (config.site as { jobs?: string[] }).jobs;
+  const jobDefs = await scanJobs(root, declaredJobs);
 
   if (jobDefs.length === 0) {
     if (json) {
       console.log(JSON.stringify({ jobs: [] }));
     } else {
       console.log("🏜️  Dune — jobs:list\n");
-      console.log("  No jobs registered. Create jobs/*.ts files to add jobs.");
+      console.log("  No jobs registered. Add a `jobs:` list to site.yaml to enable background jobs.");
     }
     return;
   }
 
-  // Load state from the runtime dir
-  const storage = createStorage({ rootDir: root });
-  const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
+  // Resolve state directory from config
   const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
   const jobStateDir = `${runtimeDir}/jobs`;
 
@@ -88,7 +91,12 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
     Deno.exit(1);
   }
 
-  const jobDefs = await scanJobs(root);
+  // Load config for the explicit jobs list before scanning.
+  const _storage = createStorage({ rootDir: root });
+  const _config = await loadConfig({ storage: _storage, rootDir: root, skipConfigTs: true })
+    .catch(() => null);
+  const declaredJobs = (_config?.site as { jobs?: string[] } | undefined)?.jobs;
+  const jobDefs = await scanJobs(root, declaredJobs);
   const def = jobDefs.find((d) => d.name === name);
 
   if (!def) {

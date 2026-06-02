@@ -15,6 +15,14 @@ import { join, resolve } from "@std/path";
 export interface GenerateOptions {
   force?: boolean;
   permission?: string;
+  /**
+   * Output sink for progress messages. Defaults to `console.log`.
+   *
+   * Pass a custom function to capture output without touching global state —
+   * used by the MCP scaffold tools to return output as tool results rather than
+   * writing to stdout.
+   */
+  log?: (msg: string) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,6 +87,7 @@ export async function generatePlugin(
   name: string,
   opts: GenerateOptions = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = slugify(name);
   if (!slug) {
     console.error("  ✗ Invalid plugin name.");
@@ -106,9 +115,9 @@ export default plugin;
   await Deno.writeTextFile(outPath, content);
 
   const rel = `plugins/${slug}/index.ts`;
-  console.log(`🏜️  Dune — generate:plugin\n`);
-  console.log(`  ✅ ${rel}`);
-  console.log(`\n  Add to config/site.yaml:\n    plugins:\n      - src: "./${rel}"`);
+  log(`🏜️  Dune — generate:plugin\n`);
+  log(`  ✅ ${rel}`);
+  log(`\n  Add to config/site.yaml:\n    plugins:\n      - src: "./${rel}"`);
 }
 
 /**
@@ -121,6 +130,7 @@ export async function generateRoute(
   name: string,
   opts: GenerateOptions = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = name
     .split("/")
     .map((seg) => slugify(seg))
@@ -153,10 +163,10 @@ Content goes here.
   await Deno.writeTextFile(outPath, content);
 
   const rel = `content/${slug}.md`;
-  console.log(`🏜️  Dune — generate:route\n`);
-  console.log(`  ✅ ${rel}`);
-  console.log(`     Route: /${slug}`);
-  console.log(`     Title: ${title}`);
+  log(`🏜️  Dune — generate:route\n`);
+  log(`  ✅ ${rel}`);
+  log(`     Route: /${slug}`);
+  log(`     Title: ${title}`);
 }
 
 /**
@@ -168,6 +178,7 @@ export async function generateForm(
   name: string,
   opts: GenerateOptions = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = slugify(name);
   if (!slug) {
     console.error("  ✗ Invalid form name.");
@@ -198,8 +209,8 @@ fields:
   await Deno.writeTextFile(outPath, content);
 
   const rel = `schemas/${slug}.yaml`;
-  console.log(`🏜️  Dune — generate:form\n`);
-  console.log(`  ✅ ${rel}`);
+  log(`🏜️  Dune — generate:form\n`);
+  log(`  ✅ ${rel}`);
 }
 
 /**
@@ -214,6 +225,7 @@ export async function generateTheme(
   name: string,
   opts: GenerateOptions = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = slugify(name);
   if (!slug) {
     console.error("  ✗ Invalid theme name.");
@@ -260,11 +272,11 @@ export default function DefaultTemplate({ page }: PageProps) {
   await Deno.writeTextFile(templatePath, templateTsx);
   await Deno.writeTextFile(cssPath, css);
 
-  console.log(`🏜️  Dune — generate:theme\n`);
-  console.log(`  ✅ themes/${slug}/theme.yaml`);
-  console.log(`  ✅ themes/${slug}/templates/default.tsx`);
-  console.log(`  ✅ themes/${slug}/assets/style.css`);
-  console.log(`\n  Activate in config/site.yaml:\n    theme: ${slug}`);
+  log(`🏜️  Dune — generate:theme\n`);
+  log(`  ✅ themes/${slug}/theme.yaml`);
+  log(`  ✅ themes/${slug}/templates/default.tsx`);
+  log(`  ✅ themes/${slug}/assets/style.css`);
+  log(`\n  Activate in config/site.yaml:\n    theme: ${slug}`);
 }
 
 /**
@@ -280,6 +292,7 @@ export async function generateAdminRoute(
   name: string,
   opts: GenerateOptions & { permission?: string } = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = name
     .split("/")
     .map((seg) => slugify(seg))
@@ -319,11 +332,11 @@ export const handler = {
   await Deno.writeTextFile(outPath, content);
 
   const rel = `src/admin/routes/api/${slug}.ts`;
-  console.log(`🏜️  Dune — generate:admin-route\n`);
-  console.log(`  ✅ ${rel}`);
-  console.log(`     Route:      GET /admin/api/${slug}`);
-  console.log(`     Permission: ${permission}`);
-  console.log(`\n  Adjust the handler methods and permission as needed.`);
+  log(`🏜️  Dune — generate:admin-route\n`);
+  log(`  ✅ ${rel}`);
+  log(`     Route:      GET /admin/api/${slug}`);
+  log(`     Permission: ${permission}`);
+  log(`\n  Adjust the handler methods and permission as needed.`);
 }
 
 /**
@@ -335,6 +348,7 @@ export async function generateSchema(
   name: string,
   opts: GenerateOptions = {},
 ): Promise<void> {
+  const log = opts.log ?? console.log;
   const slug = slugify(name);
   if (!slug) {
     console.error("  ✗ Invalid schema name.");
@@ -363,8 +377,8 @@ fields:
   await Deno.writeTextFile(outPath, content);
 
   const rel = `flex-objects/${slug}.yaml`;
-  console.log(`🏜️  Dune — generate:schema\n`);
-  console.log(`  ✅ ${rel}`);
+  log(`🏜️  Dune — generate:schema\n`);
+  log(`  ✅ ${rel}`);
 }
 
 // ── Generator registry ────────────────────────────────────────────────────────

@@ -168,7 +168,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   }
 
   // ── Background jobs ─────────────────────────────────────────────────────────
-  const jobDefs = await scanJobs(root);
+  // Pass config.site.jobs so only explicitly declared files are loaded.
+  // When the key is absent, scanJobs falls back to auto-discovery with a
+  // deprecation warning (backward compat for existing deployments).
+  const declaredJobs = (config.site as { jobs?: string[] }).jobs;
+  const jobDefs = await scanJobs(root, declaredJobs);
   const workers = Number(Deno.env.get("DUNE_WORKERS") ?? "1");
   warnIfMultiprocess(jobDefs.length, workers);
 

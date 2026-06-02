@@ -668,6 +668,31 @@ export interface SiteConfig {
     requireAuth?: boolean;
   };
   /**
+   * Background jobs — explicit list of job files to load.
+   *
+   * Each entry is a path relative to the project root, e.g.:
+   *   - ./jobs/weekly-digest.ts
+   *   - ./jobs/sitemap-rebuild.ts
+   *
+   * Only the files listed here are imported and scheduled. Unlisted files in
+   * the `jobs/` directory are ignored, preventing arbitrary code execution if
+   * an attacker can write files into that directory.
+   *
+   * When this key is absent, Dune falls back to auto-discovering all *.ts
+   * files under `jobs/` (legacy behaviour, emits a startup warning).
+   * Set `jobs: []` to disable all background jobs with no warning.
+   *
+   * @example
+   * ```yaml
+   * site:
+   *   jobs:
+   *     - ./jobs/weekly-digest.ts
+   *     - ./jobs/sitemap-rebuild.ts
+   * ```
+   */
+  jobs?: string[];
+
+  /**
    * Payment provider configuration.
    * When present, Dune registers three payment routes:
    *   POST /payments/checkout/:productId

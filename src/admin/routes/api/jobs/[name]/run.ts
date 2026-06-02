@@ -1,11 +1,13 @@
 /** POST /admin/api/jobs/:name/run — manually trigger a job */
 
 import type { AdminState } from "../../../../types.ts";
-import { json, requirePermission } from "../../_utils.ts";
+import { json, requirePermission, csrfCheck } from "../../_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
   async POST(ctx: FreshContext<AdminState>) {
+    const csrf = csrfCheck(ctx);
+    if (csrf) return csrf;
     const denied = await requirePermission(ctx, "config.update");
     if (denied) return denied;
 
