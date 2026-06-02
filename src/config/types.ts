@@ -546,6 +546,36 @@ export interface SiteConfig {
      *               out and back in. A database-backed store is planned.
      */
     userStore?: "local" | "session";
+    /**
+     * IdP webhook configuration — enables POST /auth/webhook for receiving
+     * user lifecycle events from the external identity provider.
+     *
+     * Only active in external-jwt + authzStore:local mode.
+     * Handles user.deleted events: revokes all authz tuples for the deleted user.
+     * Role-change events are handled automatically by per-request fingerprint
+     * reconciliation and do not require a webhook.
+     *
+     * @example
+     * ```yaml
+     * auth:
+     *   mode: external-jwt
+     *   authzStore: local
+     *   webhook:
+     *     provider: clerk
+     *     secret: "$DUNE_CLERK_WEBHOOK_SECRET"
+     * ```
+     */
+    webhook?: {
+      /** Provider type — determines signature verification format. */
+      provider: "clerk" | "auth0" | "generic";
+      /** Shared HMAC secret. Use "$ENV_VAR" to read from an environment variable. */
+      secret: string;
+      /**
+       * Custom signature header name for "generic" provider.
+       * Default: "x-dune-signature".
+       */
+      signatureHeader?: string;
+    };
   };
   /**
    * Transactional email configuration.

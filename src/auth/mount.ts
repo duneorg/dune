@@ -24,6 +24,7 @@ import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
+import { handleWebhook } from "./webhook.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -321,6 +322,30 @@ export async function mountDuneAuth(
     app.get(`/auth/${pName}/callback`, (fc) => routes.oauthCallback(fc.req, pName));
   }
 
+  // ── POST /auth/webhook — IdP user-lifecycle events ─────────────────────────
+  // Only active in external-jwt + authzStore:local mode when webhook is configured.
+  // Handles user.deleted → revoke authz tuples. Role changes are handled per-request
+  // by fingerprint reconciliation and do not require a webhook.
+  const webhookCfg = (authConfig as SiteAuthConfig | undefined)?.webhook;
+  if (webhookCfg && mountAuthz && mode === "external-jwt") {
+    const whSecret = expandEnv(webhookCfg.secret);
+    const whConfig = {
+      provider: webhookCfg.provider,
+      secret: whSecret,
+      signatureHeader: webhookCfg.signatureHeader,
+    };
+    const whAuthz = mountAuthz;
+
+    app.post("/auth/webhook", (fc) =>
+      handleWebhook(fc.req, {
+        config: whConfig,
+        authz: whAuthz,
+      })
+    );
+
+    console.log(`[dune/auth] Webhook endpoint active: POST /auth/webhook (provider: ${webhookCfg.provider})`);
+  }
+
   return {
     resolveUser: (req) => authMiddleware.resolveUser(req),
     authz: mountAuthz,
@@ -352,7 +377,14 @@ interface SiteAuthConfig {
     rolesClaim?: string;
   };
   sessionLifetime?: number;
-  userStore?: "local";
+  userStore?: "local" | "session";
   /** Storage tier for permission tuples. Default: "local". */
   authzStore?: "local";
+  /** IdP webhook configuration for external-jwt + authzStore:local mode. */
+  webhook?: {
+    provider: "clerk" | "auth0" | "generic";
+    secret: string;
+    /** Custom signature header for "generic" provider. Default: "x-dune-signature". */
+    signatureHeader?: string;
+  };
 }
