@@ -27,6 +27,7 @@ import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
+import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -159,6 +160,13 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const { engine, config, pluginPublicRoutes, storage } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
 
+  // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
+  // directory aligns with the admin preview route regardless of runtimeDir customisation.
+  const runtimeDirForEmail = config.admin?.runtimeDir ?? ".dune/admin";
+  if (Deno.env.get("DUNE_ENV") === "dev") {
+    Deno.env.set("DUNE_DEV_EMAIL_DIR", join(resolve(root), runtimeDirForEmail, "dev-email"));
+  }
+
   // ── Background jobs ─────────────────────────────────────────────────────────
   const jobDefs = await scanJobs(root);
   const workers = Number(Deno.env.get("DUNE_WORKERS") ?? "1");
@@ -171,7 +179,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     warn: (event: string, data?: Record<string, unknown>) => logger.warn(event, data),
     error: (event: string, data?: Record<string, unknown>) => logger.error(event, data),
   };
-  const jobContext = { content: engine, config, storage, logger: jobLogger };
+  const emailCfg = (config as { site?: { email?: Record<string, unknown> } }).site?.email ?? {};
+  const emailProvider = createEmailProvider(emailCfg as Parameters<typeof createEmailProvider>[0]);
+  const emailFrom = (emailCfg as { from?: string }).from ?? `noreply@${new URL(config.site.url).hostname}`;
+  const emailClient = createEmailClient({ provider: emailProvider, from: emailFrom, storage });
+
+  const jobContext = { content: engine, config, storage, logger: jobLogger, email: emailClient };
   const jobScheduler = new JobScheduler({
     definitions: jobDefs,
     context: jobContext,
@@ -182,6 +195,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   if (jobDefs.length > 0) {
     jobScheduler.start();
     console.log(`  ⏰ ${jobDefs.length} job(s) scheduled`);
+    // Wire ctx.jobs into hook context so plugins can trigger jobs from hooks
+    ctx.hooks.setJobContext({ run: (name) => jobScheduler.run(name) });
     // Expose scheduler to admin routes via adminContext
     if (ctx.adminContext) {
       (ctx.adminContext as import("../admin/context.ts").AdminContext & {

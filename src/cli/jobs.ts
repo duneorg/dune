@@ -6,6 +6,7 @@
 import { join, resolve } from "@std/path";
 import { scanJobs } from "../jobs/scanner.ts";
 import { JobScheduler } from "../jobs/scheduler.ts";
+import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { bootstrap } from "./bootstrap.ts";
@@ -37,13 +38,15 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
   const jobStateDir = `${runtimeDir}/jobs`;
 
-  // Minimal logger for the scheduler (we only need state reads)
+  // Minimal context for state reads — email is a no-op since we won't run handlers
   const noop = () => {};
+  const noopEmail = { send: async () => {} };
   const jobContext = {
     content: null as never,
     config,
     storage,
     logger: { info: noop, warn: noop, error: noop },
+    email: noopEmail,
   };
 
   const scheduler = new JobScheduler({
@@ -114,11 +117,17 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
       console.error(`[jobs] ERROR ${event}`, data ?? ""),
   };
 
+  const emailCfg = (ctx.config as { site?: { email?: Record<string, unknown> } }).site?.email ?? {};
+  const emailProvider = createEmailProvider(emailCfg as Parameters<typeof createEmailProvider>[0]);
+  const emailFrom = (emailCfg as { from?: string }).from ?? `noreply@${new URL(ctx.config.site.url).hostname}`;
+  const emailClient = createEmailClient({ provider: emailProvider, from: emailFrom, storage: ctx.storage });
+
   const jobContext = {
     content: ctx.engine,
     config: ctx.config,
     storage: ctx.storage,
     logger: jobLogger,
+    email: emailClient,
   };
 
   const scheduler = new JobScheduler({

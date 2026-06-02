@@ -32,6 +32,7 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
   // Map of event → ordered list of handlers
   const handlers = new Map<HookEvent, HookHandler[]>();
   const registeredPlugins: DunePlugin[] = [];
+  let jobContext: HookContext["jobs"] | undefined;
 
   function getHandlers(event: HookEvent): HookHandler[] {
     if (!handlers.has(event)) {
@@ -103,6 +104,7 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
           data: currentData,
           config,
           storage,
+          jobs: jobContext,
           stopPropagation: () => {
             stopped = true;
           },
@@ -119,6 +121,10 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
 
     plugins(): DunePlugin[] {
       return [...registeredPlugins];
+    },
+
+    setJobContext(jobs: HookContext["jobs"]): void {
+      jobContext = jobs;
     },
   };
 

@@ -128,6 +128,11 @@ export interface BootstrapResult {
   authz?: DuneAuthSystem;
   /** Paired adapter for the authz system above — needed for hasTuple / bootstrap. */
   authzAdapter?: AuthzLocalAdapter | AuthzDbAdapter;
+  /**
+   * Pre-loaded HMAC key for authz tuple signing — null if DUNE_AUTHZ_HMAC_SECRET
+   * is absent. Passed to mountDuneAuth() so the env var is read exactly once.
+   */
+  hmacKey?: CryptoKey | null;
 }
 
 export interface BootstrapOptions {
@@ -647,5 +652,6 @@ export async function bootstrap(
     adminContext: adminContextObj,
     authz: bootstrappedAuthz,
     authzAdapter: bootstrappedAuthzAdapter,
+    hmacKey,
   };
 }

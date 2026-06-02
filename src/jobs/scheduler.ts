@@ -39,10 +39,14 @@ export class JobScheduler {
     this.storage = config.storage;
   }
 
-  /** Start the scheduler. Fires immediately if any job matches the current minute. */
+  /** Start the scheduler. Uses Deno.cron() on Deno Deploy, interval-based elsewhere. */
   start(): void {
     if (this.stopped) return;
-    this.scheduleTick();
+    if (typeof (Deno as { cron?: unknown }).cron === "function") {
+      this.startDenoNative();
+    } else {
+      this.scheduleTick();
+    }
   }
 
   /** Stop the scheduler cleanly. In-progress handlers are not interrupted. */
@@ -51,6 +55,43 @@ export class JobScheduler {
     if (this.tickTimer !== null) {
       clearTimeout(this.tickTimer);
       this.tickTimer = null;
+    }
+    if (this._cronAbort) {
+      this._cronAbort.abort();
+      this._cronAbort = null;
+    }
+  }
+
+  private _cronAbort: AbortController | null = null;
+
+  /**
+   * Use Deno.cron() on runtimes where it is available (Deno Deploy).
+   * Deno.cron() manages its own scheduling at the platform level — no interval timer needed.
+   * Each job gets its own named cron entry; they all share the same AbortController for shutdown.
+   */
+  private startDenoNative(): void {
+    const ac = new AbortController();
+    this._cronAbort = ac;
+    // deno-lint-ignore no-explicit-any
+    const denoCron = (Deno as any).cron as (
+      name: string,
+      schedule: string,
+      handler: () => Promise<void>,
+      options?: { signal?: AbortSignal },
+    ) => Promise<void>;
+
+    for (const def of this.definitions.values()) {
+      const d = def; // capture
+      denoCron(
+        `dune:${d.name}`,
+        d.schedule,
+        async () => { await this.executeJob(d); },
+        { signal: ac.signal },
+      ).catch((err: unknown) => {
+        if (!this.stopped) {
+          console.error(`[dune/jobs] Deno.cron error for ${d.name}:`, err);
+        }
+      });
     }
   }
 

@@ -118,7 +118,7 @@ export async function mcpServeCommand(
   const tools = buildTools({ engine, search });
   const contentDir = config.system?.content?.dir ?? "content";
   const writeTools = buildWriteTools({ engine, storage, root, contentDir });
-  const resources = buildResources(engine);
+  const resources = buildResources(engine, storage, root);
 
   for (const { meta, handler } of [...tools, ...writeTools]) {
     server.registerTool(meta, handler);

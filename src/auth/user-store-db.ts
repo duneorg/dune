@@ -45,9 +45,23 @@ function rowToUser(row: DbRow): SiteUser {
   };
 }
 
+// ── KV guard ─────────────────────────────────────────────────────────────────
+
+function assertNotKv(adapter: DbAdapter): void {
+  if ("_kv" in adapter || (adapter.constructor && adapter.constructor.name === "KVAdapter")) {
+    throw new Error(
+      "[dune/auth] userStore: db requires a SQL-capable database (SQLite or Postgres). " +
+        "The Deno KV adapter does not support raw SQL. " +
+        "Set DUNE_DB_URL (Postgres) or DUNE_DB_PATH (SQLite), " +
+        "or switch to userStore: local.",
+    );
+  }
+}
+
 // ── Table bootstrap ───────────────────────────────────────────────────────────
 
 async function ensureTable(db: DbAdapter): Promise<void> {
+  assertNotKv(db);
   await db.query(`
     CREATE TABLE IF NOT EXISTS site_users (
       id TEXT PRIMARY KEY,
@@ -155,11 +169,18 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
     },
 
     async list(opts?: { limit?: number; offset?: number }): Promise<SiteUser[]> {
-      const parts: string[] = ["SELECT * FROM site_users ORDER BY createdAt ASC"];
+      // OFFSET requires LIMIT in standard SQL — always emit LIMIT when OFFSET is requested
+      let sql = "SELECT * FROM site_users ORDER BY createdAt ASC";
       const params: unknown[] = [];
-      if (opts?.limit !== undefined) { parts.push("LIMIT ?"); params.push(opts.limit); }
-      if (opts?.offset !== undefined) { parts.push("OFFSET ?"); params.push(opts.offset); }
-      const rows = await db.query<DbRow>(parts.join(" "), params);
+      if (opts?.limit !== undefined || opts?.offset !== undefined) {
+        sql += " LIMIT ?";
+        params.push(opts.limit ?? 2147483647); // max int when only offset given
+      }
+      if (opts?.offset !== undefined) {
+        sql += " OFFSET ?";
+        params.push(opts.offset);
+      }
+      const rows = await db.query<DbRow>(sql, params);
       return rows.map(rowToUser);
     },
   };

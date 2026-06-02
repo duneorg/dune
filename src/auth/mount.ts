@@ -134,12 +134,14 @@ export async function mountDuneAuth(
     const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
     // When bootstrap already created the bundle, reuse it — the adapter was created
     // with the HMAC key already configured. For headless setups, load the key now.
+    // Reuse the HMAC key from bootstrap if present (avoids re-reading the env var
+    // and emitting the "not set" warning a second time in normal full-stack setups).
+    const hmacKey = (ctx as { hmacKey?: CryptoKey | null }).hmacKey
+      ?? await loadHmacKeyFromEnv().catch(() => null);
+
     const bundle = (existingAuthz && existingAdapter)
       ? { authz: existingAuthz, adapter: existingAdapter }
-      : createDuneAuthSystem(
-          { authzStore: "local", dataDir, hmacKey: await loadHmacKeyFromEnv().catch(() => null) },
-          storage,
-        );
+      : createDuneAuthSystem({ authzStore: "local", dataDir, hmacKey }, storage);
 
     setGatingAuthz(bundle.authz);
     mountAuthz = bundle.authz;

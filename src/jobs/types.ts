@@ -23,6 +23,13 @@ export interface JobContext {
   storage: StorageAdapter;
   /** Structured logger. Entries include job name for filtering. */
   logger: JobLogger;
+  /**
+   * Transactional email client. Present when an email provider is configured
+   * in site.yaml (email.provider). In dev mode, uses the console provider.
+   * Guard with `ctx.config.site.email?.provider` before use if email may not
+   * be configured.
+   */
+  email: import("../email/client.ts").EmailClient;
 }
 
 /** A validated, registered job definition loaded from jobs/*.ts. */

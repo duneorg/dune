@@ -57,9 +57,31 @@ function rowToTuple(row: TupleRow): PolizyStoredTuple {
   return t;
 }
 
+// ── KV guard ─────────────────────────────────────────────────────────────────
+
+/**
+ * Throw a clear error when the KV adapter is used, since AuthzDbAdapter requires
+ * a SQL-capable backend. KVAdapter is selected automatically on Deno Deploy when
+ * DENO_DEPLOYMENT_ID is set — users must explicitly configure DUNE_DB_URL (Postgres)
+ * or DUNE_DB_PATH (SQLite) to use authzStore: db on Deno Deploy.
+ */
+function assertNotKv(adapter: DbAdapter): void {
+  // Duck-type: KVAdapter doesn't support raw SQL DDL — its query() implementation
+  // throws or no-ops on CREATE TABLE. Check for a well-known KVAdapter property.
+  if ("_kv" in adapter || (adapter.constructor && adapter.constructor.name === "KVAdapter")) {
+    throw new Error(
+      "[dune/authz] authzStore: db requires a SQL-capable database (SQLite or Postgres). " +
+        "The Deno KV adapter does not support raw SQL. " +
+        "Set DUNE_DB_URL (Postgres) or DUNE_DB_PATH (SQLite) to use authzStore: db, " +
+        "or switch to authzStore: local.",
+    );
+  }
+}
+
 // ── Table bootstrap ───────────────────────────────────────────────────────────
 
 async function ensureTable(adapter: DbAdapter): Promise<void> {
+  assertNotKv(adapter);
   await adapter.query(`
     CREATE TABLE IF NOT EXISTS authz_tuples (
       id TEXT PRIMARY KEY,
@@ -145,18 +167,25 @@ export class AuthzDbAdapter {
     }
 
     if (clauses.length === 0) {
-      // No filter — delete everything (rare; guard against accidental wipe)
+      // No filter — refuse to wipe everything accidentally
       return 0;
     }
 
-    const sql = `DELETE FROM authz_tuples WHERE ${clauses.join(" AND ")}`;
-    // Run and capture row count — most adapters return { changes } or affected rows
-    await this.db.query(sql, params);
+    const where = clauses.join(" AND ");
 
-    // The Repository interface doesn't expose row count from DELETE, so query
-    // the count before the delete. In practice this is a rare hot-path.
-    // TODO: expose changes count from DbAdapter.query() for efficiency.
-    return 0; // polizy uses this for logging only; 0 is acceptable
+    // Count matching rows before deletion so we can return an accurate count.
+    // Two queries is acceptable here — this path is rare and never on the hot check path.
+    const countRows = await this.db.query<{ cnt: number }>(
+      `SELECT COUNT(*) as cnt FROM authz_tuples WHERE ${where}`,
+      params,
+    );
+    const count = Number(countRows[0]?.cnt ?? 0);
+
+    if (count > 0) {
+      await this.db.query(`DELETE FROM authz_tuples WHERE ${where}`, params);
+    }
+
+    return count;
   }
 
   async findTuples(filter: Partial<PolizyInputTuple>): Promise<PolizyStoredTuple[]> {

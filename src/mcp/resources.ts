@@ -5,8 +5,10 @@
  * or read on demand. Unlike tools, resources represent persistent state.
  */
 
+import { join } from "@std/path";
 import type { McpResource, McpResourceContent, ResourceHandler } from "./server.ts";
 import type { DuneEngine } from "../core/engine.ts";
+import type { StorageAdapter } from "../storage/types.ts";
 
 // ── Resource: site config ────────────────────────────────────────────────────
 
@@ -176,6 +178,85 @@ function makeBlueprintsHandler(engine: DuneEngine): ResourceHandler {
   };
 }
 
+// ── Resource: forms (flex-objects schemas) ────────────────────────────────────
+
+const FORMS_RESOURCE: McpResource = {
+  uri: "dune://content/forms",
+  name: "Form Schemas",
+  description:
+    "All form/flex-object schema definitions from the schemas/ directory. " +
+    "Each entry describes the schema name, title, fields, and storage tier. " +
+    "Use this before scaffold_form to see what already exists.",
+  mimeType: "application/json",
+};
+
+export interface ResourceDeps {
+  engine: DuneEngine;
+  storage: StorageAdapter;
+  root: string;
+}
+
+function makeFormsHandler(storage: StorageAdapter, root: string): ResourceHandler {
+  return async () => {
+    const schemasDir = "schemas";
+    const forms: Record<string, unknown>[] = [];
+
+    try {
+      const entries = await storage.list(schemasDir);
+      for (const entry of entries) {
+        if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
+        try {
+          const raw = await storage.read(entry.path);
+          const { parse } = await import("@std/yaml");
+          const schema = parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
+          forms.push({ name: entry.name.slice(0, -5), ...schema });
+        } catch { /* skip malformed */ }
+      }
+    } catch { /* schemas/ dir doesn't exist */ }
+
+    return {
+      uri: FORMS_RESOURCE.uri,
+      mimeType: "application/json",
+      text: JSON.stringify(forms, null, 2),
+    };
+  };
+}
+
+// ── Resource: audit log tail ──────────────────────────────────────────────────
+
+const AUDIT_LOG_RESOURCE: McpResource = {
+  uri: "dune://site/audit",
+  name: "Audit Log",
+  description:
+    "The 50 most recent audit log entries from the admin panel. " +
+    "Each entry includes event type, actor, target, outcome, and timestamp. " +
+    "Returns an empty array when audit logging is not enabled.",
+  mimeType: "application/json",
+};
+
+function makeAuditLogHandler(storage: StorageAdapter, root: string): ResourceHandler {
+  return async () => {
+    // Audit log is a JSONL file; read the last 50 lines
+    const logPath = join(root, ".dune", "admin", "audit.log");
+    const entries: unknown[] = [];
+
+    try {
+      const raw = await Deno.readTextFile(logPath);
+      const lines = raw.trimEnd().split("\n").filter(Boolean);
+      const tail = lines.slice(-50);
+      for (const line of tail) {
+        try { entries.push(JSON.parse(line)); } catch { /* skip */ }
+      }
+    } catch { /* log file absent or unreadable */ }
+
+    return {
+      uri: AUDIT_LOG_RESOURCE.uri,
+      mimeType: "application/json",
+      text: JSON.stringify(entries, null, 2),
+    };
+  };
+}
+
 // ── Registration ─────────────────────────────────────────────────────────────
 
 export interface ResourceRegistration {
@@ -183,13 +264,26 @@ export interface ResourceRegistration {
   handler: ResourceHandler;
 }
 
-/** Build all resource registrations from engine dependencies. */
-export function buildResources(engine: DuneEngine): ResourceRegistration[] {
-  return [
+/** Build all resource registrations from engine and storage dependencies. */
+export function buildResources(
+  engine: DuneEngine,
+  storage?: StorageAdapter,
+  root?: string,
+): ResourceRegistration[] {
+  const base: ResourceRegistration[] = [
     { meta: CONFIG_RESOURCE, handler: makeConfigHandler(engine) },
     { meta: SCHEMA_RESOURCE, handler: schemaHandler },
     { meta: PAGES_RESOURCE, handler: makePagesHandler(engine) },
     { meta: TAXONOMY_RESOURCE, handler: makeTaxonomyHandler(engine) },
     { meta: BLUEPRINTS_RESOURCE, handler: makeBlueprintsHandler(engine) },
   ];
+
+  if (storage && root) {
+    base.push(
+      { meta: FORMS_RESOURCE, handler: makeFormsHandler(storage, root) },
+      { meta: AUDIT_LOG_RESOURCE, handler: makeAuditLogHandler(storage, root) },
+    );
+  }
+
+  return base;
 }

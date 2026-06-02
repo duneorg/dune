@@ -67,6 +67,21 @@ export interface HookContext<T = unknown> {
   stopPropagation: () => void;
   /** Replace the data being passed through the hook chain */
   setData: (data: T) => void;
+  /**
+   * Background job API — only present when the job scheduler is running.
+   * Allows hooks to trigger a registered job immediately regardless of its schedule.
+   *
+   * @example
+   * ```ts
+   * hooks.on("onPageCreate", async (ctx) => {
+   *   await ctx.jobs?.run("reindex-search");
+   * });
+   * ```
+   */
+  jobs?: {
+    /** Trigger a registered job by name immediately, regardless of its schedule. */
+    run(name: string): Promise<void>;
+  };
 }
 
 /**
@@ -278,4 +293,9 @@ export interface HookRegistry {
   fire<T = unknown>(event: HookEvent, data: T): Promise<T>;
   /** List registered plugins */
   plugins(): DunePlugin[];
+  /**
+   * Inject a job runner into the hook context so handlers can call ctx.jobs.run().
+   * Called by serve.ts after the job scheduler is started.
+   */
+  setJobContext(jobs: Required<HookContext>["jobs"]): void;
 }

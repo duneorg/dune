@@ -156,7 +156,69 @@ export function getAuthz() {
 
   console.log(`\n  Next steps:`);
   console.log(`    1. In site.yaml, set:  auth:\n                             authzStore: local`);
-  console.log(`    2. Polizy skills (polizy-core, polizy-schema) are shipped with`);
-  console.log(`       the polizy npm package under its skills/ directory.`);
-  console.log(`       Copy them into .claude/skills/ to enable agent authz assistance.`);
+
+  // Try to auto-install polizy skills from the package's skills/ directory
+  await installPackageSkills(root, "polizy", ["polizy-core.md", "polizy-schema.md"]);
+}
+
+/**
+ * Attempt to copy skill files from an installed npm package into .claude/skills/.
+ * Uses `deno info npm:<package>` to locate the package in the Deno cache.
+ * Silently skips if the package or skills aren't found.
+ */
+async function installPackageSkills(
+  root: string,
+  packageName: string,
+  knownFiles: string[],
+): Promise<void> {
+  const skillsTarget = join(root, ".claude", "skills");
+
+  // Locate the package via `deno info --json npm:<package>`
+  let pkgDir: string | null = null;
+  try {
+    const result = await new Deno.Command("deno", {
+      args: ["info", "--json", `npm:${packageName}`],
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+
+    if (result.success) {
+      const info = JSON.parse(new TextDecoder().decode(result.stdout));
+      // deno info returns npmPackages: { "name@version": { dir: "..." } }
+      const npmPackages = info.npmPackages as Record<string, { dir?: string }> | undefined;
+      if (npmPackages) {
+        for (const [, meta] of Object.entries(npmPackages)) {
+          if (meta.dir) { pkgDir = meta.dir; break; }
+        }
+      }
+    }
+  } catch { /* deno info unavailable or failed */ }
+
+  if (!pkgDir) {
+    console.log(`\n  ℹ️  ${packageName} skills: package not yet in cache — re-run after importing`);
+    console.log(`     or copy skills manually from node_modules/${packageName}/skills/`);
+    return;
+  }
+
+  const srcSkillsDir = join(pkgDir, "skills");
+  let installed = 0;
+
+  try {
+    await Deno.mkdir(skillsTarget, { recursive: true });
+    for (const filename of knownFiles) {
+      const src = join(srcSkillsDir, filename);
+      const dest = join(skillsTarget, filename);
+      try {
+        await Deno.copyFile(src, dest);
+        console.log(`  ✅ .claude/skills/${filename}`);
+        installed++;
+      } catch { /* file absent — package may not ship skills */ }
+    }
+  } catch { /* skillsTarget creation failed */ }
+
+  if (installed > 0) {
+    console.log(`  ✅ ${installed} skill file(s) installed from ${packageName}`);
+  } else {
+    console.log(`\n  ℹ️  ${packageName} does not ship skill files (or they are not in skills/)`);
+  }
 }

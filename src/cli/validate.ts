@@ -83,16 +83,37 @@ function scanCodeBlock(code: string): { unknownHooks: string[]; unknownPerms: st
   const unknownHooks: string[] = [];
   const unknownPerms: string[] = [];
 
-  // hooks.on("eventName") and hooks.on('eventName')
-  const hookRe = /hooks\.on\(\s*["']([^"']+)["']/g;
   let m: RegExpExecArray | null;
-  while ((m = hookRe.exec(code)) !== null) {
+
+  // Pattern 1: hooks.on("eventName") — imperative registration
+  const hookOnRe = /hooks\.on\(\s*["']([^"']+)["']/g;
+  while ((m = hookOnRe.exec(code)) !== null) {
     if (!VALID_HOOK_EVENTS.has(m[1])) unknownHooks.push(m[1]);
   }
 
-  // requirePermission(ctx, "perm.name") and requirePermission(ctx, 'perm.name')
+  // Pattern 2: DunePlugin.hooks object shorthand:  hooks: { onRebuild: ... }
+  // Matches any identifier used as a key inside a `hooks: { ... }` block.
+  // Simple heuristic: look for object keys that look like hook names (start with "on")
+  // following `hooks:` or `hooks :`
+  const hookObjRe = /hooks\s*:\s*\{([^}]*)\}/g;
+  while ((m = hookObjRe.exec(code)) !== null) {
+    const block = m[1];
+    const keyRe = /\b(on[A-Za-z]+)\s*[:(,]/g;
+    let km: RegExpExecArray | null;
+    while ((km = keyRe.exec(block)) !== null) {
+      if (!VALID_HOOK_EVENTS.has(km[1])) unknownHooks.push(km[1]);
+    }
+  }
+
+  // Pattern 3: requirePermission(ctx, "perm.name")
   const permRe = /requirePermission\([^,]+,\s*["']([^"']+)["']/g;
   while ((m = permRe.exec(code)) !== null) {
+    if (!VALID_PERMISSIONS.has(m[1])) unknownPerms.push(m[1]);
+  }
+
+  // Pattern 4: hasPermission(authResult, "perm.name")
+  const hasPerm = /hasPermission\([^,]+,\s*["']([^"']+)["']/g;
+  while ((m = hasPerm.exec(code)) !== null) {
     if (!VALID_PERMISSIONS.has(m[1])) unknownPerms.push(m[1]);
   }
 

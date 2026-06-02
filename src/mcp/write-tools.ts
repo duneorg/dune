@@ -159,26 +159,39 @@ const UPDATE_FRONTMATTER_META: McpTool = {
   description:
     "Merge frontmatter field updates into an existing content page. " +
     "Existing fields not mentioned in updates are preserved. " +
-    "Pass null as a value to remove a field.",
+    "Pass null as a value to remove a field. " +
+    "Use 'path' (relative to content dir) for pages created in the same session " +
+    "that the engine doesn't know about yet.",
   inputSchema: {
     type: "object",
     properties: {
-      route: { type: "string", description: "Page route, e.g. /blog/hello" },
+      route: { type: "string", description: "Page route, e.g. /blog/hello (preferred for existing pages)" },
+      path: { type: "string", description: "File path relative to content dir, e.g. blog/hello.md (use for newly written pages)" },
       updates: { type: "object", description: "Frontmatter fields to set or remove (null = remove)" },
     },
-    required: ["route", "updates"],
+    required: ["updates"],
   },
 };
 
 function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
   return async (args) => {
-    const route = String(args.route ?? "");
-    if (!route) return err("route is required");
-
-    const storagePath = routeToSourcePath(deps.engine, route);
-    if (!storagePath) return err(`No page found at route "${route}"`);
-
     const updates = (args.updates ?? {}) as Record<string, unknown>;
+    let storagePath: string | null = null;
+
+    if (args.path) {
+      // Explicit path — used for newly written pages not yet in the engine index
+      const p = String(args.path).trim();
+      if (p.includes("..")) return err("path must not contain '..'");
+      storagePath = join(deps.contentDir, p);
+    } else if (args.route) {
+      const route = String(args.route);
+      storagePath = routeToSourcePath(deps.engine, route);
+      if (!storagePath) return err(
+        `No page found at route "${route}". If this page was just created, use 'path' instead of 'route'.`,
+      );
+    } else {
+      return err("Provide either 'route' or 'path'");
+    }
 
     try {
       const rawBytes = await deps.storage.read(storagePath);
@@ -195,7 +208,7 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
 
       const updated = renderFrontmatter(fm, body);
       await deps.storage.write(storagePath, new TextEncoder().encode(updated));
-      return ok(`Updated frontmatter for ${route}`);
+      return ok(`Updated frontmatter for ${args.route ?? args.path}`);
     } catch (e) {
       return err(`Failed to update frontmatter: ${e}`);
     }
