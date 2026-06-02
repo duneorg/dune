@@ -59,14 +59,22 @@ export async function mountDuneAuth(
 
   const mode = authConfig?.mode ?? "dune";
   const sessionLifetimeSec = authConfig?.sessionLifetime ?? 30 * 24 * 60 * 60;
-  const userStoreType = (authConfig?.userStore ?? "local") as "local" | "session";
+  const userStoreType: "local" | "session" | "db" = (authConfig?.userStore ?? "local") as "local" | "session" | "db";
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
 
   // ── User store ──────────────────────────────────────────────────────────────
   const usersDir = `${dataDir}/site-users`;
-  const userStore = createLocalSiteUserStore({ storage, usersDir });
+  let userStore: import("./user-store.ts").SiteUserStore;
+  if (userStoreType === "db") {
+    const { createDbAdapter } = await import("../db/adapters/mod.ts");
+    const { createDbSiteUserStore } = await import("./user-store-db.ts");
+    const dbAdapter = await createDbAdapter();
+    userStore = await createDbSiteUserStore({ adapter: dbAdapter });
+  } else {
+    userStore = createLocalSiteUserStore({ storage, usersDir });
+  }
 
   // ── Session manager ─────────────────────────────────────────────────────────
   // Site sessions stored under a separate directory from admin sessions
@@ -108,13 +116,20 @@ export async function mountDuneAuth(
   // For headless setups that call mountDuneAuth() without a prior bootstrap()
   // (e.g. testing or custom servers), a fresh bundle is created here.
   let mountAuthz: DuneAuthSystem | null = null;
-  let mountAdapter: AuthzLocalAdapter | null = null;
+  let mountAdapter: import("./authz-adapter-local.ts").AuthzLocalAdapter | import("./authz-adapter-db.ts").AuthzDbAdapter | null = null;
 
   const authzStoreCfg = mode === "dune"
     ? (authConfig?.authzStore ?? "local")   // default local in dune mode
     : authConfig?.authzStore;               // must be explicit in external-jwt mode
 
-  if (authzStoreCfg === "local") {
+  if (authzStoreCfg === "db") {
+    const { createDbAdapter } = await import("../db/adapters/mod.ts");
+    const dbAdapter = await createDbAdapter();
+    const bundle = createDuneAuthSystem({ authzStore: "db", dbAdapter }, storage);
+    setGatingAuthz(bundle.authz);
+    mountAuthz = bundle.authz;
+    mountAdapter = bundle.adapter;
+  } else if (authzStoreCfg === "local") {
     const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
     const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
     // When bootstrap already created the bundle, reuse it — the adapter was created
@@ -377,9 +392,9 @@ interface SiteAuthConfig {
     rolesClaim?: string;
   };
   sessionLifetime?: number;
-  userStore?: "local" | "session";
+  userStore?: "local" | "session" | "db";
   /** Storage tier for permission tuples. Default: "local". */
-  authzStore?: "local";
+  authzStore?: "local" | "db";
   /** IdP webhook configuration for external-jwt + authzStore:local mode. */
   webhook?: {
     provider: "clerk" | "auth0" | "generic";

@@ -78,6 +78,8 @@ import { generateCommand, generateList } from "./cli/generate.ts";
 import { addCommand } from "./cli/add.ts";
 import { jobsListCommand, jobsRunCommand } from "./cli/jobs.ts";
 import { authzSignCommand } from "./cli/authz-sign.ts";
+import { migrateAuthToDbCommand } from "./cli/migrate-auth-to-db.ts";
+import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -165,6 +167,8 @@ Commands:
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
 
   authz:sign [--dry-run]       Sign existing permission tuple files with DUNE_AUTHZ_HMAC_SECRET
+  migrate:auth-to-db           Migrate flat-file users + tuples to DB (idempotent)
+  migrate:roles-to-tuples      Ensure polizy tuples exist for all user roles[] (idempotent)
 
   jobs:list                    List all registered jobs with schedule and last-run state
   jobs:run <name>              Trigger a job immediately (dev/ops use)
@@ -516,6 +520,18 @@ async function main() {
 
       case "authz:sign":
         await authzSignCommand(root, {
+          dryRun: options.dryRun === true,
+        });
+        break;
+
+      case "migrate:auth-to-db":
+        await migrateAuthToDbCommand(root, {
+          dryRun: options.dryRun === true,
+        });
+        break;
+
+      case "migrate:roles-to-tuples":
+        await migrateRolesToTuplesCommand(root, {
           dryRun: options.dryRun === true,
         });
         break;

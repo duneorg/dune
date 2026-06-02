@@ -32,8 +32,8 @@ export interface AuthRoutesConfig {
   magicLinkSecret: string;
   siteUrl: string;
   mode: "dune" | "external-jwt";
-  /** Storage tier for user records. "session" means no persistent records — identity is embedded in the session cookie. */
-  userStoreType?: "local" | "session";
+  /** Storage tier for user records. "session" means no persistent records — identity is embedded in the session cookie. "db" uses the database-backed store. */
+  userStoreType?: "local" | "session" | "db";
   sendEmail?: (to: string, subject: string, text: string, html: string) => Promise<void>;
   trustForwardedFor?: boolean;
   /**

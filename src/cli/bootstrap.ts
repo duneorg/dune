@@ -45,6 +45,7 @@ import type { MachineTranslator } from "../mt/mod.ts";
 import { createDuneAuthSystem, bootstrapAdminTuples } from "../auth/authz.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
+import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
@@ -126,7 +127,7 @@ export interface BootstrapResult {
    */
   authz?: DuneAuthSystem;
   /** Paired adapter for the authz system above — needed for hasTuple / bootstrap. */
-  authzAdapter?: AuthzLocalAdapter;
+  authzAdapter?: AuthzLocalAdapter | AuthzDbAdapter;
 }
 
 export interface BootstrapOptions {
@@ -472,7 +473,7 @@ export async function bootstrap(
     ?? (_siteAuthMode === "dune" ? "local" : undefined);
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
-  let bootstrappedAuthzAdapter: AuthzLocalAdapter | undefined;
+  let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
 
   // Load HMAC key once — shared by admin and site-user authz bundles
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {

@@ -545,7 +545,7 @@ export interface SiteConfig {
      *               login (e.g. via payment) are not reflected until the user logs
      *               out and back in. A database-backed store is planned.
      */
-    userStore?: "local" | "session";
+    userStore?: "local" | "session" | "db";
     /**
      * IdP webhook configuration — enables POST /auth/webhook for receiving
      * user lifecycle events from the external identity provider.

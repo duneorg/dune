@@ -42,9 +42,12 @@
 import { AuthSystem } from "polizy";
 import { duneAuthzSchema } from "./authz-schema.ts";
 import { AuthzLocalAdapter } from "./authz-adapter-local.ts";
+import { AuthzDbAdapter } from "./authz-adapter-db.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+import type { DbAdapter } from "../db/types.ts";
 
 export { AuthzLocalAdapter } from "./authz-adapter-local.ts";
+export { AuthzDbAdapter } from "./authz-adapter-db.ts";
 export { duneAuthzSchema } from "./authz-schema.ts";
 export type { DuneAuthzSchema } from "./authz-schema.ts";
 
@@ -53,14 +56,17 @@ export type DuneAuthSystem = AuthSystem<typeof duneAuthzSchema>;
 
 export interface AuthzConfig {
   /** Storage tier for permission tuples. Default: "local" (flat files). */
-  authzStore?: "local";
-  /** Base data directory, e.g. "data". Default: "data". */
+  authzStore?: "local" | "db";
+  /** Base data directory, e.g. "data". Default: "data". Used only when authzStore is "local". */
   dataDir?: string;
   /**
+   * DbAdapter for the "db" storage tier. Required when authzStore is "db".
+   * Obtain via createDbAdapter() from @dune/core/db.
+   */
+  dbAdapter?: DbAdapter;
+  /**
    * Optional HMAC-SHA256 key for tuple file integrity verification.
-   * When set, new tuples are signed on write and existing tuples are verified
-   * on load. Tuples with an invalid HMAC are rejected and logged.
-   * Unsigned tuples (no hmac field) are accepted to allow seamless migration.
+   * Only applies to authzStore: "local" — DB adapters rely on DB-level integrity.
    * Load from DUNE_AUTHZ_HMAC_SECRET via `loadHmacKeyFromEnv()`.
    */
   hmacKey?: CryptoKey | null;
@@ -69,37 +75,54 @@ export interface AuthzConfig {
 export interface DuneAuthBundle {
   /** The configured polizy AuthSystem — call `authz.check()`, `authz.addMember()`, etc. */
   authz: DuneAuthSystem;
-  /** The underlying adapter — used for bootstrap and low-level tuple inspection. */
-  adapter: AuthzLocalAdapter;
+  /**
+   * The underlying adapter.
+   * AuthzLocalAdapter for authzStore: "local"; AuthzDbAdapter for authzStore: "db".
+   */
+  adapter: AuthzLocalAdapter | AuthzDbAdapter;
 }
 
 /**
- * Create a Dune AuthSystem backed by the given storage adapter.
+ * Create a Dune AuthSystem backed by the configured storage tier.
  *
- * Returns both the AuthSystem and the underlying AuthzLocalAdapter so that
- * callers (bootstrap, mount) share the same in-memory tuple index.
+ * Returns both the AuthSystem and the underlying adapter so that callers
+ * (bootstrap, mount) share the same tuple index / DB connection.
  *
  * Normally called once in `mountDuneAuth()`. Pass `bundle.authz` to
  * `setGatingAuthz()` to wire content gating.
+ *
+ * @param config.authzStore  "local" (default) or "db"
+ * @param config.dbAdapter   Required when authzStore is "db"
+ * @param storage            DuneStorageAdapter — only used for authzStore: "local"
  */
 export function createDuneAuthSystem(
   config: AuthzConfig,
   storage: StorageAdapter,
 ): DuneAuthBundle {
-  // Warn when dataDir is not provided. The default "data" is a relative path that
-  // resolves against the process CWD, which is unpredictable in headless or test
-  // contexts. Callers should always pass an explicit absolute path (e.g. the site
-  // root joined with the configured dataDir). bootstrap() always does this; custom
-  // server setups should follow the same pattern.
-  const dataDir = config.dataDir ?? "data";
-  if (!config.dataDir) {
-    console.warn(
-      "[dune/authz] createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
-      "(relative to process CWD). Pass an explicit absolute path to avoid resolving " +
-      "permissions to the wrong directory in non-standard server setups.",
-    );
+  let adapter: AuthzLocalAdapter | AuthzDbAdapter;
+
+  if (config.authzStore === "db") {
+    if (!config.dbAdapter) {
+      throw new Error(
+        "[dune/authz] createDuneAuthSystem: authzStore is 'db' but no dbAdapter was provided. " +
+          "Pass config.dbAdapter (obtain via createDbAdapter() from @dune/core/db).",
+      );
+    }
+    adapter = new AuthzDbAdapter(config.dbAdapter);
+  } else {
+    // authzStore: "local" (default)
+    // Warn when dataDir is not provided — the default "data" resolves relative to
+    // process CWD, which is unpredictable in headless/test contexts.
+    const dataDir = config.dataDir ?? "data";
+    if (!config.dataDir) {
+      console.warn(
+        "[dune/authz] createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
+          "(relative to process CWD). Pass an explicit absolute path to avoid resolving " +
+          "permissions to the wrong directory in non-standard server setups.",
+      );
+    }
+    adapter = new AuthzLocalAdapter({ storage, dataDir, hmacKey: config.hmacKey });
   }
-  const adapter = new AuthzLocalAdapter({ storage, dataDir, hmacKey: config.hmacKey });
   const authz = new AuthSystem({
     schema: duneAuthzSchema,
     // Cast required because polizy's StorageAdapter<S,O> generic parameters
@@ -120,9 +143,14 @@ export function createDuneAuthSystem(
  *
  * Called by `mountDuneAuth()` after constructing the AuthSystem.
  */
+/** Minimal interface required by bootstrap helpers — satisfied by both local and db adapters. */
+export interface AuthzAdapterLike {
+  hasTuple(subject: { type: string; id: string }, relation: string, object: { type: string; id: string }): Promise<boolean>;
+}
+
 export async function bootstrapRoleTuples(
   authz: DuneAuthSystem,
-  adapter: AuthzLocalAdapter,
+  adapter: AuthzAdapterLike,
   users: Array<{ id: string; roles: string[] }>,
 ): Promise<void> {
   for (const user of users) {
@@ -154,7 +182,7 @@ export async function bootstrapRoleTuples(
  */
 export async function bootstrapAdminTuples(
   authz: DuneAuthSystem,
-  adapter: AuthzLocalAdapter,
+  adapter: AuthzAdapterLike,
   adminUsers: Array<{ id: string; role: string }>,
 ): Promise<void> {
   for (const user of adminUsers) {
