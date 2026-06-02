@@ -281,13 +281,15 @@ export function duneRoutes(
           }
           // Apply facet filters
           for (const [field, filterVal] of Object.entries(facetFilters)) {
-            // Build a synthetic frontmatter-like object for resolving dot-paths
+            // Build a synthetic frontmatter-like object for resolving dot-paths.
+            // p.extra carries custom facet field values extracted at index time.
             const syntheticFm: Record<string, unknown> = {
               template: p.template,
               taxonomy: p.taxonomy,
               date: p.date,
               language: p.language,
               published: p.published,
+              ...(p.extra ?? {}),
             };
             const val = resolveFacetValue(syntheticFm, field);
             if (val === undefined) return false;

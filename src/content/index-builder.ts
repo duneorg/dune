@@ -52,6 +52,19 @@ export interface IndexBuilderOptions {
    * (non-fatal — the page is still indexed).
    */
   blueprints?: BlueprintMap;
+  /**
+   * Custom frontmatter field names (or dot-paths) to extract into
+   * `PageIndex.extra` for use in facet filtering and counting.
+   *
+   * Sourced from `system.search.facets[].field` in `site.yaml`. Fields that
+   * resolve to a string or string[] are stored; others are silently skipped.
+   *
+   * Standard `PageIndex` fields (template, taxonomy, date, etc.) are always
+   * available and do not need to be declared here.
+   *
+   * @example ["subtype", "taxonomy.category"]
+   */
+  facetFields?: string[];
 }
 
 export interface BuildResult {
@@ -86,7 +99,7 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   const pages: PageIndex[] = [];
@@ -151,6 +164,7 @@ export async function buildIndex(
         stat.mtime,
         raw,
         fileInfo.language ?? defaultLang,
+        facetFields,
       );
 
       if (pageIndex) {
@@ -210,7 +224,7 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   // Build a map of existing pages by sourcePath
@@ -297,6 +311,7 @@ export async function updateIndex(
         stat.mtime,
         raw,
         fileInfo.language ?? defaultLang,
+        facetFields,
       );
 
       if (pageIndex) {
@@ -411,6 +426,7 @@ function buildPageIndex(
   mtime: number,
   rawContent: string,
   language: string,
+  facetFields?: string[],
 ): PageIndex | null {
   const isModule = isInModuleFolder(sourcePath);
 
@@ -469,6 +485,7 @@ function buildPageIndex(
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),
     fileUrl: buildFileUrl(sourcePath, frontmatter.file as string | undefined, frontmatter.file_url as string | undefined),
     termPageFor: normaliseTermPageFor(frontmatter.termPageFor),
+    extra: extractFacetExtra(frontmatter, facetFields),
   };
 }
 
@@ -495,6 +512,46 @@ function normaliseTermPageFor(
     return Object.keys(result).length > 0 ? result : undefined;
   }
   return undefined;
+}
+
+/**
+ * Extract declared facet field values from frontmatter into a flat map for
+ * storage in `PageIndex.extra`.
+ *
+ * Only string and string[] values are stored; other types are skipped.
+ * Dot-paths (e.g. "taxonomy.category") are resolved via `resolveDotPath`.
+ * Returns `undefined` when no fields are declared or none resolve.
+ */
+function extractFacetExtra(
+  frontmatter: PageFrontmatter,
+  fields?: string[],
+): Record<string, string | string[]> | undefined {
+  if (!fields?.length) return undefined;
+  const result: Record<string, string | string[]> = {};
+  for (const field of fields) {
+    const val = resolveDotPath(frontmatter as Record<string, unknown>, field);
+    if (typeof val === "string") {
+      result[field] = val;
+    } else if (Array.isArray(val)) {
+      const strs = val.filter((v): v is string => typeof v === "string");
+      if (strs.length) result[field] = strs;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Resolve a dot-path into a plain object, e.g. "taxonomy.category" →
+ * obj.taxonomy?.category. Returns undefined if any segment is missing.
+ */
+function resolveDotPath(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let cur: unknown = obj;
+  for (const p of parts) {
+    if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return cur;
 }
 
 /** Update the taxonomy reverse index. */

@@ -297,6 +297,7 @@ export async function createDuneEngine(
       supportedLanguages: config.system.languages?.supported,
       defaultLanguage: config.system.languages?.default,
       blueprints,
+      facetFields: config.system.search?.facets?.map((f) => f.field),
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
@@ -485,6 +486,7 @@ export async function createDuneEngine(
           supportedLanguages: config.system.languages?.supported,
           defaultLanguage: config.system.languages?.default,
           blueprints,
+          facetFields: config.system.search?.facets?.map((f) => f.field),
         });
         pages = result.pages;
         taxonomyMap = result.taxonomyMap;

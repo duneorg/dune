@@ -204,6 +204,18 @@ export interface PageIndex {
    * form (`termPageFor: ewr`) becomes `{ tag: "ewr" }`.
    */
   termPageFor?: Record<string, string>;
+  /**
+   * Site-declared custom frontmatter fields extracted at index time for use
+   * in facet filtering and counting.
+   *
+   * Populated from `system.search.facets[].field` in `site.yaml`. Only fields
+   * that resolve to a string or string[] are stored here. Dot-paths into
+   * nested frontmatter (e.g. "taxonomy.category") are supported.
+   *
+   * Available to the routing layer for facet resolution without reloading
+   * the full page frontmatter.
+   */
+  extra?: Record<string, string | string[]>;
 }
 
 // === Collections ===
