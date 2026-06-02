@@ -82,7 +82,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     console.log(`  ⚡ Live reload enabled`);
 
     // Debounced rebuild — coalesces rapid file-system events into one rebuild
-    let rebuildTimeout: number | undefined;
+    let rebuildTimeout: ReturnType<typeof setTimeout> | undefined;
     (async () => {
       for await (const event of watcher) {
         if (event.kind === "modify" || event.kind === "create" || event.kind === "remove") {

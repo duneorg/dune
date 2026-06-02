@@ -252,7 +252,7 @@ export class MultisiteManager {
         } catch { /* not present */ }
       }
 
-      let rebuildTimeout: number | undefined;
+      let rebuildTimeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const watcher = Deno.watchFs(watchPaths);
         for await (const event of watcher) {
