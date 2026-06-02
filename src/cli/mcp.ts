@@ -24,6 +24,7 @@
 import { McpServer } from "../mcp/server.ts";
 import { buildTools } from "../mcp/tools.ts";
 import { buildResources } from "../mcp/resources.ts";
+import { buildWriteTools } from "../mcp/write-tools.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
@@ -85,7 +86,7 @@ async function lightweightBootstrap(root: string, buildSearch: boolean, debug: b
     search = se;
   }
 
-  return { engine, search, config };
+  return { engine, search, config, storage };
 }
 
 export async function mcpServeCommand(
@@ -101,7 +102,7 @@ export async function mcpServeCommand(
 
   log(`Starting MCP server (root: ${root})`);
 
-  const { engine, search } = await lightweightBootstrap(root, buildSearch, debug);
+  const { engine, search, config, storage } = await lightweightBootstrap(root, buildSearch, debug);
 
   log(`Engine ready: ${engine.pages.length} pages, theme: ${engine.themes.theme.manifest.name}`);
 
@@ -115,16 +116,18 @@ export async function mcpServeCommand(
 
   // Register tools and resources
   const tools = buildTools({ engine, search });
+  const contentDir = config.system?.content?.dir ?? "content";
+  const writeTools = buildWriteTools({ engine, storage, root, contentDir });
   const resources = buildResources(engine);
 
-  for (const { meta, handler } of tools) {
+  for (const { meta, handler } of [...tools, ...writeTools]) {
     server.registerTool(meta, handler);
   }
   for (const { meta, handler } of resources) {
     server.registerResource(meta, handler);
   }
 
-  log(`MCP server ready — ${tools.length} tools, ${resources.length} resources`);
+  log(`MCP server ready — ${tools.length + writeTools.length} tools (${tools.length} read, ${writeTools.length} write/scaffold), ${resources.length} resources`);
 
   await server.serve();
 }
