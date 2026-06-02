@@ -86,11 +86,21 @@ export interface ContentSearchResult {
   excerpt?: string;
 }
 
-/** A resolved taxonomy term with its associated page count. */
+/**
+ * A resolved taxonomy term with its associated page count.
+ *
+ * If any published page declares `termPageFor` pointing at this term,
+ * `pageRoute` is set to that page's route. Otherwise null.
+ *
+ * Use `getContent().termPage(vocab, value)` to resolve the full page with
+ * rendered HTML and typed frontmatter.
+ */
 export interface TaxonomyTerm {
   name: string;
   slug: string;
   count: number;
+  /** Route of the term page (from `termPageFor` frontmatter), or null. */
+  pageRoute: string | null;
 }
 
 /** Filtering and sorting options for `ContentApi.pages()`. */
@@ -154,9 +164,37 @@ export interface ContentApi {
   /**
    * List all terms for a taxonomy.
    *
+   * Each term includes a `pageRoute` pointing to its associated term page
+   * if one exists (i.e. a page that declares `termPageFor` for this term).
+   *
    * @param name - Taxonomy name as configured in `dune.yaml` (e.g. "tag", "category")
    */
   taxonomy(name: string): TaxonomyTerm[];
+
+  /**
+   * Resolve the term page for a taxonomy term.
+   *
+   * A term page is any published content page that declares `termPageFor`
+   * in its frontmatter pointing at the given vocabulary and value:
+   *
+   * ```yaml
+   * # Simple form — implies the "tag" vocabulary:
+   * termPageFor: ewr
+   *
+   * # Explicit vocabulary:
+   * termPageFor:
+   *   category: politics
+   * ```
+   *
+   * Returns `null` if no such page exists.
+   *
+   * @param vocab - Taxonomy vocabulary name, e.g. "tag", "category"
+   * @param value - Term value, e.g. "ewr"
+   */
+  termPage<FM = Record<string, unknown>>(
+    vocab: string,
+    value: string,
+  ): Promise<ResolvedPage<FM> | null>;
 }
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
@@ -205,6 +243,17 @@ export function getContent(): ContentApi {
 
 function buildApi(ctx: ContentContext): ContentApi {
   const { engine, search, taxonomy } = ctx;
+
+  // Build a lookup map: "vocab:value" → route, from all published pages
+  // that declare termPageFor. Built once per buildApi() call from the
+  // in-memory page index — no file I/O.
+  const termPageMap = new Map<string, string>();
+  for (const page of engine.pages) {
+    if (!page.published || !page.termPageFor) continue;
+    for (const [vocab, value] of Object.entries(page.termPageFor)) {
+      termPageMap.set(`${vocab}:${value}`, page.route);
+    }
+  }
 
   return {
     async page<FM = Record<string, unknown>>(
@@ -312,13 +361,43 @@ function buildApi(ctx: ContentContext): ContentApi {
     },
 
     taxonomy(name: string): TaxonomyTerm[] {
-      // values() returns Record<value, count>
       const valueMap = taxonomy.values(name);
       return Object.entries(valueMap).map(([value, count]) => ({
         name: value,
         slug: value.toLowerCase().replace(/\s+/g, "-"),
         count,
+        pageRoute: termPageMap.get(`${name}:${value}`) ?? null,
       })).sort((a, b) => b.count - a.count);
+    },
+
+    async termPage<FM = Record<string, unknown>>(
+      vocab: string,
+      value: string,
+    ): Promise<ResolvedPage<FM> | null> {
+      const route = termPageMap.get(`${vocab}:${value}`);
+      if (!route) return null;
+
+      const result = await engine.resolve(route);
+      if (result.type !== "page" || !result.page) return null;
+
+      const page = result.page;
+      const index = engine.pages.find((p) => p.route === route);
+      if (!index) return null;
+
+      const html = await page.html();
+      const siteUrl = engine.site.url?.replace(/\/$/, "") ?? null;
+
+      return {
+        route,
+        title: page.frontmatter.title || index.title,
+        date: index.date,
+        html,
+        frontmatter: page.frontmatter as FM,
+        language: index.language,
+        published: index.published,
+        navTitle: index.navTitle,
+        url: siteUrl ? `${siteUrl}${route}` : null,
+      };
     },
   };
 }

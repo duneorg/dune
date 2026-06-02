@@ -53,6 +53,24 @@ export interface PageFrontmatter {
     lifetime?: number;
   };
   collection?: CollectionDefinition;
+  /**
+   * Declares this page as the term page for a taxonomy term.
+   *
+   * Simple form (implies the `tag` vocabulary):
+   * ```yaml
+   * termPageFor: ewr
+   * ```
+   *
+   * Explicit vocabulary form:
+   * ```yaml
+   * termPageFor:
+   *   category: politics
+   * ```
+   *
+   * The content API exposes this via `TaxonomyTerm.pageRoute` and
+   * `getContent().termPage(vocab, value)`.
+   */
+  termPageFor?: string | Record<string, string>;
   custom?: Record<string, unknown>;
   /**
    * Visual Page Builder sections.
@@ -178,6 +196,14 @@ export interface PageIndex {
    * case — the routing layer issues the redirect transparently.
    */
   fileUrl?: string;
+  /**
+   * Resolved from `frontmatter.termPageFor`. Stored in the index so the
+   * taxonomy API can locate term pages without additional file I/O.
+   *
+   * Normalised at index time to `Record<vocab, value>` — the simple string
+   * form (`termPageFor: ewr`) becomes `{ tag: "ewr" }`.
+   */
+  termPageFor?: Record<string, string>;
 }
 
 // === Collections ===

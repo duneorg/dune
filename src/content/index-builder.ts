@@ -468,7 +468,33 @@ function buildPageIndex(
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),
     fileUrl: buildFileUrl(sourcePath, frontmatter.file as string | undefined, frontmatter.file_url as string | undefined),
+    termPageFor: normaliseTermPageFor(frontmatter.termPageFor),
   };
+}
+
+/**
+ * Normalise the raw `termPageFor` frontmatter value to a consistent
+ * `Record<vocab, value>` form, or `undefined` if not set.
+ *
+ * - `"ewr"` → `{ tag: "ewr" }` (string → implied `tag` vocab)
+ * - `{ category: "politics" }` → `{ category: "politics" }` (passthrough)
+ * - `undefined` / anything else → `undefined`
+ */
+function normaliseTermPageFor(
+  raw: unknown,
+): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === "string" && raw.trim()) {
+    return { tag: raw.trim() };
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) result[k] = v.trim();
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+  return undefined;
 }
 
 /** Update the taxonomy reverse index. */
