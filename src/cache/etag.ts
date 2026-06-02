@@ -2,9 +2,8 @@
  * ETag generation for content pages.
  *
  * The ETag is derived from lightweight PageIndex metadata — no file I/O.
- * It changes whenever any of: route, title, date, template, format, or
- * language changes.  Body-only edits without metadata changes do not produce
- * a new ETag; the short page-cache TTL handles those cases.
+ * It changes whenever any of: route, title, date, template, format,
+ * language, or mtime changes.
  */
 
 import type { PageIndex } from "../content/types.ts";
@@ -24,6 +23,7 @@ export async function computeEtag(page: PageIndex): Promise<string> {
     page.format,
     page.language ?? "",
     page.sourcePath,
+    String(page.mtime ?? 0),
   ].join("|");
 
   const data = new TextEncoder().encode(input);
