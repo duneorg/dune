@@ -283,13 +283,16 @@ export function duneRoutes(
           for (const [field, filterVal] of Object.entries(facetFilters)) {
             // Build a synthetic frontmatter-like object for resolving dot-paths.
             // p.extra carries custom facet field values extracted at index time.
+            // Spread p.extra first so standard PageIndex fields (template, published,
+            // etc.) always take precedence — prevents a facet field with the same name
+            // as a standard field from shadowing it in filter matching.
             const syntheticFm: Record<string, unknown> = {
+              ...(p.extra ?? {}),
               template: p.template,
               taxonomy: p.taxonomy,
               date: p.date,
               language: p.language,
               published: p.published,
-              ...(p.extra ?? {}),
             };
             const val = resolveFacetValue(syntheticFm, field);
             if (val === undefined) return false;
@@ -310,6 +313,7 @@ export function duneRoutes(
           }
           for (const { page: p } of filtered) {
             const syntheticFm: Record<string, unknown> = {
+              ...(p.extra ?? {}),
               template: p.template,
               taxonomy: p.taxonomy,
               date: p.date,

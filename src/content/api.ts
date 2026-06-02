@@ -244,14 +244,20 @@ export function getContent(): ContentApi {
 function buildApi(ctx: ContentContext): ContentApi {
   const { engine, search, taxonomy } = ctx;
 
-  // Build a lookup map: "vocab:value" → route, from all published pages
-  // that declare termPageFor. Built once per buildApi() call from the
+  // Build a two-level lookup map: vocab → value → route, from all published
+  // pages that declare termPageFor. Built once per buildApi() call from the
   // in-memory page index — no file I/O.
-  const termPageMap = new Map<string, string>();
+  //
+  // Using Map<vocab, Map<value, route>> rather than a flat map with a
+  // "vocab:value" composite key avoids key collisions when vocab names
+  // contain the separator character.
+  const termPageMap = new Map<string, Map<string, string>>();
   for (const page of engine.pages) {
     if (!page.published || !page.termPageFor) continue;
     for (const [vocab, value] of Object.entries(page.termPageFor)) {
-      termPageMap.set(`${vocab}:${value}`, page.route);
+      let inner = termPageMap.get(vocab);
+      if (!inner) { inner = new Map(); termPageMap.set(vocab, inner); }
+      inner.set(value, page.route);
     }
   }
 
@@ -366,7 +372,7 @@ function buildApi(ctx: ContentContext): ContentApi {
         name: value,
         slug: value.toLowerCase().replace(/\s+/g, "-"),
         count,
-        pageRoute: termPageMap.get(`${name}:${value}`) ?? null,
+        pageRoute: termPageMap.get(name)?.get(value) ?? null,
       })).sort((a, b) => b.count - a.count);
     },
 
@@ -374,7 +380,7 @@ function buildApi(ctx: ContentContext): ContentApi {
       vocab: string,
       value: string,
     ): Promise<ResolvedPage<FM> | null> {
-      const route = termPageMap.get(`${vocab}:${value}`);
+      const route = termPageMap.get(vocab)?.get(value);
       if (!route) return null;
 
       const result = await engine.resolve(route);
