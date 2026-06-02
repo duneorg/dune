@@ -5,6 +5,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.14.0] — 2026-06-02
+
+### Added
+
+- **`termPageFor` frontmatter** — Any published page can declare itself the editorial home for a taxonomy term. Shorthand (`termPageFor: deno` → implies the `tag` vocabulary) or explicit map (`termPageFor: { category: tutorials }`). Stored as `PageIndex.termPageFor` (normalised at index time).
+- **`termPage(vocab, value)` content API** — Look up the editorial page for a taxonomy term. Returns a `ResolvedPage` or `null`. Available as `page.termPage()` in templates and via `content.termPage()` in plugins.
+- **`TaxonomyTerm.pageRoute`** — Populated from the `termPageFor` index; `null` when no editorial page exists for the term.
+- **`PageIndex.extra`** — Custom facet field values are now extracted at index time into `PageIndex.extra`, enabling `facet[field]=value` filters on arbitrary frontmatter fields without loading full page frontmatter.
+
+### Fixed
+
+- Browser cache not invalidated on content-only updates — `mtime` is now included in the ETag hash, so any file modification produces a new ETag after a server restart.
+- Custom facet fields (non-taxonomy, non-template) were not resolved in facet filter and count queries — `p.extra` is now applied correctly in both the filter and aggregation paths.
+- `termPage()` lookup key collision when taxonomy vocabulary names contain `:` — replaced flat `"vocab:value"` composite key with a nested `Map<vocab, Map<value, route>>`.
+- Custom facet field values in `p.extra` could shadow standard `PageIndex` fields (`template`, `published`, `language`, etc.) in facet queries — explicit fields now always take precedence.
+
+---
+
 ## [0.13.0] — 2026-05-16
 
 ### Added
