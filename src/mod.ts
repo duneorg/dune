@@ -317,3 +317,12 @@ export type {
   /** The Dune polizy schema type. @since 1.0.0 */
   DuneAuthzSchema,
 } from "./auth/authz.ts";
+
+export type {
+  /** Context injected into background job handlers. @since 0.13.0 */
+  JobContext,
+  /** A validated job definition loaded from jobs/*.ts. @since 0.13.0 */
+  JobDefinition,
+  /** Per-job execution state persisted to runtimeDir/jobs/. @since 0.13.0 */
+  JobState,
+} from "./jobs/types.ts";

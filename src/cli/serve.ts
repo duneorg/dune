@@ -26,6 +26,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
+import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -155,8 +156,39 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, config, pluginPublicRoutes } = ctx;
+  const { engine, config, pluginPublicRoutes, storage } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
+
+  // ── Background jobs ─────────────────────────────────────────────────────────
+  const jobDefs = await scanJobs(root);
+  const workers = Number(Deno.env.get("DUNE_WORKERS") ?? "1");
+  warnIfMultiprocess(jobDefs.length, workers);
+
+  const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
+  const jobStateDir = `${runtimeDir}/jobs`;
+  const jobLogger = {
+    info: (event: string, data?: Record<string, unknown>) => logger.info(event, data),
+    warn: (event: string, data?: Record<string, unknown>) => logger.warn(event, data),
+    error: (event: string, data?: Record<string, unknown>) => logger.error(event, data),
+  };
+  const jobContext = { content: engine, config, storage, logger: jobLogger };
+  const jobScheduler = new JobScheduler({
+    definitions: jobDefs,
+    context: jobContext,
+    stateDir: jobStateDir,
+    storage,
+  });
+
+  if (jobDefs.length > 0) {
+    jobScheduler.start();
+    console.log(`  ⏰ ${jobDefs.length} job(s) scheduled`);
+    // Expose scheduler to admin routes via adminContext
+    if (ctx.adminContext) {
+      (ctx.adminContext as import("../admin/context.ts").AdminContext & {
+        jobScheduler?: JobScheduler;
+      }).jobScheduler = jobScheduler;
+    }
+  }
   const feedEnabled = config.site.feed?.enabled !== false;
 
   // Collect island paths from plugin public routes so they're included in the bundle.
@@ -238,6 +270,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     // Signal the readiness probe immediately so load balancers drain traffic
     // before the process exits.
     setShuttingDown(true);
+    jobScheduler.stop();
     console.log(`\n[dune] received ${signal}, draining connections...`);
     ac.abort();
   };

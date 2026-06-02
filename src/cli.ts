@@ -76,6 +76,7 @@ import { backupCommand, restoreCommand } from "./cli/backup.ts";
 import { flexMigrateCommand } from "./cli/flex-migrate.ts";
 import { generateCommand, generateList } from "./cli/generate.ts";
 import { addCommand } from "./cli/add.ts";
+import { jobsListCommand, jobsRunCommand } from "./cli/jobs.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -161,6 +162,9 @@ Commands:
   generate:theme <name>         Scaffold a theme at themes/{name}/
   generate:schema <name>        Create a Flex Object schema at flex-objects/{name}.yaml
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
+
+  jobs:list                    List all registered jobs with schedule and last-run state
+  jobs:run <name>              Trigger a job immediately (dev/ops use)
 
   add <package>                 Add a package to deno.json imports with scaffolding
                                 Examples: dune add polizy
@@ -504,6 +508,19 @@ async function main() {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+        });
+        break;
+
+      case "jobs:list":
+        await jobsListCommand(root, {
+          json: options.json === true,
+          debug: options.debug === true,
+        });
+        break;
+
+      case "jobs:run":
+        await jobsRunCommand(root, options.positional as string, {
+          debug: options.debug === true,
         });
         break;
 
