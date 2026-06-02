@@ -23,6 +23,7 @@ import { createDuneAuthSystem, bootstrapRoleTuples } from "./authz.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
+import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -115,9 +116,14 @@ export async function mountDuneAuth(
   if (authzStoreCfg === "local") {
     const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
     const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
+    // When bootstrap already created the bundle, reuse it — the adapter was created
+    // with the HMAC key already configured. For headless setups, load the key now.
     const bundle = (existingAuthz && existingAdapter)
       ? { authz: existingAuthz, adapter: existingAdapter }
-      : createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+      : createDuneAuthSystem(
+          { authzStore: "local", dataDir, hmacKey: await loadHmacKeyFromEnv().catch(() => null) },
+          storage,
+        );
 
     setGatingAuthz(bundle.authz);
     mountAuthz = bundle.authz;

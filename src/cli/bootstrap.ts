@@ -45,6 +45,7 @@ import type { MachineTranslator } from "../mt/mod.ts";
 import { createDuneAuthSystem, bootstrapAdminTuples } from "../auth/authz.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
+import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
@@ -473,9 +474,15 @@ export async function bootstrap(
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | undefined;
 
+  // Load HMAC key once — shared by admin and site-user authz bundles
+  const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
+    console.error("[dune/authz] Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
+    return null;
+  });
+
   if (adminConfig.enabled && _authzStoreCfg === "local") {
     try {
-      const bundle = createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+      const bundle = createDuneAuthSystem({ authzStore: "local", dataDir, hmacKey }, storage);
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
       const allAdminUsers = await users.list();

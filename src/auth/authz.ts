@@ -56,6 +56,14 @@ export interface AuthzConfig {
   authzStore?: "local";
   /** Base data directory, e.g. "data". Default: "data". */
   dataDir?: string;
+  /**
+   * Optional HMAC-SHA256 key for tuple file integrity verification.
+   * When set, new tuples are signed on write and existing tuples are verified
+   * on load. Tuples with an invalid HMAC are rejected and logged.
+   * Unsigned tuples (no hmac field) are accepted to allow seamless migration.
+   * Load from DUNE_AUTHZ_HMAC_SECRET via `loadHmacKeyFromEnv()`.
+   */
+  hmacKey?: CryptoKey | null;
 }
 
 export interface DuneAuthBundle {
@@ -91,7 +99,7 @@ export function createDuneAuthSystem(
       "permissions to the wrong directory in non-standard server setups.",
     );
   }
-  const adapter = new AuthzLocalAdapter({ storage, dataDir });
+  const adapter = new AuthzLocalAdapter({ storage, dataDir, hmacKey: config.hmacKey });
   const authz = new AuthSystem({
     schema: duneAuthzSchema,
     // Cast required because polizy's StorageAdapter<S,O> generic parameters

@@ -14,6 +14,8 @@
  */
 
 import type { StorageAdapter as DuneStorage } from "../storage/types.ts";
+import { signTuple, verifyTuple } from "./authz-hmac.ts";
+import type { SignedTuple } from "./authz-hmac.ts";
 
 // ── Polizy StorageAdapter type aliases (avoid importing internal types) ────────
 // These mirror the shapes from polizy's index.d.ts without importing the full
@@ -39,6 +41,13 @@ interface PolizyDeleteFilter {
 export class AuthzLocalAdapter {
   private readonly storage: DuneStorage;
   private readonly permissionsDir: string;
+  /**
+   * Optional HMAC key for tuple file integrity verification.
+   * When set: new tuples are signed on write; existing tuples with a valid or
+   * missing `hmac` field are loaded; tuples with an invalid `hmac` are rejected.
+   * When null: signing and verification are skipped (fail-open).
+   */
+  private readonly hmacKey: CryptoKey | null;
   /** In-memory tuple index — rebuilt from disk on first access */
   private readonly tuples: Map<string, PolizyStoredTuple> = new Map();
   private loaded = false;
@@ -55,9 +64,10 @@ export class AuthzLocalAdapter {
    */
   private loadPromise: Promise<void> | null = null;
 
-  constructor(config: { storage: DuneStorage; dataDir: string }) {
+  constructor(config: { storage: DuneStorage; dataDir: string; hmacKey?: CryptoKey | null }) {
     this.storage = config.storage;
     this.permissionsDir = `${config.dataDir}/permissions`;
+    this.hmacKey = config.hmacKey ?? null;
   }
 
   // ── Lazy index load ─────────────────────────────────────────────────────────
@@ -75,10 +85,27 @@ export class AuthzLocalAdapter {
             .map(async (e) => {
               try {
                 const raw = await this.storage.read(e.path);
-                const tuple = JSON.parse(new TextDecoder().decode(raw)) as PolizyStoredTuple;
-                if (tuple.id) this.tuples.set(tuple.id, tuple);
+                const tuple = JSON.parse(new TextDecoder().decode(raw)) as SignedTuple;
+                if (!tuple.id) return;
+
+                // HMAC verification — only when a key is configured
+                if (this.hmacKey) {
+                  const result = await verifyTuple(tuple, this.hmacKey);
+                  if (result === "invalid") {
+                    console.warn(
+                      `[dune/authz] Tuple ${tuple.id} (${e.name}) has an invalid HMAC — ` +
+                        "file may have been tampered with. Tuple NOT loaded.",
+                    );
+                    return;
+                  }
+                  // result === "missing": unsigned file, accepted during migration
+                }
+
+                // Strip the hmac field before storing in the in-memory index
+                const { hmac: _hmac, ...stored } = tuple;
+                this.tuples.set(stored.id, stored as PolizyStoredTuple);
               } catch {
-                // Skip corrupt files — log would be nice but we avoid the logger dep
+                // Skip corrupt files
               }
             }),
         );
@@ -100,9 +127,18 @@ export class AuthzLocalAdapter {
     for (const input of inputTuples) {
       const id = crypto.randomUUID();
       const stored: PolizyStoredTuple = { ...input, id };
+
+      // Sign the tuple if a key is configured; write the signed form to disk
+      // but keep only the unsigned form in the in-memory index (hmac is
+      // a storage-layer concern, not needed for runtime checks).
+      const onDisk: SignedTuple = { ...stored };
+      if (this.hmacKey) {
+        onDisk.hmac = await signTuple(stored, this.hmacKey);
+      }
+
       await this.storage.write(
         `${this.permissionsDir}/${id}.json`,
-        JSON.stringify(stored),
+        new TextEncoder().encode(JSON.stringify(onDisk, null, 2)),
       );
       this.tuples.set(id, stored);
       results.push(stored);
