@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.13.0] — 2026-05-16
+
+### Added
+
+- **Background jobs** — Cron-scheduled server-side tasks defined as TypeScript files in `jobs/`. Export a `JobDefinition` with `name`, `schedule` (standard 5-field cron), and `handler`. Handlers receive a `JobContext` with access to `content`, `config`, `storage`, `logger`, and `email`. State persisted to `runtimeDir/jobs/`. Uses `Deno.cron()` on Deno Deploy; minute-tick interval elsewhere. Manual trigger via `POST /admin/api/jobs/{name}/run`.
+- **MCP write tools** — Nine new tools added to the MCP server: `write_page`, `delete_page`, `update_frontmatter`, `update_config`, `install_plugin`, `scaffold_plugin`, `scaffold_route`, `scaffold_form`, `scaffold_theme`. Write tools modify content and config on disk; scaffold tools invoke the same generators as `dune generate:*`.
+- **`dune add <package>`** — Add an npm or JSR package to the site's `deno.json` import map. Accepts bare names, versioned names, and explicit specifiers (`npm:`, `jsr:@scope/`).
+- **`userStore: db`** — Database-backed site user store (SQLite or PostgreSQL). Requires `DUNE_DB_PATH` or `DUNE_DB_URL`.
+- **`authzStore: db`** — Database-backed authorization tuple storage. The `authz_tuples` table is created automatically. Same API as `authzStore: local`.
+- **`POST /auth/webhook`** — IdP user-lifecycle webhook. Active in `external-jwt + authzStore: local` mode. Handles `user.deleted` events by revoking all authorization tuples for the deleted user. Supports Clerk, Auth0, and generic HMAC-signed payloads.
+- **Authz tuple HMAC integrity** — `authzStore: local` tuple files are signed with a per-installation HMAC key; tampered files are rejected on load.
+- **Dev-mode email preview** — In development, all outgoing emails are intercepted and stored in `runtimeDir/dev-email/` rather than sent. Browse at `/admin/email-preview` or via `GET /admin/api/email-preview`.
+- **`dune generate:admin-route <name>`** — Scaffold a custom admin panel route with handler stub and auth guard.
+- **`dune validate` skill-code sync check** — Validates that `.claude/skills/` files match the versions bundled in the installed package.
+
+---
+
 ## [0.12.0] — 2026-05-16
 
 ### Added
