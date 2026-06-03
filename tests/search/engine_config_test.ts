@@ -100,7 +100,7 @@ Deno.test("fieldWeights: high title weight makes title match rank above body mat
   });
 
   await engine.build();
-  const results = engine.search("deno");
+  const results = await engine.search("deno");
 
   assertEquals(results.length >= 2, true);
   // High title weight → title match must be first
@@ -132,7 +132,7 @@ Deno.test("fieldWeights: high body weight makes body match rank above title matc
   });
 
   await engine.build();
-  const results = engine.search("deno");
+  const results = await engine.search("deno");
 
   assertEquals(results.length >= 2, true);
   // High body weight → body-rich page must be first
@@ -150,7 +150,7 @@ Deno.test("fieldWeights: default weight (omitted) behaves as weight=1", async ()
     // No fieldWeights supplied
   });
   await engine.build();
-  const results = engine.search("hello");
+  const results = await engine.search("hello");
   assertEquals(results.length, 1);
 });
 
@@ -194,7 +194,7 @@ Deno.test("fieldWeights: custom field weight affects ranking", async () => {
   });
 
   await engine.build();
-  const results = engine.search("typescript");
+  const results = await engine.search("typescript");
   assertEquals(results.length >= 1, true);
   // pageA's custom field weight=10 should score at least as high as pageB's title match
   // (pageB gets title weight=1 ×3 = 3; pageA gets custom field weight=10 ×1 = 10)

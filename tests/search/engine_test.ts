@@ -75,7 +75,7 @@ Deno.test("search.build + search: empty query returns []", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  assertEquals(engine.search(""), []);
+  assertEquals(await engine.search(""), []);
 });
 
 Deno.test("search.build + search: single-word query finds matching page", async () => {
@@ -87,7 +87,7 @@ Deno.test("search.build + search: single-word query finds matching page", async 
     formats: makeFormats(),
   });
   await engine.build();
-  const results = engine.search("hello");
+  const results = await engine.search("hello");
   assertEquals(results.length, 1);
   assertEquals(results[0].page.sourcePath, page.sourcePath);
 });
@@ -100,7 +100,7 @@ Deno.test("search.build + search: query for absent term returns []", async () =>
     formats: makeFormats(),
   });
   await engine.build();
-  const results = engine.search("zzznomatch");
+  const results = await engine.search("zzznomatch");
   assertEquals(results.length, 0);
 });
 
@@ -113,7 +113,7 @@ Deno.test("search.build: unpublished pages excluded", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  assertEquals(engine.search("secret"), []);
+  assertEquals(await engine.search("secret"), []);
 });
 
 Deno.test("search.build: non-routable pages excluded", async () => {
@@ -125,7 +125,7 @@ Deno.test("search.build: non-routable pages excluded", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  assertEquals(engine.search("module"), []);
+  assertEquals(await engine.search("module"), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ Deno.test("search: finds term in body content", async () => {
     formats: makeFormats(bodyMap),
   });
   await engine.build();
-  const results = engine.search("fox");
+  const results = await engine.search("fox");
   assertEquals(results.length, 1);
   assertEquals(results[0].score > 0, true);
 });
@@ -157,7 +157,7 @@ Deno.test("search: excerpt contains matched content", async () => {
     formats: makeFormats(bodyMap),
   });
   await engine.build();
-  const results = engine.search("fox");
+  const results = await engine.search("fox");
   assertExists(results[0].excerpt);
   assertEquals(results[0].excerpt.includes("fox"), true);
 });
@@ -185,7 +185,7 @@ Deno.test("search: title match scores higher than body-only match", async () => 
     formats: makeFormats(bodyMap),
   });
   await engine.build();
-  const results = engine.search("deno");
+  const results = await engine.search("deno");
   assertEquals(results.length, 2);
   // Title-matched page should score higher
   assertEquals(results[0].page.sourcePath, titlePage.sourcePath);
@@ -201,8 +201,8 @@ Deno.test("search: multi-term query applies bonus multiplier", async () => {
     formats: makeFormats(bodyMap),
   });
   await engine.build();
-  const singleResult = engine.search("deno");
-  const multiResult = engine.search("deno guide");
+  const singleResult = await engine.search("deno");
+  const multiResult = await engine.search("deno guide");
   // Multi-term should score >= single term (bonus applied)
   assertEquals(multiResult[0].score >= singleResult[0].score, true);
 });
@@ -226,7 +226,7 @@ Deno.test("search: results sorted by score descending", async () => {
     formats: makeFormats(bodyMap),
   });
   await engine.build();
-  const results = engine.search("deno");
+  const results = await engine.search("deno");
   assertEquals(results.length >= 2, true);
   // Each result's score <= previous result's score
   for (let i = 1; i < results.length; i++) {
@@ -245,7 +245,7 @@ Deno.test("search: limit parameter restricts result count", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  const results = engine.search("page", 3);
+  const results = await engine.search("page", 3);
   assertEquals(results.length <= 3, true);
 });
 
@@ -270,7 +270,7 @@ Deno.test("search: taxonomy match boosts score", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  const results = engine.search("typescript");
+  const results = await engine.search("typescript");
   assertEquals(results.length, 1);
   assertEquals(results[0].page.sourcePath, tagged.sourcePath);
 });
@@ -289,7 +289,7 @@ Deno.test("search: prefix matching — partial term finds page", async () => {
   });
   await engine.build();
   // "gett" is a prefix of "getting"
-  const results = engine.search("gett");
+  const results = await engine.search("gett");
   assertEquals(results.length, 1);
 });
 
@@ -306,12 +306,12 @@ Deno.test("search.rebuild: swaps indexed pages", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  assertEquals(engine.search("oldpage").length, 1);
+  assertEquals((await engine.search("oldpage")).length, 1);
 
   const page2 = makePage({ title: "NewPage", sourcePath: "02.new/default.md" });
   await engine.rebuild([page2]);
-  assertEquals(engine.search("oldpage").length, 0);
-  assertEquals(engine.search("newpage").length, 1);
+  assertEquals((await engine.search("oldpage")).length, 0);
+  assertEquals((await engine.search("newpage")).length, 1);
 });
 
 Deno.test("search.rebuild: search works after rebuild with empty set", async () => {
@@ -324,7 +324,7 @@ Deno.test("search.rebuild: search works after rebuild with empty set", async () 
   });
   await engine.build();
   await engine.rebuild([]);
-  assertEquals(engine.search("hello"), []);
+  assertEquals(await engine.search("hello"), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -343,7 +343,7 @@ Deno.test("search.build: storage read failure falls back to metadata-only index"
   // Should not throw; falls back to metadata indexing
   await engine.build();
   // Title is still indexed (metadata)
-  const results = engine.search("specialtitle");
+  const results = await engine.search("specialtitle");
   assertEquals(results.length, 1);
 });
 
@@ -360,7 +360,7 @@ Deno.test("search.suggest: returns strings starting with prefix", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  const suggestions = engine.suggest("den");
+  const suggestions = await engine.suggest("den");
   assertEquals(suggestions.length > 0, true);
   for (const s of suggestions) {
     assertEquals(s.toLowerCase().startsWith("den"), true);
@@ -376,8 +376,8 @@ Deno.test("search.suggest: returns empty for short prefix", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  assertEquals(engine.suggest("h"), []);
-  assertEquals(engine.suggest(""), []);
+  assertEquals(await engine.suggest("h"), []);
+  assertEquals(await engine.suggest(""), []);
 });
 
 Deno.test("search.suggest: respects limit", async () => {
@@ -391,6 +391,6 @@ Deno.test("search.suggest: respects limit", async () => {
     formats: makeFormats(),
   });
   await engine.build();
-  const suggestions = engine.suggest("ter", 3);
+  const suggestions = await engine.suggest("ter", 3);
   assertEquals(suggestions.length <= 3, true);
 });

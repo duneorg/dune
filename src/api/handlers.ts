@@ -227,7 +227,7 @@ async function routeApiRequest(
     // large limits force the search engine to allocate huge result arrays.
     const rawLimit = parseInt(url.searchParams.get("limit") ?? "20", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
-    const results = search.search(q, limit);
+    const results = await search.search(q, limit);
     return {
       items: results.map((r) => ({
         route: r.page.route,

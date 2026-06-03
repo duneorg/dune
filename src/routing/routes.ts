@@ -213,7 +213,7 @@ export function duneRoutes(
       // GET /api/search/suggest — autocomplete suggestions
       if (path === "/api/search/suggest") {
         const q = url.searchParams.get("q") ?? "";
-        const suggestions = search ? search.suggest(q, 10) : [];
+        const suggestions = search ? await search.suggest(q, 10) : [];
         return Response.json({ suggestions });
       }
 
@@ -267,7 +267,7 @@ export function duneRoutes(
         })();
 
         // Fetch a larger candidate set then filter down
-        const raw = search.search(q, 500);
+        const raw = await search.search(q, 500);
 
         const filtered = raw.filter(({ page: p }) => {
           if (filterTemplate && p.template !== filterTemplate) return false;
@@ -456,7 +456,7 @@ export function duneRoutes(
           });
         }
         const q = url.searchParams.get("q") ?? "";
-        const rawResults = search ? search.search(q, 20) : [];
+        const rawResults = search ? await search.search(q, 20) : [];
         const results = rawResults.map((r) => ({
           route: r.page.route,
           title: r.page.title,

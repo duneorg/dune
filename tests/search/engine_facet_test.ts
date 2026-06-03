@@ -122,7 +122,7 @@ Deno.test("facet filtering: template filter reduces results", async () => {
   await engine.build();
 
   // Search for "a" which matches both
-  const all = engine.search("a page", 10);
+  const all = await engine.search("a page", 10);
   assertEquals(all.length >= 1, true);
 
   // Manually filter by template (mirrors route handler logic)
@@ -146,7 +146,7 @@ Deno.test("facet counts: correct distribution across results", async () => {
   await engine.build();
 
   // Search broadly to get all results
-  const results = engine.search("post page", 10);
+  const results = await engine.search("post page", 10);
 
   // Count templates manually (mirrors what the route handler computes)
   const templateCounts: Record<string, number> = {};
@@ -177,7 +177,7 @@ Deno.test("facet filtering: taxonomy filter works", async () => {
   });
   await engine.build();
 
-  const all = engine.search("article", 10);
+  const all = await engine.search("article", 10);
   assertEquals(all.length >= 1, true);
 
   // Filter to only those with taxonomy.category=news
@@ -199,7 +199,7 @@ Deno.test("facet: no results when filter matches nothing", async () => {
   });
   await engine.build();
 
-  const all = engine.search("post", 10);
+  const all = await engine.search("post", 10);
   // Filter by template "event" — matches nothing
   const filtered = all.filter((r) => r.page.template === "event");
   assertEquals(filtered.length, 0);

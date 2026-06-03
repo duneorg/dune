@@ -87,7 +87,7 @@ Deno.test("flex indexing: flex record appears in search results", async () => {
   });
 
   await engine.build();
-  const results = engine.search("superwidget");
+  const results = await engine.search("superwidget");
   assertEquals(results.length, 1);
   assertEquals(results[0].page.route, "/flex/products/abc123");
 });
@@ -108,7 +108,7 @@ Deno.test("flex indexing: flex record route follows /flex/{type}/{id} pattern", 
   });
 
   await engine.build();
-  const results = engine.search("conference");
+  const results = await engine.search("conference");
   assertEquals(results.length, 1);
   assertExists(results[0].page);
   assertEquals(results[0].page.route, "/flex/events/event-42");
@@ -130,7 +130,7 @@ Deno.test("flex indexing: flex record title derived from 'name' field when 'titl
   });
 
   await engine.build();
-  const results = engine.search("alice");
+  const results = await engine.search("alice");
   assertEquals(results.length, 1);
   assertEquals(results[0].page.title, "Alice Johnson");
 });
@@ -148,7 +148,7 @@ Deno.test("flex indexing: multiple flex types indexed independently", async () =
   });
 
   await engine.build();
-  const results = engine.search("widget");
+  const results = await engine.search("widget");
   assertEquals(results.length, 2);
 
   const routes = results.map((r) => r.page.route).sort();
@@ -172,11 +172,11 @@ Deno.test("flex indexing: flex records coexist with content pages", async () => 
   await engine.build();
 
   // Both content page and flex record should be findable
-  const contentResults = engine.search("content");
+  const contentResults = await engine.search("content");
   assertEquals(contentResults.length >= 1, true);
   assertEquals(contentResults.some((r) => r.page.sourcePath === contentPage.sourcePath), true);
 
-  const flexResults = engine.search("product");
+  const flexResults = await engine.search("product");
   assertEquals(flexResults.length >= 1, true);
   assertEquals(flexResults.some((r) => r.page.route === "/flex/products/p1"), true);
 });
@@ -193,7 +193,7 @@ Deno.test("flex indexing: flex record with no matching query returns empty", asy
   });
 
   await engine.build();
-  const results = engine.search("zzznomatch");
+  const results = await engine.search("zzznomatch");
   assertEquals(results.length, 0);
 });
 
@@ -213,7 +213,7 @@ Deno.test("flex indexing: flex record array field values are indexed", async () 
   });
 
   await engine.build();
-  const results = engine.search("webassembly");
+  const results = await engine.search("webassembly");
   assertEquals(results.length, 1);
   assertEquals(results[0].page.route, "/flex/articles/art-1");
 });

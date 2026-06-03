@@ -159,7 +159,7 @@ export interface ContentApi {
    * @param query - Search query string
    * @param opts.limit - Maximum results to return (default: 10)
    */
-  search(query: string, opts?: { limit?: number }): ContentSearchResult[];
+  search(query: string, opts?: { limit?: number }): Promise<ContentSearchResult[]>;
 
   /**
    * List all terms for a taxonomy.
@@ -351,13 +351,12 @@ function buildApi(ctx: ContentContext): ContentApi {
       return sliced;
     },
 
-    search(
+    async search(
       query: string,
       opts: { limit?: number } = {},
-    ): ContentSearchResult[] {
+    ): Promise<ContentSearchResult[]> {
       const { limit = 10 } = opts;
-      // SearchEngine.search() is synchronous (index is in-memory)
-      const results = search.search(query, limit);
+      const results = await search.search(query, limit);
       return results.map((r) => ({
         route: r.page.route,
         title: r.page.title,

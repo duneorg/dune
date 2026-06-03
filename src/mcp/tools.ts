@@ -235,7 +235,7 @@ function makeSearchHandler(search: SearchEngine | null): ToolHandler {
     if (!search) return errText("Search engine is not available. Run with --search flag.");
 
     const effectiveLimit = Math.min(Number(limit), 50);
-    let results = search.search(query, effectiveLimit * 3); // over-fetch for filtering
+    let results = await search.search(query, effectiveLimit * 3); // over-fetch for filtering
 
     if (template) results = results.filter((r) => r.page.template === template);
     if (language) results = results.filter((r) => r.page.language === language);

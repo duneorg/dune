@@ -65,21 +65,25 @@ export interface SearchResult {
 export interface SearchEngine {
   /** Build the search index (call after content index is ready) */
   build(): Promise<void>;
-  /** Search for pages matching a query */
-  search(query: string, limit?: number): SearchResult[];
+  /**
+   * Search for pages matching a query.
+   *
+   * Async to allow external search backends (e.g. Meilisearch) to make
+   * network calls. The built-in in-memory engine resolves immediately.
+   */
+  search(query: string, limit?: number): Promise<SearchResult[]>;
   /** Rebuild index (after content changes) */
   rebuild(pages: PageIndex[]): Promise<void>;
   /**
    * Return autocomplete suggestions for a given prefix string.
    *
-   * Scans indexed terms and page titles for entries that begin with
-   * the normalised prefix. Returns up to `limit` unique strings,
-   * short-circuiting as soon as the limit is reached.
+   * Async to allow external search backends to serve suggestions from
+   * a network call. The built-in engine resolves immediately.
    *
    * @param prefix - The text the user has typed so far
    * @param limit  - Maximum number of suggestions (default: 10)
    */
-  suggest(prefix: string, limit?: number): string[];
+  suggest(prefix: string, limit?: number): Promise<string[]>;
 }
 
 /** Internal document representation for the index */
@@ -522,9 +526,9 @@ export function createSearchEngine(
       }
     },
 
-    search(query: string, limit: number = 20): SearchResult[] {
+    search(query: string, limit: number = 20): Promise<SearchResult[]> {
       const queryTerms = tokenize(query);
-      if (queryTerms.length === 0) return [];
+      if (queryTerms.length === 0) return Promise.resolve([]);
 
       // Pre-compile one RegExp per term.  These are reused across all
       // candidate documents — avoids constructing N_terms × N_docs regexp
@@ -563,7 +567,7 @@ export function createSearchEngine(
       // Sort by score (descending)
       results.sort((a, b) => b.score - a.score);
 
-      return results.slice(0, limit);
+      return Promise.resolve(results.slice(0, limit));
     },
 
     async rebuild(newPages: PageIndex[]): Promise<void> {
@@ -571,10 +575,10 @@ export function createSearchEngine(
       await this.build();
     },
 
-    suggest(prefix: string, limit: number = 10): string[] {
-      if (!prefix) return [];
+    suggest(prefix: string, limit: number = 10): Promise<string[]> {
+      if (!prefix) return Promise.resolve([]);
       const normalized = prefix.toLowerCase().trim();
-      if (normalized.length < 2) return [];
+      if (normalized.length < 2) return Promise.resolve([]);
 
       const seen = new Set<string>();
 
@@ -582,7 +586,7 @@ export function createSearchEngine(
       for (const term of invertedIndex.keys()) {
         if (term.startsWith(normalized)) {
           seen.add(term);
-          if (seen.size >= limit) return [...seen];
+          if (seen.size >= limit) return Promise.resolve([...seen]);
         }
       }
 
@@ -607,7 +611,7 @@ export function createSearchEngine(
         }
       }
 
-      return [...seen].slice(0, limit);
+      return Promise.resolve([...seen].slice(0, limit));
     },
   };
 }

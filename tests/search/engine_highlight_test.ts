@@ -88,7 +88,7 @@ Deno.test("highlight: excerpt contains the matched query term", async () => {
   });
   await engine.build();
 
-  const results = engine.search("fox");
+  const results = await engine.search("fox");
   assertEquals(results.length, 1);
   assertExists(results[0].excerpt);
   assertEquals(results[0].excerpt.toLowerCase().includes("fox"), true);
@@ -112,7 +112,7 @@ Deno.test("highlight: highlights array includes the matched query term", async (
   });
   await engine.build();
 
-  const results = engine.search("typescript");
+  const results = await engine.search("typescript");
   assertEquals(results.length, 1);
   assertExists(results[0].highlights);
   assertEquals(results[0].highlights!.includes("typescript"), true);
@@ -132,7 +132,7 @@ Deno.test("highlight: highlights omitted when highlightMatches=false", async () 
   });
   await engine.build();
 
-  const results = engine.search("typescript");
+  const results = await engine.search("typescript");
   assertEquals(results.length, 1);
   assertEquals(results[0].highlights, undefined);
 });
@@ -151,7 +151,7 @@ Deno.test("highlight: multi-term query highlights all matched terms", async () =
   });
   await engine.build();
 
-  const results = engine.search("deno typescript");
+  const results = await engine.search("deno typescript");
   assertEquals(results.length, 1);
   assertExists(results[0].highlights);
   assertEquals(results[0].highlights!.includes("deno"), true);
@@ -177,7 +177,7 @@ Deno.test("highlight: excerptLength controls excerpt length", async () => {
   });
   await engine.build();
 
-  const results = engine.search("target");
+  const results = await engine.search("target");
   assertEquals(results.length, 1);
   // The excerpt (trimmed, may include "...") should not be many times larger than excerptLength
   // We allow some overshoot for ellipsis and edge padding.
@@ -200,7 +200,7 @@ Deno.test("highlight: excerpt is positioned near query term", async () => {
   });
   await engine.build();
 
-  const results = engine.search("uniqueterm");
+  const results = await engine.search("uniqueterm");
   assertEquals(results.length, 1);
   // Excerpt should contain the term
   assertEquals(results[0].excerpt.toLowerCase().includes("uniqueterm"), true);
