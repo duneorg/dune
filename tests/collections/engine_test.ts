@@ -244,6 +244,144 @@ Deno.test("resolveSource @self.descendants: returns all nested pages", async () 
 });
 
 // ---------------------------------------------------------------------------
+// Tests — flat content files (non-reserved stem, plain parent folder)
+// ---------------------------------------------------------------------------
+
+Deno.test("resolveSource @self.children: includes flat content files in same directory", async () => {
+  // articles/default.md is the listing page; articles/my-article.md is a flat content file
+  const listing = makePage({
+    sourcePath: "articles/default.md",
+    route: "/articles",
+    parentPath: null,
+  });
+  const flatArticle = makePage({
+    sourcePath: "articles/my-article.md",
+    route: "/articles/my-article",
+    parentPath: "articles",
+  });
+  const unrelated = makePage({
+    sourcePath: "other/default.md",
+    route: "/other",
+    parentPath: null,
+  });
+
+  const allPages = [listing, flatArticle, unrelated];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true } },
+    listing,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.length, 1);
+  assertEquals(collection.items[0].route, "/articles/my-article");
+});
+
+Deno.test("resolveSource @self.children: reserved stems in same directory are not flat children", async () => {
+  // articles/index.md alongside articles/default.md — index.md is reserved, not a flat child
+  const listing = makePage({
+    sourcePath: "articles/default.md",
+    route: "/articles",
+    parentPath: null,
+  });
+  const indexPage = makePage({
+    sourcePath: "articles/index.md",
+    route: "/articles",
+    parentPath: null,
+  });
+
+  const allPages = [listing, indexPage];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true } },
+    listing,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.length, 0);
+});
+
+Deno.test("resolveSource @self.children: numeric-prefix parent suppresses flat child treatment", async () => {
+  // 02.blog/post.md — parent "02.blog" is numeric, so post.md is a template selector, not a flat child
+  const blogPage = makePage({
+    sourcePath: "02.blog/default.md",
+    route: "/blog",
+    parentPath: null,
+  });
+  const templateSelector = makePage({
+    sourcePath: "02.blog/post.md",
+    route: "/blog",  // same route — it's a template variant
+    parentPath: null,
+  });
+
+  const allPages = [blogPage, templateSelector];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true } },
+    blogPage,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.length, 0);
+});
+
+Deno.test("resolveSource @self.descendants: includes flat content files in same directory", async () => {
+  const listing = makePage({
+    sourcePath: "articles/default.md",
+    route: "/articles",
+    parentPath: null,
+  });
+  const flatArticle = makePage({
+    sourcePath: "articles/my-article.md",
+    route: "/articles/my-article",
+    parentPath: "articles",
+  });
+  // Nested flat file — already covered by startsWith check, but verify it still works
+  const nestedFlat = makePage({
+    sourcePath: "articles/2024/another.md",
+    route: "/articles/2024/another",
+    parentPath: "articles/2024",
+  });
+  const unrelated = makePage({
+    sourcePath: "other/default.md",
+    route: "/other",
+    parentPath: null,
+  });
+
+  const allPages = [listing, flatArticle, nestedFlat, unrelated];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.descendants": true } },
+    listing,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.length, 2);
+  const routes = collection.items.map((p) => p.route).sort();
+  assertEquals(routes, ["/articles/2024/another", "/articles/my-article"]);
+});
+
+// ---------------------------------------------------------------------------
 // Tests — resolveSource: @taxonomy.tag
 // ---------------------------------------------------------------------------
 

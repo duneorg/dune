@@ -11,7 +11,7 @@
  */
 
 import { dirname } from "@std/path";
-import { effectiveOrder } from "../content/path-utils.ts";
+import { effectiveOrder, isNonReservedFlatFile } from "../content/path-utils.ts";
 import type {
   Collection,
   CollectionDefinition,
@@ -162,9 +162,13 @@ export function createCollectionEngine(
     const myDir = dirname(page.sourcePath);
     return pages.filter((p) => {
       if (p.sourcePath === page.sourcePath) return false;
+      if (p.isModule) return false;
       const pDir = dirname(p.sourcePath);
-      const pParent = dirname(pDir);
-      return pParent === myDir && !p.isModule;
+      // Folder-based child: p's folder's parent is my directory
+      if (dirname(pDir) === myDir) return true;
+      // Flat content file in the same directory
+      if (pDir === myDir && isNonReservedFlatFile(p.sourcePath)) return true;
+      return false;
     });
   }
 
@@ -188,11 +192,15 @@ export function createCollectionEngine(
 
   function getDescendants(page: PageIndex): PageIndex[] {
     const myDir = dirname(page.sourcePath);
-    // All pages whose sourcePath directory starts with myDir/
     return pages.filter((p) => {
       if (p.sourcePath === page.sourcePath) return false;
+      if (p.isModule) return false;
       const pDir = dirname(p.sourcePath);
-      return pDir.startsWith(myDir + "/") && !p.isModule;
+      // Folder-based descendant: p's directory is nested under my directory
+      if (pDir.startsWith(myDir + "/")) return true;
+      // Flat content file in the same directory
+      if (pDir === myDir && isNonReservedFlatFile(p.sourcePath)) return true;
+      return false;
     });
   }
 
