@@ -134,6 +134,13 @@ export interface Page {
   html: () => Promise<string>;
   /** JSX render function — for .tsx pages (dynamically imported) */
   component: () => Promise<TemplateComponent | null>;
+  /**
+   * Fresh-style request handlers exported from a .tsx content page.
+   * When a .tsx page exports `handler: Handlers<T>`, Dune dispatches the
+   * request through it before (or instead of) rendering the component.
+   * Mirrors Fresh's `export const handler: Handlers<Data>` idiom exactly.
+   */
+  handlers: () => Promise<Record<string, (req: Request, ctx: unknown) => Response | Promise<Response>> | null>;
   /** Co-located media files */
   media: MediaFile[];
   /** Navigation order (from numeric prefix, or frontmatter) */

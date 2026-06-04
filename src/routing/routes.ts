@@ -693,6 +693,37 @@ export function duneRoutes(
 
       // Format-aware rendering
       if (page.format === "tsx") {
+        // TSX pages render themselves — optionally with Fresh-style Handlers.
+        // If the TSX file exports `handler`, dispatch the request through it
+        // first (matching Fresh's `export const handler: Handlers<Data>` idiom).
+        const pageHandlers = await page.handlers();
+        if (pageHandlers) {
+          const method = req.method.toUpperCase();
+          const methodFn = pageHandlers[method] ?? pageHandlers["ALL"];
+          if (methodFn) {
+            // Build a minimal Fresh-like ctx so handler signatures match.
+            // render() wraps a component in the same layout logic used below.
+            const Component = await page.component();
+            const ctx = {
+              req,
+              url,
+              params: {},
+              render: async (data: unknown) => {
+                if (!Component) return new Response("TSX component not found", { status: 500 });
+                return renderJsx(h(Component as ComponentType<any>, {
+                  data,
+                  site: engine.site,
+                  config: engine.config,
+                  route: page.route,
+                  params: {},
+                }));
+              },
+            };
+            return methodFn(req, ctx);
+          }
+          // No handler for this method — fall through to normal rendering.
+        }
+
         // TSX pages render themselves
         const Component = await page.component();
         if (!Component) {

@@ -112,6 +112,15 @@ export async function loadPage(
       return (mod.default ?? null) as TemplateComponent | null;
     }),
 
+    // Lazy: Fresh-style request handlers exported from a .tsx content page.
+    // Returns mod.handler if the TSX file exports one, null otherwise.
+    handlers: lazyOnce(async () => {
+      if (index.format !== "tsx") return null;
+      const absPath = await resolveAbsolutePath(options.storageRoot, contentFilePath);
+      const mod = await import(`file://${absPath}`);
+      return (mod.handler ?? null) as Record<string, (req: Request, ctx: unknown) => Response | Promise<Response>> | null;
+    }),
+
     // Lazy: summary/excerpt
     summary: lazyOnce(async () => {
       if (!rawContent) return frontmatter.title || "";
