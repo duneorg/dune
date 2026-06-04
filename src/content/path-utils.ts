@@ -196,16 +196,67 @@ export function isMetadataFile(name: string): boolean {
 }
 
 /**
+ * Filename stems that mean "this folder is the page" — do not contribute to
+ * the route as an additional segment.
+ */
+export const RESERVED_STEMS = new Set(["default", "index"]);
+
+/**
+ * Returns true when a content file's filename stem should contribute an extra
+ * route segment (flat content file), rather than acting as a template selector
+ * for the parent folder's page.
+ *
+ * A file is a non-reserved flat file when ALL of these hold:
+ *   - It has a parent directory (not a root-level file)
+ *   - The parent directory has NO numeric prefix (plain folder, not a "page folder")
+ *   - The filename stem has no numeric prefix (not already a numeric flat page)
+ *   - The stem is not a reserved name ("default", "index")
+ *
+ * Examples:
+ *   "articles/my-article.md"          → true  (routes to /articles/my-article)
+ *   "articles/default.md"             → false (routes to /articles — reserved stem)
+ *   "02.blog/01.hello-world/post.md"  → false (numeric parent → template selector)
+ *   "02.blog/post.md"                 → false (numeric parent → template selector)
+ */
+export function isNonReservedFlatFile(sourcePath: string): boolean {
+  const parts = sourcePath.split("/");
+  if (parts.length < 2) return false;
+
+  const filename = parts[parts.length - 1];
+  const dotIndex = filename.lastIndexOf(".");
+  if (dotIndex === -1) return false;
+  const stem = filename.slice(0, dotIndex);
+
+  if (/^\d+\./.test(stem)) return false;
+  if (RESERVED_STEMS.has(stem)) return false;
+
+  const parentInfo = parseFolderName(parts[parts.length - 2]);
+  return parentInfo.order === 0;
+}
+
+/**
  * Build a URL route from a source path.
  *
  * Strips numeric prefixes from folders, skips module folders,
  * and produces a clean URL path.
  *
+ * Two kinds of flat files contribute a stem segment to the route:
+ *   1. Numeric-prefixed stems ("01.my-article.md") — always a route segment.
+ *   2. Non-reserved stems in a plain (non-numeric) parent folder — see
+ *      `isNonReservedFlatFile`. These are flat content files in an archive
+ *      directory (e.g. "articles/") where each file is a separate page.
+ *
+ * Files with reserved stems ("default", "index") or inside numeric-prefixed
+ * "page folders" are template selectors: they define the page for the parent
+ * folder and do not add a segment of their own.
+ *
  * Examples:
  *   "01.home/default.md"              → "/home"
  *   "01.efficiency/default.md"        → "/efficiency"
- *   "02.blog/blog.md"                 → "/blog"
- *   "02.blog/01.hello-world/post.md"  → "/blog/hello-world"
+ *   "02.blog/01.hello-world/post.md"  → "/blog/hello-world"  (numeric parent)
+ *   "02.blog/post.md"                 → "/blog"              (numeric parent)
+ *   "articles/my-article.md"          → "/articles/my-article"
+ *   "articles/default.md"             → "/articles"
  *   "_sidebar/item.md"                → null (non-routable)
  *
  * Note: Home page mapping (which route serves as "/") is handled by the
@@ -237,15 +288,22 @@ export function sourcePathToRoute(
   // Drafts and modules are non-routable
   if (hasDraft || hasModule) return null;
 
-  // If the filename itself has a numeric prefix (e.g. "01.my-article.md"),
-  // this is a "flat page" — the stem contributes to the route.
   const filename = parts[parts.length - 1];
   const filenameStem = filename.slice(0, filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length);
+
+  // Numeric-prefixed filename stem: always contributes a route segment.
   const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
   if (flatMatch) {
     segments.push(frontmatterSlug ?? flatMatch[2]);
-  } else if (frontmatterSlug) {
-    segments[segments.length - 1] = frontmatterSlug;
+  } else if (isNonReservedFlatFile(sourcePath)) {
+    // Non-reserved stem in a plain parent folder: flat content file.
+    // Stem (or slug) becomes an additional route segment.
+    segments.push(frontmatterSlug ?? filenameStem);
+  } else {
+    // Reserved stem or numeric parent folder: template selector.
+    // The file defines the page for its parent folder; slug (if any) overrides
+    // the last directory segment.
+    if (frontmatterSlug) segments[segments.length - 1] = frontmatterSlug;
   }
 
   // Build the route

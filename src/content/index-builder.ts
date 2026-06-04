@@ -27,6 +27,7 @@ import {
   isInModuleFolder,
   isMediaFile,
   isMetadataFile,
+  isNonReservedFlatFile,
   parseContentFilename,
   parseFolderName,
   sourcePathToRoute,
@@ -477,8 +478,12 @@ function buildPageIndex(
     routable: frontmatter.routable ?? true,
     isModule,
     order,
-    depth: calculateDepth(sourcePath),
-    parentPath: getParentPath(sourcePath),
+    depth: isNonReservedFlatFile(sourcePath) && finalRoute
+      ? Math.max(0, finalRoute.split("/").filter(Boolean).length - 1)
+      : calculateDepth(sourcePath),
+    parentPath: isNonReservedFlatFile(sourcePath)
+      ? (sourcePath.split("/").slice(0, -1).join("/") || null)
+      : getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},
     mtime,
     hash,

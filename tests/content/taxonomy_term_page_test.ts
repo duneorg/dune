@@ -135,9 +135,8 @@ Deno.test("taxonomy(): pageRoute set when a termPageFor page exists for that tag
 
   const ewrTerm = terms.find((t) => t.name === "ewr");
   assertExists(ewrTerm);
-  // slug: ewr in frontmatter replaces the folder segment → route is /ewr.
-  // The actual URL structure for europa-magazin is an M6 routing concern.
-  assertEquals(ewrTerm.pageRoute, "/ewr");
+  // dossiers/ is a plain folder → ewr.md is a flat content file → route is /dossiers/ewr.
+  assertEquals(ewrTerm.pageRoute, "/dossiers/ewr");
 });
 
 Deno.test("taxonomy(): pageRoute is null when no termPageFor page exists", async () => {

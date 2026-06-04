@@ -14,6 +14,8 @@ import {
   isMetadataFile,
   isInDraftsFolder,
   isInModuleFolder,
+  isNonReservedFlatFile,
+  RESERVED_STEMS,
 } from "../../src/content/path-utils.ts";
 
 // === parseFolderName tests ===
@@ -115,6 +117,63 @@ Deno.test("sourcePathToRoute: drafts returns null", () => {
 Deno.test("sourcePathToRoute: frontmatter slug override", () => {
   const route = sourcePathToRoute("02.blog/01.hello-world/post.md", "custom-slug");
   assertEquals(route, "/blog/custom-slug");
+});
+
+// Flat content files: non-reserved stem in a plain (non-numeric) parent folder
+
+Deno.test("sourcePathToRoute: flat content file routes by stem", () => {
+  assertEquals(sourcePathToRoute("articles/my-article.md"), "/articles/my-article");
+});
+
+Deno.test("sourcePathToRoute: flat content file with slug override", () => {
+  assertEquals(sourcePathToRoute("articles/my-article.md", "custom-slug"), "/articles/custom-slug");
+});
+
+Deno.test("sourcePathToRoute: reserved stem in plain folder routes to folder", () => {
+  assertEquals(sourcePathToRoute("articles/default.md"), "/articles");
+  assertEquals(sourcePathToRoute("articles/index.md"), "/articles");
+});
+
+Deno.test("sourcePathToRoute: numeric-prefixed parent suppresses flat routing", () => {
+  // "02.blog" has numeric prefix → post.md is a template selector, not a flat page
+  assertEquals(sourcePathToRoute("02.blog/post.md"), "/blog");
+});
+
+Deno.test("sourcePathToRoute: nested flat archive directory", () => {
+  // plain parent "2024" inside plain "articles" → flat routing applies
+  assertEquals(sourcePathToRoute("articles/2024/my-article.md"), "/articles/2024/my-article");
+  assertEquals(sourcePathToRoute("articles/2024/default.md"), "/articles/2024");
+});
+
+// === isNonReservedFlatFile tests ===
+
+Deno.test("isNonReservedFlatFile: flat content file", () => {
+  assertEquals(isNonReservedFlatFile("articles/my-article.md"), true);
+  assertEquals(isNonReservedFlatFile("posts/some-post.md"), true);
+});
+
+Deno.test("isNonReservedFlatFile: reserved stems are not flat", () => {
+  assertEquals(isNonReservedFlatFile("articles/default.md"), false);
+  assertEquals(isNonReservedFlatFile("articles/index.md"), false);
+});
+
+Deno.test("isNonReservedFlatFile: numeric parent suppresses flat routing", () => {
+  assertEquals(isNonReservedFlatFile("02.blog/post.md"), false);
+  assertEquals(isNonReservedFlatFile("02.blog/01.hello-world/post.md"), false);
+});
+
+Deno.test("isNonReservedFlatFile: numeric-prefixed stem is not flat-file (handled by classic flat convention)", () => {
+  assertEquals(isNonReservedFlatFile("articles/01.my-article.md"), false);
+});
+
+Deno.test("isNonReservedFlatFile: root-level file is not flat", () => {
+  assertEquals(isNonReservedFlatFile("default.md"), false);
+});
+
+Deno.test("RESERVED_STEMS contains expected values", () => {
+  assertEquals(RESERVED_STEMS.has("default"), true);
+  assertEquals(RESERVED_STEMS.has("index"), true);
+  assertEquals(RESERVED_STEMS.has("post"), false);
 });
 
 // === calculateDepth tests ===
