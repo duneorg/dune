@@ -851,11 +851,19 @@ export function duneRoutes(
         // Find the PageIndex for this page to use as context
         const pageIndex = engine.pages.find(p => p.sourcePath === page.sourcePath);
         if (pageIndex) {
-          collection = await collections.resolve(collectionDef, pageIndex);
+          collection = await collections.resolve(collectionDef, pageIndex, page.frontmatter as Record<string, unknown>);
           // Pre-load collection items by calling the async load() method
           // This ensures items are loaded before template rendering (SSR)
           if (collection && typeof collection.load === 'function') {
             await collection.load();
+            // Pre-render HTML for items that may need it inline (e.g. post bodies
+            // within kurzinfos articles). Stored as _html so sync JSX templates
+            // can access it without awaiting.
+            await Promise.all(
+              collection.items.map(async (item) => {
+                (item as Record<string, unknown>)._html = await item.html();
+              }),
+            );
           }
         }
       }

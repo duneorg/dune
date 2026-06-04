@@ -258,7 +258,17 @@ export type CollectionSource =
   | { "@taxonomy.tag": string | string[] }
   | { "@taxonomy": Record<string, string | string[]> }
   /** Flex Object type — e.g. `{ "@flex": "products" }` */
-  | { "@flex": string };
+  | { "@flex": string }
+  /**
+   * Frontmatter field reference — resolves pages by slug from a frontmatter
+   * array field on the context page.
+   *
+   * e.g. `{ "@frontmatter": "posts" }` reads `page.frontmatter.posts`, expects
+   * each item to be either a slug string or an object with a `slug` property,
+   * and returns the pages whose route last-segment matches those slugs.
+   * Order is preserved as declared in the frontmatter array.
+   */
+  | { "@frontmatter": string };
 
 /** Resolved collection with query results */
 export interface Collection {

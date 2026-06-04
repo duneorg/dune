@@ -51,10 +51,12 @@ export interface CollectionEngine {
    * Resolve a collection from a declarative definition.
    * @param definition The collection query definition
    * @param contextPage The page that owns this collection (for @self.* sources)
+   * @param contextFrontmatter Full frontmatter of the context page (for @frontmatter sources)
    */
   resolve(
     definition: CollectionDefinition,
     contextPage: PageIndex,
+    contextFrontmatter?: Record<string, unknown>,
   ): Promise<Collection>;
 
   /**
@@ -100,6 +102,7 @@ export function createCollectionEngine(
   function resolveSource(
     source: CollectionSource,
     contextPage: PageIndex,
+    contextFrontmatter?: Record<string, unknown>,
   ): PageIndex[] {
     // Determine which source type is specified
     if ("@self.children" in source) {
@@ -153,6 +156,25 @@ export function createCollectionEngine(
       const siteId = spec.slice(0, colonIdx);
       const route = spec.slice(colonIdx + 1);
       return siteRegistry?.get(siteId)?.getPageDescendants(route) ?? [];
+    }
+
+    if ("@frontmatter" in source) {
+      const fieldName = (source as { "@frontmatter": string })["@frontmatter"];
+      if (!contextFrontmatter) return [];
+      const fieldValue = contextFrontmatter[fieldName];
+      if (!Array.isArray(fieldValue)) return [];
+      // Each item can be a slug string or an object with a slug property
+      const slugs = (fieldValue as unknown[])
+        .map((item) =>
+          typeof item === "string"
+            ? item
+            : (item as Record<string, unknown>)?.slug as string | undefined
+        )
+        .filter((s): s is string => typeof s === "string" && s.length > 0);
+      // Preserve declaration order; match by the last segment of each page route
+      return slugs
+        .map((slug) => pages.find((p) => p.route.split("/").pop() === slug))
+        .filter((p): p is PageIndex => p !== undefined);
     }
 
     return [];
@@ -421,6 +443,7 @@ export function createCollectionEngine(
     async resolve(
       definition: CollectionDefinition,
       contextPage: PageIndex,
+      contextFrontmatter?: Record<string, unknown>,
     ): Promise<Collection> {
       if ("@flex" in definition.items) {
         return resolveFlexSource(
@@ -428,7 +451,7 @@ export function createCollectionEngine(
           definition,
         );
       }
-      const sourceItems = resolveSource(definition.items, contextPage);
+      const sourceItems = resolveSource(definition.items, contextPage, contextFrontmatter);
       return buildCollection(sourceItems, definition);
     },
 
