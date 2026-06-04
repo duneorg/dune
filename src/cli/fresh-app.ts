@@ -651,8 +651,10 @@ export async function createDuneApp(
     return imageResult ?? await routes.mediaHandler(fc.req);
   });
 
-  // 14. Content catch-all — media files co-located with content + pages
-  app.get("/*", async (fc) => {
+  // 14. Content catch-all — media files co-located with content + pages.
+  // Handles all HTTP methods so that .tsx content pages can export Handlers
+  // with POST/PUT/DELETE methods (mirroring Fresh's Handlers idiom).
+  app.all("/*", async (fc) => {
     const startMs = performance.now();
     const { url, req } = fc;
     let response: Response;
