@@ -714,6 +714,7 @@ export function duneRoutes(
                   data,
                   site: engine.site,
                   config: engine.config,
+                  nav: engine.router.getTopNavigation(page.language),
                   route: page.route,
                   params: {},
                 }));
