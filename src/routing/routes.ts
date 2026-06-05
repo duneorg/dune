@@ -651,8 +651,32 @@ export function duneRoutes(
         );
       }
 
-      // Not found
+      // Not found — try to render through the site theme if a Layout is available
       if (result.type === "not-found" || !result.page) {
+        const Layout = await engine.themes.loadLayout("layout");
+        const siteData = engine.site;
+        const defaultLang = engine.config?.system?.languages?.default ?? "en";
+        const navData = engine.router.getTopNavigation(defaultLang);
+        if (Layout) {
+          const fakePage = {
+            route: url.pathname,
+            template: "layout",
+            frontmatter: { title: "404 — Not Found" },
+            language: defaultLang,
+          };
+          return renderJsx(
+            h(Layout, { site: siteData, page: fakePage, nav: navData },
+              h("div", { class: "content-page" },
+                h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
+                  h("h1", null, "404"),
+                  h("p", null, "Page not found."),
+                  h("a", { href: "/" }, "← Go home"),
+                ),
+              ),
+            ),
+            404,
+          );
+        }
         return renderJsx(
           h("html", null,
             h("head", null,
