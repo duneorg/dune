@@ -402,6 +402,7 @@ export async function bootstrap(
     storage,
     history,
     dataDir: runtimeDir,
+    contentDir: config.system.content.dir,
   });
 
   // 12. Admin panel

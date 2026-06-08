@@ -105,6 +105,11 @@ export async function commitDoc(opts: {
 /**
  * Patch individual frontmatter fields without touching the Markdown body.
  * Writes through the history engine (creates a revision).
+ *
+ * **Special key `__body`**: when `fields.__body` is present, the Markdown body
+ * is replaced with its value (a raw Markdown string).  This is used by the
+ * auto-overlay plain-textarea editor which cannot go through the Y.js pathway.
+ * All other keys in `fields` are treated as frontmatter fields as normal.
  */
 export async function patchFrontmatterFields(opts: {
   sourcePath: string;
@@ -114,7 +119,8 @@ export async function patchFrontmatterFields(opts: {
   history: HistoryEngine;
   contentDir: string;
 }): Promise<void> {
-  const { sourcePath, fields, author, storage, history, contentDir } = opts;
+  const { sourcePath, author, storage, history, contentDir } = opts;
+  const fields = { ...opts.fields };
 
   const filePath = `${contentDir}/${sourcePath}`;
   let raw = "";
@@ -122,7 +128,24 @@ export async function patchFrontmatterFields(opts: {
     raw = await storage.readText(filePath);
   } catch { /* new file */ }
 
-  const patched = spliceFrontmatter(raw, fields);
+  // Extract and remove the special __body key before frontmatter patching.
+  let newBody: string | undefined;
+  if (typeof fields.__body === "string") {
+    newBody = fields.__body;
+    delete fields.__body;
+  }
+
+  // Patch frontmatter fields (may be empty after removing __body).
+  let patched = Object.keys(fields).length > 0
+    ? spliceFrontmatter(raw, fields)
+    : raw;
+
+  // Replace body if __body was provided.
+  if (newBody !== undefined) {
+    const { header } = splitFile(patched);
+    patched = spliceBody(header, newBody);
+  }
+
   const { frontmatter: updatedFm } = splitFile(patched);
 
   await history.record({
@@ -130,7 +153,7 @@ export async function patchFrontmatterFields(opts: {
     content: patched,
     frontmatter: updatedFm,
     author,
-    message: "Field update",
+    message: newBody !== undefined ? "Body update (auto-overlay)" : "Field update",
   });
 
   await storage.write(filePath, patched);

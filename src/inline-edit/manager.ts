@@ -36,7 +36,7 @@ let _gcHandle: ReturnType<typeof setInterval> | undefined;
 export function createInlineEditManager(
   opts: InlineEditManagerOptions,
 ): InlineEditManager {
-  const { storage, history, dataDir } = opts;
+  const { storage, history, dataDir, contentDir } = opts;
   const autoFlushMs = opts.autoFlushMs ?? 120_000;
 
   /**
@@ -83,10 +83,6 @@ export function createInlineEditManager(
     const entry = sessions.get(sourcePath);
     if (!entry) return;
     const { doc, session } = entry;
-
-    // Determine the content directory by looking at what the config says.
-    // We rely on the storage to read from the correct path.
-    const contentDir = "content";  // default; see note below
 
     try {
       // Only flush if anyone has connected (doc has content beyond seed).
@@ -167,7 +163,6 @@ export function createInlineEditManager(
       // Session setup is async; we kick it off after the upgrade response is sent.
       socket.onopen = async () => {
         try {
-          const contentDir = "content";
           const { doc, awareness, session } = await getOrCreateSession(sourcePath, contentDir);
 
           const clientId = crypto.randomUUID();
@@ -214,7 +209,7 @@ export function createInlineEditManager(
         author,
         storage,
         history,
-        contentDir: "content",
+        contentDir,
       });
 
       // Remove the Y.js binary after a successful commit — the `.md` file is
@@ -233,7 +228,7 @@ export function createInlineEditManager(
         author,
         storage,
         history,
-        contentDir: "content",
+        contentDir,
       });
     },
   };

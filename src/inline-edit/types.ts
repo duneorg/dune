@@ -42,6 +42,8 @@ export interface InlineEditManagerOptions {
   history: HistoryEngine;
   /** Base data directory, e.g. "data" — ydoc state stored under {dataDir}/ydoc/. */
   dataDir: string;
+  /** Content directory, e.g. "content". Must match config.system.content.dir. */
+  contentDir: string;
   /** Auto-flush after this many ms of inactivity (default 120_000 = 2 min). */
   autoFlushMs?: number;
 }
