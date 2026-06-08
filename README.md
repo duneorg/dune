@@ -2,13 +2,15 @@
 
 **[getdune.org](https://getdune.org)** · [Documentation](https://getdune.org/docs)
 
-A flat-file CMS built for [Deno](https://deno.land/) and [Fresh](https://fresh.deno.dev/). Content is files. No database required.
+The flat-file CMS for [Deno](https://deno.land/) and [Fresh](https://fresh.deno.dev/).
+Grows from Markdown content to full-stack web apps with Preact themes and Fresh islands.
+Start without a database. Ship as a single Deno module — no build pipeline required.
 
-> **Status: v0.6** — Pre-1.0. Minor releases may include breaking changes per semver convention.
+> **Status: v0.14** — Stable for production use. Minor releases may include breaking changes until v1.0.
 
 ## What is Dune?
 
-Dune takes the best ideas from [GRAV CMS](https://getgrav.org/) — folder-based content, frontmatter-driven config, declarative collections, theme inheritance — and rebuilds them for the Deno ecosystem, avoiding GRAV's pain points (full-tree scanning, PHP lock-in, weak API, memory-hungry page loading).
+Start with a folder of Markdown files — no database, no build pipeline, no configuration ceremony. Add a Preact theme with Fresh islands when you need interactivity. Reach for auth, a database schema, background jobs, or payments when your project grows into a web application. Dune is the same framework at every step; you never outgrow it and never migrate away from it.
 
 ```
 content/
@@ -28,9 +30,9 @@ content/
 - **Content is files.** Markdown, MDX, or TSX. No database, no migration scripts.
 - **Folder = page.** Directory structure IS your site structure. Numeric prefixes control order.
 - **Frontmatter = config.** YAML metadata controls titles, taxonomies, collections, caching, and routing.
-- **Lazy everything.** A content index handles routing and queries without loading page bodies.
-- **Multi-format.** `.md`, `.mdx`, and `.tsx` interchangeably in the same site.
-- **API-first.** Every content operation available via REST.
+- **Fresh rendering + Preact islands.** Themes are TSX components. Drop a Preact component into `themes/{name}/islands/` and it hydrates in the browser — no bundler config, no registration.
+- **Grows with you.** Add auth, a database, background jobs, or payments when your project needs them. Same framework, no migration.
+- **API-first.** Every content operation available via REST. MCP server included for AI coding agents.
 
 ## Quick start
 
@@ -102,9 +104,10 @@ deno install --global -n dune -A --import-map=deno.json src/cli.ts
 
 ### Extending
 - Plugin system (JSR-based, hook lifecycle)
-- Theme SDK with inheritance and configuration schema
+- Theme SDK with inheritance — TSX templates, Preact islands, static assets
 - Flex Objects: schema-driven custom content types
 - REST API (20+ endpoints)
+- MCP server for AI coding agents
 - Outbound and incoming webhooks
 - Internal comments and @mention notifications
 
