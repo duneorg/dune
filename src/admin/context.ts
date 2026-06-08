@@ -19,6 +19,7 @@ import type { HookRegistry, AdminPageRegistration } from "../hooks/types.ts";
 import type { StagingEngine } from "../staging/engine.ts";
 import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";
+import type { InlineEditManager } from "../inline-edit/mod.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { AuditLogger } from "../audit/mod.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
@@ -47,6 +48,8 @@ export interface AdminContext {
   staging?: StagingEngine;
   comments?: CommentManager;
   collab?: CollabManager;
+  /** Inline editing manager (Y.js-based, v0.16+). */
+  inlineEdit?: InlineEditManager;
   imageCache?: ImageCache;
   auditLogger?: AuditLogger;
   metrics?: MetricsCollector;

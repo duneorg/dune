@@ -26,6 +26,7 @@ import {
 } from "./serve-utils.ts";
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
+import { injectAdminBarIfAdmin } from "./admin-bar-inject.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
@@ -94,6 +95,7 @@ export async function createDuneApp(
     sharedThemesDir,
     hooks,
     metrics,
+    sessions,
   } = ctx;
 
   const startTime = Date.now();
@@ -743,6 +745,9 @@ export async function createDuneApp(
         response = await routes.contentHandler(req, renderJsx);
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
+        // Admin bar injection (v0.16+) — must run before caching.
+        response = await injectAdminBarIfAdmin(req, response, sessions, engine, adminPrefix);
+
         // RTL injection
         const pageIndex2 = engine.pages.find((p) => p.route === url.pathname);
         const pageLang = pageIndex2?.language ?? config.system.languages?.default ?? "en";
@@ -776,6 +781,9 @@ export async function createDuneApp(
         // Dev mode: no cache, inject live reload + feed links
         response = await routes.contentHandler(req, renderJsx);
         if (feedEnabled) response = injectFeedLinks(siteName, response);
+
+        // Admin bar injection (v0.16+).
+        response = await injectAdminBarIfAdmin(req, response, sessions, engine, adminPrefix);
 
         const devPage = engine.pages.find((p) => p.route === url.pathname);
         const devLang = devPage?.language ?? config.system.languages?.default ?? "en";

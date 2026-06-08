@@ -38,6 +38,7 @@ import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
+import { createInlineEditManager } from "../inline-edit/mod.ts";
 import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
@@ -388,12 +389,19 @@ export async function bootstrap(
 
   const commentManager = createCommentManager({ dataDir, runtimeDir });
 
-  // 11. Real-time collaboration
+  // 11. Real-time collaboration (OT-based block editor)
   const collabManager = createCollabManager({
     storage,
     engine,
     history,
     contentDir: config.system.content.dir,
+  });
+
+  // 11b. Inline editing (Y.js-based, v0.16+)
+  const inlineEditManager = createInlineEditManager({
+    storage,
+    history,
+    dataDir: runtimeDir,
   });
 
   // 12. Admin panel
@@ -606,6 +614,7 @@ export async function bootstrap(
       staging: stagingEngine,
       comments: commentManager,
       collab: collabManager,
+      inlineEdit: inlineEditManager,
       imageCache,
       auditLogger: auditLogger ?? undefined,
       metrics: metricsEnabled ? metrics : undefined,

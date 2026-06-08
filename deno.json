@@ -16,6 +16,7 @@
     "./auth/authz": "./src/auth/authz.ts",
     "./email": "./src/email/mod.ts",
     "./ui": "./src/ui/mod.ts",
+    "./ui/editable": "./src/ui/editable/mod.ts",
     "./logger": "./src/core/logger.ts"
   },
   "imports": {
@@ -39,7 +40,10 @@
     "@db/sqlite": "jsr:@db/sqlite@^0.12",
     "postgres": "npm:postgres@^3.4",
     "ioredis": "npm:ioredis@^5",
-    "polizy": "npm:polizy@^0.2.0"
+    "polizy": "npm:polizy@^0.2.0",
+    "yjs": "npm:yjs@^13",
+    "y-protocols": "npm:y-protocols@^1",
+    "lib0": "npm:lib0@^0.2"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",
