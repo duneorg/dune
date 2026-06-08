@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.15.2] — 2026-06-08
+
+### Fixed
+
+- JSR score: added JSDoc to 115+ previously undocumented exported symbols across 54 files, bringing documented-symbol coverage to near 100%.
+
+---
+
 ## [0.15.1] — 2026-06-08
 
 ### Fixed
