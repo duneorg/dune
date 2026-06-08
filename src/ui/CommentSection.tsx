@@ -8,6 +8,7 @@
  */
 
 import { h, Fragment } from "preact";
+import type { JSX } from "preact";
 import { useState, useEffect, useCallback } from "preact/hooks";
 
 export interface CommentSectionProps {
@@ -23,7 +24,7 @@ interface Comment {
   [key: string]: unknown;
 }
 
-export default function CommentSection({ pageRoute, className }: CommentSectionProps) {
+export default function CommentSection({ pageRoute, className }: CommentSectionProps): JSX.Element {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

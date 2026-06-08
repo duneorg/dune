@@ -37,6 +37,7 @@
  *   });
  *
  * See: .claude/skills/dune-authz.md for full patterns and examples.
+ * @module
  */
 
 import { AuthSystem } from "polizy";

@@ -7,6 +7,7 @@
  */
 
 import { h } from "preact";
+import type { JSX } from "preact";
 
 export interface ProfileCardUser {
   name?: string;
@@ -20,7 +21,7 @@ export interface ProfileCardProps {
   className?: string;
 }
 
-export default function ProfileCard({ user, className }: ProfileCardProps) {
+export default function ProfileCard({ user, className }: ProfileCardProps): JSX.Element {
   const displayName = user.name ?? user.email;
 
   return (

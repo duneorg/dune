@@ -8,6 +8,7 @@
  */
 
 import { h } from "preact";
+import type { JSX } from "preact";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 
 export interface SearchBarProps {
@@ -39,7 +40,7 @@ export default function SearchBar({
   placeholder = "Search...",
   limit = 5,
   className,
-}: SearchBarProps) {
+}: SearchBarProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);

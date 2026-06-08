@@ -50,6 +50,7 @@
     "npm:marked@15": "15.0.12",
     "npm:nodemailer@6": "6.10.1",
     "npm:polizy@0.2": "0.2.0",
+    "npm:polizy@0.2.0": "0.2.0",
     "npm:postgres@*": "3.4.9",
     "npm:postgres@^3.4.0": "3.4.9",
     "npm:preact-render-to-string@6": "6.6.5_preact@10.28.3",

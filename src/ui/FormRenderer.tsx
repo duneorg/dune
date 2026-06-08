@@ -9,6 +9,7 @@
  */
 
 import { h, Fragment } from "preact";
+import type { JSX } from "preact";
 import { useState, useEffect } from "preact/hooks";
 
 export interface FormRendererProps {
@@ -42,7 +43,7 @@ export default function FormRenderer({
   formName,
   successMessage = "Thank you! Your submission has been received.",
   className,
-}: FormRendererProps) {
+}: FormRendererProps): JSX.Element | null {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
