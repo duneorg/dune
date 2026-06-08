@@ -49,6 +49,8 @@ export async function upgradeCommand(
       console.log(`     To update:`);
     }
     console.log(`       git -C ${duneDir} pull`);
+    console.log(`\n  To update Dune's own dependencies (Fresh, @std/*, etc.):`);
+    console.log(`       deno outdated --update --directory ${duneDir}`);
     return;
   }
 

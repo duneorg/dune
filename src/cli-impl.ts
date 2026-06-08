@@ -222,6 +222,10 @@ Deploy options (used with deploy:init):
 `;
 
 export async function main() {
+  // Suppress Fresh's built-in update nag — Dune owns the upgrade UX and
+  // "Fresh X.Y is available" is an internal detail site users shouldn't see.
+  Deno.env.set("FRESH_NO_UPDATE_CHECK", "true");
+
   const args = Deno.args;
   const command = args[0];
 
