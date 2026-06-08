@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.15.3] — 2026-06-08
+
+### Fixed
+
+- Server startup crash when running from JSR — `Deno.chdir()` in `serve`, `dev`, and multisite manager was deriving a local path from `import.meta.url`, which is an HTTPS URL (not `file://`) under JSR. The path computed to `/@dune/core/0.15.x/` which doesn't exist. Guard added: chdir only runs when `import.meta.url` starts with `file://`; JSR deployments rely on the site's own `deno.json` for preact import resolution.
+
+---
+
 ## [0.15.2] — 2026-06-08
 
 ### Fixed

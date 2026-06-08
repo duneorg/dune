@@ -53,12 +53,14 @@ export class MultisiteManager {
 
     // Fresh's esbuild deno plugin (WasmWorkspace) detects the import map by
     // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
-    // Chdir to the dune package root so WasmWorkspace finds dune's deno.json
-    // (with explicit preact/hooks and preact/jsx-dev-runtime entries).
+    // When running from local source (file:// URL), chdir to the dune package
+    // root so WasmWorkspace finds dune's deno.json with all preact entries.
+    // When running from JSR (https:// URL), skip — site's own deno.json is used.
     // All paths are already absolute at this point, so the chdir is safe.
-    // manager.ts lives at src/multisite/ → ../../ reaches the dune package root.
-    const duneRoot = new URL("../../", import.meta.url).pathname;
-    Deno.chdir(duneRoot);
+    if (import.meta.url.startsWith("file://")) {
+      const duneRoot = new URL("../../", import.meta.url).pathname;
+      Deno.chdir(duneRoot);
+    }
 
     const adminBuilder = new Builder({ root: firstSiteRoot, islandDir, routeDir });
     const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });

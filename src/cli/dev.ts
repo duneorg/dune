@@ -151,10 +151,15 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
   // When users run `dune dev --root ./mysite` from an arbitrary directory, cwd
   // has no deno.json, so preact/hooks and preact/jsx-dev-runtime are not found.
-  // Fix: chdir to the dune package root (which has the full deno.json) before
-  // creating the builder.  root is already absolute, so this is safe.
-  const duneRoot = new URL("../../", import.meta.url).pathname;
-  Deno.chdir(duneRoot);
+  // Fix: when running from local source (file:// URL), chdir to the dune
+  // package root so WasmWorkspace finds dune's deno.json with all preact entries.
+  // When running from JSR (https:// URL) there is no local path to chdir to —
+  // skip it and rely on the site's own deno.json for preact resolution.
+  // root is already absolute, so the chdir cannot invalidate any paths.
+  if (import.meta.url.startsWith("file://")) {
+    const duneRoot = new URL("../../", import.meta.url).pathname;
+    Deno.chdir(duneRoot);
+  }
 
   const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
   const builder = new Builder({

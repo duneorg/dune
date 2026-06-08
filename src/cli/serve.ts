@@ -246,11 +246,15 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
   // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
-  // Chdir to the dune package root before building so WasmWorkspace finds
-  // dune's deno.json (with explicit preact/hooks, preact/jsx-dev-runtime entries).
+  // When running from local source (file:// URL), chdir to the dune package
+  // root so WasmWorkspace finds dune's deno.json with all preact entries.
+  // When running from JSR (https:// URL), import.meta.url has no local path —
+  // skip the chdir and let WasmWorkspace use the site's own deno.json instead.
   // root is already absolute, so the chdir cannot invalidate any paths.
-  const duneRoot = new URL("../../", import.meta.url).pathname;
-  Deno.chdir(duneRoot);
+  if (import.meta.url.startsWith("file://")) {
+    const duneRoot = new URL("../../", import.meta.url).pathname;
+    Deno.chdir(duneRoot);
+  }
 
   const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
   const builder = new Builder({
