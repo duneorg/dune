@@ -17,4 +17,6 @@ export type {
   InlineEditManagerOptions,
   InlineEditSession,
   InlineEditClient,
+  ActiveEditor,
+  DocumentPresence,
 } from "./types.ts";

@@ -48,6 +48,19 @@ export interface InlineEditManagerOptions {
   autoFlushMs?: number;
 }
 
+/** Active editor info returned by {@link InlineEditManager.getPresence}. */
+export interface ActiveEditor {
+  userId: string;
+  name: string;
+  color: string;
+}
+
+/** Presence record for one document that has at least one active editor. */
+export interface DocumentPresence {
+  sourcePath: string;
+  editors: ActiveEditor[];
+}
+
 /** Public interface for the inline editing server manager. */
 export interface InlineEditManager {
   /**
@@ -74,4 +87,11 @@ export interface InlineEditManager {
     fields: Record<string, unknown>,
     author: string,
   ): Promise<void>;
+
+  /**
+   * Return live presence data — which documents have active WebSocket
+   * connections, and who is editing them.
+   * Only documents with at least one connected client are included.
+   */
+  getPresence(): DocumentPresence[];
 }

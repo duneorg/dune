@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "preact/hooks";
 
 interface PageItem {
   route: string;
+  sourcePath: string;
   title: string;
   format: string;
   published: boolean;
@@ -17,6 +18,15 @@ interface TreeNode {
   page: PageItem;
   children: TreeNode[];
 }
+
+interface ActiveEditor {
+  userId: string;
+  name: string;
+  color: string;
+}
+
+/** Map of sourcePath → list of active editors, polled from the presence API. */
+type PresenceMap = Map<string, ActiveEditor[]>;
 
 function buildTree(pages: PageItem[]): TreeNode[] {
   // Sort by route depth then alphabetically
@@ -45,11 +55,56 @@ function buildTree(pages: PageItem[]): TreeNode[] {
   return roots;
 }
 
+/** Render the live-editing presence indicator for a page row. */
+function PresenceBadge({ editors }: { editors: ActiveEditor[] }) {
+  if (editors.length === 0) return null;
+  const label = editors.length === 1
+    ? `${editors[0].name} is editing`
+    : `${editors.length} people editing`;
+  const title = editors.map((e) => e.name).join(", ") + " currently editing";
+
+  return (
+    <span
+      class="badge badge-editing"
+      title={title}
+      style={{
+        background: "#f39c12",
+        color: "#fff",
+        fontSize: "11px",
+        padding: "2px 6px",
+        borderRadius: "3px",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+      }}
+    >
+      {/* Color dots for each editor */}
+      {editors.slice(0, 3).map((e, i) => (
+        <span
+          key={i}
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            background: e.color,
+            display: "inline-block",
+            border: "1px solid rgba(255,255,255,0.5)",
+          }}
+        />
+      ))}
+      {label}
+    </span>
+  );
+}
+
 interface Props {
   pages: PageItem[];
   initialQuery: string;
   prefix: string;
 }
+
+/** Presence poll interval in ms. */
+const PRESENCE_POLL_MS = 30_000;
 
 export default function PageTree({ pages, initialQuery, prefix }: Props) {
   const [query, setQuery] = useState(initialQuery);
@@ -60,6 +115,34 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
   const [createParent, setCreateParent] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+
+  // ── Presence state ──────────────────────────────────────────────────────────
+  const [presence, setPresence] = useState<PresenceMap>(new Map());
+
+  useEffect(() => {
+    const presenceUrl = `${prefix.replace(/\/pages$/, "")}/api/inline-edit/presence`;
+
+    async function fetchPresence() {
+      try {
+        const res = await fetch(presenceUrl, { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json() as {
+          presence: Array<{ sourcePath: string; editors: ActiveEditor[] }>;
+        };
+        const map = new Map<string, ActiveEditor[]>();
+        for (const { sourcePath, editors } of data.presence) {
+          if (editors.length > 0) map.set(sourcePath, editors);
+        }
+        setPresence(map);
+      } catch { /* best-effort — silently ignore network errors */ }
+    }
+
+    fetchPresence();
+    const timer = setInterval(fetchPresence, PRESENCE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [prefix]);
+
+  // ── Tree / filter ───────────────────────────────────────────────────────────
 
   const filtered = query
     ? pages.filter(
@@ -81,7 +164,7 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
     setCreating(true);
     setCreateError("");
     try {
-      const res = await fetch(`${prefix.replace(/\/admin$/, "")}/admin/api/pages`, {
+      const res = await fetch(`${prefix.replace(/\/pages$/, "")}/api/pages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
         body: JSON.stringify({
@@ -96,7 +179,7 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
         return;
       }
       const { route } = await res.json() as { route: string };
-      location.href = `${prefix}/pages/edit?path=${encodeURIComponent(route)}`;
+      location.href = `${prefix}/edit?path=${encodeURIComponent(route)}`;
     } catch (err) {
       setCreateError(String(err));
     } finally {
@@ -117,7 +200,8 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
     const { page, children } = node;
     const isCollapsed = collapsed.has(page.route);
     const hasChildren = children.length > 0;
-    const editUrl = `${prefix}/pages/edit?path=${encodeURIComponent(page.route)}`;
+    const editUrl = `${prefix}/edit?path=${encodeURIComponent(page.route)}`;
+    const editors = presence.get(page.sourcePath) ?? [];
 
     return (
       <div key={page.route} style={{ paddingLeft: `${depth * 1.25}rem` }}>
@@ -135,10 +219,11 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
           <span class={`badge badge-fmt badge-${page.format}`}>{page.format}</span>
           {!page.published && <span class="badge badge-draft">draft</span>}
           {page.language && <span class="badge badge-lang">{page.language}</span>}
+          <PresenceBadge editors={editors} />
           <span class="tree-route">{page.route}</span>
           <span class="tree-actions">
             <a href={editUrl} class="btn btn-xs btn-outline">Edit</a>
-            <a href={`${prefix}/pages/history?path=${encodeURIComponent(page.route)}`} class="btn btn-xs btn-outline">History</a>
+            <a href={`${prefix}/history?path=${encodeURIComponent(page.route)}`} class="btn btn-xs btn-outline">History</a>
           </span>
         </div>
         {hasChildren && !isCollapsed && (
@@ -184,17 +269,27 @@ export default function PageTree({ pages, initialQuery, prefix }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.route}>
-                    <td><a href={`${prefix}/pages/edit?path=${encodeURIComponent(p.route)}`}>{p.title || "(untitled)"}</a></td>
-                    <td><code>{p.route}</code></td>
-                    <td>{p.format}</td>
-                    <td>{p.published ? "published" : "draft"}</td>
-                    <td>
-                      <a href={`${prefix}/pages/edit?path=${encodeURIComponent(p.route)}`} class="btn btn-xs btn-outline">Edit</a>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((p) => {
+                  const searchEditors = presence.get(p.sourcePath) ?? [];
+                  return (
+                    <tr key={p.route}>
+                      <td>
+                        <a href={`${prefix}/edit?path=${encodeURIComponent(p.route)}`}>{p.title || "(untitled)"}</a>
+                        {searchEditors.length > 0 && (
+                          <span style="margin-left:6px">
+                            <PresenceBadge editors={searchEditors} />
+                          </span>
+                        )}
+                      </td>
+                      <td><code>{p.route}</code></td>
+                      <td>{p.format}</td>
+                      <td>{p.published ? "published" : "draft"}</td>
+                      <td>
+                        <a href={`${prefix}/edit?path=${encodeURIComponent(p.route)}`} class="btn btn-xs btn-outline">Edit</a>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

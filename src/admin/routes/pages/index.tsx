@@ -16,6 +16,7 @@ export const handler = {
     const q = ctx.url.searchParams.get("q") ?? "";
     const pages = engine.pages.map((p) => ({
       route: p.route,
+      sourcePath: p.sourcePath,
       title: p.title,
       format: p.format,
       published: p.published,
@@ -27,7 +28,7 @@ export const handler = {
 };
 
 interface PageItem {
-  route: string; title: string; format: string; published: boolean; date?: string; language?: string;
+  route: string; sourcePath: string; title: string; format: string; published: boolean; date?: string; language?: string;
 }
 
 export default function PagesIndex(

@@ -231,5 +231,21 @@ export function createInlineEditManager(
         contentDir,
       });
     },
+
+    getPresence() {
+      const result: import("./types.ts").DocumentPresence[] = [];
+      for (const [sourcePath, { session }] of sessions) {
+        if (session.clients.size === 0) continue;
+        result.push({
+          sourcePath,
+          editors: [...session.clients.values()].map((c) => ({
+            userId: c.userId,
+            name: c.name,
+            color: c.color,
+          })),
+        });
+      }
+      return result;
+    },
   };
 }
