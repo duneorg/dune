@@ -2,9 +2,6 @@
  * Admin panel — barrel exports.
  */
 
-export { createAdminHandler } from "./server.ts";
-export type { AdminServerConfig } from "./server.ts";
-
 export { initAdminContext, getAdminContext } from "./context.ts";
 export type { AdminContext, AdminPageRegistration } from "./context.ts";
 

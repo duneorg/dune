@@ -5,6 +5,28 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.16.0] — 2026-06-08
+
+### Added
+
+- **Inline editing** — collaborative in-place editing for admin users visiting public pages. When a valid admin session cookie is present, the admin bar is injected before `</body>` with Save, Edit/Preview toggle, and Open-in-admin controls. No template changes required — the auto-overlay pass annotates the first `<h1>` and the `<article>`/`<main>` container automatically.
+- **Component kit** (`@dune/core/ui/editable`) — Preact island components for explicit inline editing in TSX templates: `EditableText`, `EditableMarkdown` (TipTap WYSIWYG, Y.js backed), `EditableImage`, `EditableDate`, `EditableField` (generic with registry lookup).
+- **Field editor registry** — `registerFieldEditor(type, component)` for custom blueprint field types; lookup priority: render prop > registry > built-in fallback.
+- **Y.js collaboration backend** — WebSocket sync endpoint at `GET /admin/collab/edit-ws?path=`; in-memory Y.js document manager with `commit-to-history` flush via `POST /admin/api/content/:path/commit`; frontmatter field patching via `PATCH /admin/api/content/:path/fields`.
+- **Presence indicators** — admin pages list shows live colour-dot badges (`{N} editing`) next to any page that has active inline-edit sessions; polled every 30 s via `GET /admin/api/inline-edit/presence`.
+
+### Fixed
+
+- Stale `createAdminHandler` / `AdminServerConfig` exports removed from `@dune/core` barrel (`src/admin/mod.ts`); the monolithic handler was deleted in an earlier refactor but the re-exports remained.
+
+### Security
+
+- Hardened HTML escaping in admin-bar inline script blocks.
+- Strengthened path validation for the WebSocket sync endpoint.
+- Fixed a document-key encoding edge case in the Y.js collab layer.
+
+---
+
 ## [0.15.4] — 2026-06-08
 
 ### Fixed
