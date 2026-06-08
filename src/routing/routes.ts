@@ -14,7 +14,7 @@
 /** @jsxImportSource preact */
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
-import type { Collection, MediaFile, TemplateComponent } from "../content/types.ts";
+import type { Collection, MediaFile, Page, TemplateComponent, TemplateProps } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -663,9 +663,16 @@ export function duneRoutes(
             template: "layout",
             frontmatter: { title: "404 — Not Found" },
             language: defaultLang,
-          };
+          } as unknown as Page;
           return renderJsx(
-            h(Layout, { site: siteData, page: fakePage, nav: navData },
+            h(Layout as unknown as ComponentType<TemplateProps>, {
+              site: siteData,
+              page: fakePage,
+              nav: navData,
+              pageTitle: "404 — Not Found",
+              config: engine.config,
+              dir: directionOf(defaultLang),
+            },
               h("div", { class: "content-page" },
                 h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
                   h("h1", null, "404"),
@@ -885,7 +892,7 @@ export function duneRoutes(
             // can access it without awaiting.
             await Promise.all(
               collection.items.map(async (item) => {
-                (item as Record<string, unknown>)._html = await item.html();
+                (item as unknown as Record<string, unknown>)._html = await item.html();
               }),
             );
           }

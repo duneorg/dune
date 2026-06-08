@@ -53,6 +53,7 @@ function makeFullPage(index: PageIndex): Page {
     rawContent: null,
     html: () => Promise.resolve(""),
     component: () => Promise.resolve(null),
+    handlers: () => Promise.resolve(null),
     media: [],
     order: index.order,
     depth: index.depth,

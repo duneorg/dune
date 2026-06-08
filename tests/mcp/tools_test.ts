@@ -55,6 +55,7 @@ function makeFullPage(overrides: Partial<Page> = {}): Page {
     rawContent: null,
     html: () => Promise.resolve("<p>Hello</p>"),
     component: () => Promise.resolve(null),
+    handlers: () => Promise.resolve(null),
     media: [],
     order: 1,
     depth: 0,
