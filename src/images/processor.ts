@@ -23,6 +23,7 @@ const MAX_INPUT_BYTES = 25 * 1024 * 1024;
  */
 const MAX_INPUT_PIXELS = 24_000_000;
 
+/** Resize, crop, and format options for {@link ImageProcessor.process}. */
 export interface ImageProcessingOptions {
   /** Target width in pixels */
   width?: number;
@@ -38,9 +39,12 @@ export interface ImageProcessingOptions {
   focal?: [number, number];
 }
 
+/** Supported output formats for image processing. */
 export type ImageOutputFormat = "jpeg" | "png" | "webp" | "avif";
+/** Resize fit mode — controls how the image fills the target dimensions. */
 export type ImageFit = "cover" | "contain" | "fill" | "inside" | "outside";
 
+/** Output of {@link ImageProcessor.process} — the transformed image bytes plus metadata. */
 export interface ProcessedImage {
   /** Processed image bytes */
   data: Uint8Array;
@@ -54,6 +58,7 @@ export interface ProcessedImage {
   format: ImageOutputFormat;
 }
 
+/** Configuration for {@link createImageProcessor}. */
 export interface ImageProcessorConfig {
   /** Default output quality (1-100) */
   defaultQuality: number;
@@ -61,6 +66,7 @@ export interface ImageProcessorConfig {
   allowedSizes: number[];
 }
 
+/** On-the-fly image resize, crop, and format conversion. Obtain via {@link createImageProcessor}. */
 export interface ImageProcessor {
   process(input: Uint8Array, options: ImageProcessingOptions): Promise<ProcessedImage | null>;
   generateSrcset(input: Uint8Array, options?: Omit<ImageProcessingOptions, "width" | "height">): Promise<ProcessedImage[]>;

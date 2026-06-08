@@ -12,6 +12,7 @@ import type { PageIndex } from "../content/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 
+/** Options for {@link createSearchEngine}. */
 export interface SearchEngineOptions {
   /** All page indexes */
   pages: PageIndex[];
@@ -49,6 +50,7 @@ export interface SearchEngineOptions {
   }>;
 }
 
+/** A single result returned by {@link SearchEngine.search}. */
 export interface SearchResult {
   /** The matched page */
   page: PageIndex;
@@ -62,6 +64,7 @@ export interface SearchResult {
   facetValues?: Record<string, string | string[]>;
 }
 
+/** Full-text search engine over the Dune content index. Obtain via {@link createSearchEngine}. */
 export interface SearchEngine {
   /** Build the search index (call after content index is ready) */
   build(): Promise<void>;

@@ -10,12 +10,14 @@ import type { StorageAdapter } from "../../storage/types.ts";
 import type { AdminUser, AdminRole } from "../types.ts";
 import { hashPassword } from "./passwords.ts";
 
+/** Options for {@link createUserManager}. */
 export interface UserManagerConfig {
   storage: StorageAdapter;
   /** Directory for user files (e.g. ".dune/admin/users") */
   usersDir: string;
 }
 
+/** Input for {@link UserManager.create}. */
 export interface CreateUserInput {
   username: string;
   email: string;
@@ -24,6 +26,7 @@ export interface CreateUserInput {
   name: string;
 }
 
+/** CRUD operations for admin users. Obtain via {@link createUserManager}. */
 export interface UserManager {
   /** Create a new user. Returns the user (without password). */
   create(input: CreateUserInput): Promise<AdminUser>;

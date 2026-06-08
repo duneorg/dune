@@ -35,6 +35,7 @@ import type { ThemeLoader } from "../themes/loader.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 
+/** Options for {@link createDuneEngine}. */
 export interface DuneEngineOptions {
   /** Storage adapter (filesystem or KV) */
   storage: StorageAdapter;
@@ -65,6 +66,12 @@ export interface DuneEngineOptions {
   sharedThemesDir?: string;
 }
 
+/**
+ * The Dune CMS engine — the central object that wires together storage,
+ * content index, routing, and theme loading.
+ *
+ * Obtain via {@link createDuneEngine}.
+ */
 export interface DuneEngine {
   /** The full merged config */
   config: DuneConfig;
@@ -126,12 +133,14 @@ export interface DuneEngine {
   setPluginTemplateDirs(dirs: string[]): void;
 }
 
+/** Return type of {@link DuneEngine.resolve} — a resolved page, redirect, or 404. */
 export interface ResolveResult {
   type: "page" | "redirect" | "not-found";
   page?: Page;
   redirectTo?: string;
 }
 
+/** Byte payload returned by {@link DuneEngine.serveMedia}. */
 export interface MediaResponse {
   data: Uint8Array;
   contentType: string;

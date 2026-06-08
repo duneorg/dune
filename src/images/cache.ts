@@ -12,6 +12,7 @@
 import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../storage/types.ts";
 
+/** Options for {@link createImageCache}. */
 export interface ImageCacheConfig {
   /** Storage adapter for reading/writing cache files */
   storage: StorageAdapter;
@@ -19,6 +20,7 @@ export interface ImageCacheConfig {
   cacheDir: string;
 }
 
+/** A cached processed image retrieved via {@link ImageCache.get}. */
 export interface CachedImage {
   data: Uint8Array;
   contentType: string;
@@ -33,6 +35,7 @@ interface CacheMeta {
   createdAt: number;
 }
 
+/** Persistent cache for processed images — avoids re-processing the same source+options. Obtain via {@link createImageCache}. */
 export interface ImageCache {
   buildKey(sourcePath: string, options: Record<string, unknown>): Promise<string>;
   get(key: string): Promise<CachedImage | null>;

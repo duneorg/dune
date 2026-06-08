@@ -10,6 +10,7 @@
 import { h } from "preact";
 import type { JSX } from "preact";
 
+/** Props for the {@link LoginForm} server-rendered component. */
 export interface LoginFormProps {
   /** OAuth providers to show as buttons. Supported: "github" | "google" | "discord" | "magic" */
   providers?: string[];

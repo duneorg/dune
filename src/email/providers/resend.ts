@@ -7,6 +7,7 @@
 
 import type { EmailMessage, EmailProvider } from "../types.ts";
 
+/** Configuration for the Resend email provider. */
 export interface ResendProviderConfig {
   apiKey: string;
   /** Default from address when message.from is not set. */

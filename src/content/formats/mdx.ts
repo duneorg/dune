@@ -34,11 +34,13 @@ import type {
 import type { MdxComponentRegistry } from "./mdx-components.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
 
+/** Options for {@link MdxHandler}. */
 export interface MdxHandlerOptions {
   /** Component registry for MDX content (optional — defaults to empty) */
   components?: MdxComponentRegistry;
 }
 
+/** {@link ContentFormatHandler} for `.mdx` files — Markdown with embedded JSX components. */
 export class MdxHandler implements ContentFormatHandler {
   readonly extensions = [".mdx"];
 

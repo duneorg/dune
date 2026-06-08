@@ -7,6 +7,7 @@
 
 import type { EmailMessage, EmailProvider } from "../types.ts";
 
+/** Configuration for the SendGrid email provider. */
 export interface SendGridProviderConfig {
   apiKey: string;
   /** Default from address when message.from is not set. */

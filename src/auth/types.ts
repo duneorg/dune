@@ -21,6 +21,7 @@ export interface SiteUser {
   stripeCustomerId?: string;
 }
 
+/** Input for creating a new {@link SiteUser} — server-generated fields are omitted. */
 export type SiteUserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "enabled"> & {
   enabled?: boolean;
 };

@@ -599,11 +599,13 @@ function makeGetPageSourceHandler(engine: DuneEngine): ToolHandler {
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
+/** Runtime dependencies required by MCP tool handlers. */
 export interface ToolDependencies {
   engine: DuneEngine;
   search: SearchEngine | null;
 }
 
+/** A registered MCP tool — descriptor plus its handler function. */
 export interface ToolRegistration {
   meta: McpTool;
   handler: ToolHandler;

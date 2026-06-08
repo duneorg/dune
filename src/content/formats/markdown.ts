@@ -22,6 +22,7 @@ import type {
 import { resolveMediaRefs } from "./media-resolve.ts";
 import { sanitizeHtml } from "../../security/sanitize-html.ts";
 
+/** {@link ContentFormatHandler} for `.md` files — parses YAML frontmatter and renders Markdown to HTML. */
 export class MarkdownHandler implements ContentFormatHandler {
   readonly extensions = [".md"];
 

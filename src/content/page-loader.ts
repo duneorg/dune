@@ -27,6 +27,7 @@ import type {
 } from "./types.ts";
 import { dirPathToRoute, effectiveOrder, isMediaFile } from "./path-utils.ts";
 
+/** Options for {@link loadPage}. */
 export interface PageLoaderOptions {
   storage: StorageAdapter;
   contentDir: string;

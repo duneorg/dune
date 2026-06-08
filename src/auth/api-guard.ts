@@ -27,8 +27,15 @@ import type { SiteUser } from "./types.ts";
 /** Name of the internal header used to pass the resolved site user. */
 export const SITE_USER_HEADER = "x-dune-site-user";
 
+/**
+ * Authentication enforcement mode for generated CRUD route handlers.
+ * - `"none"` — public; always passes, user may be null.
+ * - `"required"` — any authenticated site user.
+ * - `"owner"` — authenticated user whose id matches the record's owner field.
+ */
 export type AuthMode = "none" | "required" | "owner";
 
+/** Return type of {@link requireAuth} — user on success, error Response on failure. */
 export type GuardResult =
   | { error: null; user: SiteUser | null }
   | { error: Response; user: null };

@@ -22,6 +22,7 @@ import type {
   RenderContext,
 } from "../types.ts";
 
+/** {@link ContentFormatHandler} for `.tsx` content files — the component IS the content, optionally with a sidecar `.frontmatter.yaml`. */
 export class TsxHandler implements ContentFormatHandler {
   readonly extensions = [".tsx"];
 

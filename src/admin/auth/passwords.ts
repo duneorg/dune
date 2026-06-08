@@ -27,6 +27,11 @@ import { encodeHex } from "@std/encoding/hex";
  */
 const ITERATIONS = 600_000; // OWASP 2024 minimum for PBKDF2-SHA256
 const MIN_ACCEPTABLE_ITERATIONS = 100_000; // grandfathered legacy hashes
+/**
+ * Pre-computed PBKDF2 hash used in constant-time dummy comparisons when a
+ * username lookup fails, preventing timing-based username enumeration.
+ * @internal
+ */
 export const DUMMY_HASH =
   `pbkdf2:${ITERATIONS}:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000`;
 

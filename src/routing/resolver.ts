@@ -16,6 +16,7 @@ import type { SiteConfig } from "../config/types.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
 
+/** Result of {@link RouteResolver.resolve} — matched page or redirect. */
 export interface RouteMatch {
   type: "page" | "redirect";
   /** The matched PageIndex (only for type="page") */
@@ -24,6 +25,7 @@ export interface RouteMatch {
   redirectTo?: string;
 }
 
+/** Options for {@link createRouteResolver}. */
 export interface RouteResolverOptions {
   /** All page indexes from the content index */
   pages: PageIndex[];
@@ -39,6 +41,7 @@ export interface RouteResolverOptions {
   includeDefaultInUrl?: boolean;
 }
 
+/** Maps URL pathnames to page indexes. Obtain via {@link createRouteResolver}. */
 export interface RouteResolver {
   resolve(pathname: string): RouteMatch | null;
   findBySourcePath(sourcePath: string): PageIndex | undefined;

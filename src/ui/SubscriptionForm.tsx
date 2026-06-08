@@ -11,6 +11,7 @@ import { h } from "preact";
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 
+/** Props for the {@link SubscriptionForm} island component. */
 export interface SubscriptionFormProps {
   productId: string;
   label?: string;

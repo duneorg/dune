@@ -8,8 +8,10 @@ export { FileSystemAdapter } from "./fs.ts";
 import type { StorageAdapter } from "./types.ts";
 import { FileSystemAdapter } from "./fs.ts";
 
+/** Storage backend identifier. Currently only `"filesystem"` is implemented. */
 export type StorageDriver = "filesystem" | "kv";
 
+/** Options for {@link createStorage}. */
 export interface StorageOptions {
   driver?: StorageDriver;
   rootDir: string;

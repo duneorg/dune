@@ -80,6 +80,14 @@ export interface DuneRoutes {
   contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>): Promise<Response>;
 }
 
+/**
+ * Build the Fresh route handler array for a Dune site.
+ *
+ * Returns routes for: content pages, media files, image processing,
+ * search, sitemaps, and optional analytics tracking.
+ * Pass the returned array to Fresh's `defineConfig({ plugins: [freshPluginDune(routes)] })`
+ * or register each route directly with your Fresh app.
+ */
 export function duneRoutes(
   engine: DuneEngine,
   collections?: CollectionEngine,

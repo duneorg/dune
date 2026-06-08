@@ -39,6 +39,7 @@ const DIM = "\x1b[2m";
 
 // ── Logger interface ──────────────────────────────────────────────────────────
 
+/** Structured logger interface — text or JSON output with named fields and child scoping. */
 export interface Logger {
   debug(event: string, fields?: Record<string, unknown>): void;
   info(event: string, fields?: Record<string, unknown>): void;
@@ -50,6 +51,7 @@ export interface Logger {
 
 // ── Internal options ──────────────────────────────────────────────────────────
 
+/** Options passed to the logger factory. */
 export interface LoggerOptions {
   format?: "text" | "json";
   level?: LogLevel;

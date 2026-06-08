@@ -28,6 +28,10 @@
 import { defineSchema } from "polizy";
 import type { AuthSchema } from "polizy";
 
+/**
+ * The polizy authorization schema for Dune — defines relations and action-to-relation mappings
+ * for content gating, admin access, and resource ownership.
+ */
 // deno-lint-ignore no-explicit-any
 export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema({
   relations: {
@@ -87,4 +91,5 @@ export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema
   objectTypes: ["group", "app", "resource"] as const,
 });
 
+/** TypeScript type of the Dune authorization schema — pass to `AuthSystem` generics. */
 export type DuneAuthzSchema = typeof duneAuthzSchema;

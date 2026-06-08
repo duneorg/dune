@@ -27,6 +27,7 @@
 
 // ── JSON-RPC 2.0 types ──────────────────────────────────────────────────────
 
+/** JSON-RPC 2.0 request message. */
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
   id?: string | number | null;
@@ -34,18 +35,21 @@ export interface JsonRpcRequest {
   params?: unknown;
 }
 
+/** JSON-RPC 2.0 success response. */
 export interface JsonRpcSuccess {
   jsonrpc: "2.0";
   id: string | number | null;
   result: unknown;
 }
 
+/** JSON-RPC 2.0 error response. */
 export interface JsonRpcError {
   jsonrpc: "2.0";
   id: string | number | null;
   error: { code: number; message: string; data?: unknown };
 }
 
+/** JSON-RPC 2.0 response — either a success or an error message. */
 export type JsonRpcResponse = JsonRpcSuccess | JsonRpcError;
 
 // JSON-RPC error codes
@@ -57,6 +61,7 @@ const INTERNAL_ERROR = -32603;
 
 // ── MCP types ───────────────────────────────────────────────────────────────
 
+/** MCP tool descriptor — name, description, and JSON Schema for input parameters. */
 export interface McpTool {
   name: string;
   description: string;
@@ -67,6 +72,7 @@ export interface McpTool {
   };
 }
 
+/** MCP resource descriptor — identifies a readable resource by URI. */
 export interface McpResource {
   uri: string;
   name: string;
@@ -74,16 +80,19 @@ export interface McpResource {
   mimeType?: string;
 }
 
+/** MCP tool/resource content item — plain text payload. */
 export interface McpTextContent {
   type: "text";
   text: string;
 }
 
+/** Return value of an MCP tool handler. */
 export interface McpToolResult {
   content: McpTextContent[];
   isError?: boolean;
 }
 
+/** Return value of an MCP resource handler. */
 export interface McpResourceContent {
   uri: string;
   mimeType?: string;
@@ -92,9 +101,12 @@ export interface McpResourceContent {
 
 // ── Handler types ───────────────────────────────────────────────────────────
 
+/** Async function that handles a tool call and returns a result. */
 export type ToolHandler = (args: Record<string, unknown>) => Promise<McpToolResult>;
+/** Async function that reads a resource by URI and returns its content. */
 export type ResourceHandler = (uri: string) => Promise<McpResourceContent>;
 
+/** Configuration for {@link McpServer}. */
 export interface McpServerConfig {
   name: string;
   version: string;

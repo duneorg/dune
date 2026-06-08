@@ -9,6 +9,7 @@
 import { h } from "preact";
 import type { JSX } from "preact";
 
+/** User data displayed by the {@link ProfileCard} component. */
 export interface ProfileCardUser {
   name?: string;
   email: string;
@@ -16,6 +17,7 @@ export interface ProfileCardUser {
   roles: string[];
 }
 
+/** Props for the {@link ProfileCard} server-rendered component. */
 export interface ProfileCardProps {
   user: ProfileCardUser;
   className?: string;

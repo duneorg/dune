@@ -9,6 +9,7 @@ import type { StorageAdapter } from "../storage/types.ts";
 import type { ContentRevision, ContentDiff } from "../workflow/types.ts";
 import { computeDiff } from "./diff.ts";
 
+/** Options for {@link createHistoryEngine}. */
 export interface HistoryEngineConfig {
   storage: StorageAdapter;
   /** Directory for revision data */
@@ -17,6 +18,7 @@ export interface HistoryEngineConfig {
   maxRevisions?: number;
 }
 
+/** Records page revisions and provides diff and restore capabilities. Obtain via {@link createHistoryEngine}. */
 export interface HistoryEngine {
   /** Record a new revision for a page */
   record(input: RecordInput): Promise<ContentRevision>;
@@ -34,6 +36,7 @@ export interface HistoryEngine {
   getRevisionCount(sourcePath: string): Promise<number>;
 }
 
+/** Input for {@link HistoryEngine.record} — captures a page revision. */
 export interface RecordInput {
   sourcePath: string;
   content: string;

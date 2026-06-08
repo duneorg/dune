@@ -65,6 +65,7 @@ function columnDefinition(field: DbFieldDef): string {
   return parts.join(" ");
 }
 
+/** Generate a `CREATE TABLE IF NOT EXISTS` SQL statement (plus index statements) from a {@link DbSchema}. */
 export function generateCreateTableSql(schema: DbSchema): string {
   const cols = [`  "id" TEXT PRIMARY KEY`];
   for (const field of schema.fields) {
@@ -255,6 +256,7 @@ export async function runMigrations(root: string, adapter: DbAdapter): Promise<s
 // Public: migration status
 // ---------------------------------------------------------------------------
 
+/** Applied/pending status of a single migration file, as returned by `getMigrationStatus()`. */
 export interface MigrationStatus {
   name: string;
   status: "applied" | "pending";

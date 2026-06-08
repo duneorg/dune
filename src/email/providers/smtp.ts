@@ -10,6 +10,7 @@
 import nodemailer from "nodemailer";
 import type { EmailMessage, EmailProvider } from "../types.ts";
 
+/** Configuration for the SMTP email provider. */
 export interface SmtpProviderConfig {
   host: string;
   port: number;

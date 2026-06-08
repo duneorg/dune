@@ -25,6 +25,7 @@ import type { TaxonomyMap } from "../content/index-builder.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord } from "../flex/types.ts";
 
+/** Options for {@link createCollectionEngine}. */
 export interface CollectionEngineOptions {
   /** All page indexes */
   pages: PageIndex[];
@@ -46,6 +47,7 @@ export interface CollectionEngineOptions {
   siteRegistry?: Map<string, CollectionEngine>;
 }
 
+/** Resolves declarative page queries into {@link Collection} objects. Obtain via {@link createCollectionEngine}. */
 export interface CollectionEngine {
   /**
    * Resolve a collection from a declarative definition.

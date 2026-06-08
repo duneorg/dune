@@ -5,6 +5,10 @@
 
 import type { SectionDef } from "./types.ts";
 
+/**
+ * The ten built-in Visual Page Builder sections pre-loaded into the shared
+ * {@link sectionRegistry} on startup. Custom sections can be added alongside these.
+ */
 export const BUILT_IN_SECTIONS: SectionDef[] = [
   // ── Hero ─────────────────────────────────────────────────────────────────
   {

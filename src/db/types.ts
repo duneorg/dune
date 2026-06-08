@@ -10,6 +10,7 @@
 // Where clause DSL
 // ---------------------------------------------------------------------------
 
+/** Comparison operators for a single field in a {@link WhereClause}. */
 export type FieldOperators<V> = {
   $gt?: V;
   $lt?: V;
@@ -22,6 +23,7 @@ export type FieldOperators<V> = {
   $isNull?: boolean;
 };
 
+/** Filter clause for {@link FindOptions} and {@link Repository.findOne}. Supports field equality, operators, and `$or`. */
 export type WhereClause<T> = {
   [K in keyof T]?: T[K] | FieldOperators<T[K]>;
 } & { $or?: WhereClause<T>[] };
@@ -30,6 +32,7 @@ export type WhereClause<T> = {
 // Repository interface
 // ---------------------------------------------------------------------------
 
+/** Query options for {@link Repository.find}. */
 export interface FindOptions<T> {
   where?: WhereClause<T>;
   orderBy?: keyof T | [keyof T, "asc" | "desc"];
@@ -37,6 +40,12 @@ export interface FindOptions<T> {
   offset?: number;
 }
 
+/**
+ * Typed CRUD repository for a single DB model.
+ *
+ * Generated automatically for each schema by `dune codegen`. Obtain at
+ * runtime via the `db` object exported from your generated `database.ts`.
+ */
 export interface Repository<T, TCreate, TUpdate> {
   /** Return all rows matching options. */
   find(opts?: FindOptions<T>): Promise<T[]>;
@@ -74,6 +83,7 @@ export interface Repository<T, TCreate, TUpdate> {
 // DbAdapter interface
 // ---------------------------------------------------------------------------
 
+/** Low-level SQL adapter — escape hatch for raw queries and transactions. */
 export interface DbAdapter {
   query<R = unknown>(sql: string, params?: unknown[]): Promise<R[]>;
   transaction<T>(fn: (tx: DbAdapter) => Promise<T>): Promise<T>;
@@ -84,6 +94,7 @@ export interface DbAdapter {
 // Internal schema representation (output of schema-parser.ts)
 // ---------------------------------------------------------------------------
 
+/** Supported field types in Dune DB schemas. Maps to SQL column types at migration time. */
 export type DbFieldType =
   | "string"
   | "text"
@@ -93,6 +104,7 @@ export type DbFieldType =
   | "datetime"
   | "json";
 
+/** Definition of a single field in a {@link DbSchema}. */
 export interface DbFieldDef {
   name: string;
   type: DbFieldType;
@@ -127,6 +139,7 @@ export interface DbSchemaApi {
   ownerField?: string;
 }
 
+/** Parsed representation of a Dune DB schema YAML file. */
 export interface DbSchema {
   /** TypeScript model name (e.g. "Comment"). */
   model: string;

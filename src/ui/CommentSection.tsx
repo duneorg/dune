@@ -11,6 +11,7 @@ import { h, Fragment } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect, useCallback } from "preact/hooks";
 
+/** Props for the {@link CommentSection} island component. */
 export interface CommentSectionProps {
   pageRoute: string;
   className?: string;

@@ -10,6 +10,7 @@ export class DuneError extends Error {
   }
 }
 
+/** Thrown when site or system configuration is invalid. Includes file path and line when available. */
 export class ConfigError extends DuneError {
   constructor(
     message: string,
@@ -24,6 +25,7 @@ export class ConfigError extends DuneError {
   }
 }
 
+/** Thrown when a content file cannot be parsed or rendered. Includes source path when available. */
 export class ContentError extends DuneError {
   constructor(
     message: string,
@@ -35,6 +37,7 @@ export class ContentError extends DuneError {
   }
 }
 
+/** Thrown on storage adapter failures (file I/O, KV, etc.). Includes the affected path when available. */
 export class StorageError extends DuneError {
   constructor(message: string, public readonly path?: string) {
     const location = path ? ` (${path})` : "";
@@ -43,6 +46,7 @@ export class StorageError extends DuneError {
   }
 }
 
+/** Thrown when a template fails to load or render. Includes template name when available. */
 export class TemplateError extends DuneError {
   constructor(
     message: string,
@@ -54,6 +58,7 @@ export class TemplateError extends DuneError {
   }
 }
 
+/** Thrown on routing failures (invalid route, unresolvable alias, etc.). Includes the route when available. */
 export class RouteError extends DuneError {
   constructor(message: string, public readonly route?: string) {
     const r = route ? ` [${route}]` : "";

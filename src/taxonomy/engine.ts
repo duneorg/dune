@@ -13,6 +13,7 @@
 import type { PageIndex } from "../content/types.ts";
 import type { TaxonomyMap } from "../content/index-builder.ts";
 
+/** Options for {@link createTaxonomyEngine}. */
 export interface TaxonomyEngineOptions {
   /** All page indexes */
   pages: PageIndex[];
@@ -20,6 +21,7 @@ export interface TaxonomyEngineOptions {
   taxonomyMap: TaxonomyMap;
 }
 
+/** Query interface over the taxonomy reverse index. Obtain via {@link createTaxonomyEngine}. */
 export interface TaxonomyEngine {
   /**
    * Find pages tagged with a specific taxonomy value.

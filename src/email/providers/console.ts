@@ -12,6 +12,7 @@
 import { join } from "@std/path";
 import type { EmailMessage, EmailProvider } from "../types.ts";
 
+/** Options for the development console email provider. */
 export interface ConsoleEmailProviderOptions {
   /**
    * Directory to write intercepted email files into.

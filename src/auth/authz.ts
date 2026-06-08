@@ -55,6 +55,7 @@ export type { DuneAuthzSchema } from "./authz-schema.ts";
 /** The configured Dune AuthSystem type — fully typed against the Dune schema. */
 export type DuneAuthSystem = AuthSystem<typeof duneAuthzSchema>;
 
+/** Options for {@link createDuneAuthSystem}. */
 export interface AuthzConfig {
   /** Storage tier for permission tuples. Default: "local" (flat files). */
   authzStore?: "local" | "db";
@@ -73,6 +74,7 @@ export interface AuthzConfig {
   hmacKey?: CryptoKey | null;
 }
 
+/** Return value of {@link createDuneAuthSystem} — the configured AuthSystem plus its underlying adapter. */
 export interface DuneAuthBundle {
   /** The configured polizy AuthSystem — call `authz.check()`, `authz.addMember()`, etc. */
   authz: DuneAuthSystem;
@@ -149,6 +151,12 @@ export interface AuthzAdapterLike {
   hasTuple(subject: { type: string; id: string }, relation: string, object: { type: string; id: string }): Promise<boolean>;
 }
 
+/**
+ * Bootstrap role-based permission tuples from existing SiteUser `roles[]`.
+ *
+ * Idempotent — skips tuples that already exist. Call once on first startup
+ * after introducing polizy into an existing site.
+ */
 export async function bootstrapRoleTuples(
   authz: DuneAuthSystem,
   adapter: AuthzAdapterLike,

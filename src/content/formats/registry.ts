@@ -8,6 +8,7 @@
 import { ContentError } from "../../core/errors.ts";
 import type { ContentFormatHandler } from "../types.ts";
 
+/** Registry of pluggable {@link ContentFormatHandler} implementations, keyed by file extension. */
 export class FormatRegistry {
   private handlers = new Map<string, ContentFormatHandler>();
 

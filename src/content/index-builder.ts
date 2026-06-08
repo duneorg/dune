@@ -33,6 +33,7 @@ import {
   sourcePathToRoute,
 } from "./path-utils.ts";
 
+/** Options for {@link buildIndex} and {@link updateIndex}. */
 export interface IndexBuilderOptions {
   /** Storage adapter for reading files */
   storage: StorageAdapter;
@@ -68,6 +69,7 @@ export interface IndexBuilderOptions {
   facetFields?: string[];
 }
 
+/** Return type of {@link buildIndex} — the page index, taxonomy map, and build statistics. */
 export interface BuildResult {
   /** The built page index */
   pages: PageIndex[];
@@ -85,6 +87,7 @@ export interface BuildResult {
   homeSlug: string;
 }
 
+/** Non-fatal error encountered while indexing a content file. */
 export interface IndexError {
   path: string;
   message: string;

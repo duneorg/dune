@@ -298,6 +298,7 @@ export async function generateApiRoutes(
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Output of {@link generateCode} — a map of relative file paths to generated TypeScript source. */
 export interface CodegenResult {
   /** Map of relative file path → file content */
   files: Map<string, string>;

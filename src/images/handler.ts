@@ -17,6 +17,7 @@ import type { DuneEngine, MediaResponse } from "../core/engine.ts";
 import type { ImageProcessor } from "./processor.ts";
 import type { ImageCache } from "./cache.ts";
 
+/** Dependencies for {@link createImageHandler}. */
 export interface ImageHandlerOptions {
   engine: DuneEngine;
   processor: ImageProcessor;
@@ -28,6 +29,7 @@ const PROCESSABLE_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "webp", "avif", "gif", "tiff",
 ]);
 
+/** Handler function returned by {@link createImageHandler} — returns a Response for image requests, null to fall through. */
 export type ImageHandler = (req: Request) => Promise<Response | null>;
 
 /**

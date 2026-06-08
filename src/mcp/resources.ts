@@ -190,6 +190,7 @@ const FORMS_RESOURCE: McpResource = {
   mimeType: "application/json",
 };
 
+/** Runtime dependencies required by MCP resource handlers. */
 export interface ResourceDeps {
   engine: DuneEngine;
   storage: StorageAdapter;
@@ -259,6 +260,7 @@ function makeAuditLogHandler(storage: StorageAdapter, root: string): ResourceHan
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
+/** A registered MCP resource — descriptor plus its handler function. */
 export interface ResourceRegistration {
   meta: McpResource;
   handler: ResourceHandler;

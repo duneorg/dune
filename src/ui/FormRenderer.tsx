@@ -12,6 +12,7 @@ import { h, Fragment } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect } from "preact/hooks";
 
+/** Props for the {@link FormRenderer} island component. */
 export interface FormRendererProps {
   formName: string;
   successMessage?: string;

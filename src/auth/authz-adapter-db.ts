@@ -107,6 +107,7 @@ async function ensureTable(adapter: DbAdapter): Promise<void> {
 
 // ── Adapter class ─────────────────────────────────────────────────────────────
 
+/** Polizy storage adapter backed by a SQL database. Pass to {@link createDuneAuthSystem} via `authzStore: "db"`. */
 export class AuthzDbAdapter {
   private readonly db: DbAdapter;
   private ready: Promise<void> | null = null;

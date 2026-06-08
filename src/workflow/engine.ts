@@ -14,12 +14,14 @@ import type {
   WorkflowTransition,
 } from "./types.ts";
 
+/** Options for {@link createWorkflowEngine}. */
 export interface WorkflowEngineConfig {
   storage: StorageAdapter;
   /** Directory for workflow data */
   dataDir: string;
 }
 
+/** Manages content status transitions and workflow queries. Obtain via {@link createWorkflowEngine}. */
 export interface WorkflowEngine {
   /** All configured stages */
   stages: WorkflowStage[];

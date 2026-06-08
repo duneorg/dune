@@ -18,6 +18,7 @@ import type {
   PluginApi,
 } from "./types.ts";
 
+/** Options for {@link createHookRegistry}. */
 export interface HookRegistryOptions {
   config: DuneConfig;
   storage: StorageAdapter;

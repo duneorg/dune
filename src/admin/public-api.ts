@@ -235,6 +235,10 @@ export async function handleFormSubmission(ctx: AdminContext, req: Request, form
 // Matches token against config.admin.incoming_webhooks entries.
 // Token values starting with "$" are expanded from environment variables.
 // On match, dispatches the permitted actions requested in the body.
+/**
+ * Handle `POST /api/webhook/incoming` — validates the token and dispatches permitted actions.
+ * Token may be in the `Authorization: Bearer` header or `body.token`.
+ */
 export async function handleIncomingWebhook(ctx: AdminContext, req: Request): Promise<Response> {
   const { config, engine, auditLogger, imageCache } = ctx;
 
@@ -351,6 +355,10 @@ export async function handleIncomingWebhook(ctx: AdminContext, req: Request): Pr
 
 // ── Contact form submission handler (public) ──────────────────────────────────
 
+/**
+ * Handle `POST /api/contact` — validates reCAPTCHA, persists the form submission,
+ * and optionally sends a notification email.
+ */
 export async function handleContactSubmission(ctx: AdminContext, req: Request): Promise<Response> {
   const { storage, submissions, config } = ctx;
 

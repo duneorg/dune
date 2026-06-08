@@ -30,6 +30,7 @@ import type { DunePlugin } from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
+/** Options for the plugin loader. */
 export interface PluginLoaderOptions {
   config: DuneConfig;
   hooks: HookRegistry;

@@ -11,6 +11,7 @@ import { h } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 
+/** Props for the {@link SearchBar} island component. */
 export interface SearchBarProps {
   placeholder?: string;
   limit?: number;

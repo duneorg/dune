@@ -19,6 +19,7 @@ import { createLocalSessionStore } from "../../session/local.ts";
 
 export type { SessionStore };
 
+/** Options for {@link createSessionManager}. */
 export interface SessionManagerConfig {
   /**
    * Pre-constructed session store. When provided, `storage` and `sessionsDir`
@@ -39,6 +40,7 @@ export interface SessionManagerConfig {
   lifetime: number;
 }
 
+/** Creates and validates admin sessions. Obtain via {@link createSessionManager}. */
 export interface SessionManager {
   /** Create a new session for a user */
   create(userId: string, ip?: string): Promise<AdminSession>;

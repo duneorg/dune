@@ -8,6 +8,7 @@
 import type { StorageAdapter } from "../storage/types.ts";
 import type { ScheduledAction } from "./types.ts";
 
+/** Options for {@link createScheduler}. */
 export interface SchedulerConfig {
   storage: StorageAdapter;
   /** Directory for scheduler data */
@@ -16,6 +17,7 @@ export interface SchedulerConfig {
   interval?: number;
 }
 
+/** Schedules and executes time-based publish/unpublish/archive actions. Obtain via {@link createScheduler}. */
 export interface Scheduler {
   /** Schedule a new action */
   schedule(action: Omit<ScheduledAction, "id" | "createdAt">): Promise<ScheduledAction>;

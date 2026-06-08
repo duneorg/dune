@@ -6,6 +6,11 @@
 import { BUILT_IN_SECTIONS } from "./built-in.ts";
 import type { SectionDef } from "./types.ts";
 
+/**
+ * Registry of {@link SectionDef} instances for the Visual Page Builder.
+ * Use the shared {@link sectionRegistry} singleton, or create a new instance
+ * for isolated testing.
+ */
 export class SectionRegistry {
   private readonly defs = new Map<string, SectionDef>();
 

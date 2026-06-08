@@ -7,6 +7,7 @@ import type { UserManager } from "./users.ts";
 import type { AdminPermission, AuthResult } from "../types.ts";
 import { ROLE_PERMISSIONS } from "../types.ts";
 
+/** Options for {@link createAuthMiddleware}. */
 export interface AuthMiddlewareConfig {
   sessions: SessionManager;
   users: UserManager;
@@ -28,6 +29,7 @@ export interface AuthMiddlewareConfig {
   trustForwardedFor?: boolean;
 }
 
+/** Validates session cookies and checks admin permissions. Obtain via {@link createAuthMiddleware}. */
 export interface AuthMiddleware {
   /** Extract and validate session from request. Returns auth result. */
   authenticate(req: Request): Promise<AuthResult>;
@@ -39,6 +41,7 @@ export interface AuthMiddleware {
   clearSessionCookie(): string;
 }
 
+/** Create an auth middleware for validating admin session cookies. */
 export function createAuthMiddleware(config: AuthMiddlewareConfig): AuthMiddleware {
   const { sessions, users } = config;
   const cookieName = config.cookieName ?? "dune_session";

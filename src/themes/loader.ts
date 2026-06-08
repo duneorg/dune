@@ -153,6 +153,7 @@ export async function collectContentIslands(
   return islands;
 }
 
+/** Options for {@link createThemeLoader}. */
 export interface ThemeLoaderOptions {
   storage: StorageAdapter;
   /** Base directory where themes live (e.g., "themes") */
@@ -180,6 +181,7 @@ export interface ThemeLoaderOptions {
   sharedThemesDir?: string;
 }
 
+/** Loads and resolves theme templates, layouts, and locales. Obtain via {@link createThemeLoader}. */
 export interface ThemeLoader {
   theme: ResolvedTheme;
   /**

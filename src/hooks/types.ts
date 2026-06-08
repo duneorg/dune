@@ -187,6 +187,24 @@ export interface AdminPageRegistration<S = any> {
   handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
 }
 
+/**
+ * Plugin definition interface.
+ *
+ * A Dune plugin is a plain object (or the return value of a factory function)
+ * that registers hook handlers and optionally contributes admin pages, schemas,
+ * and static assets.
+ *
+ * @example
+ * ```ts
+ * export default {
+ *   name: "my-plugin",
+ *   version: "1.0.0",
+ *   hooks: {
+ *     onRebuild: async (ctx) => { console.log("rebuilt"); },
+ *   },
+ * } satisfies DunePlugin;
+ * ```
+ */
 export interface DunePlugin {
   /** Unique plugin identifier — used as the key in config.plugins */
   name: string;
