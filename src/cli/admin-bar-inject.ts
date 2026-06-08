@@ -88,6 +88,18 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * JSON-encode a string for safe embedding inside an inline `<script>` block.
+ *
+ * `JSON.stringify` alone preserves `<` and `>` literally, so a value like
+ * `"</script>"` would break out of the script tag.  Escaping `<` as `<`
+ * and `>` as `>` keeps the JSON semantically identical while making it
+ * safe to embed in HTML.
+ */
+function jsonStr(s: string): string {
+  return JSON.stringify(s).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+}
+
 // ── Admin bar + auto-overlay HTML ─────────────────────────────────────────────
 
 function buildAdminBarHtml(opts: {
@@ -194,10 +206,10 @@ function buildAdminBarHtml(opts: {
 
   // ── Globals ──────────────────────────────────────────────────────────────────
   window.__DUNE_EDIT_MODE__ = true;
-  window.__DUNE_EDIT_SOURCE_PATH__ = ${JSON.stringify(sourcePath)};
-  window.__DUNE_COMMIT_URL__ = ${JSON.stringify(commitUrl)};
-  window.__DUNE_FIELDS_URL__ = ${JSON.stringify(fieldsUrl)};
-  window.__DUNE_SOURCE_URL__ = ${JSON.stringify(commitUrl.replace('/commit', '/source'))};
+  window.__DUNE_EDIT_SOURCE_PATH__ = ${jsonStr(sourcePath)};
+  window.__DUNE_COMMIT_URL__ = ${jsonStr(commitUrl)};
+  window.__DUNE_FIELDS_URL__ = ${jsonStr(fieldsUrl)};
+  window.__DUNE_SOURCE_URL__ = ${jsonStr(commitUrl.replace('/commit', '/source'))};
 
   var editMode = true;
 

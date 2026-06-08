@@ -9,6 +9,7 @@
  */
 
 import type { AdminState } from "../../types.ts";
+import { validatePagePath } from "../api/_utils.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {
@@ -27,6 +28,13 @@ export const handler = {
     }
     if (!auth.hasPermission(authResult, "pages.update")) {
       return new Response("Forbidden", { status: 403 });
+    }
+
+    // Validate path here (in admin context where validatePagePath is available)
+    // so manager.ts doesn't need a weaker hand-rolled check.
+    const sourcePath = new URL(ctx.req.url).searchParams.get("path");
+    if (!sourcePath || !validatePagePath(sourcePath)) {
+      return new Response("Invalid path", { status: 400 });
     }
 
     return inlineEdit.handleUpgrade(ctx.req, {

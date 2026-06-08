@@ -13,9 +13,17 @@
 import * as Y from "yjs";
 import type { StorageAdapter } from "../storage/types.ts";
 
-/** Encode a source path to a safe filename. */
+/**
+ * Encode a source path to a safe filename.
+ *
+ * `encodeURIComponent` percent-encodes all characters except `A-Z a-z 0-9 - _ . ! ~ * ' ( )`.
+ * Slashes become `%2F`, dots remain as-is.  We intentionally do NOT replace
+ * `%2F` with `__` because that would create a collision: `foo/bar.md` and
+ * the (admittedly unusual) file `foo__bar.md` would produce the same encoded
+ * name, causing them to share Y.js state.  Keeping `%2F` encoded is unambiguous.
+ */
 export function encodeSourcePath(sourcePath: string): string {
-  return encodeURIComponent(sourcePath).replace(/%2F/g, "__");
+  return encodeURIComponent(sourcePath);
 }
 
 /** Resolve the on-disk path for a Y.js doc binary. */

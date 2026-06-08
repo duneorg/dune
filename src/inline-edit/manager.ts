@@ -148,15 +148,8 @@ export function createInlineEditManager(
       if (!sourcePath) {
         return new Response("Missing ?path= parameter", { status: 400 });
       }
-
-      // Validate path: must be relative, no traversal.
-      if (
-        sourcePath.startsWith("/") ||
-        sourcePath.includes("..") ||
-        sourcePath.includes("\0")
-      ) {
-        return new Response("Invalid path", { status: 400 });
-      }
+      // Path validation is the caller's responsibility (edit-ws.ts uses
+      // validatePagePath before calling handleUpgrade).  Sanity-check only.
 
       const { socket, response } = Deno.upgradeWebSocket(req);
 
