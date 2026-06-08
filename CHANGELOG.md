@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.15.1] — 2026-06-08
+
+### Fixed
+
+- JSR score: add explicit return types (`JSX.Element` / `JSX.Element | null`) to all exported UI components so the package passes fast-check without `--allow-slow-types`.
+- JSR score: add explicit `AuthSchema` type annotation to `duneAuthzSchema` export.
+- JSR score: add `@module` JSDoc tag to `src/auth/authz.ts` and `src/core/logger.ts` entry points.
+
+---
+
 ## [0.15.0] — 2026-06-08
 
 ### Added

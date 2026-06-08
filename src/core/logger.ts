@@ -15,6 +15,7 @@
  *   // Child logger with bound fields (e.g. per-request correlation):
  *   const reqLog = logger.child({ requestId: generateRequestId() });
  *   reqLog.warn("auth.failed", { username: "alice" });
+ * @module
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

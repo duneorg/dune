@@ -8,6 +8,7 @@
  */
 
 import { h } from "preact";
+import type { JSX } from "preact";
 
 export interface LoginFormProps {
   /** OAuth providers to show as buttons. Supported: "github" | "google" | "discord" | "magic" */
@@ -33,7 +34,7 @@ export default function LoginForm({
   providers = [],
   redirectTo,
   className,
-}: LoginFormProps) {
+}: LoginFormProps): JSX.Element {
   const oauthProviders = providers.filter((p) => p !== "magic");
   const hasMagic = providers.includes("magic");
   const redirectParam = redirectTo ? `?next=${encodeURIComponent(redirectTo)}` : "";

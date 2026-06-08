@@ -26,8 +26,10 @@
  */
 
 import { defineSchema } from "polizy";
+import type { AuthSchema } from "polizy";
 
-export const duneAuthzSchema = defineSchema({
+// deno-lint-ignore no-explicit-any
+export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema({
   relations: {
     /** Group membership — used for role-based content gating. The `type: "group"` marker
      *  tells polizy that `addMember()` should use this relation. */

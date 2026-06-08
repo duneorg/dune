@@ -8,6 +8,7 @@
  */
 
 import { h } from "preact";
+import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 
 export interface SubscriptionFormProps {
@@ -20,7 +21,7 @@ export default function SubscriptionForm({
   productId,
   label = "Subscribe",
   className,
-}: SubscriptionFormProps) {
+}: SubscriptionFormProps): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
