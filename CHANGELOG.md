@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.15.0] — 2026-06-08
+
+### Added
+
+- **Flat content files** — `.md` and `.tsx` files placed directly in a plain (non-numeric) folder route by filename stem: `articles/my-post.md → /articles/my-post`. Reserved stems (`default`, `index`) continue to represent the folder's own page. `@self.children` and `@self.descendants` in collections now include flat files.
+- **TSX `handler` export** — TSX content pages can export a `handler: Handlers<Data>` object alongside the default component, mirroring Fresh's route handler idiom. `GET`, `POST`, and other methods dispatch through it before rendering. `ctx.render(data)` passes data to the component as `PageProps<Data>.data`. The content catch-all now accepts all HTTP methods so POST requests reach the handler.
+- **`@frontmatter` collection source** — Resolves collection items from a frontmatter array field on the current page. Each entry is a slug string or an object with a `slug` property; order follows the frontmatter declaration. Useful for curated lists where editors control exact selection and order.
+- **Themed 404 pages** — When the active theme exposes a `layout` component, 404 responses are rendered through it so the site header, nav, and footer are present. Falls back to the existing bare-HTML 404 when no layout is found.
+- **Island discoverability** — `dune new` scaffold now creates `themes/starter/islands/NavToggle.tsx` (a working hamburger toggle) and adds the required esbuild import map entries to `deno.json`. The new `skills/dune-themes.md` agent skill documents the full islands pattern and is installable via `dune update:skills`.
+
+### Fixed
+
+- Orphan protection (`&nbsp;`) was replacing the last space inside HTML attribute values (e.g. `class="cta-button cta-secondary"` → broken CSS selector). Fixed by walking the string at tag-depth 0 — only spaces in text nodes are considered.
+
+### Breaking
+
+- **`SearchEngine.search()` and `suggest()` are now async** (return `Promise`). The built-in in-memory engine wraps synchronous results in `Promise.resolve()` — no behavior change. Custom search engine implementations must update their signatures.
+
+---
+
 ## [0.14.0] — 2026-06-02
 
 ### Added

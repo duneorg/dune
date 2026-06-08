@@ -171,9 +171,17 @@ export function createCollectionEngine(
             : (item as Record<string, unknown>)?.slug as string | undefined
         )
         .filter((s): s is string => typeof s === "string" && s.length > 0);
-      // Preserve declaration order; match by the last segment of each page route
+      // Preserve declaration order.
+      // A slug starting with "/" is treated as a full route (unambiguous).
+      // Otherwise match by the terminal route segment (last path component).
+      // Full-route form is preferred when the same terminal slug exists under
+      // multiple sections — e.g. use "/blog/intro" instead of "intro".
       return slugs
-        .map((slug) => pages.find((p) => p.route.split("/").pop() === slug))
+        .map((slug) =>
+          slug.startsWith("/")
+            ? pages.find((p) => p.route.toLowerCase() === slug.toLowerCase())
+            : pages.find((p) => p.route.split("/").pop() === slug)
+        )
         .filter((p): p is PageIndex => p !== undefined);
     }
 
