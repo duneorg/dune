@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.15.4] — 2026-06-08
+
+### Fixed
+
+- Startup hang (100% CPU) on sites using flat-file content layouts (e.g. `blog/post-slug/post.md`). The sitemap generator's ancestor traversal would find a page as its own parent and spin indefinitely. A cycle guard now breaks out when the same page is visited twice.
+
+---
+
 ## [0.15.3] — 2026-06-08
 
 ### Fixed
