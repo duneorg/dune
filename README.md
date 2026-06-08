@@ -6,7 +6,7 @@ The flat-file CMS for [Deno](https://deno.land/) and [Fresh](https://fresh.deno.
 Grows from Markdown content to full-stack web apps with Preact themes and Fresh islands.
 Start without a database. Ship as a single Deno module — no build pipeline required.
 
-> **Status: v0.14** — Stable for production use. Minor releases may include breaking changes until v1.0.
+> **Pre-1.0** — In active use in production. API evolves with each minor release; breaking changes are noted in the changelog.
 
 ## What is Dune?
 
