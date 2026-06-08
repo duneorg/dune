@@ -285,3 +285,27 @@ Deno.test("generateSitemap: strips control characters from URLs", () => {
   assertEquals(xml.includes("\x07"), false);
   assertEquals(xml.includes("/pathwithcontrol"), true);
 });
+
+Deno.test("generateSitemap: flat-file pages with self-referential parentPath do not loop", () => {
+  // Flat-file pages (e.g. blog/post-dir/post.md) have parentPath === dirname(sourcePath).
+  // hasUnpublishedAncestor must not loop when it finds the page as its own parent.
+  const pages = [
+    makePage({
+      sourcePath: "blog/my-article/post.md",
+      route: "/blog/my-article",
+      // parentPath equals the file's own directory — classic flat-file layout
+      parentPath: "blog/my-article",
+      depth: 1,
+    }),
+    makePage({
+      sourcePath: "blog/another/post.md",
+      route: "/blog/another",
+      parentPath: "blog/another",
+      depth: 1,
+    }),
+  ];
+  // Must not hang — the cycle guard must break the loop
+  const xml = generateSitemap(pages, "https://example.com");
+  assertEquals(xml.includes("/blog/my-article</loc>"), true);
+  assertEquals(xml.includes("/blog/another</loc>"), true);
+});

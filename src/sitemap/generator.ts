@@ -67,7 +67,13 @@ export function generateSitemap(
   /** Check if page has any unpublished ancestor (exclude from sitemap if so) */
   const hasUnpublishedAncestor = (p: PageIndex): boolean => {
     let current: PageIndex | null = p;
+    const seen = new Set<string>();
     while (current?.parentPath) {
+      // Cycle guard: flat-file pages have parentPath === dirname(sourcePath),
+      // so the ancestor search would find the same page and loop forever.
+      const key = `${current.sourcePath}|${current.language ?? ""}`;
+      if (seen.has(key)) break;
+      seen.add(key);
       const parent = pages.find(
         (q) => dirname(q.sourcePath) === current!.parentPath && q.language === current!.language,
       );
