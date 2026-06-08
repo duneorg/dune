@@ -112,6 +112,57 @@ export interface MediaHelper {
 
 // === Page ===
 
+/**
+ * Context object passed to Fresh-style `handler` exports in .tsx content pages.
+ *
+ * @example
+ * ```ts
+ * // content/contact.tsx
+ * import type { ContentHandlerContext } from "@dune/cms/content";
+ *
+ * export const handler = {
+ *   POST: async (req: Request, ctx: ContentHandlerContext) => {
+ *     // Reject cross-origin POSTs for session-guarded mutations.
+ *     // Omit this check for webhooks and public API endpoints that should
+ *     // accept cross-origin requests.
+ *     const denied = ctx.csrfCheck();
+ *     if (denied) return denied;
+ *
+ *     const form = await req.formData();
+ *     // ... process form
+ *     return ctx.render({ success: true });
+ *   },
+ * };
+ * ```
+ */
+export interface ContentHandlerContext {
+  /** The incoming request (same object passed to the handler). */
+  req: Request;
+  /** Parsed URL of the request. */
+  url: URL;
+  /** URL path parameters (always `{}` for content pages — no dynamic segments). */
+  params: Record<string, string>;
+  /**
+   * Render the page component with the given data and return an HTTP response.
+   * The data is passed to the component as `props.data`.
+   */
+  render: (data: unknown) => Promise<Response>;
+  /**
+   * Same-origin CSRF check for mutating requests (POST, PUT, DELETE, PATCH).
+   *
+   * Returns a `403 Forbidden` response if the request carries an `Origin`
+   * header pointing at a different host, `null` otherwise.
+   *
+   * Safe methods (GET, HEAD, OPTIONS) and requests without an `Origin` header
+   * (server-to-server calls, webhooks, curl) always return `null`.
+   *
+   * Call this at the top of any handler that performs a state-changing
+   * operation guarded by a session cookie. Skip it for endpoints that
+   * legitimately accept cross-origin POST (webhooks, CORS APIs).
+   */
+  csrfCheck: () => Response | null;
+}
+
 /** A fully resolved page object (loaded on demand) */
 export interface Page {
   /** Unique path relative to content root: "02.blog/01.hello-world" */
@@ -140,7 +191,7 @@ export interface Page {
    * request through it before (or instead of) rendering the component.
    * Mirrors Fresh's `export const handler: Handlers<Data>` idiom exactly.
    */
-  handlers: () => Promise<Record<string, (req: Request, ctx: unknown) => Response | Promise<Response>> | null>;
+  handlers: () => Promise<Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>> | null>;
   /** Co-located media files */
   media: MediaFile[];
   /** Navigation order (from numeric prefix, or frontmatter) */

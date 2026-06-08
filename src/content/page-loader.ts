@@ -17,6 +17,7 @@ import type { FormatRegistry } from "./formats/registry.ts";
 import { applyOrphanProtection } from "./typography.ts";
 import type {
   ContentFormat,
+  ContentHandlerContext,
   MediaFile,
   Page,
   PageFrontmatter,
@@ -118,7 +119,7 @@ export async function loadPage(
       if (index.format !== "tsx") return null;
       const absPath = await resolveAbsolutePath(options.storageRoot, contentFilePath);
       const mod = await import(`file://${absPath}`);
-      return (mod.handler ?? null) as Record<string, (req: Request, ctx: unknown) => Response | Promise<Response>> | null;
+      return (mod.handler ?? null) as Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>> | null;
     }),
 
     // Lazy: summary/excerpt

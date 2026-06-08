@@ -750,6 +750,32 @@ export function duneRoutes(
                   params: {},
                 }));
               },
+              /**
+               * Same-origin CSRF guard for mutating handlers.
+               * Returns 403 if Origin is present and cross-site, null otherwise.
+               * Skip for webhooks / CORS APIs that legitimately accept
+               * cross-origin POST. See ContentHandlerContext.csrfCheck.
+               */
+              csrfCheck: (): Response | null => {
+                const m = req.method;
+                if (m === "GET" || m === "HEAD" || m === "OPTIONS") return null;
+                const origin = req.headers.get("origin");
+                if (origin === null) return null;
+                try {
+                  if (new URL(origin).host !== url.host) {
+                    return Response.json(
+                      { error: "Forbidden: cross-origin request rejected" },
+                      { status: 403 },
+                    );
+                  }
+                } catch {
+                  return Response.json(
+                    { error: "Forbidden: cross-origin request rejected" },
+                    { status: 403 },
+                  );
+                }
+                return null;
+              },
             };
             return methodFn(req, ctx);
           }
@@ -887,14 +913,16 @@ export function duneRoutes(
           // This ensures items are loaded before template rendering (SSR)
           if (collection && typeof collection.load === 'function') {
             await collection.load();
-            // Pre-render HTML for items that may need it inline (e.g. post bodies
-            // within kurzinfos articles). Stored as _html so sync JSX templates
-            // can access it without awaiting.
-            await Promise.all(
-              collection.items.map(async (item) => {
-                (item as unknown as Record<string, unknown>)._html = await item.html();
-              }),
+            // Pre-render HTML for items that need it inline (e.g. post bodies
+            // rendered synchronously in JSX templates). Build per-request
+            // wrapper objects rather than mutating the shared Page objects
+            // from engine.pageCache — avoids races and keeps the cache clean.
+            const enrichedItems = await Promise.all(
+              collection.items.map(async (item) =>
+                Object.assign({}, item as object, { _html: await item.html() }) as unknown as typeof item
+              ),
             );
+            collection = { ...collection, items: enrichedItems } as typeof collection;
           }
         }
       }
