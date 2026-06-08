@@ -21,6 +21,7 @@ export interface UpdateSkillsOptions {
 /** Known skill file names — used when running from a remote JSR URL. */
 export const KNOWN_SKILL_FILES = [
   "dune-content.md",
+  "dune-themes.md",
   "dune-mcp.md",
   "dune-plugin-authoring.md",
   "dune-schemas.md",

@@ -33,6 +33,12 @@ version: "0.1.0"
 
 const LAYOUT_TSX = `/** @jsxImportSource preact */
 import { h } from "preact";
+import NavToggle from "../islands/NavToggle.tsx";
+
+const NAV_LINKS = [
+  { label: "Home", href: "/" },
+  { label: "Blog", href: "/blog" },
+];
 
 export default function Layout({ children, site }: any) {
   return (
@@ -48,20 +54,70 @@ export default function Layout({ children, site }: any) {
           code { font-family: "SF Mono", Monaco, monospace; font-size: 0.9em; }
           a { color: #0066cc; }
           img { max-width: 100%; }
-          nav a { margin-right: 1rem; }
+          header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+          .nav-desktop a { margin-right: 1rem; }
+          .nav-mobile { position: relative; }
+          .nav-toggle-btn { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 1.1rem; }
+          .nav-mobile-menu { position: absolute; right: 0; top: 2rem; background: #fff; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem 0; list-style: none; margin: 0; min-width: 140px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          .nav-mobile-menu li a { display: block; padding: 0.5rem 1rem; }
+          @media (min-width: 600px) { .nav-mobile { display: none; } }
+          @media (max-width: 599px) { .nav-desktop { display: none; } }
         \`}</style>
       </head>
       <body>
-        <nav>
+        <header>
           <a href="/"><strong>{site?.title ?? "Home"}</strong></a>
-          <a href="/blog">Blog</a>
-        </nav>
+          <nav class="nav-desktop">
+            {NAV_LINKS.map(({ label, href }) => <a key={href} href={href}>{label}</a>)}
+          </nav>
+          {/* NavToggle is a Preact island — it hydrates in the browser for mobile nav */}
+          <NavToggle links={NAV_LINKS} />
+        </header>
         <main>{children}</main>
         <footer style={{ marginTop: "3rem", borderTop: "1px solid #eee", paddingTop: "1rem", color: "#999" }}>
           <p>Powered by Dune</p>
         </footer>
       </body>
     </html>
+  );
+}
+`;
+
+const NAV_TOGGLE_TSX = `/** @jsxImportSource preact */
+import { useState } from "preact/hooks";
+
+interface NavLink { label: string; href: string; }
+
+/**
+ * Mobile navigation toggle island.
+ *
+ * This is a Preact island — it renders on the server first, then hydrates in
+ * the browser so the button and menu are interactive. It is imported in
+ * \`components/layout.tsx\` alongside the server-rendered desktop nav.
+ *
+ * Add new links to NAV_LINKS in layout.tsx — they are passed as props here so
+ * the same list drives both the desktop and mobile menus.
+ */
+export default function NavToggle({ links }: { links: NavLink[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div class="nav-mobile">
+      <button
+        class="nav-toggle-btn"
+        aria-expanded={open}
+        aria-label={open ? "Close menu" : "Open menu"}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? "✕" : "☰"}
+      </button>
+      {open && (
+        <ul class="nav-mobile-menu">
+          {links.map(({ label, href }) => (
+            <li key={href}><a href={href}>{label}</a></li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 `;
@@ -180,7 +236,9 @@ const MCP_JSON = `{
 const DENO_JSON = `{
   "imports": {
     "preact": "npm:preact@^10",
-    "preact/": "npm:preact@^10/",
+    "preact/hooks": "npm:preact@^10/hooks",
+    "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
+    "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
     "@dune/core": "jsr:@dune/core@^0.6"
   },
@@ -394,6 +452,7 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await mkdirp(`${dir}/content/02.blog/01.hello-world`);
   await mkdirp(`${dir}/themes/starter/templates`);
   await mkdirp(`${dir}/themes/starter/components`);
+  await mkdirp(`${dir}/themes/starter/islands`);
   await mkdirp(`${dir}/.vscode`);
 
   // Write files
@@ -401,6 +460,7 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await Deno.writeTextFile(`${dir}/config/system.yaml`, SYSTEM_YAML);
   await Deno.writeTextFile(`${dir}/themes/starter/theme.yaml`, THEME_YAML);
   await Deno.writeTextFile(`${dir}/themes/starter/components/layout.tsx`, LAYOUT_TSX);
+  await Deno.writeTextFile(`${dir}/themes/starter/islands/NavToggle.tsx`, NAV_TOGGLE_TSX);
   await Deno.writeTextFile(`${dir}/themes/starter/templates/default.tsx`, DEFAULT_TEMPLATE);
   await Deno.writeTextFile(`${dir}/content/01.home/default.md`, HOME_MD);
   await Deno.writeTextFile(`${dir}/content/02.blog/blog.md`, BLOG_MD);
@@ -423,7 +483,9 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`    .vscode/settings.json   (YAML autocompletion for config/*.yaml)`);
   console.log(`    .mcp.json               (Claude Code MCP server config)`);
   console.log(`    content/02.blog/01.hello-world/post.md`);
-  console.log(`    themes/starter/`);
+  console.log(`    themes/starter/components/layout.tsx`);
+  console.log(`    themes/starter/islands/NavToggle.tsx  (Preact island — mobile nav)`);
+  console.log(`    themes/starter/templates/default.tsx`);
   console.log(`    deno.json`);
   if (skillsResult.installed > 0) {
     console.log(`    .claude/skills/         (${skillsResult.installed} AI agent skill files)`);

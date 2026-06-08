@@ -33,11 +33,16 @@ import type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./types.ts";
  *
  * For each theme in the chain (child → parent → grandparent), enumerates all
  * `.tsx` files in `themes/{name}/islands/`. Returns a deduplicated list of
- * absolute paths suitable for use as Builder `islandSpecifiers`.
+ * absolute paths registered with Fresh's builder as island specifiers.
  *
- * This is the auto-discovery mechanism for Plan B: theme authors drop `.tsx`
- * files into `islands/`, import them from templates, and they're bundled
- * automatically — no `theme.yaml` declaration needed.
+ * Theme authors drop `.tsx` Preact components into `themes/{name}/islands/`,
+ * import them from templates using a relative path (`../islands/MyIsland.tsx`),
+ * and Fresh handles bundling and browser hydration automatically. No
+ * `theme.yaml` declaration needed — the directory is the registration.
+ *
+ * Called at startup by both `dune dev` and `dune serve`. In dev mode, Fresh
+ * also watches the islands directory directly and rebuilds the JS bundle when
+ * any island file changes.
  */
 export async function collectThemeIslands(
   theme: ResolvedTheme,
