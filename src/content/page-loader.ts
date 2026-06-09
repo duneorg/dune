@@ -137,7 +137,10 @@ export async function loadPage(
         .replace(/`([^`]+)`/g, "$1")
         .replace(/\n+/g, " ")
         .trim();
-      return plain.slice(0, size);
+      if (plain.length <= size) return plain;
+      // Truncate at last word boundary before size, append ellipsis
+      const cut = plain.lastIndexOf(" ", size);
+      return plain.slice(0, cut > 0 ? cut : size) + "…";
     }),
 
     // Lazy: relations

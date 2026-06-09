@@ -927,7 +927,10 @@ export function duneRoutes(
             // from engine.pageCache — avoids races and keeps the cache clean.
             const enrichedItems = await Promise.all(
               collection.items.map(async (item) =>
-                Object.assign({}, item as object, { _html: await item.html() }) as unknown as typeof item
+                Object.assign({}, item as object, {
+                  _html: await item.html(),
+                  _summary: await item.summary(),
+                }) as unknown as typeof item
               ),
             );
             collection = { ...collection, items: enrichedItems } as typeof collection;
