@@ -324,8 +324,11 @@ export async function main() {
     const siteDenoJson = joinPath(absRoot, "deno.json");
     try {
       await Deno.stat(siteDenoJson);
+      // Re-exec using cli.ts (not cli-impl.ts) so the entry-point module is
+      // executed as a script and calls main() automatically.
+      const cliUrl = new URL("./cli.ts", import.meta.url).href;
       const cmd = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", `--config=${siteDenoJson}`, import.meta.url, ...args],
+        args: ["run", "-A", `--config=${siteDenoJson}`, cliUrl, ...args],
         env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
         stdin: "inherit",
         stdout: "inherit",
