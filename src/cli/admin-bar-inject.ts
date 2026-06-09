@@ -161,56 +161,45 @@ function buildAdminBarHtml(opts: {
   .dune-editable-text:hover .dune-edit-handle,
   .dune-editable-markdown:hover .dune-edit-handle--body { opacity: 1 !important; }
 
-  /* Auto-overlay edit handles */
+  /* Auto-overlay — component-kit island compatibility */
   .dune-ao-wrap { position: relative; display: inline; }
   .dune-ao-handle {
     position: absolute; top: -6px; right: -6px;
     background: #3498db; color: #fff;
     border: none; border-radius: 3px;
     padding: 1px 5px; font-size: 10px; cursor: pointer;
-    opacity: 0; transition: opacity .15s;
-    z-index: 1000;
+    opacity: 0; transition: opacity .15s; z-index: 1000;
   }
   .dune-ao-wrap:hover .dune-ao-handle { opacity: 1; }
-  /* Zero-height sticky wrapper keeps the edit button pinned below the admin
-     bar as you scroll, positioned at the start of actual body text (first <p>)
-     rather than at the top of the outer article/main container. */
-  .dune-ao-body-sticky {
-    height: 0; overflow: visible;
-    position: sticky; top: 50px;
-    text-align: right;
-    pointer-events: none;
-    z-index: 1000;
-  }
-  .dune-ao-body-btn {
-    display: inline-block;
-    pointer-events: all;
-    background: #3498db; color: #fff;
-    border: none; border-radius: 4px;
-    padding: 4px 10px; font-size: 12px; cursor: pointer;
-    opacity: 0; transition: opacity .15s;
-  }
-  [data-dune-editable="body"]:hover .dune-ao-body-btn { opacity: 1; }
 
-  /* Inline body editor overlay */
-  .dune-body-editor-wrap {
-    position: relative; border: 2px solid #3498db;
-    border-radius: 4px; padding: 4px;
+  /* Auto-overlay — click-to-edit indicators (active when edit mode is on) */
+  body.dune-edit-mode [data-dune-field] { cursor: text; }
+  body.dune-edit-mode [data-dune-field]:not([contenteditable="true"]):hover {
+    outline: 2px dashed rgba(52,152,219,.5); outline-offset: 2px;
   }
-  .dune-body-editor-textarea {
-    width: 100%; min-height: 200px;
-    font: 14px/1.6 "SF Mono", Monaco, monospace;
-    border: none; outline: none; resize: vertical;
-    padding: 8px; box-sizing: border-box; background: #fff;
+  [data-dune-field][contenteditable="true"] {
+    outline: 2px solid #3498db !important; outline-offset: 2px; border-radius: 2px;
   }
-  .dune-body-editor-toolbar {
-    display: flex; gap: 8px; padding: 4px 8px;
-    background: #f4f6f8; border-top: 1px solid #e0e4e8;
-    font-size: 12px;
+  body.dune-edit-mode [data-dune-body-editable]:not([contenteditable="true"]):hover {
+    outline: 2px dashed rgba(52,152,219,.35); outline-offset: 4px; cursor: text;
   }
-  .dune-body-editor-toolbar button {
-    padding: 3px 10px; border: none; border-radius: 3px;
-    cursor: pointer; font-size: 12px;
+  [data-dune-body-editable][contenteditable="true"] {
+    outline: 2px solid #3498db; outline-offset: 4px;
+  }
+
+  /* Floating sticky toolbar shown while body editing is active */
+  .dune-ao-body-toolbar {
+    height: 0; overflow: visible; position: sticky; top: 50px;
+    text-align: right; pointer-events: none; z-index: 1001;
+  }
+  .dune-ao-body-toolbar-inner {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; pointer-events: all;
+    background: #1a1a2e; border-radius: 0 0 6px 6px; font-size: 12px;
+  }
+  .dune-ao-body-toolbar button {
+    border: none; border-radius: 4px; padding: 3px 10px;
+    font-size: 12px; cursor: pointer; color: #fff;
   }
   .dune-status-saved { color: #2ecc71; }
   .dune-status-error { color: #e74c3c; }
@@ -235,6 +224,7 @@ function buildAdminBarHtml(opts: {
   window.__DUNE_SOURCE_URL__ = ${jsonStr(commitUrl.replace('/commit', '/source'))};
 
   var editMode = true;
+  document.body.classList.add('dune-edit-mode');
 
   // ── Admin bar buttons ─────────────────────────────────────────────────────────
   var saveBtn = document.getElementById('dune-ab-save');
@@ -246,10 +236,7 @@ function buildAdminBarHtml(opts: {
     toggleBtn.textContent = editMode ? '✎ Editing' : '👁 Preview';
     toggleBtn.style.background = editMode ? '#3498db' : 'rgba(255,255,255,.15)';
     toggleBtn.style.border = editMode ? 'none' : '1px solid rgba(255,255,255,.2)';
-    // Show/hide auto-overlay handles based on mode.
-    document.querySelectorAll('.dune-ao-handle, .dune-ao-body-btn').forEach(function(el) {
-      el.style.display = editMode ? '' : 'none';
-    });
+    document.body.classList.toggle('dune-edit-mode', editMode);
     window.dispatchEvent(new CustomEvent('dune:edit-mode-change', { detail: { mode: editMode ? 'edit' : 'preview' } }));
   });
 
@@ -302,234 +289,206 @@ function buildAdminBarHtml(opts: {
   }
 
   function activateFieldElement(el) {
-    // Skip if already activated or managed by the component kit.
     if (el.dataset.duneAoActive || el.closest('.dune-editable-text')) return;
     el.dataset.duneAoActive = '1';
 
     var fieldName = el.dataset.duneField;
-    var wrap = document.createElement('span');
-    wrap.className = 'dune-ao-wrap';
-    el.parentNode.insertBefore(wrap, el);
-    wrap.appendChild(el);
-
-    // Edit handle button.
-    var btn = document.createElement('button');
-    btn.className = 'dune-ao-handle';
-    btn.title = 'Edit ' + fieldName;
-    btn.textContent = '✎';
-    wrap.appendChild(btn);
-
-    var statusEl = null;
-
-    function showStatus(text, cls) {
-      if (!statusEl) {
-        statusEl = document.createElement('span');
-        statusEl.style.cssText = 'position:absolute;bottom:-18px;right:0;font-size:10px;background:#333;color:#fff;border-radius:2px;padding:1px 4px;pointer-events:none;z-index:1001;';
-        wrap.appendChild(statusEl);
-      }
-      statusEl.textContent = text;
-      statusEl.className = cls || '';
-      statusEl.style.display = 'inline';
-    }
-
-    function hideStatus() {
-      if (statusEl) statusEl.style.display = 'none';
-    }
-
-    var saveDebounced = debounce(function(value) {
-      showStatus('saving…', '');
-      patchField(fieldName, value).then(function(res) {
-        showStatus(res.ok ? 'saved' : 'error', res.ok ? 'dune-status-saved' : 'dune-status-error');
-        setTimeout(hideStatus, 1500);
-      }).catch(function() {
-        showStatus('error', 'dune-status-error');
-      });
-    }, DEBOUNCE_MS);
-
     var originalContent = el.textContent;
 
-    btn.addEventListener('click', function(e) {
+    var saveDebounced = debounce(function(value) {
+      patchField(fieldName, value).catch(function() {});
+    }, DEBOUNCE_MS);
+
+    // Click directly on the element to start editing — no separate button.
+    el.addEventListener('click', function(e) {
+      if (!editMode || el.contentEditable === 'true') return;
       e.stopPropagation();
       el.contentEditable = 'true';
-      el.style.outline = '2px solid #3498db';
-      el.style.borderRadius = '2px';
-      el.style.padding = '0 2px';
       el.focus();
     });
 
     el.addEventListener('input', function() {
-      if (el.contentEditable === 'true') {
-        saveDebounced(el.textContent);
-      }
+      if (el.contentEditable === 'true') saveDebounced(el.textContent);
     });
 
     el.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         el.contentEditable = 'false';
         el.textContent = originalContent;
-        el.style.outline = '';
-        el.style.padding = '';
       }
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
     });
 
     el.addEventListener('blur', function() {
+      if (el.contentEditable !== 'true') return;
       el.contentEditable = 'false';
-      el.style.outline = '';
-      el.style.padding = '';
       originalContent = el.textContent;
     });
   }
 
+  // Convert an HTML fragment to Markdown.  Handles the common elements produced
+  // by contenteditable editing.  Uses String.fromCharCode(10) for newlines and
+  // avoids all backslash escape sequences — template literal safety.
+  function htmlToMarkdown(html) {
+    var nl = String.fromCharCode(10);
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    function walk(node) {
+      if (node.nodeType === 3) return node.textContent;
+      if (node.nodeType !== 1) return '';
+      var tag = node.tagName.toLowerCase();
+      var inner = Array.from(node.childNodes).map(walk).join('');
+      if (tag === 'p') return inner.trim() + nl + nl;
+      if (tag === 'br') return nl;
+      if (tag === 'h1') return '# ' + inner.trim() + nl + nl;
+      if (tag === 'h2') return '## ' + inner.trim() + nl + nl;
+      if (tag === 'h3') return '### ' + inner.trim() + nl + nl;
+      if (tag === 'h4') return '#### ' + inner.trim() + nl + nl;
+      if (tag === 'h5') return '##### ' + inner.trim() + nl + nl;
+      if (tag === 'h6') return '###### ' + inner.trim() + nl + nl;
+      if (tag === 'strong' || tag === 'b') return '**' + inner + '**';
+      if (tag === 'em' || tag === 'i') return '_' + inner + '_';
+      if (tag === 'code') return '\`' + inner + '\`';
+      if (tag === 'pre') return '\`\`\`' + nl + node.textContent + nl + '\`\`\`' + nl + nl;
+      if (tag === 'blockquote') return inner.trim().split(nl).map(function(l) { return '> ' + l; }).join(nl) + nl + nl;
+      if (tag === 'a') return '[' + inner + '](' + (node.getAttribute('href') || '') + ')';
+      if (tag === 'img') return '![' + (node.getAttribute('alt') || '') + '](' + (node.getAttribute('src') || '') + ')';
+      if (tag === 'ul') return Array.from(node.children).map(function(li) { return '- ' + walk(li).trim(); }).join(nl) + nl + nl;
+      if (tag === 'ol') return Array.from(node.children).map(function(li, i) { return (i + 1) + '. ' + walk(li).trim(); }).join(nl) + nl + nl;
+      if (tag === 'li') return inner;
+      if (tag === 'hr') return '---' + nl + nl;
+      if (tag === 'div') return inner + (inner.slice(-1) === nl ? '' : nl);
+      return inner;
+    }
+    var result = walk(div).trim();
+    var triple = nl + nl + nl;
+    while (result.indexOf(triple) !== -1) result = result.split(triple).join(nl + nl);
+    return result;
+  }
+
   function activateBodyElement(el) {
-    // Skip if already activated or managed by the component kit.
     if (el.dataset.duneAoBodyActive || el.closest('.dune-editable-markdown')) return;
     el.dataset.duneAoBodyActive = '1';
 
-    var editBtn = document.createElement('button');
-    editBtn.className = 'dune-ao-body-btn';
-    editBtn.textContent = '✎ Edit';
-
-    var stickyWrap = document.createElement('div');
-    stickyWrap.className = 'dune-ao-body-sticky';
-    stickyWrap.appendChild(editBtn);
-
-    // editEl: the element whose innerHTML is the rendered body content.
-    // Starts as the annotated container (el), refined to the specific child
-    // that contains the body text once the source fetch completes.
-    // All editing (textarea replacement, cancel restore) operates on editEl —
-    // so the title, date, tags etc. outside editEl remain visible while editing.
+    // editEl: the specific child of el that contains the rendered body text.
+    // Starts as el itself, refined to a child after the source fetch locates the body.
     var editEl = el;
+    var bodyLocated = false;
 
     function locateBodyElement() {
       fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' })
         .then(function(res) { return res.ok ? res.json() : null; })
         .then(function(data) {
-          if (!data || !data.body) return;
-          // Find the first substantial prose line in the markdown source.
-          // Plain string ops only — no regex backslash sequences in this template literal.
-          var nl = String.fromCharCode(10);
-          var lines = data.body.split(nl);
-          var needle = '';
-          for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].trim();
-            if (line.length < 16) continue;           // too short
-            if (line[0] === '#') continue;             // heading
-            if (line.slice(0, 3) === '---') continue;  // frontmatter delimiter
-            if (line[0] === '!' || line[0] === '[') continue; // image / link
-            // Skip leading bold/italic markers.
-            var j = 0;
-            while (j < line.length && (line[j] === '*' || line[j] === '_')) j++;
-            var candidate = line.slice(j, j + 40).trim();
-            if (candidate.length > 10) { needle = candidate; break; }
-          }
-          if (!needle) return;
-          // Find that text in the DOM and walk up to the direct child of el.
-          var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-          var n;
-          while ((n = w.nextNode())) {
-            if (n.textContent.indexOf(needle) !== -1) {
-              var target = n.parentNode;
-              while (target && target.parentNode !== el) { target = target.parentNode; }
-              if (target && target !== stickyWrap) {
-                el.insertBefore(stickyWrap, target);
-                editEl = target; // refine: editing operates on this element
+          if (data && data.body) {
+            var nl = String.fromCharCode(10);
+            var lines = data.body.split(nl);
+            var needle = '';
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i].trim();
+              if (line.length < 16 || line[0] === '#' || line.slice(0, 3) === '---' || line[0] === '!' || line[0] === '[') continue;
+              var j = 0;
+              while (j < line.length && (line[j] === '*' || line[j] === '_')) j++;
+              var candidate = line.slice(j, j + 40).trim();
+              if (candidate.length > 10) { needle = candidate; break; }
+            }
+            if (needle) {
+              var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+              var n;
+              while ((n = w.nextNode())) {
+                if (n.textContent.indexOf(needle) !== -1) {
+                  var target = n.parentNode;
+                  while (target && target.parentNode !== el) { target = target.parentNode; }
+                  if (target) editEl = target;
+                  break;
+                }
               }
-              break;
             }
           }
+          editEl.dataset.duneBodyEditable = '1';
+          bodyLocated = true;
         })
-        .catch(function() {});
+        .catch(function() { editEl.dataset.duneBodyEditable = '1'; bodyLocated = true; });
     }
 
-    el.insertBefore(stickyWrap, el.firstChild);
     locateBodyElement();
 
-    editBtn.addEventListener('click', async function() {
-      editBtn.textContent = 'Loading…';
-      editBtn.disabled = true;
+    // Click directly on the body content element to start editing.
+    el.addEventListener('click', function(e) {
+      if (!editMode || !bodyLocated) return;
+      if (!editEl.contains(e.target) || e.target.closest('.dune-ao-body-toolbar')) return;
+      if (editEl.contentEditable === 'true') return;
+      e.stopPropagation();
 
-      var initialBody = '';
-      try {
-        var srcRes = await fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' });
-        if (srcRes.ok) {
-          var srcData = await srcRes.json();
-          initialBody = srcData.body || '';
-        }
-      } catch(e) {}
-
-      editBtn.textContent = '✎ Edit';
-      editBtn.disabled = false;
-
-      // Snapshot editEl's current rendered content for cancel restore.
       var originalBodyHtml = editEl.innerHTML;
+      editEl.contentEditable = 'true';
+      editEl.focus();
 
-      var editorWrap = document.createElement('div');
-      editorWrap.className = 'dune-body-editor-wrap';
-
-      var textarea = document.createElement('textarea');
-      textarea.className = 'dune-body-editor-textarea';
-      textarea.value = initialBody;
-      textarea.placeholder = 'Markdown content…';
-
+      // Floating sticky toolbar at the top of editEl.
       var toolbar = document.createElement('div');
-      toolbar.className = 'dune-body-editor-toolbar';
-
+      toolbar.className = 'dune-ao-body-toolbar';
+      var toolbarInner = document.createElement('div');
+      toolbarInner.className = 'dune-ao-body-toolbar-inner';
       var saveBodyBtn = document.createElement('button');
       saveBodyBtn.textContent = 'Save';
-      saveBodyBtn.style.cssText = 'background:#27ae60;color:#fff;';
-
-      var cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.style.cssText = 'background:#eee;color:#333;';
-
+      saveBodyBtn.style.background = '#27ae60';
+      var cancelBodyBtn = document.createElement('button');
+      cancelBodyBtn.textContent = 'Cancel';
+      cancelBodyBtn.style.background = 'rgba(255,255,255,.15)';
       var statusSpan = document.createElement('span');
+      statusSpan.style.cssText = 'color:#fff;font-size:11px;margin-left:4px;';
+      toolbarInner.appendChild(saveBodyBtn);
+      toolbarInner.appendChild(cancelBodyBtn);
+      toolbarInner.appendChild(statusSpan);
+      toolbar.appendChild(toolbarInner);
+      editEl.insertBefore(toolbar, editEl.firstChild);
 
-      toolbar.appendChild(saveBodyBtn);
-      toolbar.appendChild(cancelBtn);
-      toolbar.appendChild(statusSpan);
-      editorWrap.appendChild(textarea);
-      editorWrap.appendChild(toolbar);
-
-      // Replace only the body element — title, date, tags etc. stay visible.
-      editEl.innerHTML = '';
-      editEl.appendChild(editorWrap);
+      function deactivate() {
+        editEl.contentEditable = 'false';
+        if (toolbar.parentNode) toolbar.parentNode.removeChild(toolbar);
+      }
 
       saveBodyBtn.addEventListener('click', async function() {
         saveBodyBtn.disabled = true;
         saveBodyBtn.textContent = 'Saving…';
-        statusSpan.textContent = '';
+        // Snapshot content without the toolbar before converting.
+        var clone = editEl.cloneNode(true);
+        var tb = clone.querySelector('.dune-ao-body-toolbar');
+        if (tb) tb.parentNode.removeChild(tb);
+        var md = htmlToMarkdown(clone.innerHTML);
         try {
-          var patchRes = await fetch(window.__DUNE_FIELDS_URL__, {
-            method: 'PATCH',
-            credentials: 'include',
+          var pr = await fetch(window.__DUNE_FIELDS_URL__, {
+            method: 'PATCH', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: { __body: textarea.value } })
+            body: JSON.stringify({ fields: { __body: md } })
           });
-          if (!patchRes.ok) throw new Error('Patch failed: ' + patchRes.status);
-          var commitRes = await fetch(window.__DUNE_COMMIT_URL__, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}'
+          if (!pr.ok) throw new Error('patch');
+          var cr = await fetch(window.__DUNE_COMMIT_URL__, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }, body: '{}'
           });
-          if (commitRes.ok) {
-            statusSpan.textContent = 'Saved ✓';
-            statusSpan.className = 'dune-status-saved';
-            setTimeout(function() { location.reload(); }, 800);
-          } else {
-            throw new Error('Commit failed: ' + commitRes.status);
-          }
+          if (!cr.ok) throw new Error('commit');
+          statusSpan.textContent = 'Saved ✓';
+          statusSpan.className = 'dune-status-saved';
+          setTimeout(function() { location.reload(); }, 800);
         } catch(err) {
-          statusSpan.textContent = 'Error: ' + err.message;
+          statusSpan.textContent = 'Error';
           statusSpan.className = 'dune-status-error';
           saveBodyBtn.disabled = false;
           saveBodyBtn.textContent = 'Save';
         }
       });
 
-      cancelBtn.addEventListener('click', function() {
-        // Restore only the body element; everything else (title etc.) is untouched.
+      cancelBodyBtn.addEventListener('click', function() {
         editEl.innerHTML = originalBodyHtml;
+        deactivate();
+      });
+
+      editEl.addEventListener('keydown', function onKey(e) {
+        if (e.key === 'Escape') {
+          editEl.innerHTML = originalBodyHtml;
+          deactivate();
+          editEl.removeEventListener('keydown', onKey);
+        }
       });
     });
   }
