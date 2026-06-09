@@ -624,9 +624,17 @@ function createCollectionObject(
 
   const loadItems = async (): Promise<Page[]> => {
     if (loadedItems) return loadedItems;
-    loadedItems = await Promise.all(
+    const pages = await Promise.all(
       indexItems.map((idx) => loadPage(idx.sourcePath)),
     );
+    // Populate excerpt on each page while we're already in an async context.
+    // summary() is lazyOnce-cached on the Page object, so this is idempotent
+    // across concurrent collection loads. Templates can then read item.excerpt
+    // synchronously without any async calls in JSX.
+    await Promise.all(
+      pages.map(async (p) => { p.excerpt = await p.summary(); }),
+    );
+    loadedItems = pages;
     return loadedItems;
   };
 

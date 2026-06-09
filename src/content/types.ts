@@ -210,6 +210,13 @@ export interface Page {
   siblings: () => Promise<Page[]>;
   /** Summary/excerpt */
   summary: () => Promise<string>;
+  /**
+   * Plain-text excerpt, populated synchronously after the page has been
+   * loaded through a Collection (i.e. after `collection.load()` resolves).
+   * Equivalent to the resolved value of `summary()`. Undefined outside of
+   * a collection context — use `await page.summary()` there instead.
+   */
+  excerpt?: string;
 }
 
 /** Lightweight page reference for the content index (never loads full content) */
