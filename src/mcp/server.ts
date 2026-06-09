@@ -21,6 +21,25 @@
  *       }
  *     }
  *   }
+ *
+ * ## Security model
+ *
+ * This server is a LOCAL-DEVELOPMENT tool and performs NO authentication or
+ * authorization of its own: anything that can write to its stdin has full
+ * access to every tool, including the write tools (write_page, update_config,
+ * install_plugin, ...). The recommended invocation runs with `deno -A` (all
+ * permissions), so the process can read/write the file system and reach the
+ * network with the invoking user's privileges.
+ *
+ * Consequences:
+ *   - Only wire it into agents you trust, on machines you trust.
+ *   - Never expose stdin/stdout to a network socket or other untrusted
+ *     transport; there is no session, token, or origin check.
+ *   - install_plugin / update_config edit site.yaml, which changes what code
+ *     the site later executes — treat tool access as code execution.
+ *   - To reduce blast radius, replace `-A` with the narrowest flag set that
+ *     works for your site, e.g.
+ *     `--allow-read=. --allow-write=. --allow-env --allow-net=jsr.io`.
  */
 
 /** @module */
