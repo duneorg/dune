@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.16.2] — 2026-06-09
+
+### Fixed
+
+- **JSR re-exec** — when `dune dev`/`serve` is run from the global JSR install in a site directory, the re-exec with the site's `deno.json` now correctly targets `cli.ts` (which calls `main()` at module level) instead of `cli-impl.ts` (which only exports it). Previously the re-exec'd process exited immediately without starting the server.
+
+---
+
 ## [0.16.1] — 2026-06-09
 
 ### Added
