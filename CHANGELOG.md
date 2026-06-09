@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.16.1] — 2026-06-09
+
+### Added
+
+- **Collection `excerpt` field** — `PageIndex` now has an `excerpt?: string` field, pre-computed synchronously at collection load time. Templates can read `item.excerpt` directly without `await`; `summary()` remains available for non-collection contexts. `summary()` also now truncates at word boundaries with an ellipsis rather than mid-word.
+- **`htmlToMarkdown` converter** — lightweight HTML→Markdown utility used by the admin bar to round-trip rendered content back to Markdown for the body editor.
+
+### Fixed
+
+- **Admin overlay UX** — click directly on the annotated `<h1>` or body element to edit inline; no separate button needed. Dropped `<main>` from body annotation selector; tightened class regex to avoid false matches on hyphenated names like `content-header`; stale Escape keydown listener now removed correctly on cancel; body-location fetch deferred until first interaction.
+- **CLI shim** — `cli.ts` split into a zero-dependency shim and `cli-impl.ts`. The shim re-execs with the live `deno.json` when running from local source, preventing stale import-map snapshots after adding dependencies.
+- **Fresh update nag suppressed** — `FRESH_NO_UPDATE_CHECK=true` set at CLI startup so site users never see Fresh's version-available banner (Fresh is an internal Dune dep, not a site dependency).
+
+---
+
 ## [0.16.0] — 2026-06-08
 
 ### Added
