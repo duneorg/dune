@@ -5,6 +5,35 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.16.3] — 2026-06-09
+
+### Security
+
+**Critical**
+
+- **Database column allowlisting** — column identifiers used in repository update and upsert operations are now validated against the model's field schema before being incorporated into SQL.
+
+**High**
+
+- **Admin-bar cache isolation** — responses rendered for requests carrying an admin session cookie are no longer stored in or served from the shared page cache. Such responses are marked `Cache-Control: private, no-store` and carry no `ETag`. The admin bar injection now routes through the full authentication middleware and requires the `pages.update` permission; revoked or read-only accounts no longer receive edit chrome.
+- **External-JWT claim validation** — when external-JWT mode is configured, the token's `iss`, `aud`, and `nbf` claims are now validated against the configured values. A startup warning is emitted when neither `issuer` nor `audience` is set.
+
+**Medium**
+
+- **Database ORDER BY and WHERE column allowlisting** — column identifiers in dynamically-constructed `ORDER BY` and `WHERE` clauses are now validated against the schema's field list before use in SQL.
+- **SSRF-hardened outbound fetch** — webhook dispatch, CDN provider calls, and theme installation now use a fetch wrapper that pins the resolved IP address and disables transparent redirects, closing a DNS-rebinding window between resolution and connection.
+- **Migration DDL identifier quoting** — SQL identifiers and literal values in generated migration statements are now properly quoted rather than interpolated verbatim.
+- **JWT algorithm pinning** — an optional `algorithm` field on the external-JWT config (`"HS256"` or `"RS256"`) allows operators to pin the accepted signing algorithm; tokens carrying a different `alg` header are rejected before any key material is consulted.
+- **Plugin source scheme restriction** — plugin specifiers using a cleartext `http:` scheme are now rejected at both load time and island-specifier validation. `https:`, `jsr:`, `npm:`, and local paths remain supported.
+
+**Low**
+
+- **Media-picker postMessage origin check** — the inline-edit media-picker message handler now validates `event.origin` against the current window's origin before processing the message.
+- **CSRF check header fallbacks** — when the `Origin` request header is absent, the CSRF check now consults `Sec-Fetch-Site` and `Referer` as additional signals rather than passing the request unconditionally.
+- **Strict HMAC mode for authorization tuples** — setting `DUNE_AUTHZ_HMAC_STRICT=1` (or the `strictHmac` constructor option) causes unsigned authorization tuple files to be rejected rather than loaded when an HMAC key is configured. The default remains permissive to preserve the documented `dune authz:sign` migration path.
+
+---
+
 ## [0.16.2] — 2026-06-09
 
 ### Fixed
