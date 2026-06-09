@@ -376,7 +376,7 @@ function buildAdminBarHtml(opts: {
     var bodyLocated = false;
 
     function locateBodyElement() {
-      fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' })
+      return fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' })
         .then(function(res) { return res.ok ? res.json() : null; })
         .then(function(data) {
           if (data && data.body) {
@@ -410,11 +410,12 @@ function buildAdminBarHtml(opts: {
         .catch(function() { editEl.dataset.duneBodyEditable = '1'; bodyLocated = true; });
     }
 
-    locateBodyElement();
-
     // Click directly on the body content element to start editing.
-    el.addEventListener('click', function(e) {
-      if (!editMode || !bodyLocated) return;
+    // The body-location fetch is deferred to first interaction so it doesn't
+    // fire a GET on every admin page load.
+    el.addEventListener('click', async function(e) {
+      if (!editMode) return;
+      if (!bodyLocated) await locateBodyElement();
       if (!editEl.contains(e.target) || e.target.closest('.dune-ao-body-toolbar')) return;
       if (editEl.contentEditable === 'true') return;
       e.stopPropagation();
@@ -478,18 +479,22 @@ function buildAdminBarHtml(opts: {
         }
       });
 
+      // Declare onEscKey before the cancel handler so both can reference it.
+      var onEscKey;
       cancelBodyBtn.addEventListener('click', function() {
         editEl.innerHTML = originalBodyHtml;
+        editEl.removeEventListener('keydown', onEscKey);
         deactivate();
       });
 
-      editEl.addEventListener('keydown', function onKey(e) {
+      onEscKey = function(e) {
         if (e.key === 'Escape') {
           editEl.innerHTML = originalBodyHtml;
           deactivate();
-          editEl.removeEventListener('keydown', onKey);
+          editEl.removeEventListener('keydown', onEscKey);
         }
-      });
+      };
+      editEl.addEventListener('keydown', onEscKey);
     });
   }
 
