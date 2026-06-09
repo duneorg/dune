@@ -46,7 +46,8 @@ function getSessionToken(req: Request): string | null {
  * - Skip any element that already has a `data-dune-` attribute.
  * - Skip any element with `data-dune-no-edit`.
  * - `<h1>` → title field annotation (first occurrence only).
- * - `<article>`, `<main>`, or first `<div class="...content...">` → body annotation.
+ * - `<article>` or first `<div class="...content...">` → body annotation.
+ *   (`<main>` is excluded — it is a layout wrapper, not a content element.)
  */
 function annotateEditableElements(html: string, sourcePath: string): string {
   const src = `data-dune-source="${escapeAttr(sourcePath)}"`;
@@ -61,14 +62,27 @@ function annotateEditableElements(html: string, sourcePath: string): string {
     },
   );
 
-  // Annotate the content container: <article>, <main>, or the first <div
-  // class="...content..."> that has no existing dune attributes.
+  // Annotate the first content container that has no existing dune attributes
+  // and no data-dune-no-edit opt-out.  Uses the `g` flag so skipped elements
+  // don't block the scan.
+  //
+  // <main> is intentionally excluded: it is a layout wrapper (typically
+  // contains nav, header, footer as well as content) and is almost never the
+  // right annotation target.  Themes that want <main> to be editable should
+  // add data-dune-editable="body" explicitly.
+  //
+  // The class regex uses (?!-) to avoid matching "content" in hyphenated
+  // compound class names like "content-header" or "main-content".  Word
+  // boundary \b fires at the t/- transition (hyphen is non-\w), so the extra
+  // negative lookahead is required to reject those cases.
   const bodySelector =
-    /(<(?:article|main)\b)([^>]*?>)|(<div\b[^>]*?\bclass="[^"]*\bcontent\b[^"]*"[^>]*?>)/;
+    /(<article\b)([^>]*?>)|(<div\b[^>]*?\bclass="[^"]*\bcontent(?!-)[^"]*"[^>]*?>)/g;
 
+  let bodyAnnotated = false;
   annotated = annotated.replace(bodySelector, (match) => {
-    if (match.includes("data-dune-")) return match;
-    if (match.includes("data-dune-no-edit")) return match;
+    if (bodyAnnotated) return match; // already found and annotated one — leave rest untouched
+    if (match.includes("data-dune-")) return match; // skip opt-outs and already-annotated elements
+    bodyAnnotated = true;
     // Insert before the closing `>` of the opening tag.
     return match.replace(/>$/, ` data-dune-editable="body" ${src}>`);
   });
@@ -158,14 +172,23 @@ function buildAdminBarHtml(opts: {
     z-index: 1000;
   }
   .dune-ao-wrap:hover .dune-ao-handle { opacity: 1; }
-  [data-dune-editable="body"] { position: relative; }
+  /* Zero-height sticky wrapper keeps the edit button pinned below the admin
+     bar as you scroll, positioned at the start of actual body text (first <p>)
+     rather than at the top of the outer article/main container. */
+  .dune-ao-body-sticky {
+    height: 0; overflow: visible;
+    position: sticky; top: 50px;
+    text-align: right;
+    pointer-events: none;
+    z-index: 1000;
+  }
   .dune-ao-body-btn {
-    position: absolute; top: 8px; right: 8px;
+    display: inline-block;
+    pointer-events: all;
     background: #3498db; color: #fff;
     border: none; border-radius: 4px;
     padding: 4px 10px; font-size: 12px; cursor: pointer;
     opacity: 0; transition: opacity .15s;
-    z-index: 1000;
   }
   [data-dune-editable="body"]:hover .dune-ao-body-btn { opacity: 1; }
 
@@ -362,20 +385,69 @@ function buildAdminBarHtml(opts: {
     if (el.dataset.duneAoBodyActive || el.closest('.dune-editable-markdown')) return;
     el.dataset.duneAoBodyActive = '1';
 
-    // Edit button overlaid on the content area.
     var editBtn = document.createElement('button');
     editBtn.className = 'dune-ao-body-btn';
     editBtn.textContent = '✎ Edit';
-    el.style.position = el.style.position || 'relative';
-    el.appendChild(editBtn);
 
-    var originalHtml = el.innerHTML.replace(editBtn.outerHTML, '').trim();
+    var stickyWrap = document.createElement('div');
+    stickyWrap.className = 'dune-ao-body-sticky';
+    stickyWrap.appendChild(editBtn);
+
+    // editEl: the element whose innerHTML is the rendered body content.
+    // Starts as the annotated container (el), refined to the specific child
+    // that contains the body text once the source fetch completes.
+    // All editing (textarea replacement, cancel restore) operates on editEl —
+    // so the title, date, tags etc. outside editEl remain visible while editing.
+    var editEl = el;
+
+    function locateBodyElement() {
+      fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' })
+        .then(function(res) { return res.ok ? res.json() : null; })
+        .then(function(data) {
+          if (!data || !data.body) return;
+          // Find the first substantial prose line in the markdown source.
+          // Plain string ops only — no regex backslash sequences in this template literal.
+          var nl = String.fromCharCode(10);
+          var lines = data.body.split(nl);
+          var needle = '';
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (line.length < 16) continue;           // too short
+            if (line[0] === '#') continue;             // heading
+            if (line.slice(0, 3) === '---') continue;  // frontmatter delimiter
+            if (line[0] === '!' || line[0] === '[') continue; // image / link
+            // Skip leading bold/italic markers.
+            var j = 0;
+            while (j < line.length && (line[j] === '*' || line[j] === '_')) j++;
+            var candidate = line.slice(j, j + 40).trim();
+            if (candidate.length > 10) { needle = candidate; break; }
+          }
+          if (!needle) return;
+          // Find that text in the DOM and walk up to the direct child of el.
+          var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+          var n;
+          while ((n = w.nextNode())) {
+            if (n.textContent.indexOf(needle) !== -1) {
+              var target = n.parentNode;
+              while (target && target.parentNode !== el) { target = target.parentNode; }
+              if (target && target !== stickyWrap) {
+                el.insertBefore(stickyWrap, target);
+                editEl = target; // refine: editing operates on this element
+              }
+              break;
+            }
+          }
+        })
+        .catch(function() {});
+    }
+
+    el.insertBefore(stickyWrap, el.firstChild);
+    locateBodyElement();
 
     editBtn.addEventListener('click', async function() {
       editBtn.textContent = 'Loading…';
       editBtn.disabled = true;
 
-      // Fetch the raw Markdown body from the source endpoint.
       var initialBody = '';
       try {
         var srcRes = await fetch(window.__DUNE_SOURCE_URL__, { credentials: 'include' });
@@ -383,10 +455,13 @@ function buildAdminBarHtml(opts: {
           var srcData = await srcRes.json();
           initialBody = srcData.body || '';
         }
-      } catch(e) { /* use empty textarea on error */ }
+      } catch(e) {}
 
       editBtn.textContent = '✎ Edit';
       editBtn.disabled = false;
+
+      // Snapshot editEl's current rendered content for cancel restore.
+      var originalBodyHtml = editEl.innerHTML;
 
       var editorWrap = document.createElement('div');
       editorWrap.className = 'dune-body-editor-wrap';
@@ -415,19 +490,15 @@ function buildAdminBarHtml(opts: {
       editorWrap.appendChild(textarea);
       editorWrap.appendChild(toolbar);
 
-      // Replace content area with editor.
-      el.innerHTML = '';
-      el.appendChild(editorWrap);
+      // Replace only the body element — title, date, tags etc. stay visible.
+      editEl.innerHTML = '';
+      editEl.appendChild(editorWrap);
 
       saveBodyBtn.addEventListener('click', async function() {
         saveBodyBtn.disabled = true;
         saveBodyBtn.textContent = 'Saving…';
         statusSpan.textContent = '';
         try {
-          // Write the new body into the Y.js doc via the body field,
-          // then commit immediately.  Since we skip Y.js here (no realtime
-          // needed for this simple flow), we write the body via a special
-          // _body field key the server understands.
           var patchRes = await fetch(window.__DUNE_FIELDS_URL__, {
             method: 'PATCH',
             credentials: 'include',
@@ -457,8 +528,8 @@ function buildAdminBarHtml(opts: {
       });
 
       cancelBtn.addEventListener('click', function() {
-        el.innerHTML = originalHtml;
-        el.appendChild(editBtn);
+        // Restore only the body element; everything else (title etc.) is untouched.
+        editEl.innerHTML = originalBodyHtml;
       });
     });
   }
