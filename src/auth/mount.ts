@@ -90,6 +90,14 @@ export async function mountDuneAuth(
     ? authConfig.jwt
     : undefined;
 
+  if (jwtOpts && (!jwtOpts.issuer || !jwtOpts.audience)) {
+    console.warn(
+      "[dune/auth] external-jwt mode is missing auth.jwt.issuer and/or auth.jwt.audience — " +
+        "any token signed by the same IdP (e.g. another tenant on a shared JWKS) will be accepted. " +
+        "Set both to bind verification to your application.",
+    );
+  }
+
   const authMiddleware = createSiteAuthMiddleware({
     userStore,
     sessions: sessionMgr,
@@ -392,6 +400,9 @@ interface SiteAuthConfig {
     userIdClaim?: string;
     emailClaim?: string;
     rolesClaim?: string;
+    issuer?: string;
+    audience?: string;
+    algorithm?: "HS256" | "RS256";
   };
   sessionLifetime?: number;
   userStore?: "local" | "session" | "db";

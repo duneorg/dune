@@ -76,18 +76,41 @@ function logAuthzDenial(
 export function csrfCheck(ctx: FreshContext<AdminState>): Response | null {
   const method = ctx.req.method;
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
-  const origin = ctx.req.headers.get("origin");
-  if (origin === null) return null;
   const requestHost = ctx.url.host;
-  try {
-    if (new URL(origin).host !== requestHost) {
-      logAuthzDenial(ctx, "auth.csrf_denied", { origin, method });
-      return json({ error: "Forbidden: cross-origin request rejected" }, 403);
-    }
-  } catch {
-    logAuthzDenial(ctx, "auth.csrf_denied", { origin, method, parseError: true });
+  const deny = (detail: Record<string, unknown>): Response => {
+    logAuthzDenial(ctx, "auth.csrf_denied", { method, ...detail });
     return json({ error: "Forbidden: cross-origin request rejected" }, 403);
+  };
+
+  const origin = ctx.req.headers.get("origin");
+  if (origin !== null) {
+    try {
+      if (new URL(origin).host !== requestHost) return deny({ origin });
+      return null;
+    } catch {
+      return deny({ origin, parseError: true });
+    }
   }
+
+  // No Origin header (some browsers/clients omit it). Fall back to the
+  // Fetch-metadata and Referer signals rather than allowing unconditionally.
+  const secFetchSite = ctx.req.headers.get("sec-fetch-site");
+  if (secFetchSite !== null && secFetchSite !== "same-origin" && secFetchSite !== "none") {
+    // "cross-site" / "same-site" are not same-origin — reject.
+    return deny({ secFetchSite });
+  }
+
+  const referer = ctx.req.headers.get("referer");
+  if (referer !== null) {
+    try {
+      if (new URL(referer).host !== requestHost) return deny({ referer });
+    } catch {
+      return deny({ referer, parseError: true });
+    }
+  }
+
+  // No Origin, no contradicting Fetch-metadata, no cross-origin Referer.
+  // SameSite=Lax session cookies are the remaining backstop.
   return null;
 }
 

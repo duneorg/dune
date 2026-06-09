@@ -17,7 +17,7 @@
 
 import { join } from "@std/path";
 import { encodeHex } from "@std/encoding/hex";
-import { assertOutboundUrlAllowed, SsrfBlockedError } from "../security/ssrf.ts";
+import { safeFetch, SsrfBlockedError } from "../security/ssrf.ts";
 import type { WebhookContentEvent, WebhookEndpointConfig } from "../config/types.ts";
 
 // === Types ===
@@ -106,25 +106,24 @@ async function attemptDelivery(
       headers["X-Dune-Signature"] = await signBody(body, rawSecret);
     }
 
-    // SSRF guard: refuse to deliver to private / loopback / link-local
-    // destinations, and refuse non-http(s) schemes. A misconfigured (or
-    // hostile) admin webhook URL can otherwise reach cloud metadata
-    // endpoints, internal services, etc. Override at the endpoint level by
-    // setting allow_private: true (the use case is internal CI bots on the
-    // same network — not common, must be explicit).
+    // SSRF guard (via safeFetch): refuse to deliver to private / loopback /
+    // link-local destinations and non-http(s) schemes, pin the resolved IP to
+    // defeat DNS rebinding, and force redirect: "manual" so a 30x to a private
+    // destination doesn't bypass the guard. A misconfigured (or hostile) admin
+    // webhook URL could otherwise reach cloud metadata endpoints, internal
+    // services, etc. Override per-endpoint via allow_private: true (internal CI
+    // bots — must be explicit). Treat any redirect as a failed attempt.
+    let resp: Response;
     try {
-      await assertOutboundUrlAllowed(endpoint.url, {
-        allowPrivateDestinations: endpoint.allow_private === true,
-      });
+      resp = await safeFetch(
+        endpoint.url,
+        { method: "POST", headers, body },
+        { allowPrivateDestinations: endpoint.allow_private === true },
+      );
     } catch (err) {
       const msg = err instanceof SsrfBlockedError ? err.message : String(err);
       return { attemptNumber, timestamp, errorMessage: `SSRF guard: ${msg}`, success: false };
     }
-
-    // redirect: "manual" so a 30x to a private destination doesn't bypass
-    // the guard. Treat any redirect as a failed attempt; legitimate webhook
-    // receivers don't redirect.
-    const resp = await fetch(endpoint.url, { method: "POST", headers, body, redirect: "manual" });
     if (resp.ok) {
       // Drain body to allow connection reuse
       await resp.body?.cancel();

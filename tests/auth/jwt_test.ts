@@ -152,6 +152,85 @@ Deno.test("verifyExternalJwt: no exp claim is allowed (no expiry enforcement)", 
   assertEquals(result!.userId, "user-noexp");
 });
 
+Deno.test("verifyExternalJwt: issuer mismatch returns null (H-1)", async () => {
+  const payload = {
+    sub: "user-123",
+    iss: "https://evil-tenant.example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const token = await buildJwt(payload, SECRET);
+
+  // Same signing key, wrong issuer — must be rejected.
+  const result = await verifyExternalJwt(token, {
+    secret: SECRET,
+    issuer: "https://my-tenant.example.com",
+  });
+  assertEquals(result, null);
+
+  // Matching issuer is accepted.
+  const ok = await buildJwt(
+    { ...payload, iss: "https://my-tenant.example.com" },
+    SECRET,
+  );
+  const okResult = await verifyExternalJwt(ok, {
+    secret: SECRET,
+    issuer: "https://my-tenant.example.com",
+  });
+  assertEquals(okResult?.userId, "user-123");
+});
+
+Deno.test("verifyExternalJwt: audience must contain expected value (H-1)", async () => {
+  const base = { sub: "user-123", exp: Math.floor(Date.now() / 1000) + 3600 };
+
+  // Token minted for a different app — rejected.
+  const wrong = await buildJwt({ ...base, aud: "other-app" }, SECRET);
+  assertEquals(
+    await verifyExternalJwt(wrong, { secret: SECRET, audience: "my-app" }),
+    null,
+  );
+
+  // String aud matching.
+  const okStr = await buildJwt({ ...base, aud: "my-app" }, SECRET);
+  assertEquals(
+    (await verifyExternalJwt(okStr, { secret: SECRET, audience: "my-app" }))?.userId,
+    "user-123",
+  );
+
+  // Array aud containing the expected value.
+  const okArr = await buildJwt({ ...base, aud: ["x", "my-app"] }, SECRET);
+  assertEquals(
+    (await verifyExternalJwt(okArr, { secret: SECRET, audience: "my-app" }))?.userId,
+    "user-123",
+  );
+});
+
+Deno.test("verifyExternalJwt: not-yet-valid (nbf) token returns null", async () => {
+  const payload = {
+    sub: "user-123",
+    nbf: Math.floor(Date.now() / 1000) + 3600, // valid only an hour from now
+    exp: Math.floor(Date.now() / 1000) + 7200,
+  };
+  const token = await buildJwt(payload, SECRET);
+  assertEquals(await verifyExternalJwt(token, { secret: SECRET }), null);
+});
+
+Deno.test("verifyExternalJwt: pinned algorithm rejects a mismatching alg (M-4)", async () => {
+  const payload = { sub: "user-123", exp: Math.floor(Date.now() / 1000) + 3600 };
+  const token = await buildJwt(payload, SECRET); // HS256
+
+  // Pinned to RS256 — a valid HS256 token must be rejected.
+  assertEquals(
+    await verifyExternalJwt(token, { secret: SECRET, algorithm: "RS256" }),
+    null,
+  );
+
+  // Pinned to HS256 — accepted.
+  assertEquals(
+    (await verifyExternalJwt(token, { secret: SECRET, algorithm: "HS256" }))?.userId,
+    "user-123",
+  );
+});
+
 Deno.test("verifyExternalJwt: unknown alg returns null when no matching options", async () => {
   const payload = { sub: "user-123", exp: Math.floor(Date.now() / 1000) + 3600 };
   // Build with RS256 header but no jwksUrl configured

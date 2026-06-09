@@ -11,7 +11,7 @@
  */
 
 import type { CdnProvider, CdnPurgeRequest } from "../types.ts";
-import { assertOutboundUrlAllowed, SsrfBlockedError } from "../../security/ssrf.ts";
+import { safeFetch, SsrfBlockedError } from "../../security/ssrf.ts";
 
 export interface CustomCdnConfig {
   purge_url: string;
@@ -23,14 +23,6 @@ export function createCustomProvider(config: CustomCdnConfig): CdnProvider {
     name: "custom",
 
     async purge(req: CdnPurgeRequest): Promise<void> {
-      // SSRF guard: validate the configured purge URL before every delivery.
-      try {
-        await assertOutboundUrlAllowed(config.purge_url);
-      } catch (err) {
-        const msg = err instanceof SsrfBlockedError ? err.message : String(err);
-        throw new Error(`CDN custom provider: SSRF guard blocked purge URL: ${msg}`);
-      }
-
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -41,12 +33,15 @@ export function createCustomProvider(config: CustomCdnConfig): CdnProvider {
 
       const body = JSON.stringify({ urls: req.urls });
 
-      const resp = await fetch(config.purge_url, {
-        method: "POST",
-        headers,
-        body,
-        redirect: "manual",
-      });
+      // SSRF guard (via safeFetch): validates the configured purge URL, pins
+      // the resolved IP against DNS rebinding, and forces manual redirects.
+      let resp: Response;
+      try {
+        resp = await safeFetch(config.purge_url, { method: "POST", headers, body });
+      } catch (err) {
+        const msg = err instanceof SsrfBlockedError ? err.message : String(err);
+        throw new Error(`CDN custom provider: SSRF guard blocked purge URL: ${msg}`);
+      }
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");

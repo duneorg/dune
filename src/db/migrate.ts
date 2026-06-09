@@ -29,8 +29,62 @@ function sqlType(field: DbFieldDef): string {
   return SQLITE_TYPE_MAP[field.type] ?? "TEXT";
 }
 
+/**
+ * Quote an identifier (table/column) for SQL. Double-quotes are doubled so a
+ * name containing a quote cannot break out of the identifier. Schemas are
+ * developer-authored, but quoting keeps a stray character from corrupting or
+ * injecting DDL.
+ */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** Quote a string literal for SQL, escaping embedded single quotes. */
+function quoteLiteral(value: unknown): string {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Split a SQL script into statements on `;`, ignoring semicolons inside
+ * single-quoted strings or double-quoted identifiers. Doubled quotes ('' / "")
+ * are treated as escaped and stay within the quoted span.
+ */
+export function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote) {
+        if (sql[i + 1] === quote) {
+          current += sql[++i]; // escaped quote — consume the pair
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ";") {
+      statements.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim().length > 0) statements.push(current);
+  return statements;
+}
+
 function columnDefinition(field: DbFieldDef): string {
-  const parts: string[] = [`"${field.name}"`, sqlType(field)];
+  const parts: string[] = [quoteIdent(field.name), sqlType(field)];
 
   if (field.required) {
     parts.push("NOT NULL");
@@ -38,7 +92,7 @@ function columnDefinition(field: DbFieldDef): string {
 
   if (field.default !== undefined && field.default !== "now") {
     if (typeof field.default === "string" && field.type !== "datetime") {
-      parts.push(`DEFAULT '${field.default}'`);
+      parts.push(`DEFAULT ${quoteLiteral(field.default)}`);
     } else if (typeof field.default === "number" || typeof field.default === "boolean") {
       parts.push(`DEFAULT ${field.default ? 1 : 0}`);
     }
@@ -48,16 +102,13 @@ function columnDefinition(field: DbFieldDef): string {
   }
 
   if (field.enum && field.enum.length > 0) {
-    const values = field.enum.map((v) => `'${v}'`).join(", ");
-    const defaultPart = field.default !== undefined && field.default !== "now"
-      ? ` DEFAULT '${field.default}'`
-      : "";
+    const values = field.enum.map((v) => quoteLiteral(v)).join(", ");
     // Rebuild: remove the simple DEFAULT we may have added, add CHECK
     const baseIdx = parts.findIndex((p) => p.startsWith("DEFAULT"));
     if (baseIdx !== -1) parts.splice(baseIdx, 1);
-    const checkClause = `CHECK(${field.name} IN (${values}))`;
+    const checkClause = `CHECK(${quoteIdent(field.name)} IN (${values}))`;
     if (field.default !== undefined && field.default !== "now") {
-      parts.push(`DEFAULT '${field.default}'`);
+      parts.push(`DEFAULT ${quoteLiteral(field.default)}`);
     }
     parts.push(checkClause);
   }
@@ -73,7 +124,7 @@ export function generateCreateTableSql(schema: DbSchema): string {
   }
 
   const lines: string[] = [
-    `CREATE TABLE IF NOT EXISTS ${schema.table} (`,
+    `CREATE TABLE IF NOT EXISTS ${quoteIdent(schema.table)} (`,
     cols.join(",\n"),
     `);`,
   ];
@@ -82,7 +133,7 @@ export function generateCreateTableSql(schema: DbSchema): string {
   for (const field of schema.fields) {
     if (field.index) {
       lines.push(
-        `CREATE INDEX IF NOT EXISTS idx_${schema.table}_${field.name} ON ${schema.table}("${field.name}");`,
+        `CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${schema.table}_${field.name}`)} ON ${quoteIdent(schema.table)}(${quoteIdent(field.name)});`,
       );
     }
   }
@@ -229,9 +280,10 @@ export async function runMigrations(root: string, adapter: DbAdapter): Promise<s
     const filePath = join(migrationsDir, filename);
     const sql = await Deno.readTextFile(filePath);
 
-    // Execute each statement (split on `;`)
-    const statements = sql
-      .split(";")
+    // Execute each statement. Split on `;` but not when it appears inside a
+    // quoted string literal/identifier, so a default value or enum containing
+    // a semicolon doesn't truncate the statement.
+    const statements = splitSqlStatements(sql)
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.startsWith("--"));
 

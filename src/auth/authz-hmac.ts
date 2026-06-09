@@ -8,9 +8,10 @@
  * Fail-open: if the env var is absent, signing and verification are skipped
  * (a startup warning is emitted but the server still starts).
  *
- * Migration: unsigned files (no `hmac` field) are always loaded regardless
- * of whether a key is configured. Run `dune authz:sign` to sign existing
- * files after setting DUNE_AUTHZ_HMAC_SECRET.
+ * Migration: unsigned files (no `hmac` field) are loaded by default even when
+ * a key is configured. Run `dune authz:sign` to sign existing files after
+ * setting DUNE_AUTHZ_HMAC_SECRET, then set DUNE_AUTHZ_HMAC_STRICT=1 to reject
+ * unsigned tuples (closing the strip-the-hmac tamper bypass).
  */
 
 /** The shape of a stored tuple including the optional hmac field. */

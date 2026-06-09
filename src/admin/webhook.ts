@@ -16,7 +16,7 @@
 
 import type { WebhookNotificationConfig } from "../config/types.ts";
 import type { Submission } from "./submissions.ts";
-import { assertOutboundUrlAllowed } from "../security/ssrf.ts";
+import { safeFetch } from "../security/ssrf.ts";
 
 /** Expand "$VAR" → env variable value. */
 function envExpand(value: string): string {
@@ -60,10 +60,11 @@ export async function sendWebhookNotification(
     headers["X-Dune-Signature"] = `sha256=${sigHex}`;
   }
 
-  await assertOutboundUrlAllowed(cfg.url, {
-    allowPrivateDestinations: cfg.allow_private === true,
-  });
-  const resp = await fetch(cfg.url, { method: "POST", headers, body, redirect: "manual" });
+  const resp = await safeFetch(
+    cfg.url,
+    { method: "POST", headers, body },
+    { allowPrivateDestinations: cfg.allow_private === true },
+  );
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     throw new Error(

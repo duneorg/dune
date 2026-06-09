@@ -48,6 +48,21 @@ interface SqlWhere {
   params: unknown[];
 }
 
+/**
+ * Resolve a caller-supplied key to a safe, quoted SQL column identifier.
+ *
+ * Column names cannot be parameterized, so any identifier interpolated into SQL
+ * must be proven safe first. We accept only "id" or an exact schema field name,
+ * and additionally require `^[A-Za-z0-9_]+$`. Anything else throws rather than
+ * being quoted-and-hoped, closing the quote-break-out injection vector.
+ */
+function safeColumn(key: string, fields: DbFieldDef[]): string {
+  if (key === "id" || (fields.some((f) => f.name === key) && /^[A-Za-z0-9_]+$/.test(key))) {
+    return `"${key}"`;
+  }
+  throw new Error(`Unknown or invalid column identifier: ${JSON.stringify(key)}`);
+}
+
 function buildWhereClause<T>(
   where: WhereClause<T>,
   fields: DbFieldDef[],
@@ -73,8 +88,7 @@ function buildWhereClause<T>(
         continue;
       }
 
-      const colName = key === "id" ? "id" : key;
-      const colSql = `"${colName}"`;
+      const colSql = safeColumn(key, fields);
       const isDatetime = datetimeFields.has(key);
 
       if (value === null || value === undefined) {
@@ -187,6 +201,26 @@ function serialiseValue(value: unknown, field: DbFieldDef): unknown {
 // ---------------------------------------------------------------------------
 // Default injection
 // ---------------------------------------------------------------------------
+
+/**
+ * Restrict a data object to keys that name a known schema column, returning
+ * `[column, value]` entries ready for a SQL SET clause.
+ *
+ * This is the primary defense against SQL injection and mass assignment in
+ * update/upsert: column identifiers are interpolated into SQL (they cannot be
+ * parameterized), so any key that is not an exact schema field name — or that
+ * contains characters outside `[A-Za-z0-9_]` — is dropped rather than trusted.
+ * "id" is always excluded since it is the immutable primary key.
+ */
+function writableEntries(
+  data: Record<string, unknown>,
+  fields: DbFieldDef[],
+): Array<[string, unknown]> {
+  const allowed = new Set(fields.map((f) => f.name));
+  return Object.entries(data).filter(
+    ([k]) => k !== "id" && allowed.has(k) && /^[A-Za-z0-9_]+$/.test(k),
+  );
+}
 
 function injectDefaults(data: Record<string, unknown>, fields: DbFieldDef[], isCreate: boolean): Record<string, unknown> {
   const result = { ...data };
@@ -332,9 +366,11 @@ function createSqlRepository<T, TCreate, TUpdate>(
 
       if (opts?.orderBy) {
         if (Array.isArray(opts.orderBy)) {
-          sql += ` ORDER BY "${String(opts.orderBy[0])}" ${opts.orderBy[1].toUpperCase()}`;
+          const col = safeColumn(String(opts.orderBy[0]), fields);
+          const dir = String(opts.orderBy[1]).toUpperCase() === "DESC" ? "DESC" : "ASC";
+          sql += ` ORDER BY ${col} ${dir}`;
         } else {
-          sql += ` ORDER BY "${String(opts.orderBy)}"`;
+          sql += ` ORDER BY ${safeColumn(String(opts.orderBy), fields)}`;
         }
       }
 
@@ -392,7 +428,7 @@ function createSqlRepository<T, TCreate, TUpdate>(
 
     async update(id: string, data: TUpdate): Promise<{ count: number }> {
       const withOnUpdate = injectDefaults(data as Record<string, unknown>, fields, false);
-      const entries = Object.entries(withOnUpdate).filter(([k]) => k !== "id");
+      const entries = writableEntries(withOnUpdate, fields);
       if (entries.length === 0) return { count: 0 };
 
       const setClauses = entries.map(([col]) => `"${col}" = ?`).join(", ");
@@ -456,7 +492,7 @@ function createSqlRepository<T, TCreate, TUpdate>(
           // Update existing row
           const id = existing[0].id as string;
           const updateData = injectDefaults(data as Record<string, unknown>, fields, false);
-          const entries = Object.entries(updateData).filter(([k]) => k !== "id");
+          const entries = writableEntries(updateData, fields);
           if (entries.length > 0) {
             const setClauses = entries.map(([col]) => `"${col}" = ?`).join(", ");
             const values = entries.map(([col, val]) => {

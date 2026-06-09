@@ -17,6 +17,25 @@ export interface ExternalJwtOptions {
   userIdClaim?: string;  // default "sub"
   emailClaim?: string;   // default "email"
   rolesClaim?: string;   // default "roles"
+  /**
+   * Expected `iss` claim. When set, a token whose `iss` does not match exactly
+   * is rejected. Strongly recommended: without it, any token signed by the same
+   * IdP (e.g. another tenant on a shared JWKS) is accepted.
+   */
+  issuer?: string;
+  /**
+   * Expected `aud` claim. When set, the token's `aud` (string or string[]) must
+   * contain this value. Prevents tokens minted for a different application that
+   * shares the IdP's signing keys from being accepted here.
+   */
+  audience?: string;
+  /**
+   * Pin the accepted signing algorithm. When set, a token whose header `alg`
+   * does not match is rejected before any key is consulted — defense-in-depth
+   * against algorithm-substitution attacks. Defaults to inferring from which
+   * key material is configured (HS256 with `secret`, RS256 with `jwksUrl`).
+   */
+  algorithm?: "HS256" | "RS256";
 }
 
 export interface JwtVerifyResult {
@@ -45,6 +64,10 @@ export async function verifyExternalJwt(
 
     const alg = header.alg;
 
+    // Pin the algorithm when configured — reject mismatches before touching
+    // any key material.
+    if (opts.algorithm && alg !== opts.algorithm) return null;
+
     // Verify signature
     if (alg === "HS256" && opts.secret) {
       const valid = await verifyHmac(headerB64, payloadB64, sigB64, opts.secret);
@@ -61,9 +84,28 @@ export async function verifyExternalJwt(
     const payload = decodeJwtPart(payloadB64) as Record<string, unknown>;
     if (!payload) return null;
 
+    const nowSec = Date.now() / 1000;
+
     // Check exp claim
-    if (typeof payload.exp === "number" && Date.now() / 1000 > payload.exp) {
+    if (typeof payload.exp === "number" && nowSec > payload.exp) {
       return null; // expired
+    }
+
+    // Check nbf ("not before") claim — reject tokens used before they're valid.
+    // Allow a small clock-skew tolerance to avoid false rejections.
+    if (typeof payload.nbf === "number" && nowSec + 60 < payload.nbf) {
+      return null;
+    }
+
+    // Validate issuer when configured — a token from a different issuer on a
+    // shared signing key must not be accepted.
+    if (opts.issuer && payload.iss !== opts.issuer) {
+      return null;
+    }
+
+    // Validate audience when configured — `aud` may be a string or string[].
+    if (opts.audience && !audienceMatches(payload.aud, opts.audience)) {
+      return null;
     }
 
     // Extract claims
@@ -170,6 +212,13 @@ interface JwkKey {
   alg?: string;
   n?: string;
   e?: string;
+}
+
+/** True when the token `aud` claim (string or string[]) contains `expected`. */
+function audienceMatches(aud: unknown, expected: string): boolean {
+  if (typeof aud === "string") return aud === expected;
+  if (Array.isArray(aud)) return aud.includes(expected);
+  return false;
 }
 
 /** Extract roles from a JWT claim — handles string, string[], or undefined. */

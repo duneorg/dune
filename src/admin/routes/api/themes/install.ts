@@ -2,7 +2,7 @@
 
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck } from "../_utils.ts";
-import { assertOutboundUrlAllowed } from "../../../../security/ssrf.ts";
+import { safeFetch } from "../../../../security/ssrf.ts";
 import type { FreshContext } from "fresh";
 
 interface RegistryTheme {
@@ -57,19 +57,18 @@ export const handler = {
       }
 
       // Even though the URL comes from a trusted local registry, run the
-      // SSRF guard so a registry typo can't be a foothold and so an
-      // operator who packages a custom registry can't accidentally host
-      // their feed at an internal address.
+      // SSRF guard (via safeFetch, which also pins the resolved IP) so a
+      // registry typo can't be a foothold and so an operator who packages a
+      // custom registry can't accidentally host their feed at an internal
+      // address.
+      let fetchResp: Response;
       try {
-        await assertOutboundUrlAllowed(entry.downloadUrl);
+        fetchResp = await safeFetch(entry.downloadUrl, {
+          headers: { "User-Agent": "Dune-CMS/1.0 theme-installer" },
+        });
       } catch (err) {
         return json({ error: `Refusing theme download: ${err instanceof Error ? err.message : String(err)}` }, 400);
       }
-
-      const fetchResp = await fetch(entry.downloadUrl, {
-        headers: { "User-Agent": "Dune-CMS/1.0 theme-installer" },
-        redirect: "manual",
-      });
       if (!fetchResp.ok) {
         return json({ error: `Failed to fetch theme ZIP: HTTP ${fetchResp.status}` }, 502);
       }

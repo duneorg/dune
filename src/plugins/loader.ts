@@ -243,9 +243,11 @@ export async function loadPluginAdminConfigs(
 export function isValidPluginIslandSpecifier(spec: unknown): spec is string {
   if (typeof spec !== "string" || spec.length === 0) return false;
   if (spec.includes("\0")) return false;
+  // Cleartext http: is rejected — plugin code must come over a secure or
+  // registry-pinned channel (see resolvePluginUrl).
   if (
     spec.startsWith("jsr:") || spec.startsWith("npm:") ||
-    spec.startsWith("https:") || spec.startsWith("http:")
+    spec.startsWith("https:")
   ) {
     return true;
   }
@@ -264,11 +266,17 @@ export function isValidPluginIslandSpecifier(spec: unknown): spec is string {
  * - Anything else — returned as-is and let Deno resolve it
  */
 function resolvePluginUrl(src: string, root: string): string {
+  if (src.startsWith("http:")) {
+    // Plugins execute with full process privileges; loading their code over
+    // cleartext HTTP would let a network (MITM) attacker inject arbitrary code.
+    throw new Error(
+      `Refusing to load plugin over cleartext http: "${src}" — use https:, jsr:, or npm:.`,
+    );
+  }
   if (
     src.startsWith("jsr:") ||
     src.startsWith("npm:") ||
-    src.startsWith("https:") ||
-    src.startsWith("http:")
+    src.startsWith("https:")
   ) {
     return src;
   }

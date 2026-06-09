@@ -26,7 +26,7 @@ import {
 } from "./serve-utils.ts";
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
-import { injectAdminBarIfAdmin } from "./admin-bar-inject.ts";
+import { injectAdminBarIfAdmin, hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
@@ -95,7 +95,7 @@ export async function createDuneApp(
     sharedThemesDir,
     hooks,
     metrics,
-    sessions,
+    auth,
   } = ctx;
 
   const startTime = Date.now();
@@ -704,8 +704,16 @@ export async function createDuneApp(
         const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
         const ccValue = buildCacheControl(policy);
 
+        // Requests carrying an admin session cookie must bypass the shared
+        // page cache entirely (read AND write): their rendered response may
+        // include the injected admin bar (username, edit chrome, content API
+        // URLs), which must never be stored under the anonymous pathname key
+        // — and conversely an admin must never be served the anonymous copy
+        // without the bar.
+        const bypassPageCache = hasAdminSessionCookie(req);
+
         // Page cache hit
-        if (pageCache && etag) {
+        if (pageCache && etag && !bypassPageCache) {
           const cached = pageCache.get(url.pathname);
           if (cached?.etag === etag) {
             if (etagMatches(req.headers.get("If-None-Match"), etag)) {
@@ -731,8 +739,11 @@ export async function createDuneApp(
           }
         }
 
-        // Browser ETag revalidation
-        if (etag && etagMatches(req.headers.get("If-None-Match"), etag)) {
+        // Browser ETag revalidation — skipped for admin-session requests:
+        // their response body differs from the anonymous variant (injected
+        // admin bar), so a 304 against an anonymous browser-cached copy
+        // would show the wrong variant.
+        if (etag && !bypassPageCache && etagMatches(req.headers.get("If-None-Match"), etag)) {
           response = new Response(null, {
             status: 304,
             headers: { "ETag": etag, "Cache-Control": ccValue },
@@ -746,15 +757,22 @@ export async function createDuneApp(
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
         // Admin bar injection (v0.16+) — must run before caching.
-        response = await injectAdminBarIfAdmin(req, response, sessions, engine, adminPrefix);
+        response = await injectAdminBarIfAdmin(req, response, auth, engine, adminPrefix);
 
         // RTL injection
         const pageIndex2 = engine.pages.find((p) => p.route === url.pathname);
         const pageLang = pageIndex2?.language ?? config.system.languages?.default ?? "en";
         response = injectRtlDir(response, isRtl(pageLang, config.system.languages?.rtl_override));
 
-        // Cache headers
-        if (etag && response.status === 200) {
+        // Cache headers. Admin-session responses are marked private/no-store
+        // and carry no ETag so neither a shared cache (CDN, proxy) nor the
+        // browser ever revalidates a bar-injected body against the anonymous
+        // variant.
+        if (bypassPageCache && response.status === 200) {
+          const h = new Headers(response.headers);
+          h.set("Cache-Control", "private, no-store");
+          response = new Response(response.body, { status: 200, headers: h });
+        } else if (etag && response.status === 200) {
           const h = new Headers(response.headers);
           h.set("ETag", etag);
           h.set("Cache-Control", ccValue);
@@ -765,8 +783,8 @@ export async function createDuneApp(
           response = new Response(response.body, { status: 200, headers: h });
         }
 
-        // Store in page cache
-        if (pageCache && etag && response.status === 200) {
+        // Store in page cache (never for admin-session responses)
+        if (pageCache && etag && !bypassPageCache && response.status === 200) {
           const body = await response.arrayBuffer();
           pageCache.set(url.pathname, {
             body: new Uint8Array(body),
@@ -783,7 +801,7 @@ export async function createDuneApp(
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
         // Admin bar injection (v0.16+).
-        response = await injectAdminBarIfAdmin(req, response, sessions, engine, adminPrefix);
+        response = await injectAdminBarIfAdmin(req, response, auth, engine, adminPrefix);
 
         const devPage = engine.pages.find((p) => p.route === url.pathname);
         const devLang = devPage?.language ?? config.system.languages?.default ?? "en";

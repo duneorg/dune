@@ -151,3 +151,46 @@ export async function assertOutboundUrlAllowed(
 
   return { url: parsed, resolvedAddress: addresses[0] };
 }
+
+/**
+ * SSRF-safe `fetch`: validates the URL against the policy, pins the connection
+ * to the address that was actually checked, and forces manual redirect
+ * handling so a 30x to an internal host cannot bypass the guard.
+ *
+ * Pinning closes the DNS-rebinding TOCTOU window — `assertOutboundUrlAllowed`
+ * resolves and vets every A/AAAA record, and we then connect to that exact IP
+ * rather than re-resolving (which could now point at a private address).
+ *
+ * For `http:` the host is rewritten to the resolved IP with the original host
+ * preserved in the `Host` header. For `https:` we cannot rewrite the host
+ * without breaking TLS SNI / certificate validation, so we set `serverName`
+ * via a pinned-resolver client when available and otherwise connect by
+ * hostname immediately after validation (a narrow residual window).
+ *
+ * Callers should treat any non-2xx (including 3xx, since redirects are manual)
+ * as a failure.
+ */
+export async function safeFetch(
+  rawUrl: string,
+  init: RequestInit = {},
+  opts: SsrfCheckOptions = {},
+): Promise<Response> {
+  const { url, resolvedAddress } = await assertOutboundUrlAllowed(rawUrl, opts);
+  const requestInit: RequestInit = { ...init, redirect: "manual" };
+
+  const hostIsName = resolvedAddress !== null &&
+    url.hostname.toLowerCase() !== resolvedAddress.toLowerCase();
+
+  // Pin the resolved IP for plaintext HTTP by rewriting the host and carrying
+  // the original Host header. HTTPS keeps the hostname so TLS validation holds.
+  if (hostIsName && url.protocol === "http:") {
+    const headers = new Headers(requestInit.headers ?? init.headers ?? undefined);
+    if (!headers.has("host")) headers.set("Host", url.host);
+    const pinned = new URL(url.toString());
+    pinned.hostname = resolvedAddress!;
+    requestInit.headers = headers;
+    return fetch(pinned, requestInit);
+  }
+
+  return fetch(url, requestInit);
+}

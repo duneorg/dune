@@ -473,6 +473,104 @@ Deno.test("repository: default value injection for status", async () => {
   }
 });
 
+Deno.test("repository: orderBy sorts by a valid column and rejects unknown ones (M-1)", async () => {
+  const schema = parseSchemaYaml(COMMENT_SCHEMA_YAML);
+  const { adapter, cleanup } = await createTestDb(schema);
+  try {
+    const repo = createRepository<Comment, CommentCreate, CommentUpdate>(
+      schema.table,
+      adapter,
+      schema.fields,
+    );
+
+    await repo.create({ pageRoute: "/a", author: "Carol", body: "c", status: "pending" });
+    await repo.create({ pageRoute: "/a", author: "Alice", body: "a", status: "pending" });
+    await repo.create({ pageRoute: "/a", author: "Bob", body: "b", status: "pending" });
+
+    const asc = await repo.find({ orderBy: ["author", "asc"] });
+    assertEquals(asc.map((c) => c.author), ["Alice", "Bob", "Carol"]);
+
+    const desc = await repo.find({ orderBy: ["author", "desc"] });
+    assertEquals(desc.map((c) => c.author), ["Carol", "Bob", "Alice"]);
+
+    // An injection payload as the sort column must be rejected, not interpolated.
+    await assertRejects(
+      () => repo.find({ orderBy: 'author"; DROP TABLE comments; --' as unknown as keyof Comment }),
+      Error,
+      "column identifier",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+Deno.test("repository: where clause rejects unknown column identifiers (M-2)", async () => {
+  const schema = parseSchemaYaml(COMMENT_SCHEMA_YAML);
+  const { adapter, cleanup } = await createTestDb(schema);
+  try {
+    const repo = createRepository<Comment, CommentCreate, CommentUpdate>(
+      schema.table,
+      adapter,
+      schema.fields,
+    );
+
+    await repo.create({ pageRoute: "/a", author: "Alice", body: "a", status: "pending" });
+
+    // Legitimate column still works.
+    const found = await repo.find({ where: { author: "Alice" } });
+    assertEquals(found.length, 1);
+
+    // A quote-break-out key must be rejected, not quoted into the query.
+    await assertRejects(
+      () =>
+        repo.find({
+          where: { 'author" = author OR "1"="1': "x" } as unknown as WhereClause<Comment>,
+        }),
+      Error,
+      "column identifier",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+Deno.test("repository: update drops keys that are not schema columns (C-1)", async () => {
+  const schema = parseSchemaYaml(COMMENT_SCHEMA_YAML);
+  const { adapter, cleanup } = await createTestDb(schema);
+  try {
+    const repo = createRepository<Comment, CommentCreate, CommentUpdate>(
+      schema.table,
+      adapter,
+      schema.fields,
+    );
+
+    const comment = await repo.create({
+      pageRoute: "/home",
+      author: "Alice",
+      body: "Original",
+      status: "pending",
+    });
+
+    // A SQL-injection payload smuggled as a JSON key and an unknown column
+    // must be dropped silently — only the legitimate `status` change applies.
+    const malicious = {
+      status: "approved",
+      'body" = (SELECT author FROM comments) WHERE "id" = id; --': "x",
+      notAColumn: "should-be-ignored",
+    } as unknown as CommentUpdate;
+
+    const { count } = await repo.update(comment.id, malicious);
+    assertEquals(count, 1);
+
+    const updated = await repo.findOne({ where: { id: comment.id } as { id: string } });
+    assertEquals(updated?.status, "approved");
+    // body must be untouched — the injection key was dropped, not executed.
+    assertEquals(updated?.body, "Original");
+  } finally {
+    await cleanup();
+  }
+});
+
 Deno.test("repository: getAdapter returns the adapter", async () => {
   const schema = parseSchemaYaml(COMMENT_SCHEMA_YAML);
   const { adapter, cleanup } = await createTestDb(schema);

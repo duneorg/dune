@@ -164,6 +164,74 @@ Deno.test("AuthzLocalAdapter: hasTuple returns false when absent", async () => {
   assertStrictEquals(exists, false);
 });
 
+// ── Strict HMAC mode (L-1) ────────────────────────────────────────────────────
+
+async function makeHmacKey(): Promise<CryptoKey> {
+  return await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode("test-authz-hmac-secret-at-least-32-bytes!"),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+Deno.test("AuthzLocalAdapter: strict HMAC rejects unsigned tuples, accepts signed (L-1)", async () => {
+  const { signTuple } = await import("../../src/auth/authz-hmac.ts");
+  const key = await makeHmacKey();
+  const storage = makeStorage();
+
+  // Unsigned tuple — written directly to disk, as if hmac was stripped.
+  const unsigned = {
+    id: "t-unsigned",
+    subject: { type: "user", id: "mallory" },
+    relation: "member",
+    object: { type: "group", id: "admins" },
+  };
+  await storage.write("data/permissions/t-unsigned.json", JSON.stringify(unsigned));
+
+  // Properly signed tuple.
+  const signedBase = {
+    id: "t-signed",
+    subject: { type: "user", id: "alice" },
+    relation: "member",
+    object: { type: "group", id: "admins" },
+  };
+  const hmac = await signTuple(signedBase, key);
+  await storage.write(
+    "data/permissions/t-signed.json",
+    JSON.stringify({ ...signedBase, hmac }),
+  );
+
+  // Strict mode: unsigned tuple is NOT loaded, signed one is.
+  const strict = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    hmacKey: key,
+    strictHmac: true,
+  });
+  assertStrictEquals(
+    await strict.hasTuple({ type: "user", id: "mallory" }, "member", { type: "group", id: "admins" }),
+    false,
+  );
+  assertStrictEquals(
+    await strict.hasTuple({ type: "user", id: "alice" }, "member", { type: "group", id: "admins" }),
+    true,
+  );
+
+  // Migration (non-strict) mode: unsigned tuple is still accepted.
+  const lenient = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    hmacKey: key,
+    strictHmac: false,
+  });
+  assertStrictEquals(
+    await lenient.hasTuple({ type: "user", id: "mallory" }, "member", { type: "group", id: "admins" }),
+    true,
+  );
+});
+
 // ── AuthSystem round-trip ─────────────────────────────────────────────────────
 
 Deno.test("AuthSystem: addMember then check returns true", async () => {

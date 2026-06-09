@@ -17,6 +17,17 @@ import type { StorageAdapter as DuneStorage } from "../storage/types.ts";
 import { signTuple, verifyTuple } from "./authz-hmac.ts";
 import type { SignedTuple } from "./authz-hmac.ts";
 
+/** Read the DUNE_AUTHZ_HMAC_STRICT env flag ("1"/"true"). */
+function authzStrictHmacFromEnv(): boolean {
+  try {
+    const v = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
+    return v === "1" || v?.toLowerCase() === "true";
+  } catch {
+    // Env access not granted — default to off.
+    return false;
+  }
+}
+
 // ── Polizy StorageAdapter type aliases (avoid importing internal types) ────────
 // These mirror the shapes from polizy's index.d.ts without importing the full
 // type tree. All generic parameters resolve to string in Dune's usage.
@@ -48,6 +59,13 @@ export class AuthzLocalAdapter {
    * When null: signing and verification are skipped (fail-open).
    */
   private readonly hmacKey: CryptoKey | null;
+  /**
+   * Strict HMAC mode. When true and a key is configured, unsigned tuples (no
+   * `hmac` field) are rejected rather than accepted. Defaults from the
+   * DUNE_AUTHZ_HMAC_STRICT env var ("1"/"true"). Off by default so the
+   * migration path (sign existing files with `dune authz:sign`) still works.
+   */
+  private readonly strictHmac: boolean;
   /** In-memory tuple index — rebuilt from disk on first access */
   private readonly tuples: Map<string, PolizyStoredTuple> = new Map();
   private loaded = false;
@@ -64,10 +82,18 @@ export class AuthzLocalAdapter {
    */
   private loadPromise: Promise<void> | null = null;
 
-  constructor(config: { storage: DuneStorage; dataDir: string; hmacKey?: CryptoKey | null }) {
+  constructor(
+    config: {
+      storage: DuneStorage;
+      dataDir: string;
+      hmacKey?: CryptoKey | null;
+      strictHmac?: boolean;
+    },
+  ) {
     this.storage = config.storage;
     this.permissionsDir = `${config.dataDir}/permissions`;
     this.hmacKey = config.hmacKey ?? null;
+    this.strictHmac = config.strictHmac ?? authzStrictHmacFromEnv();
   }
 
   // ── Lazy index load ─────────────────────────────────────────────────────────
@@ -98,7 +124,14 @@ export class AuthzLocalAdapter {
                     );
                     return;
                   }
-                  // result === "missing": unsigned file, accepted during migration
+                  if (result === "missing" && this.strictHmac) {
+                    console.warn(
+                      `[dune/authz] Tuple ${tuple.id} (${e.name}) is unsigned but strict HMAC ` +
+                        "mode is enabled. Tuple NOT loaded. Run `dune authz:sign` to sign it.",
+                    );
+                    return;
+                  }
+                  // result === "missing" (non-strict): unsigned file, accepted during migration
                 }
 
                 // Strip the hmac field before storing in the in-memory index

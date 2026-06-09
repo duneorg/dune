@@ -54,6 +54,10 @@ function EditableImageActive({ field, sourcePath, children }: EditableImageProps
     if (!popup) return;
 
     const onMessage = async (event: MessageEvent) => {
+      // Only trust messages from the picker window we opened, and only from
+      // our own origin — the media picker is same-origin, so a message from
+      // any other origin is not ours.
+      if (event.origin !== window.location.origin) return;
       if (event.source !== popup) return;
       if (!event.data || event.data.type !== "dune:media-selected") return;
       window.removeEventListener("message", onMessage);

@@ -531,6 +531,24 @@ export interface SiteConfig {
       emailClaim?: string;
       /** JWT claim containing role(s) (string or string[]). Default: "roles". */
       rolesClaim?: string;
+      /**
+       * Expected `iss` claim. Strongly recommended in external-jwt mode:
+       * without it, any token signed by the same IdP (e.g. another tenant on a
+       * shared JWKS endpoint) is accepted.
+       */
+      issuer?: string;
+      /**
+       * Expected `aud` claim. The token's audience (string or string[]) must
+       * contain this value, preventing tokens minted for a different app that
+       * shares the IdP's signing keys from being accepted.
+       */
+      audience?: string;
+      /**
+       * Pin the accepted signing algorithm ("HS256" or "RS256"). When set, a
+       * token whose header alg differs is rejected — defense-in-depth against
+       * algorithm-substitution attacks.
+       */
+      algorithm?: "HS256" | "RS256";
     };
     /**
      * Session lifetime in seconds. Default: 2592000 (30 days).

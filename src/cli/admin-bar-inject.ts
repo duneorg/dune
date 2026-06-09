@@ -24,15 +24,23 @@
  * Works the same way as injectLiveReload / injectRtlDir: Response → Response.
  */
 
-import type { SessionManager } from "../admin/auth/sessions.ts";
+import type { AuthMiddleware } from "../admin/auth/middleware.ts";
 import type { DuneEngine } from "../core/engine.ts";
 
 // ── Session cookie helper ─────────────────────────────────────────────────────
 
-function getSessionToken(req: Request): string | null {
+/**
+ * Cheap check for the presence of an admin session cookie — no validation.
+ *
+ * Used by the page-cache layer to decide whether a request may share the
+ * anonymous page cache: any request carrying a session cookie must bypass
+ * both cache read and write, otherwise a bar-injected response (admin
+ * username, edit chrome, content API URLs) gets stored under the plain
+ * pathname key and served to anonymous visitors.
+ */
+export function hasAdminSessionCookie(req: Request): boolean {
   const cookie = req.headers.get("cookie") ?? "";
-  const match = cookie.match(/(?:^|;\s*)dune_session=([^;]+)/);
-  return match ? match[1] : null;
+  return /(?:^|;\s*)dune_session=[^;]+/.test(cookie);
 }
 
 // ── HTML annotation pass ──────────────────────────────────────────────────────
@@ -523,20 +531,25 @@ function buildAdminBarHtml(opts: {
 // ── Public helper ─────────────────────────────────────────────────────────────
 
 /**
- * Check if the request carries a valid admin session; if so, annotate standard
- * page elements with `data-dune-*` attributes and inject the admin bar HTML
- * before `</body>` in the response.
+ * Check if the request carries a valid admin session with edit rights; if so,
+ * annotate standard page elements with `data-dune-*` attributes and inject the
+ * admin bar HTML before `</body>` in the response.
+ *
+ * Authentication goes through the full AuthMiddleware (not a bare session
+ * lookup) so a revoked, expired, or disabled account never sees the bar, and
+ * the `pages.update` permission gate keeps edit chrome away from accounts
+ * that could not save anyway.
  *
  * Returns the original response unchanged when:
  * - The response is not HTML
- * - No admin session cookie is present
- * - The session is expired or invalid
  * - The request is for an admin path
+ * - No admin session cookie is present
+ * - The session is invalid, the user is missing/disabled, or lacks pages.update
  */
 export async function injectAdminBarIfAdmin(
   req: Request,
   response: Response,
-  sessions: SessionManager,
+  auth: AuthMiddleware,
   engine: DuneEngine,
   adminPrefix: string,
 ): Promise<Response> {
@@ -548,17 +561,17 @@ export async function injectAdminBarIfAdmin(
   const url = new URL(req.url);
   if (url.pathname.startsWith(adminPrefix)) return response;
 
-  // Check session cookie.
-  const token = getSessionToken(req);
-  if (!token) return response;
+  // Cheap pre-check before the (storage-backed) session lookup.
+  if (!hasAdminSessionCookie(req)) return response;
 
-  let session: Awaited<ReturnType<SessionManager["get"]>>;
+  let authResult: Awaited<ReturnType<AuthMiddleware["authenticate"]>>;
   try {
-    session = await sessions.get(token);
+    authResult = await auth.authenticate(req);
   } catch {
     return response;
   }
-  if (!session) return response;
+  if (!authResult.authenticated || !authResult.user) return response;
+  if (!auth.hasPermission(authResult, "pages.update")) return response;
 
   // Find the content page for this URL.
   const page = engine.pages.find((p) => p.route === url.pathname);
@@ -569,7 +582,7 @@ export async function injectAdminBarIfAdmin(
     sourcePath,
     pageTitle: page.title ?? page.route,
     adminPrefix,
-    userName: session.userId,
+    userName: authResult.user.username,
   });
 
   // Buffer the full response body so we can run both passes (annotation +
