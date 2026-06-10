@@ -1,17 +1,13 @@
 /**
- * Inline editing module — real-time Y.js-based inline content editing.
+ * Inline editing types — public interface for the Y.js-based inline editor.
  *
- * Provides:
- * - {@link createInlineEditManager} — server-side manager for WebSocket sync,
- *   Y.js document lifecycle, commit-to-history, and field patching.
- *
+ * The implementation lives in `@dune/plugin-inline-edit`.
  * The client side (Preact island components) lives in `@dune/core/ui/editable`.
  *
  * @module
  * @since 0.16.0
  */
 
-export { createInlineEditManager } from "./manager.ts";
 export type {
   InlineEditManager,
   InlineEditManagerOptions,

@@ -285,26 +285,6 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
-  // 5b. Built-in inline-edit plugin (loaded dynamically so Y.js/y-protocols are
-  // not in the static import graph for sites that opt out).
-  // A user plugin that also provides adminServices.inlineEdit takes priority
-  // (collectAdminServices merges later entries over earlier ones) — but since
-  // the built-in plugin runs first, user plugins loaded above can replace it.
-  //
-  // Disable with `inlineEdit: false` in site.yaml (not yet in the config schema;
-  // treated as a plain top-level key until then).
-  // deno-lint-ignore no-explicit-any
-  const inlineEditEnabled = (config as any).inlineEdit !== false;
-  if (inlineEditEnabled) {
-    try {
-      const { default: inlineEditPlugin } = await import("../plugins/inline-edit.ts");
-      hooks.registerPlugin(inlineEditPlugin);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[dune] Failed to load built-in inline-edit plugin: ${msg}`);
-    }
-  }
-
   // Collect plugin asset dirs, template dirs, admin pages, and public routes.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
