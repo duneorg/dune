@@ -2,7 +2,7 @@
  * Inline editing types.
  *
  * Server-side types for the Y.js-based real-time inline editing system
- * introduced in v0.16.  The client side lives in `@dune/core/ui/editable`.
+ * introduced in v0.16.  The client side lives in `@dune/plugin-inline-edit/ui/editable`.
  */
 
 import type { StorageAdapter } from "../storage/types.ts";

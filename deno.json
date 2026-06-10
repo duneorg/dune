@@ -16,7 +16,6 @@
     "./auth/authz": "./src/auth/authz.ts",
     "./email": "./src/email/mod.ts",
     "./ui": "./src/ui/mod.ts",
-    "./ui/editable": "./src/ui/editable/mod.ts",
     "./inline-edit": "./src/inline-edit/mod.ts",
     "./logger": "./src/core/logger.ts"
   },

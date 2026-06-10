@@ -10,7 +10,7 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 ### Breaking Changes
 
 - **Inline editing requires `@dune/plugin-inline-edit`** — the built-in Y.js/WebSocket inline editor has been moved to the separate `jsr:@dune/plugin-inline-edit` package. Sites using inline editing must add it to their `plugins:` list in `site.yaml`. Core no longer depends on yjs, y-protocols, or lib0.
-- **`EditableMarkdown` removed from `@dune/core/ui/editable`** — the TipTap/Y.js WYSIWYG component is now exported from `@dune/plugin-inline-edit`. Import it from there. The other editable components (`EditableText`, `EditableImage`, `EditableDate`, `EditableField`, `AdminBar`) remain in `@dune/core/ui/editable` unchanged.
+- **`@dune/core/ui/editable` removed** — the entire inline-editing component kit (`EditableText`, `EditableMarkdown`, `EditableImage`, `EditableDate`, `EditableField`, `AdminBar`, the field editor registry, and the edit-mode context helpers) now lives in `@dune/plugin-inline-edit/ui/editable`. Update theme imports accordingly. This keeps the TipTap/Y.js dependency tree — and the plugin's WebSocket endpoint knowledge — entirely out of core.
 
 ### Added
 
