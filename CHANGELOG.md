@@ -5,13 +5,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.18.0] — 2026-06-10
+
+### Breaking Changes
+
+- **`@dune/core/ui/editable` removed** — the entire inline-editing component kit (`EditableText`, `EditableMarkdown`, `EditableImage`, `EditableDate`, `EditableField`, `AdminBar`, the field editor registry, and the edit-mode context helpers) now lives in `@dune/plugin-inline-edit/ui/editable`. Update theme imports accordingly. This keeps the TipTap/Y.js dependency tree — and the plugin's WebSocket endpoint knowledge — entirely out of core.
+- **`@dune/core/inline-edit` reduced to the service port** — it now exports only what core's admin endpoints consume: `InlineEditManager`, `ActiveEditor`, `DocumentPresence`. The implementation types (`InlineEditClient`, `InlineEditSession`, `InlineEditManagerOptions`) moved to `@dune/plugin-inline-edit`.
+
+### Added
+
+- **`DunePlugin` and the other hook types are now exported from `@dune/core/plugins`** — plugin authors can type their plugin against the plugin API subpath alone, without importing the main `@dune/core` barrel.
+
+---
+
 ## [0.17.0] — 2026-06-10
 
 ### Breaking Changes
 
 - **Inline editing requires `@dune/plugin-inline-edit`** — the built-in Y.js/WebSocket inline editor has been moved to the separate `jsr:@dune/plugin-inline-edit` package. Sites using inline editing must add it to their `plugins:` list in `site.yaml`. Core no longer depends on yjs, y-protocols, or lib0.
-- **`@dune/core/ui/editable` removed** — the entire inline-editing component kit (`EditableText`, `EditableMarkdown`, `EditableImage`, `EditableDate`, `EditableField`, `AdminBar`, the field editor registry, and the edit-mode context helpers) now lives in `@dune/plugin-inline-edit/ui/editable`. Update theme imports accordingly. This keeps the TipTap/Y.js dependency tree — and the plugin's WebSocket endpoint knowledge — entirely out of core.
-- **`@dune/core/inline-edit` reduced to the service port** — it now exports only what core's admin endpoints consume: `InlineEditManager`, `ActiveEditor`, `DocumentPresence`. The implementation types (`InlineEditClient`, `InlineEditSession`, `InlineEditManagerOptions`) moved to `@dune/plugin-inline-edit`.
 
 ### Added
 
@@ -19,7 +30,6 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 - **`DunePlugin.adminServices`** — factory hook called during bootstrap for plugins that contribute admin-context services (e.g. a custom inline editing manager). See `AdminServicesContext` and `AdminServices` in `@dune/core/plugins`.
 - **Transform pipeline ETag fingerprinting** — each transform plugin's `name@version` is folded into page ETags, so adding, removing, or upgrading a transform plugin invalidates page-cache entries and browser-cached copies automatically.
 - **`isAdminPath()` helper** in `serve-utils.ts` — boundary-aware admin path check used by all guards so sibling content routes (e.g. `/administrivia` when prefix is `/admin`) are not incorrectly treated as admin paths.
-- **`DunePlugin` and the other hook types are now exported from `@dune/core/plugins`** — plugin authors can type their plugin against the plugin API subpath alone, without importing the main `@dune/core` barrel.
 
 ### Fixed
 
