@@ -14,6 +14,13 @@
  * - `PluginApi` interface
  * - `loadPlugins` / `loadPluginAdminConfigs` functions
  *
+ * ## Changes in v0.17
+ *
+ * - `DunePlugin.adminServices` — plugins can contribute admin-context services
+ *   (e.g. inline editing manager). Factory called during bootstrap with storage,
+ *   history, and path context. See `AdminServicesContext` / `AdminServices`.
+ * - `collectAdminServices` — collects and merges admin services from all plugins.
+ *
  * ## Changes in v1.1
  *
  * - `DunePlugin.publicRoutes` — plugins can now register public-facing Fresh routes.
@@ -66,6 +73,6 @@
  */
 export const PLUGIN_API_VERSION = "0.7";
 
-export { loadPlugins, loadPluginAdminConfigs } from "./loader.ts";
+export { loadPlugins, loadPluginAdminConfigs, collectAdminServices } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
-export type { PublicRouteRegistration } from "../hooks/types.ts";
+export type { PublicRouteRegistration, AdminServicesContext, AdminServices } from "../hooks/types.ts";

@@ -26,7 +26,7 @@
 
 import { join } from "@std/path";
 import type { DuneConfig, PluginEntry } from "../config/types.ts";
-import type { DunePlugin } from "../hooks/types.ts";
+import type { DunePlugin, AdminServicesContext, AdminServices } from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -284,4 +284,31 @@ function resolvePluginUrl(src: string, root: string): string {
   // Local path — resolve relative to site root
   const absPath = src.startsWith("/") ? src : join(root, src);
   return `file://${absPath}`;
+}
+
+/**
+ * Collect admin-context services from all registered plugins.
+ *
+ * Iterates the plugins in registration order and calls each plugin's
+ * `adminServices` factory (if present). Later plugins win on key conflicts,
+ * so an explicit user plugin can replace the built-in inline-edit manager.
+ *
+ * @since 0.17.0
+ */
+export async function collectAdminServices(
+  plugins: DunePlugin[],
+  ctx: AdminServicesContext,
+): Promise<AdminServices> {
+  let services: AdminServices = {};
+  for (const plugin of plugins) {
+    if (!plugin.adminServices) continue;
+    try {
+      const contributed = await plugin.adminServices(ctx);
+      services = { ...services, ...contributed };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[dune] Plugin "${plugin.name}" adminServices() failed: ${message}`);
+    }
+  }
+  return services;
 }

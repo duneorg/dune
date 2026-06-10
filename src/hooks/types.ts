@@ -6,6 +6,8 @@ import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
 import type { FreshContext } from "fresh";
+import type { InlineEditManager } from "../inline-edit/types.ts";
+import type { HistoryEngine } from "../history/engine.ts";
 
 /**
  * All lifecycle events a plugin can subscribe to.
@@ -297,6 +299,55 @@ export interface DunePlugin {
    * ```
    */
   publicRoutes?: PublicRouteRegistration[];
+  /**
+   * Factory for admin-context services contributed by this plugin.
+   *
+   * Called during bootstrap after core infrastructure (storage, history) is
+   * initialised but before the admin panel routes are mounted. Returning an
+   * `inlineEdit` manager here is how plugins replace (or add to) the built-in
+   * inline editing service.
+   *
+   * @since 0.17.0
+   *
+   * @example
+   * ```ts
+   * adminServices({ storage, history, dataDir, contentDir }) {
+   *   return { inlineEdit: createMyEditManager({ storage, history, dataDir, contentDir }) };
+   * }
+   * ```
+   */
+  adminServices?: (ctx: AdminServicesContext) => Promise<AdminServices> | AdminServices;
+}
+
+/**
+ * Context passed to {@link DunePlugin.adminServices} factories.
+ *
+ * Provides the infrastructure services a plugin needs to construct
+ * admin-panel service objects (e.g. inline editing managers).
+ *
+ * @since 0.17.0
+ */
+export interface AdminServicesContext {
+  /** Storage adapter for the site (reads/writes content and data files). */
+  storage: StorageAdapter;
+  /** Merged site configuration. */
+  config: DuneConfig;
+  /** Absolute data directory path (e.g. ".dune/data"). */
+  dataDir: string;
+  /** Content directory path relative to site root (e.g. "content"). */
+  contentDir: string;
+  /** History engine for recording content revisions. */
+  history: HistoryEngine;
+}
+
+/**
+ * Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}.
+ *
+ * @since 0.17.0
+ */
+export interface AdminServices {
+  /** Inline editing manager (Y.js-backed real-time editor, v0.16+). */
+  inlineEdit?: InlineEditManager;
 }
 
 /** Hook registry interface */

@@ -34,11 +34,10 @@ import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
 import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
-import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
+import { loadPlugins, loadPluginAdminConfigs, collectAdminServices } from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
-import { createInlineEditManager } from "../inline-edit/mod.ts";
 import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
@@ -286,6 +285,26 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
+  // 5b. Built-in inline-edit plugin (loaded dynamically so Y.js/y-protocols are
+  // not in the static import graph for sites that opt out).
+  // A user plugin that also provides adminServices.inlineEdit takes priority
+  // (collectAdminServices merges later entries over earlier ones) — but since
+  // the built-in plugin runs first, user plugins loaded above can replace it.
+  //
+  // Disable with `inlineEdit: false` in site.yaml (not yet in the config schema;
+  // treated as a plain top-level key until then).
+  // deno-lint-ignore no-explicit-any
+  const inlineEditEnabled = (config as any).inlineEdit !== false;
+  if (inlineEditEnabled) {
+    try {
+      const { default: inlineEditPlugin } = await import("../plugins/inline-edit.ts");
+      hooks.registerPlugin(inlineEditPlugin);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[dune] Failed to load built-in inline-edit plugin: ${msg}`);
+    }
+  }
+
   // Collect plugin asset dirs, template dirs, admin pages, and public routes.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
@@ -397,10 +416,11 @@ export async function bootstrap(
     contentDir: config.system.content.dir,
   });
 
-  // 11b. Inline editing (Y.js-based, v0.16+)
-  const inlineEditManager = createInlineEditManager({
+  // 11b. Inline editing — collect from plugins (built-in plugin loaded above in 5b).
+  const adminServices = await collectAdminServices(hooks.plugins(), {
     storage,
     history,
+    config,
     dataDir: runtimeDir,
     contentDir: config.system.content.dir,
   });
@@ -615,7 +635,7 @@ export async function bootstrap(
       staging: stagingEngine,
       comments: commentManager,
       collab: collabManager,
-      inlineEdit: inlineEditManager,
+      inlineEdit: adminServices.inlineEdit,
       imageCache,
       auditLogger: auditLogger ?? undefined,
       metrics: metricsEnabled ? metrics : undefined,
