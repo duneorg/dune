@@ -8,7 +8,7 @@
  *   Response: `{ body: "# Heading\n..." }`
  *
  * POST /admin/api/content/:encodedSourcePath/commit
- *   Flush the live Y.js document to a history revision and write committed
+ *   Flush the live editing state to a history revision and write committed
  *   Markdown back to the `.md` file.  This is the "Save" action.
  *
  * PATCH /admin/api/content/:encodedSourcePath/fields

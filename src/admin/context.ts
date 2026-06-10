@@ -48,7 +48,7 @@ export interface AdminContext {
   staging?: StagingEngine;
   comments?: CommentManager;
   collab?: CollabManager;
-  /** Inline editing manager (Y.js-based, v0.16+). */
+  /** Inline editing manager, provided by a plugin via adminServices (v0.16+). */
   inlineEdit?: InlineEditManager;
   imageCache?: ImageCache;
   auditLogger?: AuditLogger;

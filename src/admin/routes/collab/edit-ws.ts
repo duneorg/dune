@@ -1,8 +1,9 @@
 /**
  * GET /admin/collab/edit-ws?path=... (Upgrade: websocket)
  *
- * Y.js-based real-time inline editing WebSocket endpoint (v0.16+).
- * One Y.Doc per page, keyed by source path.
+ * Real-time inline editing WebSocket endpoint (v0.16+). Core authenticates
+ * and validates the request, then hands the upgrade to the plugin-provided
+ * InlineEditManager; the sync protocol on the socket is the plugin's.
  *
  * The `path` query parameter is the page source path relative to the content
  * directory, e.g. `pages/about/default.md`.

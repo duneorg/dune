@@ -7,8 +7,8 @@
  * username, edit chrome, content API URLs) could be stored under the plain
  * pathname key and served to anonymous visitors.
  *
- * The actual admin bar injection is performed by `@dune/plugin-inline-edit`
- * via the `DunePlugin.transformResponse` hook.
+ * The actual admin bar injection is performed by whatever plugin registers a
+ * `DunePlugin.transformResponse` hook for it (e.g. `@dune/plugin-inline-edit`).
  */
 
 /**

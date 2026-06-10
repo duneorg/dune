@@ -393,7 +393,7 @@ export interface AdminServicesContext {
  * @since 0.17.0
  */
 export interface AdminServices {
-  /** Inline editing manager (Y.js-backed real-time editor, v0.16+). */
+  /** Inline editing manager — the service behind the inline-edit admin endpoints (v0.16+). */
   inlineEdit?: InlineEditManager;
 }
 

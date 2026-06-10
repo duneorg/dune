@@ -79,8 +79,14 @@ export const PLUGIN_API_VERSION = "0.7";
 export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
-  PublicRouteRegistration,
-  AdminServicesContext,
+  AdminPageRegistration,
   AdminServices,
+  AdminServicesContext,
+  DunePlugin,
+  HookContext,
+  HookEvent,
+  HookHandler,
+  PluginApi,
+  PublicRouteRegistration,
   ResponseTransformContext,
 } from "../hooks/types.ts";

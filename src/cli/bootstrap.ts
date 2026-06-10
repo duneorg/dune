@@ -397,8 +397,8 @@ export async function bootstrap(
   });
 
   // 11b. Inline editing — collected from plugins loaded in 5a. There is no
-  // built-in implementation: sites must add jsr:@dune/plugin-inline-edit (or
-  // another plugin providing adminServices.inlineEdit) to their plugins list,
+  // built-in implementation: a plugin providing adminServices.inlineEdit
+  // (e.g. jsr:@dune/plugin-inline-edit) must be in the site's plugins list,
   // otherwise the inline-edit admin endpoints respond 501.
   const adminServices = await collectAdminServices(hooks.plugins(), {
     storage,

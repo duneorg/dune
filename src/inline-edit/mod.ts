@@ -1,18 +1,16 @@
 /**
- * Inline editing types — public interface for the Y.js-based inline editor.
+ * Inline editing service port — the interface core's admin endpoints consume.
  *
- * The implementation lives in `@dune/plugin-inline-edit`.
- * The client side (Preact island components) lives in `@dune/plugin-inline-edit/ui/editable`.
+ * Core ships no implementation. A plugin provides one through
+ * `DunePlugin.adminServices` (e.g. `jsr:@dune/plugin-inline-edit`); without
+ * one, the inline-edit admin endpoints respond 501.
  *
  * @module
  * @since 0.16.0
  */
 
 export type {
-  InlineEditManager,
-  InlineEditManagerOptions,
-  InlineEditSession,
-  InlineEditClient,
   ActiveEditor,
   DocumentPresence,
+  InlineEditManager,
 } from "./types.ts";
