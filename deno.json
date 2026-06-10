@@ -45,11 +45,12 @@
     "y-protocols": "npm:y-protocols@^1",
     "lib0": "npm:lib0@^0.2"
   },
+  "unstable": ["kv"],
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",
     "build": "deno run -A src/cli.ts build",
     "serve": "deno run -A src/cli.ts serve",
-    "test": "deno test --unstable-kv -A tests/",
+    "test": "deno test -A tests/",
     "check": "deno check src/**/*.ts",
     "dune": "deno run -A src/cli.ts"
   },
