@@ -328,8 +328,28 @@ export interface DunePlugin {
    * Plugins are called in registration order. Each plugin receives the
    * response returned by the previous one, so transforms compose cleanly.
    *
-   * Common uses: inject HTML fragments (admin bar, analytics snippet, A/B
-   * testing markers), add custom headers, modify body content.
+   * Common uses: inject HTML fragments (admin bar, analytics snippet),
+   * add custom headers, modify body content.
+   *
+   * ## Caching contract
+   *
+   * Transforms also run for **anonymous** requests (with `auth: null`), and
+   * in production the transformed response is stored in the shared page
+   * cache keyed by pathname only. Requests carrying an admin session cookie
+   * always bypass that cache; nothing else does. Therefore transform output
+   * **must depend only on `ctx.auth` and `ctx.page`** — never on other
+   * request attributes such as non-admin cookies, headers, the query string,
+   * or per-request randomness (e.g. A/B bucketing). Output that varies on
+   * anything else would be cached under the bare pathname and served to
+   * every visitor.
+   *
+   * The transform pipeline is part of the page ETag: each transform
+   * plugin's `name@version` is folded into the hash, so installing,
+   * removing, or upgrading a transform plugin invalidates page-cache
+   * entries and browser-revalidated (304) copies. Output changes that are
+   * not accompanied by a version bump (e.g. config-driven changes within
+   * the same plugin version) are NOT detected — bump the plugin version
+   * whenever the produced output changes.
    *
    * @since 0.17.0
    *

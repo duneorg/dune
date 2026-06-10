@@ -10,7 +10,7 @@
  */
 
 import { App, staticFiles } from "fresh";
-import type { AdminState, AdminPermission } from "../admin/types.ts";
+import type { AdminState } from "../admin/types.ts";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { mountDuneAdmin } from "../admin/mount.ts";
@@ -23,12 +23,12 @@ import {
   injectFeedLinks,
   injectLiveReload,
   injectRtlDir,
+  isAdminPath,
 } from "./serve-utils.ts";
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
-import { applyResponseTransforms } from "../plugins/loader.ts";
-import type { ResponseTransformContext } from "../hooks/types.ts";
+import { runPluginResponseTransforms } from "./response-transforms.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
@@ -119,6 +119,17 @@ export async function createDuneApp(
     swr: httpCacheConfig.default_swr ?? 60,
   };
   const cacheRules = httpCacheConfig.rules ?? [];
+
+  // Fingerprint of the plugin transformResponse pipeline, folded into page
+  // ETags so adding, removing, or upgrading a transform plugin invalidates
+  // browser-revalidated (304) copies and in-process page-cache entries.
+  // Plugins register during bootstrap, before createDuneApp runs, so this is
+  // stable for the process lifetime.
+  const transformFingerprint = hooks
+    .plugins()
+    .filter((p) => p.transformResponse)
+    .map((p) => `${p.name}@${p.version}`)
+    .join(",");
 
   let pageCache: PageCache | null = null;
   if (!dev && config.system.page_cache?.enabled) {
@@ -345,7 +356,7 @@ export async function createDuneApp(
   }
 
   function stripSetCookieOnAdmin(res: Response, pathname: string, prefix: string): Response {
-    if (!pathname.startsWith(prefix)) return res;
+    if (!isAdminPath(pathname, prefix)) return res;
     if (!res.headers.has("set-cookie")) return res;
     const headers = new Headers(res.headers);
     headers.delete("set-cookie");
@@ -379,7 +390,7 @@ export async function createDuneApp(
     if (hookResult instanceof Response) {
       // Path is under the admin prefix? Drop the plugin response, log a
       // warning, and let admin routing handle the request normally.
-      if (fc.url.pathname.startsWith(adminPrefix)) {
+      if (isAdminPath(fc.url.pathname, adminPrefix)) {
         console.warn(
           `[dune] plugin onRequest tried to short-circuit admin path ${fc.url.pathname}; ignoring response.`,
         );
@@ -702,7 +713,7 @@ export async function createDuneApp(
       // Production: ETag + page cache
       if (!dev) {
         const pageIndex = engine.pages.find((p) => p.route === url.pathname);
-        const etag = pageIndex ? await computeEtag(pageIndex) : null;
+        const etag = pageIndex ? await computeEtag(pageIndex, transformFingerprint) : null;
         const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
         const ccValue = buildCacheControl(policy);
 
@@ -759,35 +770,15 @@ export async function createDuneApp(
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
         // Plugin response transforms (e.g. admin bar injection) — must run before caching.
-        {
-          const transformPlugins = hooks.plugins().filter((p) => p.transformResponse);
-          if (transformPlugins.length > 0) {
-            let transformAuth: ResponseTransformContext["auth"] = null;
-            if (hasAdminSessionCookie(req)) {
-              try {
-                const result = await auth.authenticate(req);
-                if (result.authenticated && result.user) {
-                  transformAuth = {
-                    username: result.user.username,
-                    role: result.user.role,
-                    hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
-                  };
-                }
-              } catch { /* invalid session — treat as unauthenticated */ }
-            }
-            const matchedPage = engine.pages.find((p) => p.route === url.pathname);
-            response = await applyResponseTransforms(transformPlugins, {
-              req,
-              response,
-              auth: transformAuth,
-              config,
-              page: matchedPage?.sourcePath
-                ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
-                : null,
-              adminPrefix,
-            });
-          }
-        }
+        response = await runPluginResponseTransforms({
+          req,
+          response,
+          plugins: hooks.plugins(),
+          auth,
+          pages: engine.pages,
+          config,
+          adminPrefix,
+        });
 
         // RTL injection
         const pageIndex2 = engine.pages.find((p) => p.route === url.pathname);
@@ -831,35 +822,15 @@ export async function createDuneApp(
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
         // Plugin response transforms (e.g. admin bar injection).
-        {
-          const transformPlugins = hooks.plugins().filter((p) => p.transformResponse);
-          if (transformPlugins.length > 0) {
-            let transformAuth: ResponseTransformContext["auth"] = null;
-            if (hasAdminSessionCookie(req)) {
-              try {
-                const result = await auth.authenticate(req);
-                if (result.authenticated && result.user) {
-                  transformAuth = {
-                    username: result.user.username,
-                    role: result.user.role,
-                    hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
-                  };
-                }
-              } catch { /* invalid session — treat as unauthenticated */ }
-            }
-            const matchedPage = engine.pages.find((p) => p.route === url.pathname);
-            response = await applyResponseTransforms(transformPlugins, {
-              req,
-              response,
-              auth: transformAuth,
-              config,
-              page: matchedPage?.sourcePath
-                ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
-                : null,
-              adminPrefix,
-            });
-          }
-        }
+        response = await runPluginResponseTransforms({
+          req,
+          response,
+          plugins: hooks.plugins(),
+          auth,
+          pages: engine.pages,
+          config,
+          adminPrefix,
+        });
 
         const devPage = engine.pages.find((p) => p.route === url.pathname);
         const devLang = devPage?.language ?? config.system.languages?.default ?? "en";

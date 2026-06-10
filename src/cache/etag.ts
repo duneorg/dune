@@ -3,7 +3,8 @@
  *
  * The ETag is derived from lightweight PageIndex metadata — no file I/O.
  * It changes whenever any of: route, title, date, template, format,
- * language, or mtime changes.
+ * language, or mtime changes, and whenever the response post-processing
+ * pipeline changes (see `pipelineFingerprint`).
  */
 
 import type { PageIndex } from "../content/types.ts";
@@ -12,9 +13,19 @@ import type { PageIndex } from "../content/types.ts";
  * Compute a quoted ETag string for a PageIndex entry.
  * The result is safe to use directly in `ETag` and `If-None-Match` headers.
  *
+ * `pipelineFingerprint` identifies response post-processing that affects the
+ * served body beyond the page content itself — e.g. the plugin
+ * `transformResponse` pipeline (`name@version` per transform plugin). Folding
+ * it into the hash invalidates browser-revalidated (304) copies and in-process
+ * page-cache entries when a transform plugin is added, removed, or upgraded,
+ * not just when the content changes.
+ *
  * @example `"a3f2c1d4b5e6f7a8"`
  */
-export async function computeEtag(page: PageIndex): Promise<string> {
+export async function computeEtag(
+  page: PageIndex,
+  pipelineFingerprint = "",
+): Promise<string> {
   const input = [
     page.route,
     page.title,
@@ -24,6 +35,7 @@ export async function computeEtag(page: PageIndex): Promise<string> {
     page.language ?? "",
     page.sourcePath,
     String(page.mtime ?? 0),
+    pipelineFingerprint,
   ].join("|");
 
   const data = new TextEncoder().encode(input);

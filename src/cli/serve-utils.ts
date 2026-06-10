@@ -25,6 +25,23 @@ export function withSecurityHeaders(response: Response): Response {
   });
 }
 
+// === Admin path matching ===
+
+/**
+ * True when `pathname` is the admin panel root or lives under it.
+ *
+ * Boundary-aware: with an admin prefix of `/admin`, both `/admin` and
+ * `/admin/pages` match, but sibling content routes that merely share the
+ * prefix string (`/administrivia`) do not. Admin routes are mounted at
+ * exactly the prefix (`app.fsRoutes(adminPrefix)`), so bare
+ * `pathname.startsWith(adminPrefix)` checks disagree with the router on
+ * such siblings. Use this helper wherever admin paths get special
+ * treatment so all guards share the router's notion of "admin path".
+ */
+export function isAdminPath(pathname: string, adminPrefix: string): boolean {
+  return pathname === adminPrefix || pathname.startsWith(`${adminPrefix}/`);
+}
+
 // === Compression ===
 
 /** Content types worth gzip-compressing. */
