@@ -7,11 +7,13 @@
  *
  * **Components:**
  * - {@link EditableText} — inline contenteditable for string frontmatter fields
- * - {@link EditableMarkdown} — TipTap WYSIWYG for the page Markdown body (Y.js backed)
  * - {@link EditableImage} — media picker for image frontmatter fields
  * - {@link EditableDate} — date picker for date fields
  * - {@link EditableField} — generic field editor with registry lookup
  * - {@link AdminBar} — persistent admin toolbar injected at the page top
+ *
+ * `EditableMarkdown` (TipTap/Y.js WYSIWYG) was moved to `@dune/plugin-inline-edit`
+ * in v0.17.0 to keep the heavy tiptap/yjs dependency tree out of core.
  *
  * **Field editor registry:**
  * ```ts
@@ -26,9 +28,6 @@
 
 export { default as EditableText } from "./EditableText.tsx";
 export type { EditableTextProps } from "./EditableText.tsx";
-
-export { default as EditableMarkdown } from "./EditableMarkdown.tsx";
-export type { EditableMarkdownProps } from "./EditableMarkdown.tsx";
 
 export { default as EditableImage } from "./EditableImage.tsx";
 export type { EditableImageProps } from "./EditableImage.tsx";
