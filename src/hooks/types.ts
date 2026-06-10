@@ -317,6 +317,33 @@ export interface DunePlugin {
    * ```
    */
   adminServices?: (ctx: AdminServicesContext) => Promise<AdminServices> | AdminServices;
+  /**
+   * Transform an HTTP response before it is sent to the client.
+   *
+   * Called for every response produced by the site (content pages, not admin
+   * routes). Core pre-resolves auth and the matching content page, so the
+   * plugin does not need to re-authenticate. Return a new `Response` to
+   * replace the current one, or return `ctx.response` unchanged to pass through.
+   *
+   * Plugins are called in registration order. Each plugin receives the
+   * response returned by the previous one, so transforms compose cleanly.
+   *
+   * Common uses: inject HTML fragments (admin bar, analytics snippet, A/B
+   * testing markers), add custom headers, modify body content.
+   *
+   * @since 0.17.0
+   *
+   * @example
+   * ```ts
+   * transformResponse({ response, auth, page }) {
+   *   if (!auth || !page) return response;
+   *   const ct = response.headers.get("Content-Type") ?? "";
+   *   if (!ct.includes("text/html")) return response;
+   *   return injectHtml(response, myFragment);
+   * }
+   * ```
+   */
+  transformResponse?: (ctx: ResponseTransformContext) => Promise<Response> | Response;
 }
 
 /**
@@ -348,6 +375,41 @@ export interface AdminServicesContext {
 export interface AdminServices {
   /** Inline editing manager (Y.js-backed real-time editor, v0.16+). */
   inlineEdit?: InlineEditManager;
+}
+
+/**
+ * Context passed to {@link DunePlugin.transformResponse}.
+ *
+ * Auth is pre-resolved by core before calling plugins — no additional session
+ * lookup is needed. `page` is the content page matching the current URL, or
+ * null for non-content routes (admin paths, API paths, theme static assets).
+ *
+ * @since 0.17.0
+ */
+export interface ResponseTransformContext {
+  /** The incoming HTTP request. */
+  req: Request;
+  /** The response produced by the app — possibly already transformed by earlier plugins. */
+  response: Response;
+  /**
+   * Authenticated admin user, or null if the request carries no valid admin
+   * session or the session lacks the minimum `pages.update` permission.
+   */
+  auth: {
+    username: string;
+    role: string;
+    /** Check whether this user has a specific admin permission. */
+    hasPermission(permission: string): boolean;
+  } | null;
+  /** Merged site configuration. */
+  config: DuneConfig;
+  /**
+   * Content page matching the current URL, or null for non-content routes
+   * (admin paths, API paths, plugin routes, theme static assets, etc.).
+   */
+  page: { sourcePath: string; route: string; title: string | null } | null;
+  /** Admin panel URL prefix (e.g. `"/admin"`). */
+  adminPrefix: string;
 }
 
 /** Hook registry interface */

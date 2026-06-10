@@ -10,7 +10,7 @@
  */
 
 import { App, staticFiles } from "fresh";
-import type { AdminState } from "../admin/types.ts";
+import type { AdminState, AdminPermission } from "../admin/types.ts";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { mountDuneAdmin } from "../admin/mount.ts";
@@ -26,7 +26,9 @@ import {
 } from "./serve-utils.ts";
 import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
-import { injectAdminBarIfAdmin, hasAdminSessionCookie } from "./admin-bar-inject.ts";
+import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
+import { applyResponseTransforms } from "../plugins/loader.ts";
+import type { ResponseTransformContext } from "../hooks/types.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
@@ -756,8 +758,33 @@ export async function createDuneApp(
         response = await routes.contentHandler(req, renderJsx);
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
-        // Admin bar injection (v0.16+) — must run before caching.
-        response = await injectAdminBarIfAdmin(req, response, auth, engine, adminPrefix);
+        // Plugin response transforms (e.g. admin bar injection) — must run before caching.
+        {
+          let transformAuth: ResponseTransformContext["auth"] = null;
+          if (hasAdminSessionCookie(req)) {
+            try {
+              const result = await auth.authenticate(req);
+              if (result.authenticated && result.user) {
+                transformAuth = {
+                  username: result.user.username,
+                  role: result.user.role,
+                  hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
+                };
+              }
+            } catch { /* invalid session — treat as unauthenticated */ }
+          }
+          const matchedPage = engine.pages.find((p) => p.route === url.pathname);
+          response = await applyResponseTransforms(hooks.plugins(), {
+            req,
+            response,
+            auth: transformAuth,
+            config,
+            page: matchedPage?.sourcePath
+              ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
+              : null,
+            adminPrefix,
+          });
+        }
 
         // RTL injection
         const pageIndex2 = engine.pages.find((p) => p.route === url.pathname);
@@ -800,8 +827,33 @@ export async function createDuneApp(
         response = await routes.contentHandler(req, renderJsx);
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
-        // Admin bar injection (v0.16+).
-        response = await injectAdminBarIfAdmin(req, response, auth, engine, adminPrefix);
+        // Plugin response transforms (e.g. admin bar injection).
+        {
+          let transformAuth: ResponseTransformContext["auth"] = null;
+          if (hasAdminSessionCookie(req)) {
+            try {
+              const result = await auth.authenticate(req);
+              if (result.authenticated && result.user) {
+                transformAuth = {
+                  username: result.user.username,
+                  role: result.user.role,
+                  hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
+                };
+              }
+            } catch { /* invalid session — treat as unauthenticated */ }
+          }
+          const matchedPage = engine.pages.find((p) => p.route === url.pathname);
+          response = await applyResponseTransforms(hooks.plugins(), {
+            req,
+            response,
+            auth: transformAuth,
+            config,
+            page: matchedPage?.sourcePath
+              ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
+              : null,
+            adminPrefix,
+          });
+        }
 
         const devPage = engine.pages.find((p) => p.route === url.pathname);
         const devLang = devPage?.language ?? config.system.languages?.default ?? "en";

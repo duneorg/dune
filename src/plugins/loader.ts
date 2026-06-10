@@ -26,7 +26,12 @@
 
 import { join } from "@std/path";
 import type { DuneConfig, PluginEntry } from "../config/types.ts";
-import type { DunePlugin, AdminServicesContext, AdminServices } from "../hooks/types.ts";
+import type {
+  DunePlugin,
+  AdminServicesContext,
+  AdminServices,
+  ResponseTransformContext,
+} from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -284,6 +289,32 @@ function resolvePluginUrl(src: string, root: string): string {
   // Local path — resolve relative to site root
   const absPath = src.startsWith("/") ? src : join(root, src);
   return `file://${absPath}`;
+}
+
+/**
+ * Apply each plugin's `transformResponse` handler in registration order.
+ *
+ * Each plugin receives the response returned by the previous one, so
+ * transforms compose cleanly. Errors in individual plugins are caught and
+ * logged; processing continues with the remaining plugins.
+ *
+ * @since 0.17.0
+ */
+export async function applyResponseTransforms(
+  plugins: DunePlugin[],
+  ctx: ResponseTransformContext,
+): Promise<Response> {
+  let response = ctx.response;
+  for (const plugin of plugins) {
+    if (!plugin.transformResponse) continue;
+    try {
+      response = await plugin.transformResponse({ ...ctx, response });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[dune] Plugin "${plugin.name}" transformResponse() failed: ${message}`);
+    }
+  }
+  return response;
 }
 
 /**

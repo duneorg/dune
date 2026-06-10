@@ -20,6 +20,9 @@
  *   (e.g. inline editing manager). Factory called during bootstrap with storage,
  *   history, and path context. See `AdminServicesContext` / `AdminServices`.
  * - `collectAdminServices` — collects and merges admin services from all plugins.
+ * - `DunePlugin.transformResponse` — plugins can transform HTTP responses before
+ *   they are sent to the client. Auth and the matched content page are pre-resolved
+ *   by core. See `ResponseTransformContext` and `applyResponseTransforms`.
  *
  * ## Changes in v1.1
  *
@@ -73,6 +76,11 @@
  */
 export const PLUGIN_API_VERSION = "0.7";
 
-export { loadPlugins, loadPluginAdminConfigs, collectAdminServices } from "./loader.ts";
+export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
-export type { PublicRouteRegistration, AdminServicesContext, AdminServices } from "../hooks/types.ts";
+export type {
+  PublicRouteRegistration,
+  AdminServicesContext,
+  AdminServices,
+  ResponseTransformContext,
+} from "../hooks/types.ts";
