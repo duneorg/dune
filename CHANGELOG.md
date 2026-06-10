@@ -5,6 +5,36 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.17.0] — 2026-06-10
+
+### Breaking Changes
+
+- **Inline editing requires `@dune/plugin-inline-edit`** — the built-in Y.js/WebSocket inline editor has been moved to the separate `jsr:@dune/plugin-inline-edit` package. Sites using inline editing must add it to their `plugins:` list in `site.yaml`. Core no longer depends on yjs, y-protocols, or lib0.
+
+### Added
+
+- **`DunePlugin.transformResponse`** — new plugin hook for transforming HTTP responses before they are sent to the client. Core pre-resolves the authenticated user and the matched content page; plugins do not need to re-authenticate. Plugins are called in registration order and compose cleanly. See `ResponseTransformContext` in `@dune/core/plugins`.
+- **`DunePlugin.adminServices`** — factory hook called during bootstrap for plugins that contribute admin-context services (e.g. a custom inline editing manager). See `AdminServicesContext` and `AdminServices` in `@dune/core/plugins`.
+- **Transform pipeline ETag fingerprinting** — each transform plugin's `name@version` is folded into page ETags, so adding, removing, or upgrading a transform plugin invalidates page-cache entries and browser-cached copies automatically.
+- **`isAdminPath()` helper** in `serve-utils.ts` — boundary-aware admin path check used by all guards so sibling content routes (e.g. `/administrivia` when prefix is `/admin`) are not incorrectly treated as admin paths.
+
+### Fixed
+
+- Plugin `transformResponse` auth context now correctly enforces the `pages.update` permission gate. Previously any authenticated admin session populated `ctx.auth` as non-null regardless of permissions; read-only accounts could receive edit chrome from plugins that trusted the documented contract.
+- Plugin `onRequest` responses and `Set-Cookie` headers are no longer dropped for content routes whose path starts with but is not under the admin prefix (e.g. `/administrivia` with a `/admin` prefix).
+
+### Security
+
+- **`transformResponse` auth contract** — `ctx.auth` is now null for sessions that lack `pages.update`, matching the documented contract and preventing plugins from exposing edit chrome or content API URLs to read-only roles.
+- **Transform pipeline caching contract** — documented that transform output must depend only on `ctx.auth` and `ctx.page`; removed A/B testing as a suggested use case (output cached under pathname key, served to all visitors).
+
+### Changed
+
+- `--unstable-kv` is now declared in `deno.json` under `"unstable"` rather than on the test task CLI flag, so it applies to `deno check`, the LSP, and bare `deno test` invocations.
+- `admin-bar-inject.ts` is now a single-function module (`hasAdminSessionCookie`); all admin bar HTML and injection logic lives in `@dune/plugin-inline-edit`.
+
+---
+
 ## [0.16.3] — 2026-06-09
 
 ### Security
