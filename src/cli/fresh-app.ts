@@ -760,30 +760,33 @@ export async function createDuneApp(
 
         // Plugin response transforms (e.g. admin bar injection) — must run before caching.
         {
-          let transformAuth: ResponseTransformContext["auth"] = null;
-          if (hasAdminSessionCookie(req)) {
-            try {
-              const result = await auth.authenticate(req);
-              if (result.authenticated && result.user) {
-                transformAuth = {
-                  username: result.user.username,
-                  role: result.user.role,
-                  hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
-                };
-              }
-            } catch { /* invalid session — treat as unauthenticated */ }
+          const transformPlugins = hooks.plugins().filter((p) => p.transformResponse);
+          if (transformPlugins.length > 0) {
+            let transformAuth: ResponseTransformContext["auth"] = null;
+            if (hasAdminSessionCookie(req)) {
+              try {
+                const result = await auth.authenticate(req);
+                if (result.authenticated && result.user) {
+                  transformAuth = {
+                    username: result.user.username,
+                    role: result.user.role,
+                    hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
+                  };
+                }
+              } catch { /* invalid session — treat as unauthenticated */ }
+            }
+            const matchedPage = engine.pages.find((p) => p.route === url.pathname);
+            response = await applyResponseTransforms(transformPlugins, {
+              req,
+              response,
+              auth: transformAuth,
+              config,
+              page: matchedPage?.sourcePath
+                ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
+                : null,
+              adminPrefix,
+            });
           }
-          const matchedPage = engine.pages.find((p) => p.route === url.pathname);
-          response = await applyResponseTransforms(hooks.plugins(), {
-            req,
-            response,
-            auth: transformAuth,
-            config,
-            page: matchedPage?.sourcePath
-              ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
-              : null,
-            adminPrefix,
-          });
         }
 
         // RTL injection
@@ -829,30 +832,33 @@ export async function createDuneApp(
 
         // Plugin response transforms (e.g. admin bar injection).
         {
-          let transformAuth: ResponseTransformContext["auth"] = null;
-          if (hasAdminSessionCookie(req)) {
-            try {
-              const result = await auth.authenticate(req);
-              if (result.authenticated && result.user) {
-                transformAuth = {
-                  username: result.user.username,
-                  role: result.user.role,
-                  hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
-                };
-              }
-            } catch { /* invalid session — treat as unauthenticated */ }
+          const transformPlugins = hooks.plugins().filter((p) => p.transformResponse);
+          if (transformPlugins.length > 0) {
+            let transformAuth: ResponseTransformContext["auth"] = null;
+            if (hasAdminSessionCookie(req)) {
+              try {
+                const result = await auth.authenticate(req);
+                if (result.authenticated && result.user) {
+                  transformAuth = {
+                    username: result.user.username,
+                    role: result.user.role,
+                    hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
+                  };
+                }
+              } catch { /* invalid session — treat as unauthenticated */ }
+            }
+            const matchedPage = engine.pages.find((p) => p.route === url.pathname);
+            response = await applyResponseTransforms(transformPlugins, {
+              req,
+              response,
+              auth: transformAuth,
+              config,
+              page: matchedPage?.sourcePath
+                ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
+                : null,
+              adminPrefix,
+            });
           }
-          const matchedPage = engine.pages.find((p) => p.route === url.pathname);
-          response = await applyResponseTransforms(hooks.plugins(), {
-            req,
-            response,
-            auth: transformAuth,
-            config,
-            page: matchedPage?.sourcePath
-              ? { sourcePath: matchedPage.sourcePath, route: matchedPage.route, title: matchedPage.title ?? null }
-              : null,
-            adminPrefix,
-          });
         }
 
         const devPage = engine.pages.find((p) => p.route === url.pathname);
