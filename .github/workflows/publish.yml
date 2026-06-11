@@ -24,4 +24,7 @@ jobs:
         with:
           deno-version: v2.x
 
-      - run: deno publish
+      # --no-provenance skips the Sigstore signing phase where publishes
+      # intermittently hang (jsr-io/jsr#1448). Re-enable provenance once
+      # that issue is fixed.
+      - run: deno publish --no-provenance
