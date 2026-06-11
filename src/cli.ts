@@ -18,6 +18,8 @@
  * Because all real imports are deferred to cli-impl.ts via a dynamic import,
  * any "not in import map" error that slips through is caught here and
  * rewritten into an actionable message.
+ *
+ * @module
  */
 
 import { isImportMapError, formatImportMapError } from "./cli/import-map-error.ts";

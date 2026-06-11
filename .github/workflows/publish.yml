@@ -8,10 +8,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # deno publish intermittently hangs in its post-upload status poll (the
-    # artifact is live on JSR within minutes; runs otherwise burn 2h of
-    # runner time before the hang times out). Killing the job after the
-    # publish has gone through is harmless — JSR versions are immutable.
+    # Insurance against hung publishes (the 2026-06 JSR incident, jsr-io/jsr
+    # #1448, is fixed — but a killed job after upload is harmless, so keep a
+    # cap). If a run is cancelled/killed, verify via the version's meta.json
+    # on jsr.io rather than the job status.
     timeout-minutes: 15
     permissions:
       contents: read
@@ -24,7 +24,4 @@ jobs:
         with:
           deno-version: v2.x
 
-      # --no-provenance skips the Sigstore signing phase where publishes
-      # intermittently hang (jsr-io/jsr#1448). Re-enable provenance once
-      # that issue is fixed.
-      - run: deno publish --no-provenance
+      - run: deno publish
