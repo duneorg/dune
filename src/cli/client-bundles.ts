@@ -67,7 +67,7 @@ async function contentEtag(code: Uint8Array<ArrayBuffer>): Promise<string> {
   return `"${hex}"`;
 }
 
-async function bundleEntry(specifier: string, outFile: string): Promise<void> {
+async function bundleEntry(specifier: string, outFile: string, dev: boolean): Promise<void> {
   const cmd = new Deno.Command(Deno.execPath(), {
     args: [
       "bundle",
@@ -75,6 +75,13 @@ async function bundleEntry(specifier: string, outFile: string): Promise<void> {
       "browser",
       "--minify",
       "--quiet",
+      // Production: refuse to bundle if resolution would change the lock
+      // file. Startup-time bundling must never pull in dependency versions
+      // that aren't pinned — what ships to visitors' browsers should depend
+      // on the committed lock file, not on registry state at boot. Dev mode
+      // stays unrestricted so local plugin iteration can add imports freely
+      // (run `deno bundle` / `dune dev` once to update the lock).
+      ...(dev ? [] : ["--frozen"]),
       "--output",
       outFile,
       specifier,
@@ -119,7 +126,7 @@ export async function buildPluginClientBundles(
         }
         if (!code) {
           const started = performance.now();
-          await bundleEntry(specifier, cacheFile);
+          await bundleEntry(specifier, cacheFile, opts.dev);
           code = await Deno.readFile(cacheFile);
           logger.info("plugin.client_entry.bundled", {
             plugin: plugin.name,

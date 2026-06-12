@@ -254,6 +254,17 @@ export interface DunePlugin {
    * name+version, so a published plugin is bundled once per version.
    * Bump the plugin version whenever client code changes.
    *
+   * ## Production bundling and the lock file
+   *
+   * A production cold start (empty bundle cache) bundles on the serving
+   * host with `--frozen`: resolution that would change the lock file fails
+   * the entry (it logs and 404s; the app still starts). All of a plugin's
+   * client dependencies must therefore be pinned in the site's lock file —
+   * run the site once in dev (or `deno install`) after adding a plugin and
+   * commit the updated lock. Cold starts may also need registry access to
+   * populate the module cache; pre-warm `.dune/client-bundles/` in your
+   * deploy step if production hosts are network-restricted.
+   *
    * Load lazily from injected scripts or islands:
    * ```js
    * const mod = await import("/plugins/my-plugin/editor.js");
