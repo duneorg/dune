@@ -1,0 +1,124 @@
+/**
+ * Tests for plugin client-entry bundling (DunePlugin.clientEntries).
+ */
+
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { join } from "@std/path";
+import { buildPluginClientBundles, serveClientBundle } from "../../src/cli/client-bundles.ts";
+import type { DunePlugin } from "../../src/hooks/types.ts";
+
+async function makeEntry(dir: string, code: string): Promise<string> {
+  const file = join(dir, "entry.ts");
+  await Deno.writeTextFile(file, code);
+  return `file://${file}`;
+}
+
+function makePlugin(specifier: string, version = "1.0.0"): DunePlugin {
+  return {
+    name: "test-plugin",
+    version,
+    hooks: {},
+    clientEntries: { widget: specifier },
+  };
+}
+
+Deno.test("buildPluginClientBundles: bundles an entry and serves it", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export function hello(): string { return "from-bundle"; }`);
+  const bundles = await buildPluginClientBundles([makePlugin(spec)], { root, dev: false });
+
+  assertEquals([...bundles.keys()], ["test-plugin/widget.js"]);
+
+  const req = new Request("http://localhost/plugins/test-plugin/widget.js");
+  const res = serveClientBundle(bundles, "/plugins/test-plugin/widget.js", req, false);
+  assertEquals(res?.status, 200);
+  assertEquals(res?.headers.get("Content-Type"), "text/javascript; charset=utf-8");
+  assertStringIncludes(await res!.text(), "from-bundle");
+});
+
+Deno.test("buildPluginClientBundles: production cache is reused by version", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const v = 1;`);
+  const first = await buildPluginClientBundles([makePlugin(spec)], { root, dev: false });
+
+  // Change the source without bumping the version — cached bundle wins.
+  await makeEntry(root, `export const v = 2;`);
+  const second = await buildPluginClientBundles([makePlugin(spec)], { root, dev: false });
+  assertEquals(
+    new TextDecoder().decode(second.get("test-plugin/widget.js")!.code),
+    new TextDecoder().decode(first.get("test-plugin/widget.js")!.code),
+  );
+
+  // Bumping the version rebuilds.
+  const bumped = await buildPluginClientBundles([makePlugin(spec, "1.0.1")], { root, dev: false });
+  assertStringIncludes(
+    new TextDecoder().decode(bumped.get("test-plugin/widget.js")!.code),
+    "2",
+  );
+});
+
+Deno.test("buildPluginClientBundles: dev mode rebuilds every time", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const v = "first";`);
+  await buildPluginClientBundles([makePlugin(spec)], { root, dev: true });
+
+  await makeEntry(root, `export const v = "second";`);
+  const rebuilt = await buildPluginClientBundles([makePlugin(spec)], { root, dev: true });
+  assertStringIncludes(
+    new TextDecoder().decode(rebuilt.get("test-plugin/widget.js")!.code),
+    "second",
+  );
+});
+
+Deno.test("buildPluginClientBundles: failing entry is skipped, others build", async () => {
+  const root = await Deno.makeTempDir();
+  const good = await makeEntry(root, `export const ok = true;`);
+  const plugin: DunePlugin = {
+    name: "mixed",
+    version: "1.0.0",
+    hooks: {},
+    clientEntries: {
+      good,
+      broken: `file://${join(root, "does-not-exist.ts")}`,
+    },
+  };
+  const bundles = await buildPluginClientBundles([plugin], { root, dev: false });
+  assertEquals(bundles.has("mixed/good.js"), true);
+  assertEquals(bundles.has("mixed/broken.js"), false);
+});
+
+Deno.test("serveClientBundle: ETag revalidation returns 304", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const x = 1;`);
+  const bundles = await buildPluginClientBundles([makePlugin(spec)], { root, dev: false });
+  const etag = bundles.get("test-plugin/widget.js")!.etag;
+
+  const req = new Request("http://localhost/plugins/test-plugin/widget.js", {
+    headers: { "if-none-match": etag },
+  });
+  const res = serveClientBundle(bundles, "/plugins/test-plugin/widget.js", req, false);
+  assertEquals(res?.status, 304);
+});
+
+Deno.test("serveClientBundle: unknown paths fall through as null", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const x = 1;`);
+  const bundles = await buildPluginClientBundles([makePlugin(spec)], { root, dev: false });
+  const req = new Request("http://localhost/x");
+  assertEquals(serveClientBundle(bundles, "/plugins/test-plugin/other.js", req, false), null);
+  assertEquals(serveClientBundle(bundles, "/static/widget.js", req, false), null);
+});
+
+Deno.test("buildPluginClientBundles: no entries — empty map, no cache dir", async () => {
+  const root = await Deno.makeTempDir();
+  const plugin: DunePlugin = { name: "plain", version: "1.0.0", hooks: {} };
+  const bundles = await buildPluginClientBundles([plugin], { root, dev: false });
+  assertEquals(bundles.size, 0);
+  let exists = true;
+  try {
+    await Deno.stat(join(root, ".dune", "client-bundles"));
+  } catch {
+    exists = false;
+  }
+  assertEquals(exists, false);
+});

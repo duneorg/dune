@@ -1,0 +1,141 @@
+/**
+ * Plugin client-entry bundling.
+ *
+ * Plugins can declare browser code via `DunePlugin.clientEntries` — a map of
+ * entry name → module specifier. At app startup each entry is bundled for
+ * the browser with `deno bundle` (which resolves the plugin's own npm/jsr
+ * dependency graph, so e.g. an editor plugin's TipTap packages never appear
+ * anywhere outside that plugin) and served at
+ * `/plugins/{plugin-name}/{entry}.js`.
+ *
+ * Bundles are cached on disk in `{root}/.dune/client-bundles/`, keyed by
+ * plugin name + version + entry name. In production a cached bundle is
+ * reused; in dev mode entries are re-bundled at every startup so local
+ * plugin development picks up changes.
+ */
+
+import { join } from "@std/path";
+import type { DunePlugin } from "../hooks/types.ts";
+import { logger } from "../core/logger.ts";
+
+/** A bundled client entry ready to serve. */
+export interface ClientBundle {
+  /** Bundled JavaScript (ESM, browser platform). */
+  code: Uint8Array<ArrayBuffer>;
+  /** Quoted ETag derived from plugin name, version, and entry. */
+  etag: string;
+}
+
+/** Sanitize a name for use in a cache filename. */
+function safeName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+async function bundleEntry(specifier: string, outFile: string): Promise<void> {
+  const cmd = new Deno.Command(Deno.execPath(), {
+    args: [
+      "bundle",
+      "--platform",
+      "browser",
+      "--minify",
+      "--quiet",
+      "--output",
+      outFile,
+      specifier,
+    ],
+    stdout: "null",
+    stderr: "piped",
+  });
+  const { code, stderr } = await cmd.output();
+  if (code !== 0) {
+    throw new Error(new TextDecoder().decode(stderr).trim() || `deno bundle exited with ${code}`);
+  }
+}
+
+/**
+ * Bundle all plugin client entries and return a map keyed by
+ * `{plugin-name}/{entry}.js` (the path under `/plugins/`).
+ *
+ * Bundling failures are logged and skipped — the rest of the app starts
+ * normally; only the failing entry's URL will 404.
+ */
+export async function buildPluginClientBundles(
+  plugins: DunePlugin[],
+  opts: { root: string; dev: boolean },
+): Promise<Map<string, ClientBundle>> {
+  const bundles = new Map<string, ClientBundle>();
+  const withEntries = plugins.filter((p) => p.clientEntries && Object.keys(p.clientEntries).length > 0);
+  if (withEntries.length === 0) return bundles;
+
+  const cacheDir = join(opts.root, ".dune", "client-bundles");
+  await Deno.mkdir(cacheDir, { recursive: true });
+
+  for (const plugin of withEntries) {
+    for (const [entry, specifier] of Object.entries(plugin.clientEntries!)) {
+      const key = `${plugin.name}/${entry}.js`;
+      const cacheFile = join(
+        cacheDir,
+        `${safeName(plugin.name)}-${safeName(plugin.version)}-${safeName(entry)}.js`,
+      );
+      try {
+        let code: Uint8Array<ArrayBuffer> | null = null;
+        if (!opts.dev) {
+          try {
+            code = await Deno.readFile(cacheFile);
+          } catch { /* cache miss — bundle below */ }
+        }
+        if (!code) {
+          const started = performance.now();
+          await bundleEntry(specifier, cacheFile);
+          code = await Deno.readFile(cacheFile);
+          logger.info("plugin.client_entry.bundled", {
+            plugin: plugin.name,
+            entry,
+            bytes: code.byteLength,
+            ms: Math.round(performance.now() - started),
+          });
+        }
+        bundles.set(key, {
+          code,
+          etag: `"${safeName(plugin.name)}-${safeName(plugin.version)}-${safeName(entry)}"`,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error("plugin.client_entry.bundle_failed", {
+          plugin: plugin.name,
+          entry,
+          specifier,
+          error: message,
+        });
+      }
+    }
+  }
+  return bundles;
+}
+
+/**
+ * Serve a bundled client entry for a `/plugins/{name}/{entry}.js` request,
+ * or null when the path is not a known bundle (falls through to static
+ * plugin assets).
+ */
+export function serveClientBundle(
+  bundles: Map<string, ClientBundle>,
+  pathname: string,
+  req: Request,
+  dev: boolean,
+): Response | null {
+  const match = pathname.match(/^\/plugins\/(.+)$/);
+  if (!match) return null;
+  const bundle = bundles.get(match[1]);
+  if (!bundle) return null;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "text/javascript; charset=utf-8",
+    "ETag": bundle.etag,
+    "Cache-Control": dev ? "no-cache" : "public, max-age=3600",
+  };
+  if (req.headers.get("if-none-match") === bundle.etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(bundle.code, { headers });
+}

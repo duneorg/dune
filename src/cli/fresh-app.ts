@@ -29,6 +29,7 @@ import { isRtl } from "../i18n/rtl.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { runPluginResponseTransforms } from "./response-transforms.ts";
+import { buildPluginClientBundles, serveClientBundle } from "./client-bundles.ts";
 import { createApiHandler } from "../api/handlers.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
@@ -130,6 +131,11 @@ export async function createDuneApp(
     .filter((p) => p.transformResponse)
     .map((p) => `${p.name}@${p.version}`)
     .join(",");
+
+  // Bundle plugin client entries (browser code declared via
+  // DunePlugin.clientEntries) — served at /plugins/{name}/{entry}.js.
+  // No-op (and no cost) when no plugin declares entries.
+  const clientBundles = await buildPluginClientBundles(hooks.plugins(), { root, dev });
 
   let pageCache: PageCache | null = null;
   if (!dev && config.system.page_cache?.enabled) {
@@ -650,8 +656,10 @@ export async function createDuneApp(
     );
   });
 
-  // 12. Plugin assets
+  // 12. Plugin assets — bundled client entries first, then static assetDir files.
   app.get("/plugins/*", async (fc) => {
+    const bundleResult = serveClientBundle(clientBundles, fc.url.pathname, fc.req, dev);
+    if (bundleResult) return withSecurityHeaders(bundleResult);
     const result = await servePluginAsset(pluginAssetDirs, fc.url.pathname, dev);
     return result
       ? withSecurityHeaders(result)

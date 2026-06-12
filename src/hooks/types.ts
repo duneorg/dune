@@ -241,6 +241,28 @@ export interface DunePlugin {
    */
   assetDir?: string;
   /**
+   * Browser code entry points to bundle and serve.
+   *
+   * Each entry maps a name to a module specifier (use
+   * `import.meta.resolve("./client/editor.ts")` so it works both for local
+   * and JSR-hosted plugins). At startup Dune bundles each entry for the
+   * browser (`deno bundle --platform browser`, resolving the plugin's own
+   * npm/jsr dependencies) and serves the result at
+   * `/plugins/{plugin-name}/{entry}.js`.
+   *
+   * Bundles are cached in `.dune/client-bundles/` keyed by plugin
+   * name+version, so a published plugin is bundled once per version.
+   * Bump the plugin version whenever client code changes.
+   *
+   * Load lazily from injected scripts or islands:
+   * ```js
+   * const mod = await import("/plugins/my-plugin/editor.js");
+   * ```
+   *
+   * @since 0.18.0
+   */
+  clientEntries?: Record<string, string>;
+  /**
    * Absolute path to the plugin's templates directory (templates/).
    * Set automatically by the plugin loader for local plugins that have a
    * templates/ subdirectory. Templates are used as fallbacks after the
