@@ -5,6 +5,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.19.0] — 2026-06-12
+
+### Added
+
+- **Plugin client entries** — plugins can declare browser entry points via `DunePlugin.clientEntries` (name → module specifier). Each entry is bundled at startup with `deno bundle --platform browser` — resolving the plugin's own npm/jsr dependency graph, so e.g. an editor plugin's TipTap stack never appears outside that plugin — and served at `/plugins/{name}/{entry}.js` with content-hash ETags and 304 handling. Bundles are cached in `.dune/client-bundles/` keyed by plugin name+version (superseded versions are pruned at startup); production bundling runs with `--frozen`, so what ships to browsers depends on the committed lock file, not registry state at boot. Bundle failures log and skip without blocking app start.
+- **Inline-edit marker components** — `@dune/core/ui/editable` returns as `EditableText`, `EditableMarkdown`, `EditableField`, `EditableDate`, `EditableImage`: **server-only** components that render the `data-dune-*` marker attributes and nothing else (no JavaScript, no editor implied — not the pre-0.17 island kit). Markers are the contract between themes and editor plugins: raw attributes and components are interchangeable, and templates never import from an editor plugin. The starter template marks its body wrapper with `data-dune-body`.
+
+### Security
+
+- **`data-dune-*` markers are scrubbed from responses without an editing session** — markers are baked into templates, but the response pipeline now strips them from HTML served to anyone without a validated session holding `pages.update`. Anonymous visitors and crawlers never see content source paths (`data-dune-source`) or an editable-regions fingerprint; the scrub decision rests on the validated session, not cookie presence. Themes must not use `data-dune-*` attributes as CSS/JS hooks for public styling.
+
+---
+
 ## [0.18.2] — 2026-06-12
 
 ### Fixed
