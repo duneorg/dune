@@ -27,6 +27,7 @@ import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { getDuneAdminIslands } from "../admin/mount.ts";
+import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 
@@ -257,12 +258,15 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Point the Builder's crawl dirs at a path that does not exist so it
   // discovers nothing; every island is registered explicitly below.
   const noCrawlDir = join(root, ".dune", "__no-fs-crawl__");
-  const allIslandSpecifiers = [
+  // Remote specifiers (https:// when Dune runs from JSR, jsr:/npm: plugin
+  // islands) are materialized as local wrapper modules: Fresh's build cache
+  // only accepts file paths (its maybeToFileUrl throws on URLs).
+  const allIslandSpecifiers = await materializeRemoteIslands([
     ...getDuneAdminIslands(),
     ...pluginIslandSpecifiers,
     ...themeIslandPaths,
     ...contentIslandPaths,
-  ];
+  ], root);
   const builder = new Builder({
     root,
     islandDir: noCrawlDir,

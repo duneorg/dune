@@ -15,6 +15,7 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
 import { getDuneAdminIslands } from "../admin/mount.ts";
+import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 
@@ -69,7 +70,9 @@ export class MultisiteManager {
       islandDir: noCrawlDir,
       routeDir: noCrawlDir,
     });
-    for (const spec of getDuneAdminIslands()) {
+    // Remote (https://) island specs are materialized as local wrappers —
+    // Fresh's build cache only accepts file paths.
+    for (const spec of await materializeRemoteIslands(getDuneAdminIslands(), firstSiteRoot)) {
       adminBuilder.registerIsland(spec);
     }
     const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });

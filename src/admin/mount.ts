@@ -177,8 +177,10 @@ export async function mountDuneAdmin(
 export function getDuneAdminIslands(): string[] {
   // Resolve island specifiers from the generated manifest rather than
   // scanning the directory: when Dune runs from JSR, import.meta.url is an
-  // https:// URL and there is no local directory to scan. Fresh's
-  // registerIsland() accepts both absolute file paths and https:// URLs.
+  // https:// URL and there is no local directory to scan. NOTE: https://
+  // specs must NOT reach Fresh's Builder directly — its build cache throws
+  // on non-file specifiers. Callers route these through
+  // materializeRemoteIslands() (cli/remote-islands.ts) first.
   return adminIslands.map((name) => {
     const url = new URL(`./islands/${name}`, import.meta.url);
     return url.protocol === "file:" ? url.pathname : url.href;
