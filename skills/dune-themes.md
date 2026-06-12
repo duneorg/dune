@@ -144,7 +144,7 @@ export default function PostTemplate({ page, site, nav }: TemplateProps) {
 
 For typed markers, `@dune/core/ui/editable` provides server-only components that render exactly these attributes — `<EditableMarkdown sourcePath={page.sourcePath}>…</EditableMarkdown>` is identical to a hand-written `data-dune-body` wrapper, and `<EditableText field="title" sourcePath={…}>` marks individual frontmatter fields. They ship no JS and imply no editor; editor plugins consume the rendered markers.
 
-Note that markers ship in the HTML served to every visitor, and `data-dune-source` makes the page's content source path public. Source paths mirror routes, so this is normally fine — but skip markers on content whose source location is sensitive. Markers grant no access; editing endpoints authenticate server-side.
+Markers never reach anonymous visitors: the response pipeline scrubs all `data-dune-*` attributes from HTML served without a validated editing session, so `data-dune-source` paths stay private. Consequence for themes: never use `data-dune-*` attributes as CSS/JS hooks for public styling — they are absent from public responses (verify markers while logged in as an admin, not in an incognito window).
 
 | Prop | Contents |
 |------|----------|

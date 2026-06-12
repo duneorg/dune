@@ -25,18 +25,16 @@
  * strings; richer editor configuration belongs in the editor plugin, not in
  * templates.
  *
- * ## Markers are public
+ * ## Markers never reach anonymous visitors
  *
- * Because markers are baked into templates, they ship in the HTML served to
- * **every** visitor — not only to editing admins. In particular,
- * `data-dune-source` exposes the page's content source path (e.g.
- * `content/01.about/default.md`, including ordering prefixes and file
- * naming conventions) to anonymous users and crawlers. Source paths
- * largely mirror public routes, so this is acceptable for most sites — but
- * don't put markers on content whose source location is itself sensitive,
- * and don't encode anything secret in content file names. Editor plugins
- * never rely on markers for access control; all editing endpoints
- * authenticate server-side regardless of what the HTML contains.
+ * Markers are baked into templates, but the response pipeline scrubs all
+ * `data-dune-*` attributes from HTML served without a validated editing
+ * session (`pages.update`) — see `src/cli/marker-scrub.ts`. Anonymous
+ * visitors and crawlers never see `data-dune-source` content paths or any
+ * editing fingerprint; only logged-in editors receive the marked-up HTML.
+ * Consequently, never use `data-dune-*` attributes as CSS or JS hooks for
+ * public styling — they are absent from public responses. Markers grant no
+ * access either way; all editing endpoints authenticate server-side.
  *
  * @example
  * ```tsx

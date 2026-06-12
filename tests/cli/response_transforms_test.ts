@@ -81,11 +81,17 @@ function makeReq(path: string, cookie?: string): Request {
 
 const SESSION_COOKIE = "dune_session=abc123";
 
-Deno.test("runPluginResponseTransforms: no transform plugins — response untouched, no auth call", async () => {
+function htmlResponse(body: string): Response {
+  return new Response(body, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+Deno.test("runPluginResponseTransforms: no transform plugins, anonymous — non-HTML untouched, no auth call", async () => {
   const auth = makeAuth({});
   const original = new Response("hello");
   const result = await runPluginResponseTransforms({
-    req: makeReq("/about", SESSION_COOKIE),
+    req: makeReq("/about"),
     response: original,
     plugins: [{ name: "noop", version: "1.0.0", hooks: {} }],
     auth,
@@ -95,6 +101,22 @@ Deno.test("runPluginResponseTransforms: no transform plugins — response untouc
   });
   assertStrictEquals(result, original);
   assertEquals(auth.calls.authenticate, 0);
+});
+
+Deno.test("runPluginResponseTransforms: no transform plugins, session cookie — auth still resolved for the scrub decision", async () => {
+  const auth = makeAuth({});
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(`<div data-dune-body data-dune-source="content/about.md">x</div>`),
+    plugins: [{ name: "noop", version: "1.0.0", hooks: {} }],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  // Invalid session → markers scrubbed despite the cookie.
+  assertEquals(auth.calls.authenticate, 1);
+  assertEquals(await result.text(), `<div>x</div>`);
 });
 
 Deno.test("runPluginResponseTransforms: anonymous request — plugin runs with auth null, no session lookup", async () => {
@@ -234,4 +256,101 @@ Deno.test("runPluginResponseTransforms: transforms compose in registration order
     adminPrefix: "/admin",
   });
   assertEquals(await result.text(), "x+a+b");
+});
+
+// ── Marker scrub policy ───────────────────────────────────────────────────────
+
+const MARKED_HTML =
+  `<h1 data-dune-field="title" data-dune-source="content/about.md">About</h1>` +
+  `<div data-dune-body data-dune-source="content/about.md">body</div>`;
+
+Deno.test("marker scrub: anonymous HTML response loses all data-dune-* attributes", async () => {
+  const auth = makeAuth({});
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(MARKED_HTML),
+    plugins: [],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(await result.text(), `<h1>About</h1><div>body</div>`);
+  assertEquals(auth.calls.authenticate, 0);
+});
+
+Deno.test("marker scrub: forged/invalid session cookie still gets scrubbed", async () => {
+  const auth = makeAuth({ result: { authenticated: false, error: "bad session" } });
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", "dune_session=forged"),
+    response: htmlResponse(MARKED_HTML),
+    plugins: [],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(auth.calls.authenticate, 1);
+  assertEquals(await result.text(), `<h1>About</h1><div>body</div>`);
+});
+
+Deno.test("marker scrub: valid session WITHOUT pages.update gets scrubbed", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("author") },
+    permissions: ["pages.read"] as AdminPermission[],
+  });
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(MARKED_HTML),
+    plugins: [],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(await result.text(), `<h1>About</h1><div>body</div>`);
+});
+
+Deno.test("marker scrub: valid editing session keeps markers", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("editor") },
+    permissions: ["pages.update"] as AdminPermission[],
+  });
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(MARKED_HTML),
+    plugins: [],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(await result.text(), MARKED_HTML);
+});
+
+Deno.test("marker scrub: runs after plugin transforms for anonymous requests", async () => {
+  const auth = makeAuth({});
+  const plugin: DunePlugin = {
+    name: "marker-adder",
+    version: "1.0.0",
+    hooks: {},
+    async transformResponse(ctx) {
+      const body = await ctx.response.text();
+      return new Response(`${body}<span data-dune-field="x" data-dune-source="s.md">v</span>`, {
+        status: ctx.response.status,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    },
+  };
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  // Even markers introduced by a transform are stripped for anonymous visitors.
+  assertEquals(await result.text(), `<p>p</p><span>v</span>`);
 });
