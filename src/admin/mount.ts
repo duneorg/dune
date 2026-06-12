@@ -34,10 +34,10 @@
  * @since 1.1.0
  */
 
-import { join } from "@std/path";
 // deno-lint-ignore no-explicit-any
-import type { App } from "fresh";
+import type { App, Middleware } from "fresh";
 import type { BootstrapResult } from "../cli/bootstrap.ts";
+import { adminIslands, adminLayout, adminMiddleware, adminRoutes } from "./manifest.gen.ts";
 import {
   handleContactSubmission,
   handleFormSchema,
@@ -78,8 +78,13 @@ export async function mountDuneAdmin(
       });
     }
 
-    // Admin file-system routes (login, pages, users, settings, …)
-    app.fsRoutes(adminPrefix);
+    // Admin routes (login, pages, users, settings, …) — registered
+    // programmatically from the generated manifest instead of fsRoutes().
+    // Fresh's fsRoutes() discovers route files by scanning a local directory,
+    // which silently yields zero routes when Dune runs from JSR (import.meta.url
+    // is https://, so there is no local directory). The manifest's static
+    // imports resolve through the module graph and work from any origin.
+    registerAdminRoutes(app, adminPrefix);
 
     // Plugin admin pages — programmatic routes under admin prefix.
     // The admin _middleware enforces authentication; here we additionally
@@ -170,15 +175,49 @@ export async function mountDuneAdmin(
  * ```
  */
 export function getDuneAdminIslands(): string[] {
-  // import.meta.url points to this file (src/admin/mount.ts).
-  // The admin islands live in src/admin/islands/.
-  const adminDir = new URL(".", import.meta.url).pathname;
-  const islandsDir = join(adminDir, "islands");
-  try {
-    return Array.from(Deno.readDirSync(islandsDir))
-      .filter((e) => e.isFile && e.name.endsWith(".tsx"))
-      .map((e) => join(islandsDir, e.name));
-  } catch {
-    return []; // No islands directory (stripped build or unusual layout)
+  // Resolve island specifiers from the generated manifest rather than
+  // scanning the directory: when Dune runs from JSR, import.meta.url is an
+  // https:// URL and there is no local directory to scan. Fresh's
+  // registerIsland() accepts both absolute file paths and https:// URLs.
+  return adminIslands.map((name) => {
+    const url = new URL(`./islands/${name}`, import.meta.url);
+    return url.protocol === "file:" ? url.pathname : url.href;
+  });
+}
+
+/**
+ * Register all admin panel routes on a Fresh app under `adminPrefix`.
+ *
+ * Replaces `app.fsRoutes(adminPrefix)`: Fresh's fsRoutes() discovers route
+ * files by crawling a local directory at build time, which silently yields
+ * zero routes when Dune runs from JSR (import.meta.url is https://). The
+ * generated manifest imports every route module statically, so registration
+ * works identically from JSR and from a local checkout.
+ *
+ * The admin auth middleware and shell layout are registered app-wide; both
+ * self-guard and pass through untouched on non-admin paths (they must,
+ * because Fresh applies fs middleware/layouts globally too — this preserves
+ * the exact fsRoutes() behavior).
+ */
+export function registerAdminRoutes(
+  // deno-lint-ignore no-explicit-any
+  app: App<any>,
+  adminPrefix: string,
+): void {
+  const prefix = adminPrefix === "/" ? "" : adminPrefix.replace(/\/+$/, "");
+
+  // deno-lint-ignore no-explicit-any
+  app.use(adminMiddleware.handler as Middleware<any>);
+  // deno-lint-ignore no-explicit-any
+  app.layout("*", adminLayout.default as any);
+
+  for (const { pattern, mod } of adminRoutes) {
+    const path = pattern === "/" ? (prefix || "/") : `${prefix}${pattern}`;
+    app.route(path, {
+      component: mod.default,
+      handler: mod.handlers ?? mod.handler,
+      config: mod.config,
+      // deno-lint-ignore no-explicit-any
+    } as any);
   }
 }

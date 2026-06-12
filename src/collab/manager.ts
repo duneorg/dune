@@ -40,7 +40,7 @@ import {
  * Returns the frontmatter header and the body separately.
  * Files without a `---` block are treated as body-only.
  */
-function splitFile(raw: string): { header: string; body: string } {
+export function splitFile(raw: string): { header: string; body: string } {
   const match = raw.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n?)([\s\S]*)$/);
   if (match) return { header: match[1], body: match[2] };
   return { header: "", body: raw };

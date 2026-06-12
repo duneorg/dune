@@ -49,6 +49,7 @@
     "serve": "deno run -A src/cli.ts serve",
     "test": "deno test -A tests/",
     "check": "deno check src/**/*.ts",
+    "gen:admin-manifest": "deno run --allow-read --allow-write scripts/generate-admin-manifest.ts",
     "dune": "deno run -A src/cli.ts"
   },
   "compilerOptions": {

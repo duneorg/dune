@@ -18,6 +18,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
+import { getDuneAdminIslands } from "../admin/mount.ts";
 
 export interface DevOptions {
   port?: number;
@@ -115,10 +116,6 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // /_fresh_live_reload SSE endpoint (for island JS changes), and the dev error
   // overlay. createDuneApp() adds Dune's /__dune_reload SSE endpoint (for
   // content changes) and all other routes.
-  const adminDir = new URL("../admin", import.meta.url).pathname;
-  const islandDir = join(adminDir, "islands");
-  const routeDir = join(adminDir, "routes");
-
   // Collect island paths from plugin public routes. Validate before
   // handing to Builder so a plugin can't name a path with `..` that
   // escapes the workspace root (HIGH-19).
@@ -161,11 +158,22 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     Deno.chdir(duneRoot);
   }
 
-  const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
+  // Admin routes and islands come from the generated manifest (see
+  // src/admin/manifest.gen.ts) — never from directory crawling, which cannot
+  // work when Dune runs from JSR (https:// import.meta.url, no local files).
+  // Point the Builder's crawl dirs at a path that does not exist so it
+  // discovers nothing; every island is registered explicitly below.
+  const noCrawlDir = join(root, ".dune", "__no-fs-crawl__");
+  const allIslandSpecifiers = [
+    ...getDuneAdminIslands(),
+    ...pluginIslandSpecifiers,
+    ...themeIslandPaths,
+    ...contentIslandPaths,
+  ];
   const builder = new Builder({
     root,
-    islandDir,
-    routeDir,
+    islandDir: noCrawlDir,
+    routeDir: noCrawlDir,
   });
 
   // Builder's constructor has no `islandSpecifiers` option — register them

@@ -22,7 +22,7 @@
 
 import type { AdminState } from "../../../types.ts";
 import { requirePermission, json, serverError, csrfCheck, validatePagePath } from "../_utils.ts";
-import { splitFile } from "../../../../inline-edit/commit.ts";
+import { splitFile } from "../../../../collab/manager.ts";
 import type { FreshContext } from "fresh";
 
 export const handler = {

@@ -26,6 +26,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
+import { getDuneAdminIslands } from "../admin/mount.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 
@@ -238,12 +239,6 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     engine.config.system.content.dir,
   );
 
-  // Build island bundles and attach them to the app via the Fresh build cache.
-  // Builder scans the theme's islands/ dir; if no islands exist it's a no-op.
-  const adminDir = new URL("../admin", import.meta.url).pathname;
-  const islandDir = join(adminDir, "islands");
-  const routeDir = join(adminDir, "routes");
-
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by
   // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
   // When running from local source (file:// URL), chdir to the dune package
@@ -256,11 +251,22 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     Deno.chdir(duneRoot);
   }
 
-  const allIslandSpecifiers = [...pluginIslandSpecifiers, ...themeIslandPaths, ...contentIslandPaths];
+  // Admin routes and islands come from the generated manifest (see
+  // src/admin/manifest.gen.ts) — never from directory crawling, which cannot
+  // work when Dune runs from JSR (https:// import.meta.url, no local files).
+  // Point the Builder's crawl dirs at a path that does not exist so it
+  // discovers nothing; every island is registered explicitly below.
+  const noCrawlDir = join(root, ".dune", "__no-fs-crawl__");
+  const allIslandSpecifiers = [
+    ...getDuneAdminIslands(),
+    ...pluginIslandSpecifiers,
+    ...themeIslandPaths,
+    ...contentIslandPaths,
+  ];
   const builder = new Builder({
     root,
-    islandDir,
-    routeDir,
+    islandDir: noCrawlDir,
+    routeDir: noCrawlDir,
   });
 
   // Builder's constructor has no `islandSpecifiers` option — register them

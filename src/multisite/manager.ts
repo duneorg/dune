@@ -14,6 +14,7 @@ import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
+import { getDuneAdminIslands } from "../admin/mount.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 
@@ -43,13 +44,14 @@ export class MultisiteManager {
     const configDir = join(installRoot, "config");
 
     // Build admin island bundles once — shared across all sites (islands are
-    // package-level, not site-specific).
-    const adminPkgDir = new URL("../admin", import.meta.url).pathname;
-    const islandDir = join(adminPkgDir, "islands");
-    const routeDir = join(adminPkgDir, "routes");
+    // package-level, not site-specific). Admin routes and islands come from
+    // the generated manifest (src/admin/manifest.gen.ts) — never from
+    // directory crawling, which cannot work when Dune runs from JSR
+    // (https:// import.meta.url, no local files).
     const firstSiteRoot = isAbsolute(cfg.sites[0].root)
       ? cfg.sites[0].root
       : resolve(configDir, cfg.sites[0].root);
+    const noCrawlDir = join(firstSiteRoot, ".dune", "__no-fs-crawl__");
 
     // Fresh's esbuild deno plugin (WasmWorkspace) detects the import map by
     // walking up from Deno.cwd() — it ignores esbuild's absWorkingDir entirely.
@@ -62,7 +64,14 @@ export class MultisiteManager {
       Deno.chdir(duneRoot);
     }
 
-    const adminBuilder = new Builder({ root: firstSiteRoot, islandDir, routeDir });
+    const adminBuilder = new Builder({
+      root: firstSiteRoot,
+      islandDir: noCrawlDir,
+      routeDir: noCrawlDir,
+    });
+    for (const spec of getDuneAdminIslands()) {
+      adminBuilder.registerIsland(spec);
+    }
     const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });
 
     for (const entry of cfg.sites) {
