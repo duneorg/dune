@@ -49,7 +49,7 @@
  * ```
  *
  * @module
- * @since 0.18.0
+ * @since 0.19.0
  */
 
 import { h, type ComponentChildren, type JSX } from "preact";

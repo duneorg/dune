@@ -270,7 +270,7 @@ export interface DunePlugin {
    * const mod = await import("/plugins/my-plugin/editor.js");
    * ```
    *
-   * @since 0.18.0
+   * @since 0.19.0
    */
   clientEntries?: Record<string, string>;
   /**
