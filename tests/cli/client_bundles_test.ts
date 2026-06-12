@@ -163,6 +163,20 @@ Deno.test("buildPluginClientBundles: ambiguous identity triples get distinct cac
   );
 });
 
+Deno.test("buildPluginClientBundles: superseded versions are pruned from the cache (F4)", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const v = 1;`);
+  const cacheDir = join(root, ".dune", "client-bundles");
+
+  await buildPluginClientBundles([makePlugin(spec, "1.0.0")], { root, dev: false });
+  await buildPluginClientBundles([makePlugin(spec, "1.0.1")], { root, dev: false });
+
+  const files: string[] = [];
+  for await (const f of Deno.readDir(cacheDir)) files.push(f.name);
+  assertEquals(files.length, 1);
+  assertStringIncludes(files[0], "1.0.1");
+});
+
 Deno.test("buildPluginClientBundles: no entries — empty map, no cache dir", async () => {
   const root = await Deno.makeTempDir();
   const plugin: DunePlugin = { name: "plain", version: "1.0.0", hooks: {} };

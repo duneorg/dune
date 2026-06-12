@@ -112,11 +112,14 @@ export async function buildPluginClientBundles(
 
   const cacheDir = join(opts.root, ".dune", "client-bundles");
   await Deno.mkdir(cacheDir, { recursive: true });
+  const expectedFiles = new Set<string>();
 
   for (const plugin of withEntries) {
     for (const [entry, specifier] of Object.entries(plugin.clientEntries!)) {
       const key = `${plugin.name}/${entry}.js`;
-      const cacheFile = join(cacheDir, await cacheFileName(plugin.name, plugin.version, entry));
+      const fileName = await cacheFileName(plugin.name, plugin.version, entry);
+      expectedFiles.add(fileName);
+      const cacheFile = join(cacheDir, fileName);
       try {
         let code: Uint8Array<ArrayBuffer> | null = null;
         if (!opts.dev) {
@@ -147,6 +150,20 @@ export async function buildPluginClientBundles(
       }
     }
   }
+
+  // Prune cached bundles for plugin versions or entries that are no longer
+  // registered — without this, every published plugin version leaves its
+  // bundle on disk forever. Failed builds are safe: their triple is in
+  // expectedFiles, so a previously cached file for the same version stays.
+  try {
+    for await (const f of Deno.readDir(cacheDir)) {
+      if (f.isFile && f.name.endsWith(".js") && !expectedFiles.has(f.name)) {
+        await Deno.remove(join(cacheDir, f.name)).catch(() => {});
+        logger.info("plugin.client_entry.cache_pruned", { file: f.name });
+      }
+    }
+  } catch { /* cache dir unreadable — skip pruning */ }
+
   return bundles;
 }
 
