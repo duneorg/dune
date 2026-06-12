@@ -2,7 +2,7 @@
  * Tests for plugin client-entry bundling (DunePlugin.clientEntries).
  */
 
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertNotEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { buildPluginClientBundles, serveClientBundle } from "../../src/cli/client-bundles.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
@@ -85,6 +85,30 @@ Deno.test("buildPluginClientBundles: failing entry is skipped, others build", as
   const bundles = await buildPluginClientBundles([plugin], { root, dev: false });
   assertEquals(bundles.has("mixed/good.js"), true);
   assertEquals(bundles.has("mixed/broken.js"), false);
+});
+
+Deno.test("buildPluginClientBundles: ETag tracks content, not identity (F2)", async () => {
+  const root = await Deno.makeTempDir();
+  const spec = await makeEntry(root, `export const v = "first";`);
+  const first = await buildPluginClientBundles([makePlugin(spec)], { root, dev: true });
+  const firstEtag = first.get("test-plugin/widget.js")!.etag;
+
+  // Same content → same ETag.
+  const same = await buildPluginClientBundles([makePlugin(spec)], { root, dev: true });
+  assertEquals(same.get("test-plugin/widget.js")!.etag, firstEtag);
+
+  // Dev rebuild with changed content, same plugin version → ETag changes,
+  // so a browser revalidating against the old ETag gets 200, not 304.
+  await makeEntry(root, `export const v = "second";`);
+  const rebuilt = await buildPluginClientBundles([makePlugin(spec)], { root, dev: true });
+  const newEtag = rebuilt.get("test-plugin/widget.js")!.etag;
+  assertNotEquals(newEtag, firstEtag);
+
+  const req = new Request("http://localhost/plugins/test-plugin/widget.js", {
+    headers: { "if-none-match": firstEtag },
+  });
+  const res = serveClientBundle(rebuilt, "/plugins/test-plugin/widget.js", req, true);
+  assertEquals(res?.status, 200);
 });
 
 Deno.test("serveClientBundle: ETag revalidation returns 304", async () => {

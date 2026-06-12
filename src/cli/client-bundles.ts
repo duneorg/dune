@@ -22,13 +22,29 @@ import { logger } from "../core/logger.ts";
 export interface ClientBundle {
   /** Bundled JavaScript (ESM, browser platform). */
   code: Uint8Array<ArrayBuffer>;
-  /** Quoted ETag derived from plugin name, version, and entry. */
+  /** Quoted ETag derived from a SHA-256 hash of the bundled bytes. */
   etag: string;
 }
 
 /** Sanitize a name for use in a cache filename. */
 function safeName(s: string): string {
   return s.replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+/**
+ * Quoted ETag from a SHA-256 content hash (same shape as page ETags in
+ * `src/cache/etag.ts`). Content-derived so a rebuild that changes the
+ * output — dev-mode edits, runtime/bundler upgrades — invalidates browser
+ * caches even when the plugin version is unchanged. Identity (name,
+ * version, entry) is only used for the disk-cache key, never as the
+ * freshness validator.
+ */
+async function contentEtag(code: Uint8Array<ArrayBuffer>): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", code);
+  const hex = Array.from(new Uint8Array(hash).slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `"${hex}"`;
 }
 
 async function bundleEntry(specifier: string, outFile: string): Promise<void> {
@@ -95,10 +111,7 @@ export async function buildPluginClientBundles(
             ms: Math.round(performance.now() - started),
           });
         }
-        bundles.set(key, {
-          code,
-          etag: `"${safeName(plugin.name)}-${safeName(plugin.version)}-${safeName(entry)}"`,
-        });
+        bundles.set(key, { code, etag: await contentEtag(code) });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error("plugin.client_entry.bundle_failed", {
