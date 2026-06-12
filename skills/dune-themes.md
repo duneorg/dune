@@ -133,12 +133,16 @@ export default function PostTemplate({ page, site, nav }: TemplateProps) {
     <Layout site={site} nav={nav}>
       <article>
         <h1>{page.frontmatter.title}</h1>
-        <div dangerouslySetInnerHTML={{ __html: page.html }} />
+        <div data-dune-body dangerouslySetInnerHTML={{ __html: page.html }} />
       </article>
     </Layout>
   );
 }
 ```
+
+**Always put `data-dune-body` on the element that wraps the rendered markdown body** (`page.html` / `{children}`) — and only on that element. It marks the body region for inline editing (the `@dune/plugin-inline-edit` plugin); there is no auto-detection. Listing/landing templates that render cards or collections instead of a markdown body must NOT carry the attribute. This also applies when converting templates from other systems (Grav/Twig, Hugo, WordPress): place `data-dune-body` on the converted equivalent of `{{ page.content }}` / `.Content` / `the_content()`.
+
+For typed markers, `@dune/core/ui/editable` provides server-only components that render exactly these attributes — `<EditableMarkdown sourcePath={page.sourcePath}>…</EditableMarkdown>` is identical to a hand-written `data-dune-body` wrapper, and `<EditableText field="title" sourcePath={…}>` marks individual frontmatter fields. They ship no JS and imply no editor; editor plugins consume the rendered markers.
 
 | Prop | Contents |
 |------|----------|

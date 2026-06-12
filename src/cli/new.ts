@@ -132,7 +132,8 @@ export default function DefaultTemplate({ page, site, children }: any) {
       <article>
         <h1>{page?.frontmatter?.title}</h1>
         {page?.frontmatter?.date && <time style={{ color: "#999" }}>{page.frontmatter.date}</time>}
-        <div>{children}</div>
+        {/* data-dune-body marks the rendered page body for inline editing */}
+        <div data-dune-body>{children}</div>
       </article>
     </Layout>
   );
