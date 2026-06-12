@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.18.1] — 2026-06-12
+
+### Fixed
+
+- **Admin panel restored on JSR-served sites** — `/admin` had been silently 404ing on every site running Dune from JSR since 0.10.0. Fresh's `fsRoutes()` discovers route files by crawling a local directory; when running from JSR there is no local directory, so no admin routes were ever registered and `/admin` requests fell through to the content router. Admin routes and islands are now registered from a generated static manifest (`src/admin/manifest.gen.ts`, regenerated via `deno task gen:admin-manifest`), which works identically from JSR and a local checkout. Local dev was never affected.
+- Removed a stale import of the extracted inline-edit module from the admin content API (latent since 0.17.0 — admin route files were previously outside the static import graph, so it went undetected).
+
+### Changed
+
+- `src/cli.ts` now carries a `@module` doc tag, completing module docs on all entrypoints.
+- Publishing workflow re-enables provenance attestation (the upstream JSR publish bug, jsr-io/jsr#1448, is fixed).
+
+---
+
 ## [0.18.0] — 2026-06-10
 
 ### Breaking Changes
