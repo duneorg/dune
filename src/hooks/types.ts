@@ -260,8 +260,11 @@ export interface DunePlugin {
    * host with `--frozen`: resolution that would change the lock file fails
    * the entry (it logs and 404s; the app still starts). All of a plugin's
    * client dependencies must therefore be pinned in the site's lock file —
-   * run the site once in dev (or `deno install`) after adding a plugin and
-   * commit the updated lock. Cold starts may also need registry access to
+   * run the site once in dev after adding a plugin and commit the updated
+   * lock. (`deno install` is NOT enough: plugins load from `site.yaml`, not
+   * the site's import map, so their dependency graph only enters the lock
+   * when the dev-mode bundle resolves it.) Cold starts may also need
+   * registry access to
    * populate the module cache; pre-warm `.dune/client-bundles/` in your
    * deploy step if production hosts are network-restricted.
    *
