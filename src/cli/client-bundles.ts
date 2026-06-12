@@ -32,6 +32,26 @@ function safeName(s: string): string {
 }
 
 /**
+ * Cache filename for a (plugin, version, entry) triple.
+ *
+ * The sanitized `name-version-entry` prefix is for human readability only —
+ * it is ambiguous (`-` is legal inside each component, and `safeName`
+ * collapses distinct characters to `_`), so uniqueness comes from a hash of
+ * the raw triple joined with NUL, which cannot appear in any component.
+ * Without the hash, plugin `foo` @ `1.0.0-beta` entry `x` and plugin
+ * `foo-1.0.0` @ `beta` entry `x` would share a cache file and be served
+ * each other's code.
+ */
+async function cacheFileName(name: string, version: string, entry: string): Promise<string> {
+  const raw = new TextEncoder().encode(`${name}\u0000${version}\u0000${entry}`);
+  const hash = await crypto.subtle.digest("SHA-256", raw);
+  const hex = Array.from(new Uint8Array(hash).slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${safeName(name)}-${safeName(version)}-${safeName(entry)}-${hex}.js`;
+}
+
+/**
  * Quoted ETag from a SHA-256 content hash (same shape as page ETags in
  * `src/cache/etag.ts`). Content-derived so a rebuild that changes the
  * output — dev-mode edits, runtime/bundler upgrades — invalidates browser
@@ -89,10 +109,7 @@ export async function buildPluginClientBundles(
   for (const plugin of withEntries) {
     for (const [entry, specifier] of Object.entries(plugin.clientEntries!)) {
       const key = `${plugin.name}/${entry}.js`;
-      const cacheFile = join(
-        cacheDir,
-        `${safeName(plugin.name)}-${safeName(plugin.version)}-${safeName(entry)}.js`,
-      );
+      const cacheFile = join(cacheDir, await cacheFileName(plugin.name, plugin.version, entry));
       try {
         let code: Uint8Array<ArrayBuffer> | null = null;
         if (!opts.dev) {

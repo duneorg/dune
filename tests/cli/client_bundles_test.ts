@@ -133,6 +133,36 @@ Deno.test("serveClientBundle: unknown paths fall through as null", async () => {
   assertEquals(serveClientBundle(bundles, "/static/widget.js", req, false), null);
 });
 
+Deno.test("buildPluginClientBundles: ambiguous identity triples get distinct cache files (F3)", async () => {
+  const root = await Deno.makeTempDir();
+  await Deno.mkdir(join(root, "a"));
+  await Deno.mkdir(join(root, "b"));
+  const specA = await makeEntry(join(root, "a"), `export const which = "plugin-a";`);
+  const specB = await makeEntry(join(root, "b"), `export const which = "plugin-b";`);
+
+  // Both triples flatten to the same "name-version-entry" string.
+  const a: DunePlugin = {
+    name: "foo",
+    version: "1.0.0-beta",
+    hooks: {},
+    clientEntries: { x: specA },
+  };
+  const b: DunePlugin = {
+    name: "foo-1.0.0",
+    version: "beta",
+    hooks: {},
+    clientEntries: { x: specB },
+  };
+
+  await buildPluginClientBundles([a], { root, dev: false });
+  // Second build must NOT reuse plugin a's cached bundle for plugin b.
+  const second = await buildPluginClientBundles([b], { root, dev: false });
+  assertStringIncludes(
+    new TextDecoder().decode(second.get("foo-1.0.0/x.js")!.code),
+    "plugin-b",
+  );
+});
+
 Deno.test("buildPluginClientBundles: no entries — empty map, no cache dir", async () => {
   const root = await Deno.makeTempDir();
   const plugin: DunePlugin = { name: "plain", version: "1.0.0", hooks: {} };
