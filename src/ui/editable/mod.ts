@@ -25,6 +25,19 @@
  * strings; richer editor configuration belongs in the editor plugin, not in
  * templates.
  *
+ * ## Markers are public
+ *
+ * Because markers are baked into templates, they ship in the HTML served to
+ * **every** visitor — not only to editing admins. In particular,
+ * `data-dune-source` exposes the page's content source path (e.g.
+ * `content/01.about/default.md`, including ordering prefixes and file
+ * naming conventions) to anonymous users and crawlers. Source paths
+ * largely mirror public routes, so this is acceptable for most sites — but
+ * don't put markers on content whose source location is itself sensitive,
+ * and don't encode anything secret in content file names. Editor plugins
+ * never rely on markers for access control; all editing endpoints
+ * authenticate server-side regardless of what the HTML contains.
+ *
  * @example
  * ```tsx
  * import { EditableText, EditableMarkdown } from "@dune/core/ui/editable";
