@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.18.2] — 2026-06-12
+
+### Fixed
+
+- **0.18.1 crashed on boot when served from JSR** — the manifest-based island registration passed `https://` specifiers to Fresh's Builder, whose build cache only accepts local file paths (`Path must be absolute`). Remote island specifiers (admin islands on JSR installs, and `jsr:`/`npm:` plugin islands) are now materialized as local wrapper modules under `.dune/remote-islands/` before registration. Local checkouts were unaffected. If you upgraded to 0.18.1, skip directly to 0.18.2.
+
+---
+
 ## [0.18.1] — 2026-06-12
 
 ### Fixed
