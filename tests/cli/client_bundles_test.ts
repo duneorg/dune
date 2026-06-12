@@ -122,6 +122,13 @@ Deno.test("serveClientBundle: ETag revalidation returns 304", async () => {
   });
   const res = serveClientBundle(bundles, "/plugins/test-plugin/widget.js", req, false);
   assertEquals(res?.status, 304);
+
+  // Comma-separated If-None-Match lists (common via proxies) also match (F5).
+  const listReq = new Request("http://localhost/plugins/test-plugin/widget.js", {
+    headers: { "if-none-match": `"stale-etag", ${etag}` },
+  });
+  const listRes = serveClientBundle(bundles, "/plugins/test-plugin/widget.js", listReq, false);
+  assertEquals(listRes?.status, 304);
 });
 
 Deno.test("serveClientBundle: unknown paths fall through as null", async () => {

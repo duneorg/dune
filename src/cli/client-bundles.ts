@@ -17,6 +17,7 @@
 import { join } from "@std/path";
 import type { DunePlugin } from "../hooks/types.ts";
 import { logger } from "../core/logger.ts";
+import { etagMatches } from "../cache/etag.ts";
 
 /** A bundled client entry ready to serve. */
 export interface ClientBundle {
@@ -188,7 +189,7 @@ export function serveClientBundle(
     "ETag": bundle.etag,
     "Cache-Control": dev ? "no-cache" : "public, max-age=3600",
   };
-  if (req.headers.get("if-none-match") === bundle.etag) {
+  if (etagMatches(req.headers.get("if-none-match"), bundle.etag)) {
     return new Response(null, { status: 304, headers });
   }
   return new Response(bundle.code, { headers });
