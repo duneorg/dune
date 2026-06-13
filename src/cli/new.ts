@@ -124,16 +124,21 @@ export default function NavToggle({ links }: { links: NavLink[] }) {
 
 const DEFAULT_TEMPLATE = `/** @jsxImportSource preact */
 import { h } from "preact";
+import { EditableMarkdown, EditableText } from "@dune/core/ui/editable";
 import Layout from "../components/layout.tsx";
 
 export default function DefaultTemplate({ page, site, children }: any) {
+  const fm = page?.frontmatter ?? {};
   return (
     <Layout site={site}>
       <article>
-        <h1>{page?.frontmatter?.title}</h1>
-        {page?.frontmatter?.date && <time style={{ color: "#999" }}>{page.frontmatter.date}</time>}
-        {/* data-dune-body marks the rendered page body for inline editing */}
-        <div data-dune-body>{children}</div>
+        <h1>
+          <EditableText field="title" sourcePath={page?.sourcePath}>{fm.title}</EditableText>
+        </h1>
+        {fm.date && <time style={{ color: "#999" }}>{fm.date}</time>}
+        <EditableMarkdown sourcePath={page?.sourcePath}>
+          <div>{children}</div>
+        </EditableMarkdown>
       </article>
     </Layout>
   );
