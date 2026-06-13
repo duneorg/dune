@@ -188,6 +188,28 @@ export async function createDuneEngine(
   }
 
   /**
+   * Discover the template names available in the active theme's templates/
+   * directory. Used by the content indexer so that content files whose stem
+   * matches a template name are treated as template selectors rather than
+   * flat content files (Grav-style page folders).
+   */
+  async function discoverThemeTemplateNames(): Promise<Set<string>> {
+    const themeTemplatesDir = `${themesDir}/${config.theme.name}/templates`;
+    const names = new Set<string>();
+    try {
+      const entries = await storage.list(themeTemplatesDir);
+      for (const entry of entries) {
+        if (entry.isFile && entry.name.endsWith(".tsx")) {
+          names.add(entry.name.slice(0, -".tsx".length));
+        }
+      }
+    } catch {
+      // No templates directory — no template names
+    }
+    return names;
+  }
+
+  /**
    * List available theme names by scanning the themes directory.
    */
   async function getAvailableThemes(): Promise<string[]> {
@@ -307,6 +329,7 @@ export async function createDuneEngine(
       defaultLanguage: config.system.languages?.default,
       blueprints,
       facetFields: config.system.search?.facets?.map((f) => f.field),
+      templateNames: await discoverThemeTemplateNames(),
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
@@ -496,6 +519,7 @@ export async function createDuneEngine(
           defaultLanguage: config.system.languages?.default,
           blueprints,
           facetFields: config.system.search?.facets?.map((f) => f.field),
+          templateNames: await discoverThemeTemplateNames(),
         });
         pages = result.pages;
         taxonomyMap = result.taxonomyMap;

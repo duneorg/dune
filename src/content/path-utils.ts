@@ -235,6 +235,83 @@ export function isNonReservedFlatFile(sourcePath: string): boolean {
 }
 
 /**
+ * Directory context for route classification.
+ *
+ * Without `templateNames`, classification uses the path-only heuristic: any
+ * non-reserved stem in a plain (non-numeric) folder is a flat content file.
+ * With `templateNames`, a stem that matches a known theme template is treated
+ * as a template selector for its parent folder (Grav-style page folder).
+ */
+export interface RouteFileContext {
+  /** Language suffix of this file when named `{stem}.{lang}.{ext}`. */
+  language?: string;
+  /**
+   * Set of template names available in the active theme (stems of `.tsx`
+   * files in the theme's `templates/` directory, e.g. `new Set(["post",
+   * "article", "default"])`).
+   *
+   * When provided, a content file whose stem matches a template name is
+   * treated as a template selector for its parent folder rather than a flat
+   * content file — enabling Grav-style page folders such as
+   * `blog/my-post/post.md` routing to `/blog/my-post`.
+   */
+  templateNames?: Set<string>;
+}
+
+/**
+ * Filename stem with extension and (when given) language suffix removed:
+ * `contentFileStem("post.fr.md", "fr")` → `"post"`.
+ */
+export function contentFileStem(filename: string, language?: string): string {
+  const dotIndex = filename.lastIndexOf(".");
+  let stem = dotIndex >= 0 ? filename.slice(0, dotIndex) : filename;
+  if (language && stem.toLowerCase().endsWith("." + language.toLowerCase())) {
+    stem = stem.slice(0, -(language.length + 1));
+  }
+  return stem;
+}
+
+/**
+ * Classify a content file as a flat content file (own route segment) or a
+ * template selector for its parent folder's page.
+ *
+ * A non-reserved, non-numeric stem in a plain (non-numeric) parent folder is
+ * a **flat content file** (adds its own route segment) UNLESS its stem
+ * matches a known theme template name — in which case it is a **template
+ * selector** for the parent folder's page (Grav-style page folder).
+ *
+ * Examples with `templateNames = new Set(["post", "article"])`:
+ *   `blog/my-post/post.md`    → template selector → `/blog/my-post`
+ *   `articles/first.md`       → flat file          → `/articles/first`
+ *   `dossiers/ewr.md`         → flat file          → `/dossiers/ewr`
+ *   `articles/default.md`     → reserved stem      → `/articles`
+ *
+ * Without `ctx.templateNames` the path-only heuristic applies: any
+ * non-reserved stem in a plain folder is a flat file.
+ *
+ * @since 0.19.1
+ */
+export function isFlatContentFile(
+  sourcePath: string,
+  ctx?: RouteFileContext,
+): boolean {
+  const parts = sourcePath.split("/");
+  if (parts.length < 2) return false;
+
+  const stem = contentFileStem(parts[parts.length - 1], ctx?.language);
+  if (/^\d+\./.test(stem)) return false;
+  if (RESERVED_STEMS.has(stem)) return false;
+
+  const parentInfo = parseFolderName(parts[parts.length - 2]);
+  if (parentInfo.order !== 0) return false;
+
+  // A stem matching a known theme template means this folder is a page folder.
+  if (ctx?.templateNames?.has(stem)) return false;
+
+  return true;
+}
+
+/**
  * Build a URL route from a source path.
  *
  * Strips numeric prefixes from folders, skips module folders,
@@ -257,6 +334,7 @@ export function isNonReservedFlatFile(sourcePath: string): boolean {
  *   "02.blog/post.md"                 → "/blog"              (numeric parent)
  *   "articles/my-article.md"          → "/articles/my-article"
  *   "articles/default.md"             → "/articles"
+ *   "blog/my-post/post.md"            → "/blog/my-post"  (template name match, needs ctx.templateNames)
  *   "_sidebar/item.md"                → null (non-routable)
  *
  * Note: Home page mapping (which route serves as "/") is handled by the
@@ -265,6 +343,7 @@ export function isNonReservedFlatFile(sourcePath: string): boolean {
 export function sourcePathToRoute(
   sourcePath: string,
   frontmatterSlug?: string,
+  ctx?: RouteFileContext,
 ): string | null {
   const parts = sourcePath.split("/");
   const segments: string[] = [];
@@ -289,20 +368,20 @@ export function sourcePathToRoute(
   if (hasDraft || hasModule) return null;
 
   const filename = parts[parts.length - 1];
-  const filenameStem = filename.slice(0, filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length);
+  const filenameStem = contentFileStem(filename, ctx?.language);
 
   // Numeric-prefixed filename stem: always contributes a route segment.
   const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
   if (flatMatch) {
     segments.push(frontmatterSlug ?? flatMatch[2]);
-  } else if (isNonReservedFlatFile(sourcePath)) {
-    // Non-reserved stem in a plain parent folder: flat content file.
-    // Stem (or slug) becomes an additional route segment.
+  } else if (isFlatContentFile(sourcePath, ctx)) {
+    // Flat content file (see isFlatContentFile): stem (or slug) becomes an
+    // additional route segment.
     segments.push(frontmatterSlug ?? filenameStem);
   } else {
-    // Reserved stem or numeric parent folder: template selector.
-    // The file defines the page for its parent folder; slug (if any) overrides
-    // the last directory segment.
+    // Template selector (reserved stem, numeric parent folder, or template-name
+    // page folder): the file defines the page for its parent folder; slug
+    // (if any) overrides the last directory segment.
     if (frontmatterSlug) segments[segments.length - 1] = frontmatterSlug;
   }
 

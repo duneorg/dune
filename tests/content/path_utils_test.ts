@@ -15,6 +15,7 @@ import {
   isInDraftsFolder,
   isInModuleFolder,
   isNonReservedFlatFile,
+  isFlatContentFile,
   RESERVED_STEMS,
 } from "../../src/content/path-utils.ts";
 
@@ -184,6 +185,39 @@ Deno.test("calculateDepth: top-level page", () => {
 
 Deno.test("calculateDepth: nested page", () => {
   assertEquals(calculateDepth("02.blog/01.hello/post.md"), 1);
+});
+
+// === isFlatContentFile — template-name routing ===
+
+Deno.test("isFlatContentFile: without templateNames, non-reserved stem in plain folder is flat", () => {
+  assertEquals(isFlatContentFile("articles/my-article.md"), true);
+  assertEquals(isFlatContentFile("dossiers/ewr.md"), true);
+});
+
+Deno.test("isFlatContentFile: templateNames match → template selector, not flat", () => {
+  const ctx = { templateNames: new Set(["post", "article"]) };
+  // stem "post" is in templateNames → not a flat file (template selector for blog/my-post/)
+  assertEquals(isFlatContentFile("blog/my-post/post.md", ctx), false);
+});
+
+Deno.test("isFlatContentFile: unmatched stem with templateNames → flat", () => {
+  const ctx = { templateNames: new Set(["post", "article"]) };
+  // "ewr" not in templateNames → still flat
+  assertEquals(isFlatContentFile("dossiers/ewr.md", ctx), true);
+  // "first" not in templateNames → flat
+  assertEquals(isFlatContentFile("articles/first.md", ctx), true);
+});
+
+Deno.test("sourcePathToRoute: Grav-style page folder with templateNames", () => {
+  const ctx = { templateNames: new Set(["post", "article"]) };
+  assertEquals(sourcePathToRoute("blog/my-post/post.md", undefined, ctx), "/blog/my-post");
+  assertEquals(sourcePathToRoute("news/breaking/article.md", undefined, ctx), "/news/breaking");
+});
+
+Deno.test("sourcePathToRoute: flat file unaffected when stem not in templateNames", () => {
+  const ctx = { templateNames: new Set(["post", "article"]) };
+  assertEquals(sourcePathToRoute("dossiers/ewr.md", undefined, ctx), "/dossiers/ewr");
+  assertEquals(sourcePathToRoute("articles/first.md", undefined, ctx), "/articles/first");
 });
 
 Deno.test("calculateDepth: deep page", () => {

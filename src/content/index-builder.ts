@@ -23,13 +23,14 @@ import {
   dirPathToRoute,
   getParentPath,
   isContentFile,
+  isFlatContentFile,
   isInDraftsFolder,
   isInModuleFolder,
   isMediaFile,
   isMetadataFile,
-  isNonReservedFlatFile,
   parseContentFilename,
   parseFolderName,
+  type RouteFileContext,
   sourcePathToRoute,
 } from "./path-utils.ts";
 
@@ -67,6 +68,16 @@ export interface IndexBuilderOptions {
    * @example ["subtype", "taxonomy.category"]
    */
   facetFields?: string[];
+  /**
+   * Template names available in the active theme (stems of `.tsx` files in
+   * the theme's `templates/` directory).
+   *
+   * When provided, a content file whose stem matches a template name is
+   * treated as a template selector for its parent folder rather than a flat
+   * content file — enabling Grav-style page folders like
+   * `blog/my-post/post.md` → `/blog/my-post`.
+   */
+  templateNames?: Set<string>;
 }
 
 /** Return type of {@link buildIndex} — the page index, taxonomy map, and build statistics. */
@@ -103,7 +114,7 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields, templateNames } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   const pages: PageIndex[] = [];
@@ -169,6 +180,7 @@ export async function buildIndex(
         raw,
         fileInfo.language ?? defaultLang,
         facetFields,
+        routeContextFor(fileInfo.language, templateNames),
       );
 
       if (pageIndex) {
@@ -228,7 +240,7 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields } = options;
+  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields, templateNames } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   // Build a map of existing pages by sourcePath
@@ -316,6 +328,7 @@ export async function updateIndex(
         raw,
         fileInfo.language ?? defaultLang,
         facetFields,
+        routeContextFor(fileInfo.language, templateNames),
       );
 
       if (pageIndex) {
@@ -360,6 +373,14 @@ export async function updateIndex(
 }
 
 // === Internal helpers ===
+
+/** Route classification context for one file. */
+function routeContextFor(
+  language: string | undefined,
+  templateNames: Set<string> | undefined,
+): RouteFileContext {
+  return { language, templateNames };
+}
 
 /** Check whether a sourcePath is a flat-file (filename stem has a numeric prefix). */
 function isFlatFilePath(sp: string): boolean {
@@ -431,11 +452,12 @@ function buildPageIndex(
   rawContent: string,
   language: string,
   facetFields?: string[],
+  routeCtx?: RouteFileContext,
 ): PageIndex | null {
   const isModule = isInModuleFolder(sourcePath);
 
   // Determine route
-  const route = sourcePathToRoute(sourcePath, frontmatter.slug);
+  const route = sourcePathToRoute(sourcePath, frontmatter.slug, routeCtx);
 
   // Non-routable pages (modules, etc.) still get indexed for collection queries
   // but with an empty route
@@ -481,10 +503,10 @@ function buildPageIndex(
     routable: frontmatter.routable ?? true,
     isModule,
     order,
-    depth: isNonReservedFlatFile(sourcePath) && finalRoute
+    depth: isFlatContentFile(sourcePath, routeCtx) && finalRoute
       ? Math.max(0, finalRoute.split("/").filter(Boolean).length - 1)
       : calculateDepth(sourcePath),
-    parentPath: isNonReservedFlatFile(sourcePath)
+    parentPath: isFlatContentFile(sourcePath, routeCtx)
       ? (sourcePath.split("/").slice(0, -1).join("/") || null)
       : getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},

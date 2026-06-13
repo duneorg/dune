@@ -11,7 +11,7 @@
  */
 
 import { dirname } from "@std/path";
-import { effectiveOrder, isNonReservedFlatFile } from "../content/path-utils.ts";
+import { effectiveOrder } from "../content/path-utils.ts";
 import type {
   Collection,
   CollectionDefinition,
@@ -190,6 +190,20 @@ export function createCollectionEngine(
     return [];
   }
 
+  /**
+   * Flat content file in the same directory as `page`, detected by route
+   * shape: it routes one level below the page's own route. Route-based
+   * rather than path-based so it always agrees with the index builder's
+   * sibling-aware classification (sole-stem page folders, language
+   * variants).
+   */
+  function isFlatSibling(page: PageIndex, p: PageIndex, myDir: string): boolean {
+    if (dirname(p.sourcePath) !== myDir) return false;
+    if (!p.route || !page.route || p.route === page.route) return false;
+    const prefix = page.route === "/" ? "/" : page.route + "/";
+    return p.route.startsWith(prefix) && !p.route.slice(prefix.length).includes("/");
+  }
+
   function getChildren(page: PageIndex): PageIndex[] {
     const myDir = dirname(page.sourcePath);
     return pages.filter((p) => {
@@ -199,7 +213,7 @@ export function createCollectionEngine(
       // Folder-based child: p's folder's parent is my directory
       if (dirname(pDir) === myDir) return true;
       // Flat content file in the same directory
-      if (pDir === myDir && isNonReservedFlatFile(p.sourcePath)) return true;
+      if (isFlatSibling(page, p, myDir)) return true;
       return false;
     });
   }
@@ -231,7 +245,7 @@ export function createCollectionEngine(
       // Folder-based descendant: p's directory is nested under my directory
       if (pDir.startsWith(myDir + "/")) return true;
       // Flat content file in the same directory
-      if (pDir === myDir && isNonReservedFlatFile(p.sourcePath)) return true;
+      if (isFlatSibling(page, p, myDir)) return true;
       return false;
     });
   }
