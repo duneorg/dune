@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.19.1] — 2026-06-13
+
+### Fixed
+
+- **Routing regression: Grav-style page folders now work in plain (non-numeric) directories** — since 0.15.0, a content file with a non-reserved stem inside a plain folder (e.g. `blog/my-post/post.md`) was always treated as a flat content file, routing to `/blog/my-post/post` instead of `/blog/my-post`. Dune now checks the file's stem against the theme's actual template names: if the stem matches a template (e.g. `post.md` when `templates/post.tsx` exists), the folder is treated as a page folder and the folder path becomes the route. Files whose stems don't match any template continue to route as flat files. This restores the behaviour present before 0.15.0 without regressing any existing flat-file archives.
+
+---
+
 ## [0.19.0] — 2026-06-12
 
 ### Added
