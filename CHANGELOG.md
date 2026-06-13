@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.19.2] — 2026-06-13
+
+### Fixed
+
+- **Admin bar missing on language-prefixed routes (`/de/`, `/fr/`, etc.)** — the plugin response-transform pipeline matched pages using `url.pathname` directly, but language-variant routes carry a two-letter prefix (`/de/page`) while the page index stores bare routes (`/page`). The pipeline now strips the language prefix before matching and also prefers the correct language variant from the index, fixing both the missing admin bar on localised pages and the wrong-language markdown being loaded into the inline editor when editing an English page that shares a route with a German variant. The RTL-direction injector in `fresh-app.ts` had the same bug and is fixed in the same way.
+
+---
+
 ## [0.19.1] — 2026-06-13
 
 ### Fixed

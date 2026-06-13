@@ -39,9 +39,35 @@ export interface RunResponseTransformsOptions {
   plugins: DunePlugin[];
   auth: Pick<AuthMiddleware, "authenticate" | "hasPermission">;
   /** Content index used to match the current URL to a page. */
-  pages: Pick<PageIndex, "route" | "sourcePath" | "title">[];
+  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[];
   config: DuneConfig;
   adminPrefix: string;
+}
+
+/**
+ * Match a page from the index for the given URL pathname, accounting for
+ * language-prefixed routes (e.g. `/de/page` → route `/page`, lang `de`).
+ */
+function matchPageForUrl(
+  pathname: string,
+  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[],
+  supportedLangs: string[],
+  defaultLang: string,
+): Pick<PageIndex, "route" | "sourcePath" | "title" | "language"> | undefined {
+  let route = pathname;
+  let lang = defaultLang;
+
+  if (supportedLangs.length > 1) {
+    const segments = pathname.split("/");
+    // segments[0] is "" (leading slash), segments[1] is the first path component
+    if (segments.length > 1 && supportedLangs.includes(segments[1])) {
+      lang = segments[1];
+      route = "/" + segments.slice(2).join("/") || "/";
+    }
+  }
+
+  return pages.find((p) => p.route === route && p.language === lang)
+    ?? pages.find((p) => p.route === route);
 }
 
 /**
@@ -91,7 +117,9 @@ export async function runPluginResponseTransforms(
 
   let out = response;
   if (transformPlugins.length > 0) {
-    const matchedPage = pages.find((p) => p.route === url.pathname);
+    const supportedLangs = config.system?.languages?.supported ?? [];
+    const defaultLang = config.system?.languages?.default ?? "en";
+    const matchedPage = matchPageForUrl(url.pathname, pages, supportedLangs, defaultLang);
     out = await applyResponseTransforms(transformPlugins, {
       req,
       response,

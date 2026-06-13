@@ -788,9 +788,14 @@ export async function createDuneApp(
           adminPrefix,
         });
 
-        // RTL injection
-        const pageIndex2 = engine.pages.find((p) => p.route === url.pathname);
-        const pageLang = pageIndex2?.language ?? config.system.languages?.default ?? "en";
+        // RTL injection — strip language prefix from URL before matching
+        const rtlSupportedLangs = config.system.languages?.supported ?? [];
+        const rtlUrlSegments = url.pathname.split("/");
+        const pageLang =
+          rtlSupportedLangs.length > 1 &&
+          rtlSupportedLangs.includes(rtlUrlSegments[1])
+            ? rtlUrlSegments[1]
+            : (config.system.languages?.default ?? "en");
         response = injectRtlDir(response, isRtl(pageLang, config.system.languages?.rtl_override));
 
         // Cache headers. Admin-session responses are marked private/no-store
@@ -840,8 +845,13 @@ export async function createDuneApp(
           adminPrefix,
         });
 
-        const devPage = engine.pages.find((p) => p.route === url.pathname);
-        const devLang = devPage?.language ?? config.system.languages?.default ?? "en";
+        const devSupportedLangs = config.system.languages?.supported ?? [];
+        const devUrlSegments = url.pathname.split("/");
+        const devLang =
+          devSupportedLangs.length > 1 &&
+          devSupportedLangs.includes(devUrlSegments[1])
+            ? devUrlSegments[1]
+            : (config.system.languages?.default ?? "en");
         response = injectRtlDir(response, isRtl(devLang, config.system.languages?.rtl_override));
         response = injectLiveReload(response);
       }
