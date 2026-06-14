@@ -385,10 +385,14 @@ export function sourcePathToRoute(
     if (frontmatterSlug) segments[segments.length - 1] = frontmatterSlug;
   }
 
-  // Build the route
+  // Build the route.
+  // Page-folder pages (template selectors: reserved stems, numeric-parent files,
+  // or template-name matches) serve at trailing-slash URLs to match their folder
+  // semantics. Flat content files (numeric-prefix flat files and isFlatContentFile)
+  // do not get a trailing slash.
   const route = "/" + segments.join("/");
-
-  return route;
+  const isFlat = !!flatMatch || isFlatContentFile(sourcePath, ctx);
+  return isFlat || route === "/" ? route : route + "/";
 }
 
 /**

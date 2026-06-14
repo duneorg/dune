@@ -116,6 +116,19 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
         return `[${text}](${url})`;
       }
 
+      // URL arithmetic fallback: resolve relative page links against the page's
+      // canonical route. Produces a root-relative path that rewriteInternalLinks()
+      // can pick up for i18n prefix injection.
+      if (ctx.pageRoute && !href.startsWith("/")) {
+        try {
+          const resolved = new URL(href, `http://x${ctx.pageRoute}`);
+          const out = resolved.pathname + resolved.search + resolved.hash;
+          return `[${text}](${out})`;
+        } catch {
+          // malformed href — leave as-is
+        }
+      }
+
       return `[${text}](${href})`;
     },
   );
@@ -155,6 +168,18 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
         const url = query ? `${mediaFile.url}?${query}` : mediaFile.url;
         return `${before}${quote}${url}${quote}`;
       }
+
+      // URL arithmetic fallback: same as Pass 2 — resolve relative page hrefs.
+      if (ctx.pageRoute && !safe.startsWith("/")) {
+        try {
+          const resolved = new URL(safe, `http://x${ctx.pageRoute}`);
+          const out = resolved.pathname + resolved.search + resolved.hash;
+          return `${before}${quote}${out}${quote}`;
+        } catch {
+          // malformed href — leave as-is
+        }
+      }
+
       return `${before}${quote}${safe}${quote}`;
     },
   );

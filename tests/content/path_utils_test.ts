@@ -85,24 +85,24 @@ Deno.test("parseContentFilename: non-content file returns null", () => {
 
 // === sourcePathToRoute tests ===
 
-Deno.test("sourcePathToRoute: home folder returns natural /home route", () => {
+Deno.test("sourcePathToRoute: home folder returns natural /home/ route", () => {
   const route = sourcePathToRoute("01.home/default.md");
-  assertEquals(route, "/home"); // Resolver handles "/" mapping, not path-utils
+  assertEquals(route, "/home/"); // Page-folder gets trailing slash; resolver maps to "/"
 });
 
-Deno.test("sourcePathToRoute: efficiency folder returns /efficiency", () => {
+Deno.test("sourcePathToRoute: efficiency folder returns /efficiency/", () => {
   const route = sourcePathToRoute("01.efficiency/default.md");
-  assertEquals(route, "/efficiency");
+  assertEquals(route, "/efficiency/");
 });
 
 Deno.test("sourcePathToRoute: nested page", () => {
   const route = sourcePathToRoute("02.blog/01.hello-world/post.md");
-  assertEquals(route, "/blog/hello-world");
+  assertEquals(route, "/blog/hello-world/");
 });
 
 Deno.test("sourcePathToRoute: plain folder", () => {
   const route = sourcePathToRoute("about/default.md");
-  assertEquals(route, "/about");
+  assertEquals(route, "/about/");
 });
 
 Deno.test("sourcePathToRoute: module returns null", () => {
@@ -117,12 +117,12 @@ Deno.test("sourcePathToRoute: drafts returns null", () => {
 
 Deno.test("sourcePathToRoute: frontmatter slug override", () => {
   const route = sourcePathToRoute("02.blog/01.hello-world/post.md", "custom-slug");
-  assertEquals(route, "/blog/custom-slug");
+  assertEquals(route, "/blog/custom-slug/");
 });
 
 // Flat content files: non-reserved stem in a plain (non-numeric) parent folder
 
-Deno.test("sourcePathToRoute: flat content file routes by stem", () => {
+Deno.test("sourcePathToRoute: flat content file routes by stem (no trailing slash)", () => {
   assertEquals(sourcePathToRoute("articles/my-article.md"), "/articles/my-article");
 });
 
@@ -130,20 +130,20 @@ Deno.test("sourcePathToRoute: flat content file with slug override", () => {
   assertEquals(sourcePathToRoute("articles/my-article.md", "custom-slug"), "/articles/custom-slug");
 });
 
-Deno.test("sourcePathToRoute: reserved stem in plain folder routes to folder", () => {
-  assertEquals(sourcePathToRoute("articles/default.md"), "/articles");
-  assertEquals(sourcePathToRoute("articles/index.md"), "/articles");
+Deno.test("sourcePathToRoute: reserved stem in plain folder routes to folder (trailing slash)", () => {
+  assertEquals(sourcePathToRoute("articles/default.md"), "/articles/");
+  assertEquals(sourcePathToRoute("articles/index.md"), "/articles/");
 });
 
 Deno.test("sourcePathToRoute: numeric-prefixed parent suppresses flat routing", () => {
   // "02.blog" has numeric prefix → post.md is a template selector, not a flat page
-  assertEquals(sourcePathToRoute("02.blog/post.md"), "/blog");
+  assertEquals(sourcePathToRoute("02.blog/post.md"), "/blog/");
 });
 
 Deno.test("sourcePathToRoute: nested flat archive directory", () => {
   // plain parent "2024" inside plain "articles" → flat routing applies
   assertEquals(sourcePathToRoute("articles/2024/my-article.md"), "/articles/2024/my-article");
-  assertEquals(sourcePathToRoute("articles/2024/default.md"), "/articles/2024");
+  assertEquals(sourcePathToRoute("articles/2024/default.md"), "/articles/2024/");
 });
 
 // === isNonReservedFlatFile tests ===
@@ -210,8 +210,8 @@ Deno.test("isFlatContentFile: unmatched stem with templateNames → flat", () =>
 
 Deno.test("sourcePathToRoute: Grav-style page folder with templateNames", () => {
   const ctx = { templateNames: new Set(["post", "article"]) };
-  assertEquals(sourcePathToRoute("blog/my-post/post.md", undefined, ctx), "/blog/my-post");
-  assertEquals(sourcePathToRoute("news/breaking/article.md", undefined, ctx), "/news/breaking");
+  assertEquals(sourcePathToRoute("blog/my-post/post.md", undefined, ctx), "/blog/my-post/");
+  assertEquals(sourcePathToRoute("news/breaking/article.md", undefined, ctx), "/news/breaking/");
 });
 
 Deno.test("sourcePathToRoute: flat file unaffected when stem not in templateNames", () => {

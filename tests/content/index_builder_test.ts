@@ -132,7 +132,7 @@ Deno.test("buildIndex: single page indexed correctly", async () => {
   assertEquals(result.pages.length, 1);
   assertEquals(result.indexed, 1);
   assertEquals(result.pages[0].title, "Home Page");
-  assertEquals(result.pages[0].route, "/home");
+  assertEquals(result.pages[0].route, "/home/");
   assertEquals(result.pages[0].depth, 0);
 });
 
@@ -215,7 +215,7 @@ Deno.test("buildIndex: files in _drafts folders are skipped", async () => {
 
   const result = await buildIndex({ storage, contentDir: "content", formats: makeFormats() });
   assertEquals(result.pages.length, 1);
-  assertEquals(result.pages[0].route, "/home");
+  assertEquals(result.pages[0].route, "/home/");
 });
 
 Deno.test("buildIndex: valid content extension with no handler adds error and skips page", async () => {
@@ -285,8 +285,8 @@ Deno.test("buildIndex: status field inferred from published when absent", async 
     contentDir: "content",
     formats: makeFormats(fm),
   });
-  const pub = result.pages.find((p) => p.route === "/pub")!;
-  const draft = result.pages.find((p) => p.route === "/draft")!;
+  const pub = result.pages.find((p) => p.route === "/pub/")!;
+  const draft = result.pages.find((p) => p.route === "/draft/")!;
   assertEquals(pub.status, "published");
   assertEquals(draft.status, "draft");
 });
@@ -450,5 +450,5 @@ Deno.test("updateIndex: deleted file is removed from result", async () => {
   });
 
   assertEquals(result.pages.length, 1);
-  assertEquals(result.pages[0].route, "/home");
+  assertEquals(result.pages[0].route, "/home/");
 });

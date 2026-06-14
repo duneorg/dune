@@ -92,14 +92,19 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
     }
   }
 
-  // Resolve the home page from homeSlug
-  const homeRoute = normalizeRoute("/" + options.homeSlug);
-  let homePage: PageIndex | null = null;
-  if (isMultilingual) {
-    homePage = findPage(homeRoute, defaultLang) ?? null;
-  } else {
-    homePage = routeMap.get(homeRoute) ?? null;
+  // Resolve the home page from homeSlug.
+  // The home page is typically a page-folder, so its route will carry a trailing
+  // slash ("/home/"). We try both forms to handle all configurations.
+  function findHomeBySlug(slug: string, lang: string): PageIndex | null {
+    const noSlash = normalizeRoute("/" + slug);
+    const withSlash = noSlash === "/" ? "/" : noSlash + "/";
+    if (isMultilingual) {
+      return findPage(noSlash, lang) ?? findPage(withSlash, lang) ?? null;
+    }
+    return routeMap.get(noSlash) ?? routeMap.get(withSlash) ?? null;
   }
+
+  let homePage: PageIndex | null = findHomeBySlug(options.homeSlug, defaultLang);
 
   return {
     /**
@@ -124,23 +129,16 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
         if (first && supportedLangs.includes(first)) {
           lang = first;
           route = "/" + segments.slice(1).join("/") || "/";
-          // "/de" with nothing after -> home route
-          if (route === "/" && segments.length === 1) {
-            route = homeRoute;
-          }
         } else if (first && includeDefaultInUrl && first === defaultLang) {
           lang = defaultLang;
           route = "/" + segments.slice(1).join("/") || "/";
-          if (route === "/" && segments.length === 1) {
-            route = homeRoute;
-          }
         }
       }
 
       // 2. Home page: map "/" to the configured/autodetected home page
       if ((route === "/" || route === "") && homePage) {
         if (isMultilingual) {
-          const page = findPage(homeRoute, lang);
+          const page = findHomeBySlug(options.homeSlug, lang);
           return page ? { type: "page", page } : null;
         }
         return { type: "page", page: homePage };
@@ -167,15 +165,21 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
         return { type: "page", page: directMatch };
       }
 
-      // 5. Try with/without trailing slash
-      if (route.endsWith("/") && route.length > 1) {
-        const withoutSlash = route.slice(0, -1);
-        const match = isMultilingual ? findPage(withoutSlash, lang) : routeMap.get(withoutSlash);
-        if (match) return { type: "page", page: match };
-      } else if (route !== "/") {
-        const withSlash = route + "/";
-        const match = isMultilingual ? findPage(withSlash, lang) : routeMap.get(withSlash);
-        if (match) return { type: "page", page: match };
+      // 5. Best-effort canonical redirect (both directions).
+      // Request arrived at the wrong slash form — redirect to the canonical URL
+      // of the page that actually exists at the other form. Only fires when the
+      // other form exists; neither form existing produces a 404 (no speculation).
+      {
+        const otherForm = route.endsWith("/") && route.length > 1
+          ? route.slice(0, -1)
+          : route + "/";
+        const otherMatch = isMultilingual ? findPage(otherForm, lang) : routeMap.get(otherForm);
+        if (otherMatch) {
+          const redirectTo = isMultilingual && lang !== defaultLang
+            ? "/" + lang + otherMatch.route
+            : otherMatch.route;
+          return { type: "redirect", redirectTo };
+        }
       }
 
       // 6. Legacy URL normalization: replace + with - (URLs from older CMS systems like Antville)
@@ -186,11 +190,21 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
           .replace(/%2b/g, "-")   // percent-encoded +
           .replace(/\+/g, "-")    // literal +
           .replace(/-{2,}/g, "-");
+        // Try both slash forms — the legacy URL may carry a trailing slash that
+        // doesn't match the canonical route key.
+        const dashedOther = dashed.endsWith("/") && dashed.length > 1
+          ? dashed.slice(0, -1)
+          : dashed + "/";
         const legacyMatch = isMultilingual
-          ? findPage(dashed, lang)
-          : routeMap.get(dashed);
+          ? (findPage(dashed, lang) ?? findPage(dashedOther, lang))
+          : (routeMap.get(dashed) ?? routeMap.get(dashedOther));
         if (legacyMatch) {
-          return { type: "redirect", redirectTo: dashed };
+          // Redirect to the canonical route (not the computed dashed string, which
+          // may carry a trailing slash from the original URL).
+          const redirectTo = isMultilingual && lang !== defaultLang
+            ? "/" + lang + legacyMatch.route
+            : legacyMatch.route;
+          return { type: "redirect", redirectTo };
         }
       }
 
@@ -249,10 +263,7 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
           routeMap.set(route, page);
         }
       }
-      const newHomeRoute = normalizeRoute("/" + options.homeSlug);
-      homePage = isMultilingual
-        ? findPage(newHomeRoute, defaultLang) ?? null
-        : routeMap.get(newHomeRoute) ?? null;
+      homePage = findHomeBySlug(options.homeSlug, defaultLang);
     },
   };
 }
@@ -260,6 +271,8 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
 /**
  * Normalize a route for consistent lookup.
  * Ensures leading slash, lowercase, no double slashes.
+ * Trailing slash is preserved — page-folder routes end with "/" and flat-file
+ * routes do not. The resolver uses this distinction to enforce canonical form.
  */
 function normalizeRoute(route: string): string {
   let normalized = route.toLowerCase().trim();
@@ -267,11 +280,6 @@ function normalizeRoute(route: string): string {
   // Ensure leading slash
   if (!normalized.startsWith("/")) {
     normalized = "/" + normalized;
-  }
-
-  // Remove trailing slash (except for root)
-  if (normalized.length > 1 && normalized.endsWith("/")) {
-    normalized = normalized.slice(0, -1);
   }
 
   // Collapse double slashes

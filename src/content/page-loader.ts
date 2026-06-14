@@ -98,7 +98,7 @@ export async function loadPage(
     html: lazyOnce(async () => {
       if (index.format !== "md" && index.format !== "mdx") return "";
       const trustedHtml = options.site?.trusted_html === true || frontmatter.trusted_html === true;
-      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml);
+      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml, index.route);
       let html = await handler.renderToHtml(page, ctx);
       if (options.orphanProtection !== false) {
         html = applyOrphanProtection(html);
@@ -315,11 +315,13 @@ function buildMinimalRenderContext(
   contentDir: string,
   site?: import("../config/types.ts").SiteConfig,
   trustedHtml?: boolean,
+  pageRoute?: string,
 ): RenderContext {
   return {
     site,
     contentDir,
     trustedHtml,
+    pageRoute,
     media: {
       url: (filename: string) => {
         const file = media.find((m) => m.name === filename);

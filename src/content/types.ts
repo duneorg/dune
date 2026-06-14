@@ -455,6 +455,12 @@ export interface RenderContext {
    * check this rather than reading site/frontmatter directly.
    */
   trustedHtml?: boolean;
+  /**
+   * Canonical URL route for this page (e.g. "/blog/my-post/" for a page-folder,
+   * "/articles/my-article" for a flat file). Used by format handlers to resolve
+   * relative hrefs via URL arithmetic when a media lookup misses.
+   */
+  pageRoute?: string;
 }
 
 /**
