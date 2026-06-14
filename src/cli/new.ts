@@ -37,7 +37,7 @@ import NavToggle from "../islands/NavToggle.tsx";
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
-  { label: "Blog", href: "/blog" },
+  { label: "Blog", href: "/blog/" },
 ];
 
 export default function Layout({ children, site }: any) {
@@ -412,7 +412,7 @@ import type { FreshContext, PageProps } from "fresh";
 import { getContent, type ResolvedPage } from "@dune/core/content";
 
 export async function handler(req: Request, ctx: FreshContext) {
-  const post = await getContent().page(\`/blog/\${ctx.params.slug}\`);
+  const post = await getContent().page(\`/blog/\${ctx.params.slug}/\`);
   if (!post) return ctx.next();
   return ctx.render(post);
 }
