@@ -5,6 +5,22 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.20.0] — 2026-06-15
+
+### Added
+
+- **Trailing-slash canonical URLs for page-folder pages** — pages backed by a folder on disk (`04.blog/01.my-post/default.md`) now serve at `/blog/my-post/` (with trailing slash) instead of `/blog/my-post`. Flat content files (`articles/my-article.md`) are unaffected and continue to serve without a trailing slash. The `<link rel="canonical">`, sitemap `<loc>`, and feed `<link>` entries all emit the correct form automatically, since they derive from `PageIndex.route`.
+
+- **Canonical-form redirects (both directions)** — if a visitor arrives at the wrong slash form, Dune issues a 301 to the correct canonical URL. The redirect is symmetric and evidence-based: it only fires when a resource is found at the other form. If both forms exist independently (a flat `about.md` and a page-folder `about/default.md`), each URL serves its own resource with no redirect.
+
+- **Relative cross-page links via URL arithmetic** — `RenderContext` gains `pageRoute?: string` (populated from `PageIndex.route` in the page loader). In `media-resolve.ts`, after a media lookup misses, relative `href` values in both markdown links and `<a>` tags are resolved using `new URL(href, base)` URL arithmetic. The resulting root-relative path then flows through `rewriteInternalLinks()`, so multilingual relative links (`./related/`) automatically gain the correct language prefix — fixing a long-standing silent breakage.
+
+### Breaking Changes
+
+- **Page-folder routes now include a trailing slash.** Any hardcoded root-relative link (`[see](/blog/my-post)`) or `href="/contact"` pointing at a page-folder will 301 to the trailing-slash form — no manual change required for visitors. For a clean audit: search `content/` for `](/` patterns and update links to add `/`; update any `href="..."` in theme templates; update `site.yaml` `redirects:` target URLs; update `homeRoute` derivations in themes to append `/`; update `isActiveRoute` prefix checks to handle routes that already end with `/`.
+
+---
+
 ## [0.19.2] — 2026-06-13
 
 ### Fixed

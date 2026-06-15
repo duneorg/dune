@@ -368,7 +368,7 @@ Deno.test("resolve(): returns correct page for a named route", async () => {
 
   await engine.init();
 
-  const result = await engine.resolve("/about");
+  const result = await engine.resolve("/about/");
   assertEquals(result.type, "page");
   assertExists(result.page);
   assertEquals(result.page!.frontmatter.title, "About");
