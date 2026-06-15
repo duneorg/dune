@@ -160,3 +160,38 @@ Deno.test("resolver: home page-folder with trailing slash resolves from /", () =
   assertEquals(match?.type, "page");
   assertEquals(match?.page?.route, "/home/");
 });
+
+// --- Multilingual: trailing-slash page-folder routes must not loop ---
+
+Deno.test("resolver: multilingual page-folder trailing-slash URL returns page, not redirect loop", () => {
+  // Regression: "/fr/ecosystem/" was stripping the lang prefix via split/filter(Boolean)
+  // which dropped the trailing slash, producing route "/ecosystem" instead of "/ecosystem/".
+  // Step 5 (canonical redirect) then found "/ecosystem/" at the "other form" and issued
+  // a 301 to "/fr/ecosystem/" — the same URL — causing an infinite redirect loop.
+  const pages = [
+    mockPage({ sourcePath: "01.ecosystem/default.md", route: "/ecosystem/", language: "en" }),
+    mockPage({ sourcePath: "01.ecosystem/default.fr.md", route: "/ecosystem/", language: "fr" }),
+  ];
+  const resolver = createRouteResolver({
+    pages,
+    site: mockSiteConfig(),
+    homeSlug: "ecosystem",
+    supportedLanguages: ["en", "fr"],
+    defaultLanguage: "en",
+  });
+
+  // French trailing-slash URL must resolve to a page, never redirect to itself
+  const fr = resolver.resolve("/fr/ecosystem/");
+  assertEquals(fr?.type, "page");
+  assertEquals(fr?.page?.language, "fr");
+
+  // English (default lang, no prefix) also works
+  const en = resolver.resolve("/ecosystem/");
+  assertEquals(en?.type, "page");
+  assertEquals(en?.page?.language, "en");
+
+  // Missing trailing slash redirects to canonical form (not a loop)
+  const noSlash = resolver.resolve("/fr/ecosystem");
+  assertEquals(noSlash?.type, "redirect");
+  assertEquals(noSlash?.redirectTo, "/fr/ecosystem/");
+});

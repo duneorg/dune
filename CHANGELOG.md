@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.20.1] — 2026-06-16
+
+### Fixed
+
+- **Infinite redirect loop on multilingual trailing-slash page-folder URLs** — requesting `/fr/ecosystem/` (or any `/{lang}/{page-folder}/` URL) caused a redirect loop. The language-prefix stripping used `split("/").filter(Boolean).join("/")` which dropped the trailing slash, producing route `/ecosystem` instead of `/ecosystem/`. The canonical-redirect step then found `/ecosystem/` at the "other form" and issued a 301 back to `/fr/ecosystem/` — the same URL. Fixed by slicing the language prefix off the normalised string directly (`normalized.slice(1 + lang.length)`), which preserves the trailing slash.
+
+---
+
 ## [0.20.0] — 2026-06-15
 
 ### Added

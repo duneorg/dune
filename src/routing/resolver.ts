@@ -128,10 +128,10 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
         const first = segments[0]?.toLowerCase();
         if (first && supportedLangs.includes(first)) {
           lang = first;
-          route = "/" + segments.slice(1).join("/") || "/";
+          route = normalized.slice(1 + first.length) || "/";
         } else if (first && includeDefaultInUrl && first === defaultLang) {
           lang = defaultLang;
-          route = "/" + segments.slice(1).join("/") || "/";
+          route = normalized.slice(1 + first.length) || "/";
         }
       }
 
