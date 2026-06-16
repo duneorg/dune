@@ -4,7 +4,7 @@
  * through the real subprocess orchestration.
  */
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import {
   computeLockfileSync,
@@ -220,3 +220,20 @@ plugins:
     }
   },
 });
+
+// NOTE: a planned regression test here ("refuses to write a merge that
+// additive-only reverting would leave internally inconsistent") was
+// dropped. The real failure mode is documented and was verified by hand —
+// adding @std/assert to this repo's own deno.json required disambiguating
+// other packages' bare "jsr:@std/internal" references once a second,
+// different @std/internal range existed, and hand-editing the lockfile
+// without that disambiguation was correctly rejected by `deno test
+// --frozen` (see commit history around the dune-inline-edit-prompted
+// lockfile-sync work). But constructing an equivalent *synthetic* repro
+// proved unexpectedly hard: Deno appears to normalize some semver range
+// strings (e.g. a caret-on-bare-major like "^1" and bare "1") to the same
+// canonical lookup key internally, so corrupting a hand-written specifiers
+// entry didn't reliably reproduce the dangling-reference failure the real
+// case hit — the corrupted key just went unconsulted. Rather than ship a
+// test asserting something that isn't actually true of the mechanism,
+// this is left as a documented manual-verification gap.

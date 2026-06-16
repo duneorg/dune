@@ -155,10 +155,19 @@ async function runDiscovery(
   siteDenoJson: string,
   scratchLockPath: string,
   root: string,
+  opts: { frozen?: boolean } = {},
 ): Promise<DiscoveryResult> {
   const helperUrl = import.meta.resolve("./lockfile-resolve-helper.ts");
   const cmd = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", `--config=${siteDenoJson}`, `--lock=${scratchLockPath}`, helperUrl, root],
+    args: [
+      "run",
+      "-A",
+      `--config=${siteDenoJson}`,
+      `--lock=${scratchLockPath}`,
+      ...(opts.frozen ? ["--frozen"] : []),
+      helperUrl,
+      root,
+    ],
     stdout: "piped",
     stderr: "piped",
   });
@@ -177,16 +186,70 @@ async function runCacheForSpecifiers(
   siteDenoJson: string,
   scratchLockPath: string,
   specifiers: string[],
+  opts: { frozen?: boolean } = {},
 ): Promise<void> {
   if (specifiers.length === 0) return;
   const cmd = new Deno.Command(Deno.execPath(), {
-    args: ["cache", `--config=${siteDenoJson}`, `--lock=${scratchLockPath}`, ...specifiers],
+    args: [
+      "cache",
+      `--config=${siteDenoJson}`,
+      `--lock=${scratchLockPath}`,
+      ...(opts.frozen ? ["--frozen"] : []),
+      ...specifiers,
+    ],
     stdout: "null",
     stderr: "piped",
   });
   const { code, stderr } = await cmd.output();
   if (code !== 0) {
     throw new Error(`Dependency caching failed:\n${new TextDecoder().decode(stderr).trim()}`);
+  }
+}
+
+/**
+ * Verify a merged lockfile is internally self-consistent before it's ever
+ * written to disk.
+ *
+ * The additive-only merge can, in one specific case, produce a lockfile
+ * that's individually well-formed JSON but fails Deno's own `--frozen`
+ * check: if the newly-added entries introduce a *second*, different semver
+ * range for a package that some other already-pinned entry references via
+ * a bare (unqualified) specifier, that bare reference becomes ambiguous —
+ * Deno requires it to be disambiguated. Reverting "changed" values by
+ * default (the whole point of additive-only merging) would incorrectly
+ * revert that disambiguation too, since from a pure diff perspective it
+ * looks like an ordinary modification to an existing entry.
+ *
+ * Re-running discovery and caching with `--frozen` against the merged
+ * result catches this: if it fails, the merge is incomplete and must not
+ * be written as-is.
+ */
+async function assertFrozenConsistent(
+  siteDenoJson: string,
+  merged: Record<string, unknown>,
+  root: string,
+  pluginSpecifiers: string[],
+  clientEntrySpecifiers: string[],
+): Promise<void> {
+  const validationPath = await Deno.makeTempFile({ suffix: ".lock.json" });
+  try {
+    await Deno.writeTextFile(validationPath, JSON.stringify(merged));
+    await runDiscovery(siteDenoJson, validationPath, root, { frozen: true });
+    await runCacheForSpecifiers(siteDenoJson, validationPath, [
+      ...pluginSpecifiers,
+      ...clientEntrySpecifiers,
+    ], { frozen: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `The merged lockfile would not be self-consistent (--frozen rejects it):\n${message}\n\n` +
+        `This usually means a new addition introduced a second, different version range for an ` +
+        `already-pinned shared dependency, and an existing entry referencing it ambiguously needs ` +
+        `updating too — additive-only merging can't safely apply that on its own. Please report this ` +
+        `with the diff above; it indicates a gap in the merge algorithm, not a problem with your project.`,
+    );
+  } finally {
+    await Deno.remove(validationPath).catch(() => {});
   }
 }
 
@@ -236,6 +299,14 @@ export async function computeLockfileSync(
 
     const resolved = JSON.parse(await Deno.readTextFile(scratchPath));
     const { merged, diffs } = mergeLockfiles(original, resolved, upgradeKeys);
+
+    await assertFrozenConsistent(
+      siteDenoJson,
+      merged,
+      absRoot,
+      pluginSpecifiers,
+      clientEntrySpecifiers,
+    );
 
     return { status: { lockfilePath, diffs }, merged };
   } finally {

@@ -9,6 +9,7 @@
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@2": "2.3.3",
     "jsr:@std/assert@0.217": "0.217.0",
+    "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/crypto@1": "1.0.5",
     "jsr:@std/encoding@1": "1.0.10",
@@ -19,6 +20,7 @@
     "jsr:@std/fs@^1.0.19": "1.0.24",
     "jsr:@std/html@^1.0.5": "1.0.7",
     "jsr:@std/http@^1.0.21": "1.1.1",
+    "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/json@^1.0.2": "1.1.0",
     "jsr:@std/jsonc@^1.0.2": "1.0.2",
@@ -155,6 +157,12 @@
     "@std/assert@0.217.0": {
       "integrity": "c98e279362ca6982d5285c3b89517b757c1e3477ee9f14eb2fdf80a45aaa9642"
     },
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal@^1.0.12"
+      ]
+    },
     "@std/bytes@1.0.6": {
       "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
     },
@@ -170,7 +178,7 @@
     "@std/fs@1.0.24": {
       "integrity": "f3061b45b81673a2bece689da041df32d174be064c89eb6397fb5718d3fb7877",
       "dependencies": [
-        "jsr:@std/internal",
+        "jsr:@std/internal@^1.0.14",
         "jsr:@std/path@^1.1.5"
       ]
     },
@@ -204,13 +212,13 @@
     "@std/path@0.217.0": {
       "integrity": "1217cc25534bca9a2f672d7fe7c6f356e4027df400c0e85c0ef3e4343bc67d11",
       "dependencies": [
-        "jsr:@std/assert"
+        "jsr:@std/assert@0.217"
       ]
     },
     "@std/path@1.1.5": {
       "integrity": "ccea00982ea28c36becaf6e62f855406c76a8c32d462f66f415bbb7d83a271bc",
       "dependencies": [
-        "jsr:@std/internal"
+        "jsr:@std/internal@^1.0.14"
       ]
     },
     "@std/semver@1.0.8": {
@@ -2183,6 +2191,7 @@
     "dependencies": [
       "jsr:@db/sqlite@0.12",
       "jsr:@fresh/core@2",
+      "jsr:@std/assert@1",
       "jsr:@std/crypto@1",
       "jsr:@std/encoding@1",
       "jsr:@std/fs@1",
