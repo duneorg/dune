@@ -151,6 +151,45 @@ interface DiscoveryResult {
   clientEntrySpecifiers: string[];
 }
 
+/**
+ * The site's own `@dune/core` import, plus `/cli` — e.g.
+ * `jsr:@dune/core@0.21.6/cli`.
+ *
+ * Plugin discovery alone only traces whatever `loadPlugins` and the site's
+ * *configured* plugins statically import — a narrow slice of dune-core
+ * (storage/config/hooks/plugin-loader). It never touches the db drivers,
+ * email, image-processing, etc. that `cli-impl.ts` imports up front for
+ * every command, `serve` included. A lockfile entry for `@dune/core`
+ * built only from that narrow trace is individually well-formed but
+ * incomplete: `--frozen serve` next exercises the rest of that module
+ * graph and fails. Caching the CLI entrypoint itself records dune-core's
+ * actual full dependency manifest for this version, independent of which
+ * plugins happen to be configured.
+ *
+ * This is *sufficient*, not just necessary: dune-core's config-gated
+ * runtime branches (the multisite manager, DB adapters, the mailer, image
+ * processing, etc.) are reached via *literal-string* dynamic `import()`,
+ * which Deno's module-graph builder follows statically — so caching
+ * `<core>/cli` captures them regardless of a given site's config. The only
+ * dynamic imports Deno can't follow are *variable*-argument ones
+ * (`import(fileUrl)` in the config loader, `import(importUrl)` in the
+ * plugin loader), and those resolve to site-local files (the site's own
+ * config.ts / plugin entry points) — i.e. the site's dependency surface,
+ * which plugin discovery already handles by actually loading it, not
+ * dune-core's. (Verified 2026-06-16 via `deno info --json` on the CLI
+ * entrypoint.) A future *variable* `import()` of an *external* package in
+ * dune-core would be the one thing this misses — worth a CI lint.
+ */
+export async function resolveCoreCliSpecifier(siteDenoJson: string): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await Deno.readTextFile(siteDenoJson));
+    const core = parsed?.imports?.["@dune/core"];
+    return typeof core === "string" ? `${core}/cli` : null;
+  } catch {
+    return null;
+  }
+}
+
 async function runDiscovery(
   siteDenoJson: string,
   scratchLockPath: string,
@@ -230,6 +269,7 @@ async function checkFrozenConsistent(
   root: string,
   pluginSpecifiers: string[],
   clientEntrySpecifiers: string[],
+  coreCliSpecifier: string | null,
 ): Promise<{ consistent: true } | { consistent: false; error: string }> {
   const validationPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   try {
@@ -238,6 +278,7 @@ async function checkFrozenConsistent(
     await runCacheForSpecifiers(siteDenoJson, validationPath, [
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
+      ...(coreCliSpecifier ? [coreCliSpecifier] : []),
     ], { frozen: true });
     return { consistent: true };
   } catch (err) {
@@ -346,9 +387,11 @@ export async function computeLockfileSync(
       scratchPath,
       absRoot,
     );
+    const coreCliSpecifier = await resolveCoreCliSpecifier(siteDenoJson);
     await runCacheForSpecifiers(siteDenoJson, scratchPath, [
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
+      ...(coreCliSpecifier ? [coreCliSpecifier] : []),
     ]);
 
     const resolved = JSON.parse(await Deno.readTextFile(scratchPath));
@@ -360,6 +403,7 @@ export async function computeLockfileSync(
       absRoot,
       pluginSpecifiers,
       clientEntrySpecifiers,
+      coreCliSpecifier,
     );
 
     return {

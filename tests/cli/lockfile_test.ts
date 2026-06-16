@@ -11,6 +11,7 @@ import {
   findEffectiveLockfileDir,
   lockfileCheckCommand,
   mergeLockfiles,
+  resolveCoreCliSpecifier,
 } from "../../src/cli/lockfile.ts";
 
 // ── mergeLockfiles (pure) ─────────────────────────────────────────────────────
@@ -157,6 +158,43 @@ Deno.test("findEffectiveLockfileDir: no workspace anywhere falls back to the giv
   const found = await findEffectiveLockfileDir(root);
   assertEquals(found, root);
   await Deno.remove(root, { recursive: true });
+});
+
+// ── resolveCoreCliSpecifier (pure-ish: one file read) ────────────────────────
+
+Deno.test("resolveCoreCliSpecifier: appends /cli to the site's @dune/core import", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(
+      join(root, "deno.json"),
+      JSON.stringify({ imports: { "@dune/core": "jsr:@dune/core@1.2.3" } }),
+    );
+    const specifier = await resolveCoreCliSpecifier(join(root, "deno.json"));
+    assertEquals(specifier, "jsr:@dune/core@1.2.3/cli");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("resolveCoreCliSpecifier: null when the site has no @dune/core import", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({ imports: {} }));
+    const specifier = await resolveCoreCliSpecifier(join(root, "deno.json"));
+    assertEquals(specifier, null);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("resolveCoreCliSpecifier: null when deno.json is missing entirely", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const specifier = await resolveCoreCliSpecifier(join(root, "deno.json"));
+    assertEquals(specifier, null);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 // ── computeLockfileSync (integration: real subprocess + real fs) ────────────

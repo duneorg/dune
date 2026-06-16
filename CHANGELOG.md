@@ -5,9 +5,11 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
-## [0.21.6] — 2026-06-16
+## [0.21.7] — 2026-06-16
 
 ### Fixed
+
+- **`lockfile:sync` recorded an incomplete dependency block for `@dune/core`, so a `--frozen serve` could still fail right after a successful sync.** The discovery pass only traced the narrow slice of dune-core that plugin loading touches (`storage`/`config`/`hooks`/`plugin-loader`) — about three dependencies — whereas actually running `serve` exercises far more of dune-core's own graph (the DB drivers, mailer, image processing, multisite manager, etc., reached via dynamic imports `cli-impl.ts` pulls in for every command). Deno records a package's dependency block from whatever graph was traced during resolution, so the synced lockfile's `@dune/core` entry was well-formed but missing ~15 dependencies, and the next `--frozen serve` rejected it as out of date. `sync` now also caches the site's pinned `@dune/core@X/cli` entrypoint — the same module `serve` itself loads — so the recorded closure matches what `serve` will actually need, independent of which plugins are configured. (Deno follows literal-string dynamic imports statically, so this captures the config-gated runtime branches too; only variable-argument imports of site-local files are excluded, and those are the site's own surface, handled separately by plugin discovery.)
 
 - **Just invoking `dune lockfile:check`/`lockfile:sync` could itself dirty `deno.lock` before either command's own code ran, regardless of git state.** The CLI auto re-execs itself with `--config=<site deno.json>` whenever the site root has its own config, so dynamically-imported theme TSX files can resolve the site's import map — but it did this unconditionally, including for the lockfile commands, which don't render anything and already manage their own properly-scoped (scratch-lockfile) subprocess internally. That re-exec resolved the CLI's own module graph against the site's real `deno.lock`, unfrozen, before `lockfile:check`/`lockfile:sync` ever got a chance to read "original" — the exact incidental-drift problem these commands exist to prevent, and the actual root cause of inconsistent results seen across repeated runs. `lockfile:check`/`lockfile:sync` are now excluded from the auto re-exec, and the "original" baseline is read directly from disk — the previous preference for a git-committed copy (added in 0.21.2 to work around this same symptom) is removed; it was treating a downstream effect as if it were the cause.
 
