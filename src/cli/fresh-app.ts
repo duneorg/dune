@@ -643,17 +643,28 @@ export async function createDuneApp(
   });
 
   // 11. Theme and site static files
+  //
+  // /static/, /themes/, and /plugins/ are reserved path prefixes, but a
+  // content page-folder can legitimately have one of those words as its
+  // own slug (e.g. a "plugins" or "themes" docs page) — and since 0.20.0,
+  // page-folder pages serve at that exact trailing-slash route. Without a
+  // fallback, /plugins/ or /themes/ would be eaten by these wildcard
+  // routes and 404 from the static-asset layer even though the content
+  // layer has a real page there (and confidently 301s to it from the
+  // no-slash form, since canonical-redirect resolution goes through the
+  // content router, not these handlers). Falling through to content
+  // resolution when nothing static matches closes that gap.
   app.get("/static/*", async (fc) => {
     const result = await serveStaticFile(root, fc.url.pathname, dev, sharedThemesDir);
-    return withSecurityHeaders(
-      result ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-    );
+    if (result) return withSecurityHeaders(result);
+    const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
+    return withSecurityHeaders(await routes.contentHandler(fc.req, renderJsx));
   });
   app.get("/themes/*", async (fc) => {
     const result = await serveStaticFile(root, fc.url.pathname, dev, sharedThemesDir);
-    return withSecurityHeaders(
-      result ?? renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-    );
+    if (result) return withSecurityHeaders(result);
+    const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
+    return withSecurityHeaders(await routes.contentHandler(fc.req, renderJsx));
   });
 
   // 12. Plugin assets — bundled client entries first, then static assetDir files.
@@ -661,11 +672,9 @@ export async function createDuneApp(
     const bundleResult = serveClientBundle(clientBundles, fc.url.pathname, fc.req, dev);
     if (bundleResult) return withSecurityHeaders(bundleResult);
     const result = await servePluginAsset(pluginAssetDirs, fc.url.pathname, dev);
-    return result
-      ? withSecurityHeaders(result)
-      : withSecurityHeaders(
-          renderErrorPage(404, "Not Found", "The page you're looking for doesn't exist.", siteName),
-        );
+    if (result) return withSecurityHeaders(result);
+    const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
+    return withSecurityHeaders(await routes.contentHandler(fc.req, renderJsx));
   });
 
   // 13. Co-located content media (legacy path)

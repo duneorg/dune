@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.5] — 2026-06-16
+
+### Fixed
+
+- **A content page-folder whose slug matched a reserved path prefix (`static`, `themes`, or `plugins`) was unreachable at its own canonical URL.** Found live in production: a page at `content/plugins/` correctly 301-redirected `/plugins` → `/plugins/` (the content router knew the page existed), but requesting `/plugins/` itself 404'd, because the wildcard static-asset and plugin-asset routes (registered before the content catch-all) intercepted it first and never found a matching file. This became reachable specifically once page-folders started serving at a trailing slash (0.20.0) — before that, the non-slash canonical form didn't collide with the wildcard pattern. The `/static/*`, `/themes/*`, and `/plugins/*` handlers now fall through to content resolution when no static or plugin asset matches, instead of 404ing immediately.
+
+---
+
 ## [0.21.4] — 2026-06-16
 
 ### Fixed
