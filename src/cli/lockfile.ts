@@ -418,25 +418,22 @@ export interface LockfileCheckOptions {
  * Read-only: exits 1 if the lockfile is missing entries the current
  * plugin/import set needs, OR if sync would be unable to add them safely
  * (an unresolved disambiguation — see `explainInconsistency`). Never
- * writes, and never throws on an inconsistent result — that's exactly the
- * thing this command exists to report.
+ * throws on an inconsistent result — that's exactly the thing this
+ * command exists to report.
+ *
+ * This command's own code never writes the lockfile. It cannot, however,
+ * prevent the *outer* `deno run jsr:@dune/core@X/cli ...` invocation from
+ * touching the on-disk file as a side effect of resolving its own module
+ * graph at startup — that happens before any of this code runs at all.
+ * An earlier version tried to paper over this by restoring the file to
+ * its git-committed state afterward, but that's actively dangerous: if
+ * the disk file differs from git HEAD because of a *legitimate*
+ * uncommitted `sync` run rather than incidental taint, "restoring" it
+ * silently destroys that work. There's no way to tell the two cases
+ * apart from here, so this command does not touch the file at all.
  */
 export async function lockfileCheckCommand(root: string, opts: LockfileCheckOptions = {}): Promise<void> {
   const { status } = await computeLockfileSync(root, new Set());
-
-  // Merely invoking `deno run jsr:@dune/core@X/cli ...` resolves the running
-  // CLI's own module graph into whichever lockfile is ambient for this
-  // project, as an unavoidable side effect of starting up — before any of
-  // this command's own code runs. computeLockfileSync already reads its
-  // "original" from git HEAD rather than disk so that taint can't corrupt
-  // the merge, but the disk file itself may now differ from git regardless.
-  // Restore it so `check` — a command whose entire contract is "never
-  // writes" — doesn't leave a surprise dirty working tree behind.
-  const lockfileDir = await findEffectiveLockfileDir(resolve(root));
-  const pristineText = await readPristineLockfileText(lockfileDir, status.lockfilePath);
-  if (pristineText !== null) {
-    await Deno.writeTextFile(status.lockfilePath, pristineText);
-  }
 
   const added = countAll(status.diffs, "added");
   const blocked = countAll(status.diffs, "blocked");

@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.4] — 2026-06-16
+
+### Fixed
+
+- **`lockfile:check` could silently destroy an uncommitted `lockfile:sync` result.** 0.21.2 made `check` restore the on-disk lockfile to its git-committed state afterward, to avoid leaving a surprise dirty working tree from the outer process's own module-graph resolution. That's indistinguishable from "an uncommitted `sync` run sitting on disk" — running `check` between `sync` and committing silently reverted the sync. `check` no longer touches the lockfile at all, regardless of how it differs from git HEAD; there is no way to tell incidental taint apart from legitimate uncommitted work from where this command runs, so it doesn't try.
+
+---
+
 ## [0.21.3] — 2026-06-16
 
 ### Added

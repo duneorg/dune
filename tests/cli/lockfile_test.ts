@@ -9,6 +9,7 @@ import { join } from "@std/path";
 import {
   computeLockfileSync,
   findEffectiveLockfileDir,
+  lockfileCheckCommand,
   mergeLockfiles,
 } from "../../src/cli/lockfile.ts";
 
@@ -306,3 +307,76 @@ Deno.test({
 // case hit — the corrupted key just went unconsulted. Rather than ship a
 // test asserting something that isn't actually true of the mechanism,
 // this is left as a documented manual-verification gap.
+
+Deno.test({
+  name: "lockfileCheckCommand: never touches the disk lockfile, even when it differs from git HEAD",
+  // Reproduces a real incident: an earlier version restored the disk file
+  // to its git-committed state after every check, to avoid leaving a
+  // surprise dirty working tree from the outer process's own load. That's
+  // indistinguishable from "an uncommitted sync result sitting on disk" —
+  // running check right after sync (before committing) silently destroyed
+  // the sync. check must never write the lockfile at all, regardless of
+  // how it differs from git HEAD. Calls Deno.exit(), so it's run in a
+  // subprocess; the parent verifies the file is untouched afterward.
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      // Superset of dune's own imports, same as the earlier end-to-end
+      // test: the discovery subprocess needs dune's own internals (e.g.
+      // @std/path) resolvable, since this runs against local source.
+      const duneOwnDenoJson = JSON.parse(
+        await Deno.readTextFile(join(import.meta.dirname!, "..", "..", "deno.json")),
+      );
+      await Deno.writeTextFile(
+        join(root, "deno.json"),
+        JSON.stringify({ imports: duneOwnDenoJson.imports }),
+      );
+      await Deno.mkdir(join(root, "config"));
+      await Deno.writeTextFile(join(root, "config", "site.yaml"), `title: Test Site\n`);
+
+      await runGit(root, ["init", "-q"]);
+      await runGit(root, ["config", "user.email", "test@example.com"]);
+      await runGit(root, ["config", "user.name", "Test"]);
+      await Deno.writeTextFile(
+        join(root, "deno.lock"),
+        JSON.stringify({ version: "5", specifiers: {} }),
+      );
+      await runGit(root, ["add", "-A"]);
+      await runGit(root, ["commit", "-q", "-m", "initial"]);
+
+      // Simulate an uncommitted sync result: disk now differs from git
+      // HEAD, intentionally, with nothing wrong about it.
+      const uncommittedSyncResult = JSON.stringify({
+        version: "5",
+        specifiers: { "npm:left-alone@1": "1.2.3-from-an-uncommitted-sync" },
+      });
+      await Deno.writeTextFile(join(root, "deno.lock"), uncommittedSyncResult);
+
+      const script = `
+        import { lockfileCheckCommand } from "${
+        new URL("../../src/cli/lockfile.ts", import.meta.url).href
+      }";
+        await lockfileCheckCommand(${JSON.stringify(root)}, { json: true });
+      `;
+      const scriptPath = join(root, "_run_check.ts");
+      await Deno.writeTextFile(scriptPath, script);
+      // --config points at dune's own deno.json so this subprocess's import
+      // of lockfile.ts (which needs @std/path) resolves; computeLockfileSync
+      // separately uses root's own deno.json for the site-discovery step.
+      const duneDenoJson = join(import.meta.dirname!, "..", "..", "deno.json");
+      const cmd = new Deno.Command(Deno.execPath(), {
+        args: ["run", "-A", "--no-check", `--config=${duneDenoJson}`, scriptPath],
+        stdout: "null",
+        stderr: "null",
+      });
+      await cmd.output(); // exit code reflects "needs sync" — irrelevant here
+
+      const afterCheck = await Deno.readTextFile(join(root, "deno.lock"));
+      assertEquals(afterCheck, uncommittedSyncResult);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
