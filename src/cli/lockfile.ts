@@ -224,13 +224,13 @@ async function runCacheForSpecifiers(
  * result catches this: if it fails, the merge is incomplete and must not
  * be written as-is.
  */
-async function assertFrozenConsistent(
+async function checkFrozenConsistent(
   siteDenoJson: string,
   merged: Record<string, unknown>,
   root: string,
   pluginSpecifiers: string[],
   clientEntrySpecifiers: string[],
-): Promise<void> {
+): Promise<boolean> {
   const validationPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   try {
     await Deno.writeTextFile(validationPath, JSON.stringify(merged));
@@ -239,23 +239,48 @@ async function assertFrozenConsistent(
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
     ], { frozen: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `The merged lockfile would not be self-consistent (--frozen rejects it):\n${message}\n\n` +
-        `This usually means a new addition introduced a second, different version range for an ` +
-        `already-pinned shared dependency, and an existing entry referencing it ambiguously needs ` +
-        `updating too — additive-only merging can't safely apply that on its own. Please report this ` +
-        `with the diff above; it indicates a gap in the merge algorithm, not a problem with your project.`,
-    );
+    return true;
+  } catch {
+    return false;
   } finally {
     await Deno.remove(validationPath).catch(() => {});
   }
 }
 
+/**
+ * Build the explanation for an inconsistent merge, tailored to whether
+ * there's an obvious remedy (some entries were already blocked — the most
+ * common cause is exactly the kind of dependency a `--upgrade` would
+ * unblock) or not (genuinely unexpected — likely a gap in the algorithm).
+ */
+function explainInconsistency(diffs: Record<string, SectionDiff>): string {
+  const blockedEntries = Object.entries(diffs).flatMap(
+    ([section, d]) => d.blocked.map((key) => `    = [${section}] ${key}`),
+  );
+  if (blockedEntries.length > 0) {
+    return (
+      `The lockfile can't be safely updated additively — one or more of the entries left ` +
+        `unchanged below is required to change for the result to be consistent:\n` +
+        blockedEntries.join("\n") +
+        `\n\nRerun with --upgrade for one of these (the report above lists their exact keys) to apply it.`
+    );
+  }
+  return (
+    `The lockfile can't be safely updated additively, and no blocked entries explain why — ` +
+      `this likely indicates a gap in the merge algorithm rather than something fixable with ` +
+      `--upgrade. Please report it with the project's current deno.lock and deno.json.`
+  );
+}
+
 export interface LockfileSyncStatus {
   lockfilePath: string;
   diffs: Record<string, SectionDiff>;
+  /**
+   * Whether the merged result actually satisfies `--frozen`. False means
+   * the additive-only merge left something inconsistent — see
+   * `explainInconsistency` for why, and never write `merged` in that case.
+   */
+  consistent: boolean;
 }
 
 /**
@@ -263,6 +288,8 @@ export interface LockfileSyncStatus {
  *
  * Resolution happens against a scratch copy of the current lockfile — the
  * real file is never touched until (and unless) a caller writes `merged`.
+ * Does not throw on an inconsistent merge — callers decide what to do with
+ * `status.consistent` (e.g. `check` just reports it, `sync` refuses to write).
  */
 export async function computeLockfileSync(
   root: string,
@@ -300,7 +327,7 @@ export async function computeLockfileSync(
     const resolved = JSON.parse(await Deno.readTextFile(scratchPath));
     const { merged, diffs } = mergeLockfiles(original, resolved, upgradeKeys);
 
-    await assertFrozenConsistent(
+    const consistent = await checkFrozenConsistent(
       siteDenoJson,
       merged,
       absRoot,
@@ -308,7 +335,7 @@ export async function computeLockfileSync(
       clientEntrySpecifiers,
     );
 
-    return { status: { lockfilePath, diffs }, merged };
+    return { status: { lockfilePath, diffs, consistent }, merged };
   } finally {
     await Deno.remove(scratchPath).catch(() => {});
   }
@@ -332,31 +359,48 @@ export interface LockfileCheckOptions {
   json?: boolean;
 }
 
-/** Read-only: exits 1 if the lockfile is missing entries the current plugin/import set needs. */
+/**
+ * Read-only: exits 1 if the lockfile is missing entries the current
+ * plugin/import set needs, OR if sync would be unable to add them safely
+ * (an unresolved disambiguation — see `explainInconsistency`). Never
+ * writes, and never throws on an inconsistent result — that's exactly the
+ * thing this command exists to report.
+ */
 export async function lockfileCheckCommand(root: string, opts: LockfileCheckOptions = {}): Promise<void> {
   const { status } = await computeLockfileSync(root, new Set());
   const added = countAll(status.diffs, "added");
   const blocked = countAll(status.diffs, "blocked");
+  const ok = added === 0 && status.consistent;
 
   if (opts.json) {
-    console.log(JSON.stringify({ ok: added === 0, lockfilePath: status.lockfilePath, diffs: status.diffs }));
-  } else if (added === 0) {
-    console.log(`${status.lockfilePath} is complete — no missing entries for the current plugin/dependency set.`);
-    if (blocked > 0) {
-      console.log(
-        `  (${blocked} already-pinned entr${blocked === 1 ? "y" : "ies"} could resolve to a newer version — ` +
-          `run "dune lockfile sync --upgrade <specifier>" to apply intentionally.)`,
-      );
-    }
-  } else {
+    console.log(
+      JSON.stringify({ ok, lockfilePath: status.lockfilePath, diffs: status.diffs, consistent: status.consistent }),
+    );
+    Deno.exit(ok ? 0 : 1);
+    return;
+  }
+
+  if (added > 0) {
     console.log(
       `${status.lockfilePath} is missing ${added} entr${added === 1 ? "y" : "ies"} needed by the current plugin/dependency set:`,
     );
     printSectionEntries(status.diffs, "added", "+");
-    console.log(`\n  Run "dune lockfile sync" to add ${added === 1 ? "it" : "them"}.`);
+  } else {
+    console.log(`${status.lockfilePath} has every entry the current plugin/dependency set needs.`);
   }
 
-  Deno.exit(added === 0 ? 0 : 1);
+  if (!status.consistent) {
+    console.log(`\n${explainInconsistency(status.diffs)}`);
+  } else if (added > 0) {
+    console.log(`\n  Run "dune lockfile sync" to add ${added === 1 ? "it" : "them"}.`);
+  } else if (blocked > 0) {
+    console.log(
+      `\n  (${blocked} already-pinned entr${blocked === 1 ? "y" : "ies"} could resolve to a newer version — ` +
+        `run "dune lockfile sync --upgrade <specifier>" to apply intentionally.)`,
+    );
+  }
+
+  Deno.exit(ok ? 0 : 1);
 }
 
 export interface LockfileSyncOptions {
@@ -365,10 +409,27 @@ export interface LockfileSyncOptions {
   upgrade?: string[];
 }
 
-/** Writes the lockfile: adds missing entries, applies any explicit `--upgrade` keys, leaves everything else untouched. */
+/**
+ * Writes the lockfile: adds missing entries, applies any explicit
+ * `--upgrade` keys, leaves everything else untouched. Refuses to write —
+ * and exits non-zero instead — if the merge wouldn't be self-consistent,
+ * rather than silently producing a lockfile that fails `--frozen` later.
+ */
 export async function lockfileSyncCommand(root: string, opts: LockfileSyncOptions = {}): Promise<void> {
   const upgradeKeys = new Set(opts.upgrade ?? []);
   const { status, merged } = await computeLockfileSync(root, upgradeKeys);
+
+  if (!status.consistent) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify({ written: false, lockfilePath: status.lockfilePath, diffs: status.diffs }),
+      );
+    } else {
+      console.log(`${status.lockfilePath}: refusing to write — the merge would not be self-consistent.\n`);
+      console.log(explainInconsistency(status.diffs));
+    }
+    Deno.exit(1);
+  }
 
   await Deno.writeTextFile(status.lockfilePath, JSON.stringify(merged, null, 2) + "\n");
 

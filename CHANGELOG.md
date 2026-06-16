@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.1] — 2026-06-16
+
+### Fixed
+
+- **`dune lockfile check` crashed instead of reporting a conflict** — found immediately while rolling 0.21.0 out to a real site: when the merge would leave the lockfile internally inconsistent (the disambiguation edge case from 0.21.0's own release notes), `check` — a read-only diagnostic that never writes anything — threw a raw internal error with a multi-thousand-line diff dump instead of reporting it cleanly. The consistency check now only gates `sync` (which actually writes); `check` reports `consistent: false` like any other finding. `sync` also now explains *why* a blocked entry exists and points at the exact `--upgrade <specifier>` to resolve it, rather than implying it's always a bug to report.
+
+---
+
 ## [0.21.0] — 2026-06-16
 
 ### Added

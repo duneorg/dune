@@ -211,6 +211,10 @@ plugins:
 
       const { status, merged } = await computeLockfileSync(root, new Set());
       assertEquals(status.lockfilePath, join(root, "deno.lock"));
+      // computeLockfileSync never throws on its own — callers (check/sync)
+      // decide what to do with status.consistent. The happy path here
+      // must actually be consistent, not just "didn't throw".
+      assertEquals(status.consistent, true);
       // The local plugin itself isn't a registry specifier, but its import
       // of @std/path is real and must show up as an addition.
       const specifiers = (merged.specifiers as Record<string, string>) ?? {};
