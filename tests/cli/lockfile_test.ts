@@ -225,6 +225,71 @@ plugins:
   },
 });
 
+async function runGit(cwd: string, args: string[]): Promise<void> {
+  const cmd = new Deno.Command("git", { args, cwd, stdout: "null", stderr: "null" });
+  const { code } = await cmd.output();
+  if (code !== 0) throw new Error(`git ${args.join(" ")} failed`);
+}
+
+Deno.test({
+  name: "computeLockfileSync: diffs against the git-committed lockfile, not an already-dirtied disk copy",
+  // Reproduces the real failure found while rolling this out: merely
+  // invoking `deno run jsr:@dune/core@X/cli ...` resolves the running
+  // CLI's own module graph into whichever lockfile is ambient, mutating
+  // already-pinned entries on disk before any of this tool's own code
+  // runs. A naive Deno.readTextFile("deno.lock") would diff against that
+  // already-tainted copy and silently let the taint through as a no-op
+  // "unchanged" entry instead of flagging it.
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      const duneOwnDenoJson = JSON.parse(
+        await Deno.readTextFile(join(import.meta.dirname!, "..", "..", "deno.json")),
+      );
+      await Deno.writeTextFile(
+        join(root, "deno.json"),
+        JSON.stringify({ imports: duneOwnDenoJson.imports }),
+      );
+      await Deno.mkdir(join(root, "config"));
+      await Deno.writeTextFile(join(root, "config", "site.yaml"), `title: Test Site\n`);
+
+      await runGit(root, ["init", "-q"]);
+      await runGit(root, ["config", "user.email", "test@example.com"]);
+      await runGit(root, ["config", "user.name", "Test"]);
+
+      const committedKey = "jsr:@std/path@^1.1.4";
+      await Deno.writeTextFile(
+        join(root, "deno.lock"),
+        JSON.stringify({ version: "5", specifiers: { [committedKey]: "9.9.9-committed" } }),
+      );
+      await runGit(root, ["add", "-A"]);
+      await runGit(root, ["commit", "-q", "-m", "initial"]);
+
+      // Simulate the side-channel taint: an uncommitted disk-only change to
+      // the same already-pinned key, never reviewed or approved.
+      await Deno.writeTextFile(
+        join(root, "deno.lock"),
+        JSON.stringify({ version: "5", specifiers: { [committedKey]: "8.8.8-dirty-uncommitted" } }),
+      );
+
+      const { status, merged } = await computeLockfileSync(root, new Set());
+
+      // The real resolved value differs from both fakes, so this key is
+      // blocked either way — what matters is which value it was blocked
+      // *against*. A blocked entry's value in the merge is "original"'s
+      // value: it must be the git-committed fake, not the dirty-disk one.
+      const blocked = status.diffs.specifiers?.blocked ?? [];
+      assertEquals(blocked.includes(committedKey), true);
+      const specifiers = merged.specifiers as Record<string, string>;
+      assertEquals(specifiers[committedKey], "9.9.9-committed");
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
+
 // NOTE: a planned regression test here ("refuses to write a merge that
 // additive-only reverting would leave internally inconsistent") was
 // dropped. The real failure mode is documented and was verified by hand —

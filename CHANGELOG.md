@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.2] — 2026-06-16
+
+### Fixed
+
+- **`lockfile:check`/`lockfile:sync` could diff against an already-tainted lockfile** — merely invoking `dune` via `deno run jsr:@dune/core@X/cli ...` resolves the running CLI's own module graph into whichever lockfile is ambient for the project, unconditionally, before any of the command's own code runs. That side effect could silently bump already-pinned shared entries — exactly the incidental-drift problem these commands exist to prevent — before the merge ever read "original" from disk. Both commands now read the lockfile as last committed to git (falling back to disk only when there's no git history to compare against), so the merge is protected regardless of what the outer process load did to the working copy. `lockfile:check` additionally restores the on-disk file to its committed state afterward, since a read-only diagnostic shouldn't leave a surprise dirty working tree behind.
+
+---
+
 ## [0.21.1] — 2026-06-16
 
 ### Fixed

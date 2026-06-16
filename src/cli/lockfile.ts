@@ -284,6 +284,53 @@ export interface LockfileSyncStatus {
 }
 
 /**
+ * Read the lockfile as last committed, not as it currently sits on disk.
+ *
+ * Just *invoking* `dune` via `deno run jsr:@dune/core@X/cli ...` resolves
+ * and writes the running CLI's own module graph into whichever lockfile is
+ * ambient for the project — unconditionally, before any of this file's own
+ * code runs, since Deno must resolve the entry module before executing a
+ * single line of it. That write can silently bump already-pinned shared
+ * entries (the exact incidental-drift problem this tool exists to
+ * prevent) before `computeLockfileSync` ever gets to read "original". A
+ * plain `Deno.readTextFile` would read that already-tainted copy.
+ *
+ * Falls back to the on-disk file when the project isn't a git repo (or the
+ * lockfile isn't tracked yet) — the best available source at that point.
+ */
+async function readPristineLockfileText(
+  lockfileDir: string,
+  lockfilePath: string,
+): Promise<string | null> {
+  try {
+    const cmd = new Deno.Command("git", {
+      args: ["-C", lockfileDir, "show", "HEAD:./deno.lock"],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const { code, stdout } = await cmd.output();
+    if (code === 0) {
+      return new TextDecoder().decode(stdout);
+    }
+  } catch {
+    // git not available, or not a repo — fall through to disk.
+  }
+  try {
+    return await Deno.readTextFile(lockfilePath);
+  } catch {
+    return null;
+  }
+}
+
+async function readPristineLockfile(
+  lockfileDir: string,
+  lockfilePath: string,
+): Promise<Record<string, unknown> | null> {
+  const text = await readPristineLockfileText(lockfileDir, lockfilePath);
+  return text ? JSON.parse(text) : null;
+}
+
+/**
  * Compute (but do not write) the merged lockfile for `root`.
  *
  * Resolution happens against a scratch copy of the current lockfile — the
@@ -300,12 +347,7 @@ export async function computeLockfileSync(
   const lockfilePath = join(lockfileDir, "deno.lock");
   const siteDenoJson = join(absRoot, "deno.json");
 
-  let original: Record<string, unknown> | null = null;
-  try {
-    original = JSON.parse(await Deno.readTextFile(lockfilePath));
-  } catch {
-    // No lockfile yet — everything will show up as "added".
-  }
+  const original = await readPristineLockfile(lockfileDir, lockfilePath);
 
   const scratchPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   await Deno.remove(scratchPath); // reserve a unique path only; recreate below
@@ -368,6 +410,21 @@ export interface LockfileCheckOptions {
  */
 export async function lockfileCheckCommand(root: string, opts: LockfileCheckOptions = {}): Promise<void> {
   const { status } = await computeLockfileSync(root, new Set());
+
+  // Merely invoking `deno run jsr:@dune/core@X/cli ...` resolves the running
+  // CLI's own module graph into whichever lockfile is ambient for this
+  // project, as an unavoidable side effect of starting up — before any of
+  // this command's own code runs. computeLockfileSync already reads its
+  // "original" from git HEAD rather than disk so that taint can't corrupt
+  // the merge, but the disk file itself may now differ from git regardless.
+  // Restore it so `check` — a command whose entire contract is "never
+  // writes" — doesn't leave a surprise dirty working tree behind.
+  const lockfileDir = await findEffectiveLockfileDir(resolve(root));
+  const pristineText = await readPristineLockfileText(lockfileDir, status.lockfilePath);
+  if (pristineText !== null) {
+    await Deno.writeTextFile(status.lockfilePath, pristineText);
+  }
+
   const added = countAll(status.diffs, "added");
   const blocked = countAll(status.diffs, "blocked");
   const ok = added === 0 && status.consistent;
