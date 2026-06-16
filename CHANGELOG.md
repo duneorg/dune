@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.6] — 2026-06-16
+
+### Fixed
+
+- **Just invoking `dune lockfile:check`/`lockfile:sync` could itself dirty `deno.lock` before either command's own code ran, regardless of git state.** The CLI auto re-execs itself with `--config=<site deno.json>` whenever the site root has its own config, so dynamically-imported theme TSX files can resolve the site's import map — but it did this unconditionally, including for the lockfile commands, which don't render anything and already manage their own properly-scoped (scratch-lockfile) subprocess internally. That re-exec resolved the CLI's own module graph against the site's real `deno.lock`, unfrozen, before `lockfile:check`/`lockfile:sync` ever got a chance to read "original" — the exact incidental-drift problem these commands exist to prevent, and the actual root cause of inconsistent results seen across repeated runs. `lockfile:check`/`lockfile:sync` are now excluded from the auto re-exec, and the "original" baseline is read directly from disk — the previous preference for a git-committed copy (added in 0.21.2 to work around this same symptom) is removed; it was treating a downstream effect as if it were the cause.
+
+---
+
 ## [0.21.5] — 2026-06-16
 
 ### Fixed

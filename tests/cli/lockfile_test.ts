@@ -226,21 +226,16 @@ plugins:
   },
 });
 
-async function runGit(cwd: string, args: string[]): Promise<void> {
-  const cmd = new Deno.Command("git", { args, cwd, stdout: "null", stderr: "null" });
-  const { code } = await cmd.output();
-  if (code !== 0) throw new Error(`git ${args.join(" ")} failed`);
-}
-
 Deno.test({
-  name: "computeLockfileSync: diffs against the git-committed lockfile, not an already-dirtied disk copy",
-  // Reproduces the real failure found while rolling this out: merely
-  // invoking `deno run jsr:@dune/core@X/cli ...` resolves the running
-  // CLI's own module graph into whichever lockfile is ambient, mutating
-  // already-pinned entries on disk before any of this tool's own code
-  // runs. A naive Deno.readTextFile("deno.lock") would diff against that
-  // already-tainted copy and silently let the taint through as a no-op
-  // "unchanged" entry instead of flagging it.
+  name: "computeLockfileSync: diffs against whatever is actually on disk as 'original'",
+  // The lockfile commands used to prefer a git-committed copy over disk,
+  // worrying that the outer `deno run jsr:@dune/core@X/cli ...` invocation
+  // would taint disk before this tool's own code ran. The actual source of
+  // that taint was `cli-impl.ts`'s auto re-exec resolving its own module
+  // graph against the site's real deno.lock, unfrozen — fixed by excluding
+  // lockfile:check/lockfile:sync from that re-exec. With that fixed, disk
+  // is never touched before computeLockfileSync runs, so it's the correct
+  // and only source of "original" — no git involved.
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -256,35 +251,21 @@ Deno.test({
       await Deno.mkdir(join(root, "config"));
       await Deno.writeTextFile(join(root, "config", "site.yaml"), `title: Test Site\n`);
 
-      await runGit(root, ["init", "-q"]);
-      await runGit(root, ["config", "user.email", "test@example.com"]);
-      await runGit(root, ["config", "user.name", "Test"]);
-
-      const committedKey = "jsr:@std/path@^1.1.4";
+      const pinnedKey = "jsr:@std/path@^1.1.4";
       await Deno.writeTextFile(
         join(root, "deno.lock"),
-        JSON.stringify({ version: "5", specifiers: { [committedKey]: "9.9.9-committed" } }),
-      );
-      await runGit(root, ["add", "-A"]);
-      await runGit(root, ["commit", "-q", "-m", "initial"]);
-
-      // Simulate the side-channel taint: an uncommitted disk-only change to
-      // the same already-pinned key, never reviewed or approved.
-      await Deno.writeTextFile(
-        join(root, "deno.lock"),
-        JSON.stringify({ version: "5", specifiers: { [committedKey]: "8.8.8-dirty-uncommitted" } }),
+        JSON.stringify({ version: "5", specifiers: { [pinnedKey]: "9.9.9-pinned-on-disk" } }),
       );
 
       const { status, merged } = await computeLockfileSync(root, new Set());
 
-      // The real resolved value differs from both fakes, so this key is
-      // blocked either way — what matters is which value it was blocked
-      // *against*. A blocked entry's value in the merge is "original"'s
-      // value: it must be the git-committed fake, not the dirty-disk one.
+      // The real resolved value differs from the fake pin, so it's blocked
+      // either way — what matters is which value it's blocked *against*:
+      // the disk value, read as "original".
       const blocked = status.diffs.specifiers?.blocked ?? [];
-      assertEquals(blocked.includes(committedKey), true);
+      assertEquals(blocked.includes(pinnedKey), true);
       const specifiers = merged.specifiers as Record<string, string>;
-      assertEquals(specifiers[committedKey], "9.9.9-committed");
+      assertEquals(specifiers[pinnedKey], "9.9.9-pinned-on-disk");
     } finally {
       await Deno.remove(root, { recursive: true });
     }
@@ -309,15 +290,15 @@ Deno.test({
 // this is left as a documented manual-verification gap.
 
 Deno.test({
-  name: "lockfileCheckCommand: never touches the disk lockfile, even when it differs from git HEAD",
+  name: "lockfileCheckCommand: never touches the disk lockfile",
   // Reproduces a real incident: an earlier version restored the disk file
   // to its git-committed state after every check, to avoid leaving a
   // surprise dirty working tree from the outer process's own load. That's
   // indistinguishable from "an uncommitted sync result sitting on disk" —
   // running check right after sync (before committing) silently destroyed
-  // the sync. check must never write the lockfile at all, regardless of
-  // how it differs from git HEAD. Calls Deno.exit(), so it's run in a
-  // subprocess; the parent verifies the file is untouched afterward.
+  // the sync. check must never write the lockfile at all. Calls
+  // Deno.exit(), so it's run in a subprocess; the parent verifies the file
+  // is untouched afterward.
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -336,18 +317,8 @@ Deno.test({
       await Deno.mkdir(join(root, "config"));
       await Deno.writeTextFile(join(root, "config", "site.yaml"), `title: Test Site\n`);
 
-      await runGit(root, ["init", "-q"]);
-      await runGit(root, ["config", "user.email", "test@example.com"]);
-      await runGit(root, ["config", "user.name", "Test"]);
-      await Deno.writeTextFile(
-        join(root, "deno.lock"),
-        JSON.stringify({ version: "5", specifiers: {} }),
-      );
-      await runGit(root, ["add", "-A"]);
-      await runGit(root, ["commit", "-q", "-m", "initial"]);
-
-      // Simulate an uncommitted sync result: disk now differs from git
-      // HEAD, intentionally, with nothing wrong about it.
+      // An arbitrary lockfile sitting on disk, with nothing wrong about it —
+      // e.g. the result of a prior, uncommitted sync.
       const uncommittedSyncResult = JSON.stringify({
         version: "5",
         specifiers: { "npm:left-alone@1": "1.2.3-from-an-uncommitted-sync" },

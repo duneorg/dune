@@ -289,37 +289,18 @@ export interface LockfileSyncStatus {
 }
 
 /**
- * Read the lockfile as last committed, not as it currently sits on disk.
+ * Read the lockfile as it currently sits on disk.
  *
- * Just *invoking* `dune` via `deno run jsr:@dune/core@X/cli ...` resolves
- * and writes the running CLI's own module graph into whichever lockfile is
- * ambient for the project — unconditionally, before any of this file's own
- * code runs, since Deno must resolve the entry module before executing a
- * single line of it. That write can silently bump already-pinned shared
- * entries (the exact incidental-drift problem this tool exists to
- * prevent) before `computeLockfileSync` ever gets to read "original". A
- * plain `Deno.readTextFile` would read that already-tainted copy.
- *
- * Falls back to the on-disk file when the project isn't a git repo (or the
- * lockfile isn't tracked yet) — the best available source at that point.
+ * This is safe to treat as "original" (untainted by this command's own
+ * invocation) only because the CLI dispatcher skips its site-config
+ * auto-re-exec for `lockfile:check`/`lockfile:sync` — see the comment next
+ * to `command !== "lockfile:check"` in `cli-impl.ts`. Without that, just
+ * *invoking* `dune` would resolve the running CLI's own module graph
+ * against this same file, unfrozen, before a single line here ever runs.
  */
 async function readPristineLockfileText(
-  lockfileDir: string,
   lockfilePath: string,
 ): Promise<string | null> {
-  try {
-    const cmd = new Deno.Command("git", {
-      args: ["-C", lockfileDir, "show", "HEAD:./deno.lock"],
-      stdout: "piped",
-      stderr: "null",
-    });
-    const { code, stdout } = await cmd.output();
-    if (code === 0) {
-      return new TextDecoder().decode(stdout);
-    }
-  } catch {
-    // git not available, or not a repo — fall through to disk.
-  }
   try {
     return await Deno.readTextFile(lockfilePath);
   } catch {
@@ -328,10 +309,9 @@ async function readPristineLockfileText(
 }
 
 async function readPristineLockfile(
-  lockfileDir: string,
   lockfilePath: string,
 ): Promise<Record<string, unknown> | null> {
-  const text = await readPristineLockfileText(lockfileDir, lockfilePath);
+  const text = await readPristineLockfileText(lockfilePath);
   return text ? JSON.parse(text) : null;
 }
 
@@ -352,7 +332,7 @@ export async function computeLockfileSync(
   const lockfilePath = join(lockfileDir, "deno.lock");
   const siteDenoJson = join(absRoot, "deno.json");
 
-  const original = await readPristineLockfile(lockfileDir, lockfilePath);
+  const original = await readPristineLockfile(lockfilePath);
 
   const scratchPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   await Deno.remove(scratchPath); // reserve a unique path only; recreate below

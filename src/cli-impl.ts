@@ -336,7 +336,16 @@ export async function main() {
   // When running from local source (file:// URL) we skip the re-exec entirely:
   // dune's own deno.json already provides @std/*, preact, jsxImportSource etc.,
   // so there is nothing to gain and no import map to restore.
+  //
+  // lockfile:check/lockfile:sync are also excluded: they never render theme
+  // TSX, so they don't need the site import map at this level — they manage
+  // their own properly-scoped (scratch-lockfile, optionally --frozen)
+  // subprocess internally. Re-execing here would instead resolve this
+  // process's own module graph against the site's real deno.lock with no
+  // --frozen, silently writing to it before the lockfile command's own
+  // careful read-of-original logic ever runs.
   if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
+      command !== "lockfile:check" && command !== "lockfile:sync" &&
       !import.meta.url.startsWith("file://")) {
     const { resolve, join: joinPath } = await import("@std/path");
     const absRoot = resolve(root);
