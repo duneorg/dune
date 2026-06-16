@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.0] — 2026-06-16
+
+### Added
+
+- **`dune lockfile check` / `dune lockfile sync`** — a site's `deno.lock` only gains entries for a plugin's dependencies (and, via the bundling subprocess, its browser-side npm packages) the first time `serve` actually starts after that plugin or a version bump is installed. Until then, the running process resolves them itself against an unfrozen lockfile, which is what silently dirties `deno.lock` on disk after a deploy.
+  - `dune lockfile sync` runs that same resolution ahead of time and writes the result, but **only ever adds genuinely missing entries** — an already-pinned entry that would resolve to a different value (e.g. the registry now serves a newer match for an already-locked semver range) is left exactly as committed. Pass `--upgrade <specifier>` (repeatable, or comma-separated) to intentionally allow a specific pin to change; the exact key to pass is printed in the "left unchanged" list.
+  - `dune lockfile check` runs the same comparison read-only and exits non-zero if anything is missing, without writing. Suitable as a pre-restart gate (e.g. an `ExecStartPre=` step in a systemd unit) so a deploy never gets partway through restarting before discovering the lockfile is stale.
+  - Both commands support `--json` for machine-readable output.
+
+---
+
 ## [0.20.1] — 2026-06-16
 
 ### Fixed

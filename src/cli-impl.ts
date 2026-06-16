@@ -10,6 +10,8 @@
  *   dune validate              — Whole-project lint: config, plugins, templates, schemas, content
  *   dune cache:clear           — Clear all caches
  *   dune cache:rebuild         — Rebuild content index from scratch
+ *   dune lockfile:check        — Exit non-zero if deno.lock is missing entries needed by current plugins
+ *   dune lockfile:sync         — Add missing deno.lock entries additively (--upgrade <specifier> to bump a pin)
  *   dune config:show           — Display merged config with source annotations
  *   dune config:validate       — Validate all config files
  *   dune content:list          — List all pages with routes
@@ -80,6 +82,7 @@ import { jobsListCommand, jobsRunCommand } from "./cli/jobs.ts";
 import { authzSignCommand } from "./cli/authz-sign.ts";
 import { migrateAuthToDbCommand } from "./cli/migrate-auth-to-db.ts";
 import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
+import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -116,6 +119,12 @@ Commands:
 
   cache:clear         Clear all caches
   cache:rebuild       Rebuild content index from scratch
+
+  lockfile:check      Exit non-zero if deno.lock is missing entries the current
+                      plugins/imports need (read-only, safe pre-restart gate)
+  lockfile:sync       Add missing deno.lock entries without touching already-
+                      pinned ones; use --upgrade <specifier> to intentionally
+                      bump a specific pin
 
   config:show         Show merged config with source annotations
   config:validate     Validate all config files
@@ -189,6 +198,11 @@ Options:
   --version, -V       Show version and install source
   --help, -h          Show this help message
 
+Lockfile sync options (used with lockfile:sync):
+  --upgrade <specifier>  Allow an already-pinned entry to change (repeatable,
+                          or comma-separated). Get the exact key from the
+                          "left unchanged" list printed by lockfile:check/sync.
+
 Static build options (used with build --static):
   --out <dir>         Output directory (default: dist)
   --base-url <url>    Canonical base URL for sitemap/feeds
@@ -242,8 +256,13 @@ export async function main() {
 
   // Parse common options
   const options: Record<string, string | boolean> = {};
+  // --upgrade is repeatable (and/or comma-separated) — kept out of `options`
+  // since that record is single-valued.
+  const upgradeKeys: string[] = [];
   for (let i = 1; i < args.length; i++) {
-    if (args[i] === "--port" && args[i + 1]) {
+    if (args[i] === "--upgrade" && args[i + 1]) {
+      upgradeKeys.push(...args[++i].split(",").map((s) => s.trim()).filter(Boolean));
+    } else if (args[i] === "--port" && args[i + 1]) {
       options.port = args[++i];
     } else if (args[i] === "--root" && args[i + 1]) {
       options.root = args[++i];
@@ -394,6 +413,17 @@ export async function main() {
 
       case "cache:rebuild":
         await cacheCommands.rebuild(root, { debug: options.debug === true });
+        break;
+
+      case "lockfile:check":
+        await lockfileCheckCommand(root, { json: options.json === true });
+        break;
+
+      case "lockfile:sync":
+        await lockfileSyncCommand(root, {
+          json: options.json === true,
+          upgrade: upgradeKeys.length > 0 ? upgradeKeys : undefined,
+        });
         break;
 
       case "config:show":
