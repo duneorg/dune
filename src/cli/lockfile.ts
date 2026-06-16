@@ -230,7 +230,7 @@ async function checkFrozenConsistent(
   root: string,
   pluginSpecifiers: string[],
   clientEntrySpecifiers: string[],
-): Promise<boolean> {
+): Promise<{ consistent: true } | { consistent: false; error: string }> {
   const validationPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   try {
     await Deno.writeTextFile(validationPath, JSON.stringify(merged));
@@ -239,9 +239,9 @@ async function checkFrozenConsistent(
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
     ], { frozen: true });
-    return true;
-  } catch {
-    return false;
+    return { consistent: true };
+  } catch (err) {
+    return { consistent: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     await Deno.remove(validationPath).catch(() => {});
   }
@@ -253,22 +253,25 @@ async function checkFrozenConsistent(
  * common cause is exactly the kind of dependency a `--upgrade` would
  * unblock) or not (genuinely unexpected — likely a gap in the algorithm).
  */
-function explainInconsistency(diffs: Record<string, SectionDiff>): string {
+function explainInconsistency(diffs: Record<string, SectionDiff>, rawError?: string): string {
   const blockedEntries = Object.entries(diffs).flatMap(
     ([section, d]) => d.blocked.map((key) => `    = [${section}] ${key}`),
   );
+  const rawErrorBlock = rawError ? `\n\nUnderlying error:\n${rawError}` : "";
   if (blockedEntries.length > 0) {
     return (
       `The lockfile can't be safely updated additively — one or more of the entries left ` +
         `unchanged below is required to change for the result to be consistent:\n` +
         blockedEntries.join("\n") +
-        `\n\nRerun with --upgrade for one of these (the report above lists their exact keys) to apply it.`
+        `\n\nRerun with --upgrade for one of these (the report above lists their exact keys) to apply it.` +
+        rawErrorBlock
     );
   }
   return (
     `The lockfile can't be safely updated additively, and no blocked entries explain why — ` +
       `this likely indicates a gap in the merge algorithm rather than something fixable with ` +
-      `--upgrade. Please report it with the project's current deno.lock and deno.json.`
+      `--upgrade. Please report it with the project's current deno.lock and deno.json.` +
+      rawErrorBlock
   );
 }
 
@@ -281,6 +284,8 @@ export interface LockfileSyncStatus {
    * `explainInconsistency` for why, and never write `merged` in that case.
    */
   consistent: boolean;
+  /** Raw underlying error from the --frozen validation pass, when `consistent` is false. */
+  inconsistencyError?: string;
 }
 
 /**
@@ -369,7 +374,7 @@ export async function computeLockfileSync(
     const resolved = JSON.parse(await Deno.readTextFile(scratchPath));
     const { merged, diffs } = mergeLockfiles(original, resolved, upgradeKeys);
 
-    const consistent = await checkFrozenConsistent(
+    const consistency = await checkFrozenConsistent(
       siteDenoJson,
       merged,
       absRoot,
@@ -377,7 +382,15 @@ export async function computeLockfileSync(
       clientEntrySpecifiers,
     );
 
-    return { status: { lockfilePath, diffs, consistent }, merged };
+    return {
+      status: {
+        lockfilePath,
+        diffs,
+        consistent: consistency.consistent,
+        inconsistencyError: consistency.consistent ? undefined : consistency.error,
+      },
+      merged,
+    };
   } finally {
     await Deno.remove(scratchPath).catch(() => {});
   }
@@ -431,7 +444,13 @@ export async function lockfileCheckCommand(root: string, opts: LockfileCheckOpti
 
   if (opts.json) {
     console.log(
-      JSON.stringify({ ok, lockfilePath: status.lockfilePath, diffs: status.diffs, consistent: status.consistent }),
+      JSON.stringify({
+        ok,
+        lockfilePath: status.lockfilePath,
+        diffs: status.diffs,
+        consistent: status.consistent,
+        inconsistencyError: status.inconsistencyError,
+      }),
     );
     Deno.exit(ok ? 0 : 1);
     return;
@@ -447,7 +466,7 @@ export async function lockfileCheckCommand(root: string, opts: LockfileCheckOpti
   }
 
   if (!status.consistent) {
-    console.log(`\n${explainInconsistency(status.diffs)}`);
+    console.log(`\n${explainInconsistency(status.diffs, status.inconsistencyError)}`);
   } else if (added > 0) {
     console.log(`\n  Run "dune lockfile sync" to add ${added === 1 ? "it" : "them"}.`);
   } else if (blocked > 0) {
@@ -479,11 +498,16 @@ export async function lockfileSyncCommand(root: string, opts: LockfileSyncOption
   if (!status.consistent) {
     if (opts.json) {
       console.log(
-        JSON.stringify({ written: false, lockfilePath: status.lockfilePath, diffs: status.diffs }),
+        JSON.stringify({
+          written: false,
+          lockfilePath: status.lockfilePath,
+          diffs: status.diffs,
+          inconsistencyError: status.inconsistencyError,
+        }),
       );
     } else {
       console.log(`${status.lockfilePath}: refusing to write — the merge would not be self-consistent.\n`);
-      console.log(explainInconsistency(status.diffs));
+      console.log(explainInconsistency(status.diffs, status.inconsistencyError));
     }
     Deno.exit(1);
   }

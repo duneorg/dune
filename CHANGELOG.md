@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.21.3] — 2026-06-16
+
+### Added
+
+- **`lockfile:check`/`lockfile:sync` surface the underlying `--frozen` error when the merge isn't self-consistent.** Previously, when no blocked entries explained the inconsistency, the report just said "this likely indicates a gap in the merge algorithm" with nothing to act on. The raw validation error is now included (in both human-readable and `--json` output) so a real cause can actually be diagnosed instead of guessed at.
+
+---
+
 ## [0.21.2] — 2026-06-16
 
 ### Fixed
