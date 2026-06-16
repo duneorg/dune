@@ -70,7 +70,12 @@ function makeRecordingPlugin(name = "recorder") {
 }
 
 const pages = [
-  { route: "/about", sourcePath: "content/about.md", title: "About" },
+  {
+    route: "/about",
+    sourcePath: "content/about.md",
+    title: "About",
+    language: "en",
+  },
 ];
 
 function makeReq(path: string, cookie?: string): Request {
