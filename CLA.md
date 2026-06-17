@@ -3,7 +3,7 @@
 By submitting a pull request or otherwise contributing code, documentation, or
 other materials to this project, you agree to the following terms:
 
-1. **Grant of rights.** You grant Hans Zumbrunn (zumbrunn.com) a perpetual,
+1. **Grant of rights.** You grant Zumbrunn (zumbrunn.com) a perpetual,
    worldwide, non-exclusive, royalty-free, irrevocable license to reproduce,
    prepare derivative works of, publicly display, publicly perform, sublicense,
    and distribute your contributions, and such derivative works, under any
