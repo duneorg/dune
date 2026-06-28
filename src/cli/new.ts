@@ -125,12 +125,13 @@ export default function NavToggle({ links }: { links: NavLink[] }) {
 const DEFAULT_TEMPLATE = `/** @jsxImportSource preact */
 import { h } from "preact";
 import { EditableMarkdown, EditableText } from "@dune/core/ui/editable";
-import Layout from "../components/layout.tsx";
+import StaticLayout from "../components/layout.tsx";
 
-export default function DefaultTemplate({ page, site, children }: any) {
+export default function DefaultTemplate({ page, site, Layout, children }: any) {
   const fm = page?.frontmatter ?? {};
+  const LayoutComponent = Layout ?? StaticLayout;
   return (
-    <Layout site={site}>
+    <LayoutComponent site={site}>
       <article>
         <h1>
           <EditableText field="title" sourcePath={page?.sourcePath}>{fm.title}</EditableText>
@@ -140,7 +141,7 @@ export default function DefaultTemplate({ page, site, children }: any) {
           <div>{children}</div>
         </EditableMarkdown>
       </article>
-    </Layout>
+    </LayoutComponent>
   );
 }
 `;
@@ -249,9 +250,9 @@ const DENO_JSON = `{
     "@dune/core": "jsr:@dune/core@^0.6"
   },
   "tasks": {
-    "dev": "deno run -A --import-map=deno.json main.ts dev",
-    "build": "deno run -A --import-map=deno.json main.ts build",
-    "serve": "deno run -A --import-map=deno.json main.ts serve"
+    "dev": "dune dev",
+    "build": "dune build",
+    "serve": "dune serve"
   },
   "compilerOptions": {
     "jsx": "react-jsx",

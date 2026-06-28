@@ -841,6 +841,11 @@ export async function createDuneApp(
       } else {
         // Dev mode: no cache, inject live reload + feed links
         response = await routes.contentHandler(req, renderJsx);
+        if (response.status === 200) {
+          const h = new Headers(response.headers);
+          h.set("Cache-Control", "no-store");
+          response = new Response(response.body, { status: 200, headers: h });
+        }
         if (feedEnabled) response = injectFeedLinks(siteName, response);
 
         // Plugin response transforms (e.g. admin bar injection).
