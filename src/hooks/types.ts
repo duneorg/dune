@@ -22,7 +22,6 @@ export type HookEvent =
   | "onConfigLoaded"
   | "onStorageReady"
   | "onContentIndexReady"
-
   // Request lifecycle
   | "onRequest"
   | "onRouteResolved"
@@ -31,33 +30,33 @@ export type HookEvent =
   | "onBeforeRender"
   | "onAfterRender"
   | "onResponse"
-
   // Content processing
   | "onMarkdownProcess"
   | "onMarkdownProcessed"
   | "onMediaDiscovered"
-
   // Cache
   | "onCacheHit"
   | "onCacheMiss"
   | "onCacheInvalidate"
-
   // API
   | "onApiRequest"
   | "onApiResponse"
-
   // Engine lifecycle
-  | "onRebuild"      // fired at the end of a successful engine.rebuild()
-  | "onThemeSwitch"  // fired when the active theme changes
-
+  | "onRebuild" // fired at the end of a successful engine.rebuild()
+  | "onThemeSwitch" // fired when the active theme changes
+  // Search
+  | "onSearchRecordsCollect" // collect plugin-injected records before indexing
+  | "onSearchEngineCreate" // let a plugin provide an alternative search engine
   // Content mutation (fired by admin CRUD operations)
-  | "onPageCreate"       // page file created via admin panel
-  | "onPageUpdate"       // page file updated via admin panel
-  | "onPageDelete"       // page file deleted via admin panel
-  | "onWorkflowChange";  // page workflow status changed
+  | "onPageCreate" // page file created via admin panel
+  | "onPageUpdate" // page file updated via admin panel
+  | "onPageDelete" // page file deleted via admin panel
+  | "onWorkflowChange"; // page workflow status changed
 
 /** Hook handler signature */
-export type HookHandler<T = unknown> = (context: HookContext<T>) => Promise<void> | void;
+export type HookHandler<T = unknown> = (
+  context: HookContext<T>,
+) => Promise<void> | void;
 
 /** Context passed to each hook handler */
 export interface HookContext<T = unknown> {
@@ -352,7 +351,9 @@ export interface DunePlugin {
    * }
    * ```
    */
-  adminServices?: (ctx: AdminServicesContext) => Promise<AdminServices> | AdminServices;
+  adminServices?: (
+    ctx: AdminServicesContext,
+  ) => Promise<AdminServices> | AdminServices;
   /**
    * Transform an HTTP response before it is sent to the client.
    *
@@ -399,7 +400,9 @@ export interface DunePlugin {
    * }
    * ```
    */
-  transformResponse?: (ctx: ResponseTransformContext) => Promise<Response> | Response;
+  transformResponse?: (
+    ctx: ResponseTransformContext,
+  ) => Promise<Response> | Response;
 }
 
 /**

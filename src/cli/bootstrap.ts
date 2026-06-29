@@ -13,7 +13,11 @@ import { createMdxComponentRegistry } from "../content/formats/mdx-components.ts
 import { createDuneEngine } from "../core/engine.ts";
 import { createCollectionEngine } from "../collections/engine.ts";
 import { createTaxonomyEngine } from "../taxonomy/engine.ts";
-import { createSearchEngine } from "../search/engine.ts";
+import { createSearchEngine, loadPageBodyText } from "../search/engine.ts";
+import type {
+  SearchEngineCreateContext,
+  SearchRecordsCollectContext,
+} from "../search/engine.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
 import { createImageCache } from "../images/cache.ts";
@@ -25,8 +29,6 @@ import { createAuthMiddleware } from "../admin/auth/middleware.ts";
 import { LocalRateLimitStore } from "../security/rate-limit-store.ts";
 import type { RateLimitStore } from "../security/rate-limit-store.ts";
 import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
-import { LdapAuthProvider } from "../admin/auth/ldap-provider.ts";
-import { SamlAuthProvider } from "../admin/auth/saml-provider.ts";
 import { initAdminContext } from "../admin/context.ts";
 import { initContent } from "../content/api.ts";
 import { createWorkflowEngine } from "../workflow/engine.ts";
@@ -34,7 +36,11 @@ import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
 import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
-import { loadPlugins, loadPluginAdminConfigs, collectAdminServices } from "../plugins/loader.ts";
+import {
+  collectAdminServices,
+  loadPluginAdminConfigs,
+  loadPlugins,
+} from "../plugins/loader.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { createCommentManager } from "../admin/comments.ts";
 import { createCollabManager } from "../collab/mod.ts";
@@ -42,7 +48,7 @@ import { AuditLogger } from "../audit/mod.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { createMachineTranslator } from "../mt/mod.ts";
 import type { MachineTranslator } from "../mt/mod.ts";
-import { createDuneAuthSystem, bootstrapAdminTuples } from "../auth/authz.ts";
+import { bootstrapAdminTuples, createDuneAuthSystem } from "../auth/authz.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
@@ -51,7 +57,7 @@ import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
 import { join, resolve } from "@std/path";
-import { logger, initLogger } from "../core/logger.ts";
+import { initLogger, logger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -180,16 +186,18 @@ function resolveAuthProvider(
   if (cfg.type === "ldap" || cfg.type === "saml") {
     throw new Error(
       `[dune] auth_provider.type "${cfg.type}" is not implemented in this release. ` +
-      `Set auth_provider.type to "local" (or remove the auth_provider section) ` +
-      `to use the built-in local password store. ` +
-      `LDAP and SAML are tracked for a future release.`,
+        `Set auth_provider.type to "local" (or remove the auth_provider section) ` +
+        `to use the built-in local password store. ` +
+        `LDAP and SAML are tracked for a future release.`,
     );
   }
   // Any other unrecognized value is an admin typo — fail closed rather
   // than silently fall back to local auth.
   throw new Error(
-    `[dune] auth_provider.type "${(cfg as { type?: string }).type ?? "<missing>"}" is not recognized. ` +
-    `Valid values: "local" (default).`,
+    `[dune] auth_provider.type "${
+      (cfg as { type?: string }).type ?? "<missing>"
+    }" is not recognized. ` +
+      `Valid values: "local" (default).`,
   );
 }
 
@@ -200,7 +208,8 @@ export async function bootstrap(
   root: string,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  const { debug = false, buildSearch = false, sharedThemesDir, dev = false } = options;
+  const { debug = false, buildSearch = false, sharedThemesDir, dev = false } =
+    options;
   root = resolve(root); // normalise "." or relative paths to absolute
 
   // 1. Storage
@@ -246,17 +255,24 @@ export async function bootstrap(
         mdxHandler = new MdxHandler({ components: registry });
         if (debug) {
           const names = Object.keys(mod.default).join(", ");
-          logger.debug("mdx.components.loaded", { theme: config.theme.name, components: names });
+          logger.debug("mdx.components.loaded", {
+            theme: config.theme.name,
+            components: names,
+          });
         }
       } else {
         logger.warn("mdx.components.invalid", {
           path: mdxComponentsPath,
-          message: "default export must be a plain object — MDX components not loaded",
+          message:
+            "default export must be a plain object — MDX components not loaded",
         });
         mdxHandler = new MdxHandler();
       }
     } catch (err) {
-      logger.warn("mdx.components.load-failed", { path: mdxComponentsPath, error: String(err) });
+      logger.warn("mdx.components.load-failed", {
+        path: mdxComponentsPath,
+        error: String(err),
+      });
       mdxHandler = new MdxHandler();
     }
   } else {
@@ -281,15 +297,18 @@ export async function bootstrap(
   // 5a. Plugin loading — load admin-saved config overrides first, then
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
-  const adminCfg = config.admin ?? { dataDir: "data", runtimeDir: ".dune/admin" };
+  const adminCfg = config.admin ??
+    { dataDir: "data", runtimeDir: ".dune/admin" };
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
   // Collect plugin asset dirs, template dirs, admin pages, and public routes.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
-  const pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[] = [];
-  const pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[] = [];
+  const pluginAdminPages:
+    import("../admin/context.ts").AdminPageRegistration[] = [];
+  const pluginPublicRoutes:
+    import("../hooks/types.ts").PublicRouteRegistration[] = [];
   for (const plugin of hooks.plugins()) {
     if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
     if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
@@ -325,11 +344,43 @@ export async function bootstrap(
   });
 
   // 9. Search engine
-  const search = createSearchEngine({
+  //
+  // Plugins can (a) inject extra records to index via onSearchRecordsCollect,
+  // and (b) replace the built-in engine entirely via onSearchEngineCreate
+  // (e.g. a Meilisearch backend). When no plugin provides an engine, the
+  // built-in in-memory engine is used.
+  const recordsCtx = await hooks.fire<SearchRecordsCollectContext>(
+    "onSearchRecordsCollect",
+    { records: [] },
+  );
+  const injectedRecords = recordsCtx.records;
+
+  const searchContentDir = config.system.content.dir;
+  const engineCtx = await hooks.fire<SearchEngineCreateContext>(
+    "onSearchEngineCreate",
+    {
+      engine: null,
+      pages: engine.pages,
+      injectedRecords,
+      storage,
+      contentDir: searchContentDir,
+      config,
+      formats,
+      loadText: (page) =>
+        loadPageBodyText(page, {
+          storage,
+          contentDir: searchContentDir,
+          formats,
+        }),
+    },
+  );
+
+  const search = engineCtx.engine ?? createSearchEngine({
     pages: engine.pages,
     storage,
     contentDir: config.system.content.dir,
     formats,
+    injectedRecords,
   });
 
   if (buildSearch) {
@@ -456,8 +507,8 @@ export async function bootstrap(
 
   // Auth provider — select based on BootstrapOptions injection first, then
   // admin.auth_provider config, falling back to local passwords.
-  const authProvider: AuthProvider = options.authProvider
-    ?? resolveAuthProvider(config.admin?.auth_provider, users);
+  const authProvider: AuthProvider = options.authProvider ??
+    resolveAuthProvider(config.admin?.auth_provider, users);
 
   // Set Secure cookie flag unless running in a local dev environment.
   // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
@@ -486,8 +537,8 @@ export async function bootstrap(
   // In "external-jwt" mode authzStore must be explicitly opted into — no default,
   // because an external JWT provider owns roles in that topology and we must not
   // silently create a local tuple store that would never be consulted.
-  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined)
-    ?? (_siteAuthMode === "dune" ? "local" : undefined);
+  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined) ??
+    (_siteAuthMode === "dune" ? "local" : undefined);
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
@@ -500,7 +551,11 @@ export async function bootstrap(
 
   if (adminConfig.enabled && _authzStoreCfg === "local") {
     try {
-      const bundle = createDuneAuthSystem({ authzStore: "local", dataDir, hmacKey }, storage);
+      const bundle = createDuneAuthSystem({
+        authzStore: "local",
+        dataDir,
+        hmacKey,
+      }, storage);
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
       const allAdminUsers = await users.list();
@@ -508,10 +563,19 @@ export async function bootstrap(
       // their tuples revoked at disable-time (admin user route). Seeding tuples for
       // disabled users here would re-grant permissions that were intentionally revoked,
       // allowing authz.check() to pass for users who are blocked at the session layer.
-      const enabledAdminUsers = allAdminUsers.filter((u) => u.enabled !== false);
-      await bootstrapAdminTuples(bootstrappedAuthz, bootstrappedAuthzAdapter, enabledAdminUsers);
+      const enabledAdminUsers = allAdminUsers.filter((u) =>
+        u.enabled !== false
+      );
+      await bootstrapAdminTuples(
+        bootstrappedAuthz,
+        bootstrappedAuthzAdapter,
+        enabledAdminUsers,
+      );
     } catch (err) {
-      console.warn("[dune/authz] Admin authz bootstrap failed, falling back to ROLE_PERMISSIONS:", err);
+      console.warn(
+        "[dune/authz] Admin authz bootstrap failed, falling back to ROLE_PERMISSIONS:",
+        err,
+      );
       bootstrappedAuthz = undefined;
       bootstrappedAuthzAdapter = undefined;
     }
@@ -536,11 +600,13 @@ export async function bootstrap(
     // Reject if the resolved path escapes the site root. We use string-prefix
     // containment (root + sep) which suffices for the file paths used here;
     // the audit log is created during init() so realpath isn't an option yet.
-    const containmentRoot = root.endsWith("/") || root.endsWith("\\") ? root : root + "/";
+    const containmentRoot = root.endsWith("/") || root.endsWith("\\")
+      ? root
+      : root + "/";
     if (!auditLogFile.startsWith(containmentRoot)) {
       throw new Error(
         `[dune] admin.audit.logFile must resolve under the site root. ` +
-        `Got: ${configuredPath} -> ${auditLogFile}`,
+          `Got: ${configuredPath} -> ${auditLogFile}`,
       );
     }
     auditLogger = new AuditLogger({ logFile: auditLogFile });
@@ -586,7 +652,9 @@ export async function bootstrap(
         const routes = engine.pages.map((p) => p.route);
         await cdnManager.purgeRoutes(routes);
         if (config.system.debug) {
-          console.log(`[dune] cdn: purged ${routes.length} route(s) via ${cdnProvider.name}`);
+          console.log(
+            `[dune] cdn: purged ${routes.length} route(s) via ${cdnProvider.name}`,
+          );
         }
       } catch (err) {
         console.warn(`[dune] cdn: purge failed: ${err}`);
@@ -641,16 +709,31 @@ export async function bootstrap(
     if (result.created) {
       console.log(`\n  🔑 Default admin created — username: admin`);
       console.log(`     Password written to: ${result.passwordFile}`);
-      console.log(`     Read it, then delete the file and change your password.\n`);
+      console.log(
+        `     Read it, then delete the file and change your password.\n`,
+      );
     }
   }
 
   return {
-    engine, storage, config, formats, collections, taxonomy,
-    search, hooks, imageHandler, imageProcessor, imageCache,
-    users, sessions, auth,
+    engine,
+    storage,
+    config,
+    formats,
+    collections,
+    taxonomy,
+    search,
+    hooks,
+    imageHandler,
+    imageProcessor,
+    imageCache,
+    users,
+    sessions,
+    auth,
     authProvider,
-    workflow, scheduler, history,
+    workflow,
+    scheduler,
+    history,
     submissionManager,
     flexEngine,
     stagingEngine,

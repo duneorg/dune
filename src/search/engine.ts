@@ -11,6 +11,7 @@
 import type { PageIndex } from "../content/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
+import type { DuneConfig } from "../config/types.ts";
 
 /** Options for {@link createSearchEngine}. */
 export interface SearchEngineOptions {
@@ -48,6 +49,31 @@ export interface SearchEngineOptions {
     id: string;
     fields: Record<string, unknown>;
   }>;
+  /**
+   * Records injected by plugins (e.g. extracted PDF text) to index alongside
+   * content pages. Unlike `pages`, these are indexed from the in-memory
+   * `body`/`fields` without reading a content file, and each carries its own
+   * result `route`. Collected via the `onSearchRecordsCollect` hook.
+   */
+  injectedRecords?: InjectedSearchRecord[];
+}
+
+/**
+ * A search record contributed by a plugin via the `onSearchRecordsCollect`
+ * hook. Indexed from memory (no file read) and surfaced as a synthetic
+ * {@link PageIndex} at `route`.
+ */
+export interface InjectedSearchRecord {
+  /** Result link and unique index key, e.g. `/pdf/issue-1.pdf`. */
+  route: string;
+  /** Display title. */
+  title: string;
+  /** Plain text body to full-text index. */
+  body: string;
+  /** Optional additional indexed fields (field name → text). */
+  fields?: Record<string, string>;
+  /** Template label for facets/filtering. Default: `"page"`. */
+  template?: string;
 }
 
 /** A single result returned by {@link SearchEngine.search}. */
@@ -89,6 +115,48 @@ export interface SearchEngine {
   suggest(prefix: string, limit?: number): Promise<string[]>;
 }
 
+/**
+ * Payload for the `onSearchRecordsCollect` hook.
+ *
+ * Plugins push entries onto `records` to add them to the search index
+ * (e.g. extracted PDF text). Fired once during bootstrap before the search
+ * engine is created.
+ */
+export interface SearchRecordsCollectContext {
+  records: InjectedSearchRecord[];
+}
+
+/**
+ * Payload for the `onSearchEngineCreate` hook.
+ *
+ * A plugin may assign `engine` to replace the built-in search engine (e.g.
+ * a Meilisearch backend). If no handler sets it, Dune falls back to the
+ * built-in in-memory engine. The context also carries the indexable inputs
+ * (pages, injected records) so a plugin engine can index them itself.
+ */
+export interface SearchEngineCreateContext {
+  /** Assign to provide an alternative engine; null uses the built-in. */
+  engine: SearchEngine | null;
+  /** Content pages available to index. */
+  pages: PageIndex[];
+  /** Records collected from the `onSearchRecordsCollect` hook. */
+  injectedRecords: InjectedSearchRecord[];
+  /** Storage adapter for the site. */
+  storage: StorageAdapter;
+  /** Content directory (relative to storage root). */
+  contentDir: string;
+  /** Merged site configuration (read-only). */
+  config: DuneConfig;
+  /** Format handlers for extracting body text. */
+  formats: FormatRegistry;
+  /**
+   * Load a page's plain-text body. Provided so an alternative engine can
+   * index the same body text the built-in engine does, without reading files
+   * itself. Equivalent to {@link loadPageBodyText} bound to this context.
+   */
+  loadText: (page: PageIndex) => Promise<string>;
+}
+
 /** Internal document representation for the index */
 interface IndexedDocument {
   sourcePath: string;
@@ -111,6 +179,49 @@ interface IndexedDocument {
 }
 
 /**
+ * Strip markdown and HTML markup from a string for plain-text indexing.
+ */
+export function stripSearchMarkup(body: string): string {
+  return body
+    .replace(/```[\s\S]*?```/g, "") // Remove code blocks
+    .replace(/`[^`]+`/g, "") // Remove inline code
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "") // Remove images
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Links → text
+    .replace(/<[^>]+>/g, "") // Remove HTML tags
+    .replace(/^#{1,6}\s+/gm, "") // Remove headers syntax
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // Bold → text
+    .replace(/\*([^*]+)\*/g, "$1") // Italic → text
+    .replace(/^[-*+]\s+/gm, "") // List markers
+    .replace(/^>\s+/gm, "") // Blockquotes
+    .replace(/---+/g, "") // Horizontal rules
+    .replace(/\n{2,}/g, "\n");
+}
+
+/**
+ * Load and plain-text-strip a page's body from storage.
+ *
+ * Exposed so an alternative search engine (e.g. a Meilisearch backend
+ * provided via `onSearchEngineCreate`) can obtain the same body text the
+ * built-in engine indexes, without re-implementing file reading. Returns an
+ * empty string if the file is missing or has no extractable body.
+ */
+export async function loadPageBodyText(
+  page: PageIndex,
+  ctx: { storage: StorageAdapter; contentDir: string; formats: FormatRegistry },
+): Promise<string> {
+  try {
+    const filePath = `${ctx.contentDir}/${page.sourcePath}`;
+    const raw = await ctx.storage.readText(filePath);
+    const handler = ctx.formats.getForFile(page.sourcePath);
+    if (!handler) return "";
+    const body = handler.extractBody(raw, filePath);
+    return body ? stripSearchMarkup(body) : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Create a search engine.
  */
 export function createSearchEngine(
@@ -121,6 +232,7 @@ export function createSearchEngine(
   const highlightMatches = options.highlightMatches ?? true;
   const excerptLength = options.excerptLength ?? 160;
   const flexRecords = options.flexRecords ?? [];
+  const injectedRecords = options.injectedRecords ?? [];
 
   // Inverted index: term → Set<sourcePath>
   const invertedIndex = new Map<string, Set<string>>();
@@ -167,21 +279,7 @@ export function createSearchEngine(
   /**
    * Strip markdown and HTML markup from a string for plain-text indexing.
    */
-  function stripMarkup(body: string): string {
-    return body
-      .replace(/```[\s\S]*?```/g, "")  // Remove code blocks
-      .replace(/`[^`]+`/g, "")          // Remove inline code
-      .replace(/!\[[^\]]*\]\([^)]+\)/g, "")  // Remove images
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")  // Links → text
-      .replace(/<[^>]+>/g, "")          // Remove HTML tags
-      .replace(/^#{1,6}\s+/gm, "")      // Remove headers syntax
-      .replace(/\*\*([^*]+)\*\*/g, "$1") // Bold → text
-      .replace(/\*([^*]+)\*/g, "$1")     // Italic → text
-      .replace(/^[-*+]\s+/gm, "")       // List markers
-      .replace(/^>\s+/gm, "")            // Blockquotes
-      .replace(/---+/g, "")              // Horizontal rules
-      .replace(/\n{2,}/g, "\n");
-  }
+  const stripMarkup = stripSearchMarkup;
 
   /**
    * Resolve a dot-path into an object, e.g. "taxonomy.category" → obj.taxonomy.category.
@@ -190,7 +288,9 @@ export function createSearchEngine(
     const parts = path.split(".");
     let cur: unknown = obj;
     for (const p of parts) {
-      if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
+      if (cur === null || cur === undefined || typeof cur !== "object") {
+        return undefined;
+      }
       cur = (cur as Record<string, unknown>)[p];
     }
     return cur;
@@ -311,6 +411,31 @@ export function createSearchEngine(
     };
   }
 
+  /** Build a synthetic PageIndex for a plugin-injected search record. */
+  function injectedRecordToPageIndex(rec: InjectedSearchRecord): PageIndex {
+    return {
+      sourcePath: `injected:${rec.route}`,
+      route: rec.route,
+      language: "en",
+      format: "md",
+      template: rec.template ?? "page",
+      title: rec.title,
+      navTitle: rec.title,
+      date: null,
+      published: true,
+      status: "published",
+      visible: true,
+      routable: true,
+      isModule: false,
+      order: 0,
+      depth: 1,
+      parentPath: null,
+      taxonomy: {},
+      mtime: 0,
+      hash: "",
+    };
+  }
+
   /**
    * Score a search query against a document.
    *
@@ -357,7 +482,9 @@ export function createSearchEngine(
       }
 
       // Custom field matches
-      for (const [fieldName, fieldText] of Object.entries(doc.customFieldTexts)) {
+      for (
+        const [fieldName, fieldText] of Object.entries(doc.customFieldTexts)
+      ) {
         if (fieldText.includes(term)) {
           const w = fieldWeights[fieldName] ?? 1;
           score += 1 * w;
@@ -522,9 +649,39 @@ export function createSearchEngine(
           summaryText: "",
           bodyText: textParts.join(" "),
           customFieldTexts,
-          rawText: textParts.map((_, i) => Object.values(rec.fields).filter((v) => typeof v === "string")[i] ?? "").join(" "),
+          rawText: textParts.map((_, i) =>
+            Object.values(rec.fields).filter((v) => typeof v === "string")[i] ??
+              ""
+          ).join(" "),
           page,
           frontmatter: rec.fields,
+        });
+      }
+
+      // Index plugin-injected records (e.g. extracted PDF text)
+      for (const rec of injectedRecords) {
+        const page = injectedRecordToPageIndex(rec);
+        const titleText = rec.title.toLowerCase();
+        const bodyText = rec.body.toLowerCase();
+        const customFieldTexts: Record<string, string> = {};
+        const textParts: string[] = [titleText, bodyText];
+
+        for (const [k, v] of Object.entries(rec.fields ?? {})) {
+          const lowered = v.toLowerCase();
+          textParts.push(lowered);
+          customFieldTexts[k] = lowered;
+        }
+
+        indexDocument({
+          sourcePath: page.sourcePath,
+          text: textParts.join(" "),
+          titleText,
+          summaryText: "",
+          bodyText,
+          customFieldTexts,
+          rawText: rec.body,
+          page,
+          frontmatter: rec.fields ?? {},
         });
       }
     },
@@ -557,7 +714,11 @@ export function createSearchEngine(
         const doc = documents.get(sp);
         if (!doc) continue;
 
-        const { score, excerpt, highlights } = scoreDocument(doc, queryTerms, termRegexps);
+        const { score, excerpt, highlights } = scoreDocument(
+          doc,
+          queryTerms,
+          termRegexps,
+        );
         if (score > 0) {
           const result: SearchResult = { page: doc.page, score, excerpt };
           if (highlightMatches) {
@@ -635,7 +796,9 @@ export function resolveFacetValue(
   const parts = path.split(".");
   let cur: unknown = obj;
   for (const p of parts) {
-    if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
+    if (cur === null || cur === undefined || typeof cur !== "object") {
+      return undefined;
+    }
     cur = (cur as Record<string, unknown>)[p];
   }
   if (typeof cur === "string") return cur;

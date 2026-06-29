@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.23.0] — 2026-06-29
+
+### Added
+
+- **Pluggable search backends.** Two new plugin hooks make the search engine extensible:
+  - `onSearchRecordsCollect` — plugins push extra records (each with its own result `route`, indexed from memory) to include in the search index.
+  - `onSearchEngineCreate` — plugins provide an alternative `SearchEngine` (e.g. a Meilisearch backend) in place of the built-in in-memory engine. The hook payload includes a `loadText(page)` helper so an alternative engine can index the same plain-text bodies the built-in engine does.
+
+- **`createSearchEngine` accepts `injectedRecords`** — plugin-contributed records are indexed alongside content pages and retained across rebuilds. Exposed via `onSearchRecordsCollect`.
+
+- **Exported `loadPageBodyText` and `stripSearchMarkup`** from `@dune/core` search — reusable helpers for loading and plain-text-stripping a page's body, used by the built-in engine and available to alternative engines.
+
+These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF serving + text search) and `@dune/plugin-meilisearch` (Meilisearch backend), both of which now enable from `site.yaml` with no manual wiring.
+
 ## [0.22.0] — 2026-06-29
 
 ### Added
