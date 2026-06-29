@@ -5,8 +5,8 @@
  *          /admin/api/plugins/install, /admin/api/themes/install.
  */
 
-import { h, Fragment } from "preact";
-import { useState, useEffect } from "preact/hooks";
+import { Fragment, h } from "preact";
+import { useEffect, useState } from "preact/hooks";
 
 interface PluginEntry {
   name: string;
@@ -16,7 +16,7 @@ interface PluginEntry {
   version: string;
   jsr: string;
   verified: boolean;
-  downloads: number;
+  downloads?: number;
   tags?: string[];
   iconUrl?: string | null;
   repositoryUrl?: string;
@@ -45,7 +45,9 @@ interface Props {
 export default function Marketplace({ prefix, initialTab }: Props) {
   const apiBase = `${prefix}/api`;
 
-  const [tab, setTab] = useState<Tab>(initialTab === "themes" ? "themes" : "plugins");
+  const [tab, setTab] = useState<Tab>(
+    initialTab === "themes" ? "themes" : "plugins",
+  );
   const [plugins, setPlugins] = useState<PluginEntry[]>([]);
   const [themes, setThemes] = useState<ThemeEntry[]>([]);
   const [loadingPlugins, setLoadingPlugins] = useState(false);
@@ -96,7 +98,10 @@ export default function Marketplace({ prefix, initialTab }: Props) {
     try {
       const res = await fetch(`${apiBase}/plugins/install`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrf(),
+        },
         body: JSON.stringify({ jsr: entry.jsr, name: entry.name }),
       });
       if (!res.ok) {
@@ -104,21 +109,28 @@ export default function Marketplace({ prefix, initialTab }: Props) {
         setError((err as { error?: string }).error ?? `HTTP ${res.status}`);
         return;
       }
-      setInstallMsg(`Plugin "${entry.label}" added to site.yaml. Restart to activate.`);
+      setInstallMsg(
+        `Plugin "${entry.label}" added to site.yaml. Restart to activate.`,
+      );
     } finally {
       setInstalling(null);
     }
   }
 
   async function installTheme(entry: ThemeEntry) {
-    if (!confirm(`Install theme "${entry.name}" from ${entry.downloadUrl}?`)) return;
+    if (!confirm(`Install theme "${entry.name}" from ${entry.downloadUrl}?`)) {
+      return;
+    }
     setInstalling(entry.slug);
     setInstallMsg("");
     setError("");
     try {
       const res = await fetch(`${apiBase}/themes/install`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrf(),
+        },
         body: JSON.stringify({ slug: entry.slug }),
       });
       if (!res.ok) {
@@ -126,7 +138,9 @@ export default function Marketplace({ prefix, initialTab }: Props) {
         setError((err as { error?: string }).error ?? `HTTP ${res.status}`);
         return;
       }
-      setInstallMsg(`Theme "${entry.name}" installed. Switch to it in Configuration → Theme.`);
+      setInstallMsg(
+        `Theme "${entry.name}" installed. Switch to it in Configuration → Theme.`,
+      );
     } finally {
       setInstalling(null);
     }
@@ -154,14 +168,26 @@ export default function Marketplace({ prefix, initialTab }: Props) {
       <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
         <div style="display:flex;gap:0.5rem">
           <button
-            class={`btn btn-sm${tab === "plugins" ? " btn-primary" : " btn-outline"}`}
-            onClick={() => { setTab("plugins"); setSearch(""); setInstallMsg(""); }}
+            class={`btn btn-sm${
+              tab === "plugins" ? " btn-primary" : " btn-outline"
+            }`}
+            onClick={() => {
+              setTab("plugins");
+              setSearch("");
+              setInstallMsg("");
+            }}
           >
             Plugins
           </button>
           <button
-            class={`btn btn-sm${tab === "themes" ? " btn-primary" : " btn-outline"}`}
-            onClick={() => { setTab("themes"); setSearch(""); setInstallMsg(""); }}
+            class={`btn btn-sm${
+              tab === "themes" ? " btn-primary" : " btn-outline"
+            }`}
+            onClick={() => {
+              setTab("themes");
+              setSearch("");
+              setInstallMsg("");
+            }}
           >
             Themes
           </button>
@@ -175,106 +201,181 @@ export default function Marketplace({ prefix, initialTab }: Props) {
         />
       </div>
 
-      {installMsg && <div class="alert alert-success" style="margin-bottom:1rem">{installMsg}</div>}
-      {error && <div class="alert alert-error" style="margin-bottom:1rem">{error}</div>}
+      {installMsg && (
+        <div class="alert alert-success" style="margin-bottom:1rem">
+          {installMsg}
+        </div>
+      )}
+      {error && (
+        <div class="alert alert-error" style="margin-bottom:1rem">{error}</div>
+      )}
 
       {/* Plugin grid */}
       {tab === "plugins" && (
-        loadingPlugins ? (
-          <p style="color:#718096">Loading plugins…</p>
-        ) : filteredPlugins.length === 0 ? (
-          <p style="color:#718096">{search ? "No plugins match your search." : "Plugin registry empty."}</p>
-        ) : (
-          <div class="marketplace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem">
-            {filteredPlugins.map((p) => (
-              <div key={p.name} class="marketplace-card" style="border:1px solid #e2e8f0;border-radius:8px;padding:1rem">
-                <div style="display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.5rem">
-                  {p.iconUrl ? (
-                    <img src={p.iconUrl} alt="" style="width:40px;height:40px;border-radius:4px;object-fit:cover" />
-                  ) : (
-                    <div style="width:40px;height:40px;border-radius:4px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:1.5rem">🧩</div>
-                  )}
-                  <div>
-                    <div style="font-weight:600">{p.label}</div>
-                    <div style="font-size:0.8rem;color:#718096">by {p.author} · v{p.version}</div>
+        loadingPlugins
+          ? <p style="color:#718096">Loading plugins…</p>
+          : filteredPlugins.length === 0
+          ? (
+            <p style="color:#718096">
+              {search
+                ? "No plugins match your search."
+                : "Plugin registry empty."}
+            </p>
+          )
+          : (
+            <div
+              class="marketplace-grid"
+              style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem"
+            >
+              {filteredPlugins.map((p) => (
+                <div
+                  key={p.name}
+                  class="marketplace-card"
+                  style="border:1px solid #e2e8f0;border-radius:8px;padding:1rem"
+                >
+                  <div style="display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.5rem">
+                    {p.iconUrl
+                      ? (
+                        <img
+                          src={p.iconUrl}
+                          alt=""
+                          style="width:40px;height:40px;border-radius:4px;object-fit:cover"
+                        />
+                      )
+                      : (
+                        <div style="width:40px;height:40px;border-radius:4px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:1.5rem">
+                          🧩
+                        </div>
+                      )}
+                    <div>
+                      <div style="font-weight:600">{p.label}</div>
+                      <div style="font-size:0.8rem;color:#718096">
+                        by {p.author} · v{p.version}
+                      </div>
+                    </div>
+                    {p.verified && (
+                      <span
+                        class="badge"
+                        style="margin-left:auto"
+                        title="Verified"
+                      >
+                        ✓
+                      </span>
+                    )}
                   </div>
-                  {p.verified && <span class="badge" style="margin-left:auto" title="Verified">✓</span>}
-                </div>
-                <p style="font-size:0.9rem;color:#4a5568;margin:0 0 0.75rem">{p.description}</p>
-                {p.tags && p.tags.length > 0 && (
-                  <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.75rem">
-                    {p.tags.map((t) => (
-                      <span key={t} class="badge" style="font-size:0.75rem">{t}</span>
-                    ))}
-                  </div>
-                )}
-                <div style="display:flex;gap:0.5rem">
-                  <button
-                    class="btn btn-sm btn-primary"
-                    onClick={() => installPlugin(p)}
-                    disabled={installing === p.name}
-                  >
-                    {installing === p.name ? "Installing…" : "Install"}
-                  </button>
-                  {p.repositoryUrl && (
-                    <a href={p.repositoryUrl} target="_blank" rel="noopener" class="btn btn-sm btn-outline">
-                      Source
-                    </a>
+                  <p style="font-size:0.9rem;color:#4a5568;margin:0 0 0.75rem">
+                    {p.description}
+                  </p>
+                  {p.tags && p.tags.length > 0 && (
+                    <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.75rem">
+                      {p.tags.map((t) => (
+                        <span key={t} class="badge" style="font-size:0.75rem">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {/* Theme grid */}
-      {tab === "themes" && (
-        loadingThemes ? (
-          <p style="color:#718096">Loading themes…</p>
-        ) : filteredThemes.length === 0 ? (
-          <p style="color:#718096">{search ? "No themes match your search." : "Theme registry empty."}</p>
-        ) : (
-          <div class="marketplace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem">
-            {filteredThemes.map((t) => (
-              <div key={t.slug} class="marketplace-card" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-                {t.screenshotUrl ? (
-                  <img
-                    src={t.screenshotUrl}
-                    alt={t.name}
-                    style="width:100%;height:160px;object-fit:cover"
-                  />
-                ) : (
-                  <div style="width:100%;height:160px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;color:#a0aec0;font-size:2rem">🎨</div>
-                )}
-                <div style="padding:1rem">
-                  <div style="font-weight:600;margin-bottom:0.25rem">{t.name}</div>
-                  <div style="font-size:0.8rem;color:#718096;margin-bottom:0.5rem">by {t.author} · v{t.version}</div>
-                  <p style="font-size:0.9rem;color:#4a5568;margin:0 0 0.75rem">{t.description}</p>
                   <div style="display:flex;gap:0.5rem">
                     <button
                       class="btn btn-sm btn-primary"
-                      onClick={() => installTheme(t)}
-                      disabled={installing === t.slug}
+                      onClick={() => installPlugin(p)}
+                      disabled={installing === p.name}
                     >
-                      {installing === t.slug ? "Installing…" : "Install"}
+                      {installing === p.name ? "Installing…" : "Install"}
                     </button>
-                    {t.demoUrl && (
-                      <a href={t.demoUrl} target="_blank" rel="noopener" class="btn btn-sm btn-outline">
-                        Demo
+                    {p.repositoryUrl && (
+                      <a
+                        href={p.repositoryUrl}
+                        target="_blank"
+                        rel="noopener"
+                        class="btn btn-sm btn-outline"
+                      >
+                        Source
                       </a>
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
+          )
+      )}
+
+      {/* Theme grid */}
+      {tab === "themes" && (
+        loadingThemes
+          ? <p style="color:#718096">Loading themes…</p>
+          : filteredThemes.length === 0
+          ? (
+            <p style="color:#718096">
+              {search
+                ? "No themes match your search."
+                : "Theme registry empty."}
+            </p>
+          )
+          : (
+            <div
+              class="marketplace-grid"
+              style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem"
+            >
+              {filteredThemes.map((t) => (
+                <div
+                  key={t.slug}
+                  class="marketplace-card"
+                  style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden"
+                >
+                  {t.screenshotUrl
+                    ? (
+                      <img
+                        src={t.screenshotUrl}
+                        alt={t.name}
+                        style="width:100%;height:160px;object-fit:cover"
+                      />
+                    )
+                    : (
+                      <div style="width:100%;height:160px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;color:#a0aec0;font-size:2rem">
+                        🎨
+                      </div>
+                    )}
+                  <div style="padding:1rem">
+                    <div style="font-weight:600;margin-bottom:0.25rem">
+                      {t.name}
+                    </div>
+                    <div style="font-size:0.8rem;color:#718096;margin-bottom:0.5rem">
+                      by {t.author} · v{t.version}
+                    </div>
+                    <p style="font-size:0.9rem;color:#4a5568;margin:0 0 0.75rem">
+                      {t.description}
+                    </p>
+                    <div style="display:flex;gap:0.5rem">
+                      <button
+                        class="btn btn-sm btn-primary"
+                        onClick={() => installTheme(t)}
+                        disabled={installing === t.slug}
+                      >
+                        {installing === t.slug ? "Installing…" : "Install"}
+                      </button>
+                      {t.demoUrl && (
+                        <a
+                          href={t.demoUrl}
+                          target="_blank"
+                          rel="noopener"
+                          class="btn btn-sm btn-outline"
+                        >
+                          Demo
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
       )}
     </div>
   );
 }
 
 function getCsrf(): string {
-  return (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? "";
+  return (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)
+    ?.content ?? "";
 }

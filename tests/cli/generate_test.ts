@@ -10,20 +10,22 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import {
+  generateCommand,
+  generateForm,
+  generateList,
   generatePlugin,
   generateRoute,
-  generateForm,
-  generateTheme,
   generateSchema,
-  generateCommand,
-  generateList,
+  generateTheme,
 } from "../../src/cli/generate.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function withTempSite(fn: (root: string) => Promise<void>): Promise<void> {
+async function withTempSite(
+  fn: (root: string) => Promise<void>,
+): Promise<void> {
   const root = await Deno.makeTempDir({ prefix: "dune-gen-test-" });
   try {
     await fn(root);
@@ -46,13 +48,17 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /** Capture console.log / console.error output during fn(). */
-async function captureOutput(fn: () => Promise<void>): Promise<{ out: string; err: string }> {
+async function captureOutput(
+  fn: () => Promise<void>,
+): Promise<{ out: string; err: string }> {
   const outLines: string[] = [];
   const errLines: string[] = [];
   const origLog = console.log;
   const origErr = console.error;
-  console.log = (...args: unknown[]) => outLines.push(args.map(String).join(" "));
-  console.error = (...args: unknown[]) => errLines.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) =>
+    outLines.push(args.map(String).join(" "));
+  console.error = (...args: unknown[]) =>
+    errLines.push(args.map(String).join(" "));
   try {
     await fn();
   } finally {
@@ -76,7 +82,8 @@ Deno.test("generate:plugin creates plugins/{name}/index.ts", async () => {
     assertStringIncludes(content, 'name: "my-plugin"');
     assertStringIncludes(content, 'version: "0.1.0"');
     assertStringIncludes(content, "DunePlugin");
-    assertStringIncludes(content, "setup(hooks)");
+    assertStringIncludes(content, "hooks: {");
+    assertStringIncludes(content, "onSearchEngineCreate");
     assertStringIncludes(content, "export default plugin");
   });
 });
@@ -99,7 +106,10 @@ Deno.test("generate:plugin: collision without --force exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generatePlugin(root, "dupe");
@@ -178,7 +188,10 @@ Deno.test("generate:route: collision without --force exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateRoute(root, "contact");
@@ -242,7 +255,10 @@ Deno.test("generate:form: collision without --force exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateForm(root, "myform");
@@ -280,7 +296,13 @@ Deno.test("generate:theme creates all three scaffold files", async () => {
     await generateTheme(root, "minimal");
 
     const themeYaml = join(root, "themes", "minimal", "theme.yaml");
-    const template = join(root, "themes", "minimal", "templates", "default.tsx");
+    const template = join(
+      root,
+      "themes",
+      "minimal",
+      "templates",
+      "default.tsx",
+    );
     const css = join(root, "themes", "minimal", "assets", "style.css");
 
     assertEquals(await fileExists(themeYaml), true);
@@ -313,7 +335,10 @@ Deno.test("generate:theme: collision without --force exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateTheme(root, "basic");
@@ -378,7 +403,10 @@ Deno.test("generate:schema: collision without --force exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateSchema(root, "events");
@@ -425,7 +453,10 @@ Deno.test("generateCommand: unknown subcommand exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateCommand(root, "generate:foobar", "test", {});
@@ -457,7 +488,10 @@ Deno.test("generateCommand: missing name exits 1", async () => {
     let exitCode: number | undefined;
     const origExit = Deno.exit;
     // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (code: number) => { exitCode = code; throw new Error("exit"); };
+    (Deno as any).exit = (code: number) => {
+      exitCode = code;
+      throw new Error("exit");
+    };
 
     try {
       await generateCommand(root, "generate:plugin", "", {});

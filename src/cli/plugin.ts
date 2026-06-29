@@ -11,14 +11,18 @@ import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { join } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { loadPlugins, loadPluginAdminConfigs } from "../plugins/loader.ts";
+import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
 
 // ─── plugin:list ──────────────────────────────────────────────────────────────
 
 export async function pluginListCommand(root: string): Promise<void> {
   const storage = createStorage({ rootDir: root });
-  const config = await loadConfig({ storage, rootDir: root, skipValidation: true });
+  const config = await loadConfig({
+    storage,
+    rootDir: root,
+    skipValidation: true,
+  });
 
   const hooks = createHookRegistry({ config, storage });
   const adminCfg = config.admin ?? { dataDir: "data" };
@@ -52,10 +56,15 @@ export async function pluginListCommand(root: string): Promise<void> {
 
 // ─── plugin:install ───────────────────────────────────────────────────────────
 
-export async function pluginInstallCommand(root: string, src: string): Promise<void> {
+export async function pluginInstallCommand(
+  root: string,
+  src: string,
+): Promise<void> {
   if (!src) {
     console.error("Usage: dune plugin:install <src>");
-    console.error('  <src>  Plugin source: "./plugins/my-plugin.ts", "jsr:@scope/name", ...');
+    console.error(
+      '  <src>  Plugin source: "./plugins/my-plugin.ts", "jsr:@scope/name", ...',
+    );
     Deno.exit(1);
   }
 
@@ -69,7 +78,9 @@ export async function pluginInstallCommand(root: string, src: string): Promise<v
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(parsed.plugins) ? parsed.plugins as Array<{ src: string }> : [];
+  const existing = Array.isArray(parsed.plugins)
+    ? parsed.plugins as Array<{ src: string }>
+    : [];
 
   if (existing.some((e) => e.src === src)) {
     console.log(`Plugin "${src}" is already listed in site.yaml.`);
@@ -82,11 +93,84 @@ export async function pluginInstallCommand(root: string, src: string): Promise<v
   await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
   console.log(`✓ Added plugin "${src}" to config/site.yaml`);
   console.log(`  Run "dune dev" to start using the plugin.`);
+
+  await printPluginPostInstallHints(root, src);
+}
+
+/**
+ * Print plugin-specific setup guidance after install for first-party plugins
+ * that need a directory, config block, or environment variables to be useful.
+ *
+ * Matches on the package name within `src` so it works for any specifier form
+ * (`jsr:@dune/plugin-pdf`, `jsr:@dune/plugin-pdf@^0.3.0`, etc.).
+ */
+async function printPluginPostInstallHints(
+  root: string,
+  src: string,
+): Promise<void> {
+  if (src.includes("@dune/plugin-pdf")) {
+    const pdfDir = join(root, "static", "pdfs");
+    const exists = await Deno.stat(pdfDir).then(() => true).catch(() => false);
+    if (!exists) {
+      await Deno.mkdir(pdfDir, { recursive: true });
+      console.log(`\n  📄 @dune/plugin-pdf`);
+      console.log(`  ✅ Created static/pdfs/ — drop PDF files here`);
+    } else {
+      console.log(`\n  📄 @dune/plugin-pdf`);
+      console.log(`  ℹ️  static/pdfs/ already exists — drop PDF files here`);
+    }
+    console.log(`\n  Configure in config/site.yaml (defaults shown):`);
+    console.log(`    plugins:`);
+    console.log(`      - src: "${src}"`);
+    console.log(`        config:`);
+    console.log(`          dir: "static/pdfs"   # where your PDFs live`);
+    console.log(`          route: "/pdf"        # URL prefix for the viewer`);
+    console.log(
+      `          index: true          # index extracted text into search`,
+    );
+    console.log(
+      `\n  PDFs are served + indexed automatically; their text shows up in site search.`,
+    );
+    return;
+  }
+
+  if (src.includes("@dune/plugin-meilisearch")) {
+    console.log(`\n  🔎 @dune/plugin-meilisearch`);
+    console.log(`  This replaces the built-in search engine with Meilisearch.`);
+    console.log(
+      `\n  1. Run a Meilisearch server (https://www.meilisearch.com).`,
+    );
+    console.log(
+      `  2. Set environment variables (or use the config keys below):`,
+    );
+    console.log(`       MEILI_URL=http://localhost:7700`);
+    console.log(`       MEILI_API_KEY=<your-master-or-search-key>`);
+    console.log(`\n  Configure in config/site.yaml:`);
+    console.log(`    plugins:`);
+    console.log(`      - src: "${src}"`);
+    console.log(`        config:`);
+    console.log(
+      `          url: "http://localhost:7700"   # falls back to MEILI_URL`,
+    );
+    console.log(
+      `          apiKey: ""                      # falls back to MEILI_API_KEY`,
+    );
+    console.log(
+      `          index: "dune"                   # Meilisearch index name`,
+    );
+    console.log(
+      `\n  The index is (re)built from your content on startup and on rebuild.`,
+    );
+    return;
+  }
 }
 
 // ─── plugin:remove ────────────────────────────────────────────────────────────
 
-export async function pluginRemoveCommand(root: string, srcOrName: string): Promise<void> {
+export async function pluginRemoveCommand(
+  root: string,
+  srcOrName: string,
+): Promise<void> {
   if (!srcOrName) {
     console.error("Usage: dune plugin:remove <src|name>");
     Deno.exit(1);
@@ -102,11 +186,15 @@ export async function pluginRemoveCommand(root: string, srcOrName: string): Prom
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(parsed.plugins) ? parsed.plugins as Array<{ src: string }> : [];
+  const existing = Array.isArray(parsed.plugins)
+    ? parsed.plugins as Array<{ src: string }>
+    : [];
 
   const before = existing.length;
   const filtered = existing.filter(
-    (e) => e.src !== srcOrName && !e.src.endsWith(`/${srcOrName}.ts`) && !e.src.includes(srcOrName),
+    (e) =>
+      e.src !== srcOrName && !e.src.endsWith(`/${srcOrName}.ts`) &&
+      !e.src.includes(srcOrName),
   );
 
   if (filtered.length === before) {
@@ -123,12 +211,17 @@ export async function pluginRemoveCommand(root: string, srcOrName: string): Prom
 
 // ─── plugin:create ────────────────────────────────────────────────────────────
 
-export async function pluginCreateCommand(root: string, name?: string): Promise<void> {
+export async function pluginCreateCommand(
+  root: string,
+  name?: string,
+): Promise<void> {
   const pluginName = name ?? "my-plugin";
 
   // Validate name: lowercase letters, numbers, hyphens only
   if (!/^[a-z0-9-]+$/.test(pluginName)) {
-    console.error("Plugin name must contain only lowercase letters, numbers, and hyphens.");
+    console.error(
+      "Plugin name must contain only lowercase letters, numbers, and hyphens.",
+    );
     Deno.exit(1);
   }
 
@@ -156,7 +249,7 @@ export async function pluginCreateCommand(root: string, name?: string): Promise<
  *     - src: "./plugins/${pluginName}/mod.ts"
  */
 
-import type { DunePlugin } from "jsr:@dune-cms/core/hooks";
+import type { DunePlugin } from "jsr:@dune/core/plugins";
 
 export interface ${toPascalCase(pluginName)}Config {
   // Define your plugin's configuration fields here.
@@ -248,7 +341,10 @@ dune plugin:publish ${pluginName}
 `;
 
   await Deno.writeTextFile(join(pluginDir, "mod.ts"), modTs);
-  await Deno.writeTextFile(join(pluginDir, "deno.json"), JSON.stringify(denoJson, null, 2) + "\n");
+  await Deno.writeTextFile(
+    join(pluginDir, "deno.json"),
+    JSON.stringify(denoJson, null, 2) + "\n",
+  );
   await Deno.writeTextFile(join(pluginDir, "README.md"), readme);
 
   console.log(`✓ Scaffolded plugin at plugins/${pluginName}/`);
@@ -259,14 +355,23 @@ dune plugin:publish ${pluginName}
   console.log(`         - src: "./plugins/${pluginName}/mod.ts"`);
   console.log(`  3. Run "dune dev" to test`);
   console.log(`\nOptional:`);
-  console.log(`  • Put static files in assets/  — served at /plugins/${pluginName}/`);
-  console.log(`  • Put TSX templates in templates/ — fallback after theme chain`);
-  console.log(`  • Put Fresh islands in islands/  — for interactive UI components`);
+  console.log(
+    `  • Put static files in assets/  — served at /plugins/${pluginName}/`,
+  );
+  console.log(
+    `  • Put TSX templates in templates/ — fallback after theme chain`,
+  );
+  console.log(
+    `  • Put Fresh islands in islands/  — for interactive UI components`,
+  );
 }
 
 // ─── plugin:publish ───────────────────────────────────────────────────────────
 
-export async function pluginPublishCommand(root: string, name?: string): Promise<void> {
+export async function pluginPublishCommand(
+  root: string,
+  name?: string,
+): Promise<void> {
   let pluginDir: string;
 
   if (name) {
@@ -280,7 +385,9 @@ export async function pluginPublishCommand(root: string, name?: string): Promise
         if (e.isDirectory) dirs.push(e.name);
       }
     } catch {
-      console.error('No plugins/ directory found. Run "dune plugin:create <name>" first.');
+      console.error(
+        'No plugins/ directory found. Run "dune plugin:create <name>" first.',
+      );
       Deno.exit(1);
     }
     if (dirs.length === 0) {
@@ -328,13 +435,18 @@ export async function pluginPublishCommand(root: string, name?: string): Promise
 
 // ─── plugin:search ────────────────────────────────────────────────────────────
 
-export async function pluginSearchCommand(_root: string, query: string): Promise<void> {
+export async function pluginSearchCommand(
+  _root: string,
+  query: string,
+): Promise<void> {
   if (!query) {
     console.error("Usage: dune plugin:search <query>");
     Deno.exit(1);
   }
 
-  const url = `https://jsr.io/api/packages?query=${encodeURIComponent(query)}&limit=20`;
+  const url = `https://jsr.io/api/packages?query=${
+    encodeURIComponent(query)
+  }&limit=20`;
 
   interface JsrPackage {
     name: string;
@@ -349,7 +461,9 @@ export async function pluginSearchCommand(_root: string, query: string): Promise
     if (!res.ok) throw new Error(`JSR API returned ${res.status}`);
     result = await res.json() as { items?: JsrPackage[] };
   } catch (err) {
-    console.error(`Failed to search JSR: ${err instanceof Error ? err.message : err}`);
+    console.error(
+      `Failed to search JSR: ${err instanceof Error ? err.message : err}`,
+    );
     Deno.exit(1);
   }
 
@@ -359,7 +473,9 @@ export async function pluginSearchCommand(_root: string, query: string): Promise
     return;
   }
 
-  console.log(`\nJSR packages matching "${query}" (${items.length} results):\n`);
+  console.log(
+    `\nJSR packages matching "${query}" (${items.length} results):\n`,
+  );
   for (const pkg of items) {
     const id = `@${pkg.scope}/${pkg.name}`;
     const ver = pkg.latestVersion ? `@${pkg.latestVersion}` : "";
@@ -372,7 +488,10 @@ export async function pluginSearchCommand(_root: string, query: string): Promise
 
 // ─── plugin:update ────────────────────────────────────────────────────────────
 
-export async function pluginUpdateCommand(root: string, name?: string): Promise<void> {
+export async function pluginUpdateCommand(
+  root: string,
+  name?: string,
+): Promise<void> {
   const siteYamlPath = join(root, "config", "site.yaml");
   let raw = "";
   try {
@@ -383,7 +502,9 @@ export async function pluginUpdateCommand(root: string, name?: string): Promise<
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const plugins = Array.isArray(parsed.plugins) ? parsed.plugins as Array<{ src: string }> : [];
+  const plugins = Array.isArray(parsed.plugins)
+    ? parsed.plugins as Array<{ src: string }>
+    : [];
 
   // Filter to JSR plugins (and optionally by name)
   const jsrPlugins = plugins.filter((p) => {
@@ -418,9 +539,12 @@ export async function pluginUpdateCommand(root: string, name?: string): Promise<
     const [, scope, pkgName] = scopeMatch;
 
     try {
-      const res = await fetch(`https://jsr.io/api/scopes/${scope}/packages/${pkgName}`, {
-        headers: { "Accept": "application/json" },
-      });
+      const res = await fetch(
+        `https://jsr.io/api/scopes/${scope}/packages/${pkgName}`,
+        {
+          headers: { "Accept": "application/json" },
+        },
+      );
       if (!res.ok) {
         console.log(`  ${pkgId}: could not check (JSR returned ${res.status})`);
         continue;
@@ -442,13 +566,19 @@ export async function pluginUpdateCommand(root: string, name?: string): Promise<
       console.log(`  ${pkgId}: ${currentVersion ?? "(unpinned)"} → ${latest}`);
       updated++;
     } catch (err) {
-      console.log(`  ${pkgId}: error — ${err instanceof Error ? err.message : err}`);
+      console.log(
+        `  ${pkgId}: error — ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
   if (updated > 0) {
     await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
-    console.log(`\n✓ Updated ${updated} plugin${updated !== 1 ? "s" : ""} in config/site.yaml.`);
+    console.log(
+      `\n✓ Updated ${updated} plugin${
+        updated !== 1 ? "s" : ""
+      } in config/site.yaml.`,
+    );
     console.log(`  Run "dune dev" to apply updates.`);
   } else {
     console.log("\nAll JSR plugins are up to date.");

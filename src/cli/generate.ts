@@ -68,7 +68,9 @@ async function guardCollision(
 ): Promise<void> {
   if (await fileExists(filePath)) {
     if (!force) {
-      const rel = filePath.startsWith(root + "/") ? filePath.slice(root.length + 1) : filePath;
+      const rel = filePath.startsWith(root + "/")
+        ? filePath.slice(root.length + 1)
+        : filePath;
       console.error(`  ✗ File already exists: ${rel}`);
       console.error(`    Use --force to overwrite.`);
       Deno.exit(1);
@@ -102,10 +104,30 @@ export async function generatePlugin(
 const plugin: DunePlugin = {
   name: "${slug}",
   version: "0.1.0",
-  setup(hooks) {
-    // Register hooks here
-    // hooks.on("onRebuild", async () => { ... });
+  hooks: {
+    // Run code at lifecycle events. A few examples — uncomment what you need:
+
+    // onRebuild: () => {
+    //   console.log("[${slug}] content rebuilt");
+    // },
+
+    // Inject extra documents into the search index (e.g. external sources):
+    // onSearchRecordsCollect: (ctx) => {
+    //   ctx.data.records.push({
+    //     route: "/external/doc",
+    //     title: "External Doc",
+    //     body: "text to index",
+    //   });
+    // },
+
+    // Replace the built-in search engine with an alternative backend:
+    // onSearchEngineCreate: (ctx) => {
+    //   ctx.data.engine = myCustomEngine;
+    // },
   },
+
+  // For one-time setup that needs config or storage, use setup(api):
+  // setup({ hooks, config, storage }) { /* ... */ },
 };
 
 export default plugin;
@@ -159,7 +181,9 @@ published: false
 Content goes here.
 `;
 
-  await Deno.mkdir(join(root, "content", ...slug.split("/").slice(0, -1)), { recursive: true });
+  await Deno.mkdir(join(root, "content", ...slug.split("/").slice(0, -1)), {
+    recursive: true,
+  });
   await Deno.writeTextFile(outPath, content);
 
   const rel = `content/${slug}.md`;
@@ -266,7 +290,9 @@ export default function DefaultTemplate({ page }: PageProps) {
   const css = `/* ${slug} theme styles */
 `;
 
-  await Deno.mkdir(join(root, "themes", slug, "templates"), { recursive: true });
+  await Deno.mkdir(join(root, "themes", slug, "templates"), {
+    recursive: true,
+  });
   await Deno.mkdir(join(root, "themes", slug, "assets"), { recursive: true });
   await Deno.writeTextFile(themeYamlPath, themeYaml);
   await Deno.writeTextFile(templatePath, templateTsx);
@@ -326,9 +352,19 @@ export const handler = {
 };
 `;
 
-  await Deno.mkdir(join(root, "src", "admin", "routes", "api", ...slug.split("/").slice(0, -1)), {
-    recursive: true,
-  });
+  await Deno.mkdir(
+    join(
+      root,
+      "src",
+      "admin",
+      "routes",
+      "api",
+      ...slug.split("/").slice(0, -1),
+    ),
+    {
+      recursive: true,
+    },
+  );
   await Deno.writeTextFile(outPath, content);
 
   const rel = `src/admin/routes/api/${slug}.ts`;
@@ -389,7 +425,8 @@ const GENERATORS: Record<string, string> = {
   "generate:form": "Create a blueprint schema at schemas/{name}.yaml",
   "generate:theme": "Scaffold a theme at themes/{name}/",
   "generate:schema": "Create a Flex Object schema at flex-objects/{name}.yaml",
-  "generate:admin-route": "Scaffold an admin API route in src/admin/routes/api/{name}.ts",
+  "generate:admin-route":
+    "Scaffold an admin API route in src/admin/routes/api/{name}.ts",
 };
 
 export function generateList(): void {

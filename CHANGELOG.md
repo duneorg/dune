@@ -19,6 +19,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF serving + text search) and `@dune/plugin-meilisearch` (Meilisearch backend), both of which now enable from `site.yaml` with no manual wiring.
 
+- **`dune plugin:install` prints setup guidance for first-party plugins.** Installing `@dune/plugin-pdf` creates `static/pdfs/` and prints the `site.yaml` config block; installing `@dune/plugin-meilisearch` prints the required environment variables and config keys.
+
+- **`generate:plugin` scaffold updated** — the generated plugin now uses the `hooks: {}` object form (the previous scaffold omitted the required `hooks` field) and includes commented `onSearchRecordsCollect` / `onSearchEngineCreate` examples.
+
+### Fixed
+
+- **Marketplace plugin registry now lists only real, published plugins** (`@dune/plugin-inline-edit`, `@dune/plugin-pdf`, `@dune/plugin-meilisearch`). The previous registry advertised fabricated entries (nonexistent `dune-cms` GitHub org, fake download counts, unpublished JSR packages) that would 404 on install, and omitted the real plugins.
+
+- **`plugin:create` scaffold import corrected** from the nonexistent `jsr:@dune-cms/core/hooks` to `jsr:@dune/core/plugins`, so generated plugins resolve `DunePlugin`.
+
 ## [0.22.0] — 2026-06-29
 
 ### Added

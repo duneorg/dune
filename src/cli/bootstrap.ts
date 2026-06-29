@@ -626,7 +626,7 @@ export async function bootstrap(
 
   // Record page count on every rebuild via the onRebuild hook.
   if (metricsEnabled) {
-    hooks.on("onRebuild", async () => {
+    hooks.on("onRebuild", () => {
       metrics.recordRebuild(0, engine.pages.length);
     });
   }
