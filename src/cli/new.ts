@@ -247,7 +247,7 @@ const DENO_JSON = `{
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/core": "jsr:@dune/core@^0.22"
+    "@dune/core": "jsr:@dune/core@^0.23"
   },
   "tasks": {
     "dev": "dune dev",
