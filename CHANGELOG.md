@@ -5,6 +5,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.22.0] — 2026-06-29
+
+### Added
+
+- **`dune serve --frozen`** exits with a clear message pointing to `dune lockfile sync` when the lockfile is incomplete for the current `deno.json`. Previously, running without `--frozen` would silently drift; now the Dune-level flag makes lockfile staleness a hard, actionable error in production deployments.
+
+- **Startup staleness hint in `dune dev` and `dune serve`.** At startup, Dune checks whether the lockfile contains an entry for the current `@dune/core` version. If not, it prints a clear warning before continuing — catching manual `deno.json` edits or upgrades made outside `dune upgrade` before they cause a surprise deployment failure. The check is fast (no subprocess) and non-blocking in dev mode.
+
+- **`dune upgrade` auto-runs `lockfile sync`** after bumping the `@dune/core` version, so the lockfile stays consistent without a separate manual step.
+
+- **`dune add` auto-runs `lockfile sync`** after adding a new import to `deno.json`, for the same reason.
+
+### Fixed
+
+- **Plugin marketplace registry entry corrected for `@dune/plugin-meilisearch`.** The entry had the wrong package name and JSR specifier from an earlier draft.
+
+---
+
 ## [0.21.7] — 2026-06-16
 
 ### Fixed

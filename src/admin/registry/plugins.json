@@ -83,13 +83,13 @@
       "iconUrl": "https://cdn.getdune.org/plugins/newsletter/icon.png"
     },
     {
-      "name": "@dune/meilisearch",
+      "name": "@dune/plugin-meilisearch",
       "label": "Meilisearch",
       "description": "Drop-in replacement for the built-in search engine that uses Meilisearch for fast, typo-tolerant full-text search with faceted filtering.",
       "author": "Dune Team",
       "version": "0.1.0",
       "license": "MIT",
-      "jsr": "jsr:@dune/meilisearch@^0.1.0",
+      "jsr": "jsr:@dune/plugin-meilisearch@^0.1.0",
       "tags": ["search", "meilisearch"],
       "hooks": ["onContentIndexReady", "onPageCreate", "onPageUpdate", "onPageDelete"],
       "compatibleWith": "^0.6.0",
