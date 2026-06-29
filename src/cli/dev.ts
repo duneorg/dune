@@ -20,6 +20,7 @@ import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts"
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { getDuneAdminIslands } from "../admin/mount.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
+import { checkLockfileStaleness } from "./lockfile.ts";
 
 export interface DevOptions {
   port?: number;
@@ -33,6 +34,13 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // path (e.g. "zumbrunn/zumbrunn.com") and we Deno.chdir() later, which would
   // invalidate any relative paths computed against the original cwd.
   root = resolve(root);
+
+  // ── Lockfile staleness check (advisory in dev) ───────────────────────────
+  if (await checkLockfileStaleness(root)) {
+    console.log(
+      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile sync\` before deploying.\n`,
+    );
+  }
 
   // Disable Secure cookie flag in dev so session cookies work over plain HTTP.
   // Without this, browsers (particularly Safari) reject the Secure cookie on

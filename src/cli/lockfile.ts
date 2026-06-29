@@ -24,6 +24,34 @@
 
 import { dirname, join, resolve } from "@std/path";
 
+// ── Startup staleness hint ────────────────────────────────────────────────────
+
+/**
+ * Fast check: does deno.lock look complete for the current deno.json?
+ *
+ * Only verifies that the @dune/core specifier from the site's import map
+ * appears in the lockfile's specifiers section. No subprocesses. Returns true
+ * if the lockfile looks stale, false if it looks complete or if any file is
+ * unreadable (advisory — errors are silenced).
+ */
+export async function checkLockfileStaleness(root: string): Promise<boolean> {
+  try {
+    const absRoot = resolve(root);
+    const denoJson = JSON.parse(await Deno.readTextFile(join(absRoot, "deno.json")));
+    const coreSpec = denoJson?.imports?.["@dune/core"];
+    if (!coreSpec || typeof coreSpec !== "string") return false;
+
+    const lockfileDir = await findEffectiveLockfileDir(absRoot);
+    const lockText = await Deno.readTextFile(join(lockfileDir, "deno.lock"));
+    const lock = JSON.parse(lockText) as Record<string, unknown>;
+    const specifiers = lock.specifiers as Record<string, string> | undefined;
+    if (!specifiers) return true;
+    return !(coreSpec in specifiers);
+  } catch {
+    return false;
+  }
+}
+
 // ── Lockfile diff/merge (pure — no I/O, fully unit-testable) ─────────────────
 
 /** Per-section (specifiers/jsr/npm/remote) diff of one merge pass. */

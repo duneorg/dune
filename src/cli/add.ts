@@ -9,6 +9,7 @@
  */
 
 import { join, resolve } from "@std/path";
+import { lockfileSyncCommand } from "./lockfile.ts";
 
 export interface AddOptions {
   force?: boolean;
@@ -95,6 +96,14 @@ export async function addCommand(
     console.log(`🏜️  Dune — add\n`);
     console.log(`  ✅ Added to deno.json imports:`);
     console.log(`     "${key}": "${specifier}"`);
+
+    console.log(`\n  🔒 Syncing lockfile...`);
+    try {
+      await lockfileSyncCommand(root, {});
+      console.log(`\n  Commit deno.lock along with deno.json before deploying.\n`);
+    } catch {
+      console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile sync\` manually before deploying.\n`);
+    }
   }
 
   // ── Package-specific scaffolding ────────────────────────────────────────────

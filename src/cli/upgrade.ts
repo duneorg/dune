@@ -11,6 +11,7 @@
 
 import { resolve, join, dirname, fromFileUrl } from "@std/path";
 import { isNewer, fetchLatestVersion } from "./upgrade-check.ts";
+import { lockfileSyncCommand } from "./lockfile.ts";
 
 const JSR_META_URL = "https://jsr.io/@dune/core/meta.json";
 
@@ -119,6 +120,12 @@ export async function upgradeCommand(
   }
 
   console.log(`  ✅ @dune/core updated: ${currentSpec} → ${newSpec}`);
-  console.log(`\n  Restart your dev server to apply the update.`);
-  console.log(`  Deno will fetch the new version automatically on next startup.\n`);
+
+  console.log(`\n  🔒 Syncing lockfile...`);
+  try {
+    await lockfileSyncCommand(root, {});
+    console.log(`\n  Commit deno.lock along with deno.json before deploying.\n`);
+  } catch {
+    console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile sync\` manually before deploying.\n`);
+  }
 }

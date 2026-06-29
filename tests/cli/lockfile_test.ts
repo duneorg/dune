@@ -7,6 +7,7 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import {
+  checkLockfileStaleness,
   computeLockfileSync,
   findEffectiveLockfileDir,
   lockfileCheckCommand,
@@ -192,6 +193,65 @@ Deno.test("resolveCoreCliSpecifier: null when deno.json is missing entirely", as
   try {
     const specifier = await resolveCoreCliSpecifier(join(root, "deno.json"));
     assertEquals(specifier, null);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+// ── checkLockfileStaleness ────────────────────────────────────────────────────
+
+Deno.test("checkLockfileStaleness: false when lockfile has the @dune/core specifier", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: true when @dune/core specifier is absent from lockfile", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@std/path@^1": "jsr:@std/path@1.0.8" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: false when deno.lock is missing (silent)", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    // No deno.lock written — silently returns false
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: false when deno.json has no @dune/core import", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "some-other": "npm:some-other@1.0.0" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

@@ -413,6 +413,7 @@ export async function main() {
         await serveCommand(root, {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
+          frozen: options.frozen === true,
         });
         break;
 

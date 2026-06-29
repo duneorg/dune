@@ -30,10 +30,17 @@ import { getDuneAdminIslands } from "../admin/mount.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
+import { checkLockfileStaleness } from "./lockfile.ts";
 
 export interface ServeOptions {
   port?: number;
   debug?: boolean;
+  /**
+   * When true, treat a stale lockfile as a hard error (exit 1 with a clear
+   * message) rather than a warning. Use in production deployments to catch
+   * lockfile drift before the server starts.
+   */
+  frozen?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,11 +99,25 @@ async function drainInFlight(
 // ---------------------------------------------------------------------------
 
 export async function serveCommand(root: string, options: ServeOptions = {}) {
-  const { port = 3000, debug = false } = options;
+  const { port = 3000, debug = false, frozen = false } = options;
 
   // Resolve root to an absolute path immediately.  The CLI may pass a relative
   // path and we Deno.chdir() later, which would invalidate relative paths.
   root = resolve(root);
+
+  // ── Lockfile staleness check ─────────────────────────────────────────────
+  if (await checkLockfileStaleness(root)) {
+    if (frozen) {
+      console.error(
+        `  ✗ deno.lock is incomplete for the current deno.json.\n` +
+        `    Run \`dune lockfile sync\` and commit the result before deploying.`,
+      );
+      Deno.exit(1);
+    }
+    console.log(
+      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile sync\` before deploying.\n`,
+    );
+  }
 
   const drainDeadlineMs = parseInt(
     Deno.env.get("DUNE_SHUTDOWN_TIMEOUT_MS") ?? "30000",
