@@ -8,6 +8,7 @@
     "./cli": "./src/cli.ts",
     "./plugins": "./src/plugins/mod.ts",
     "./sections": "./src/sections/mod.ts",
+    "./theme-helpers": "./src/theme-helpers/mod.ts",
     "./content": "./src/content/api.ts",
     "./admin": "./src/admin/mount.ts",
     "./mcp": "./src/mcp/mod.ts",

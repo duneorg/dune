@@ -6,10 +6,8 @@
  *
  * @example
  * ```ts
- * import { formatDate, paginate, truncate } from "../../../src/theme-helpers/mod.ts";
+ * import { formatDate, paginate, truncate } from "@dune/core/theme-helpers";
  * ```
- *
- * Future: published as `jsr:@dune/theme-helpers` when the API is stable.
  */
 
 // ─── Re-exported types ────────────────────────────────────────────────────────
