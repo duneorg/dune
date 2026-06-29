@@ -6,7 +6,7 @@ This document describes what is being worked on, what comes next, and the longer
 
 ---
 
-## What ships today (v0.19)
+## What ships today (v0.21)
 
 The core is complete and in production use:
 
@@ -33,7 +33,7 @@ The admin panel has full authentication. What is missing is authentication for t
 
 ### Plugin ecosystem
 
-The install workflow, marketplace UI, and JSR distribution path all exist. The gap is the plugins themselves. First-party plugins for analytics, sitemaps, and contact forms are the immediate priority.
+The install workflow, marketplace UI, and JSR distribution path all exist. First-party plugins published so far: `@dune/plugin-inline-edit` (WYSIWYG inline editing), `@dune/plugin-pdf` (PDF serving, text extraction, browser viewer), `@dune/plugin-meilisearch` (Meilisearch search backend). Next priorities: analytics, sitemaps, and contact forms.
 
 ### 1.0
 
@@ -47,7 +47,7 @@ These are directions, not commitments. Order reflects current thinking, not a fi
 
 **Edge deployment.** Dune runs on any VPS today. Running on Deno Deploy requires a KV-backed storage adapter (no persistent filesystem) and distributed cache invalidation across edge instances. The storage abstraction was designed for this; the adapter has not been built.
 
-**Search.** The current engine is an in-memory inverted index. Flex object indexing, field weighting, and pluggable backends (Orama, Meilisearch, Typesense) are the main gaps.
+**Search.** The current engine is an in-memory inverted index. `@dune/plugin-meilisearch` provides a drop-in Meilisearch backend for sites that need typo tolerance, language-aware stemming, or a persistent index. Remaining gaps: Flex object indexing, field weighting, and Orama/Typesense backends.
 
 **Content delivery.** CDN cache invalidation hooks, cache-tag headers, and purge-on-publish integration with major providers.
 
