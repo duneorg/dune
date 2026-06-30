@@ -9,7 +9,7 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createKVSessionStore } from "../../src/session/kv.ts";
-import type { AdminSession } from "../../src/admin/types.ts";
+import type { AdminSession } from "../../src/session/types.ts";
 
 function makeSession(overrides: Partial<AdminSession> = {}): AdminSession {
   return {

@@ -11,7 +11,7 @@ import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/
 import { runPluginResponseTransforms } from "../../src/cli/response-transforms.ts";
 import type { DunePlugin, ResponseTransformContext } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
-import type { AdminUser, AuthResult, AdminPermission } from "../../src/admin/types.ts";
+import type { AdminUser, AuthResult, AdminPermission } from "jsr:@dune/plugin-admin/admin/types";
 
 const config = {} as DuneConfig;
 

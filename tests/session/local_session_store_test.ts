@@ -7,7 +7,7 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createLocalSessionStore } from "../../src/session/local.ts";
-import type { AdminSession } from "../../src/admin/types.ts";
+import type { AdminSession } from "../../src/session/types.ts";
 
 // Minimal in-memory StorageAdapter sufficient for session store tests.
 function createMemoryStorage() {
