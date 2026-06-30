@@ -34,7 +34,7 @@ import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
-import { createAdminPlugin } from "../plugin-admin/plugin.ts";
+import { createAdminPlugin } from "jsr:@dune/plugin-admin";
 import { initContent } from "../content/api.ts";
 import { resolve } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
@@ -48,7 +48,7 @@ import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { AuthProvider } from "../admin/auth/provider.ts";
+import type { AuthProvider } from "jsr:@dune/plugin-admin/auth/provider";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -87,7 +87,7 @@ export interface BootstrapResult {
    * The per-site AdminContext object — null until `@dune/plugin-admin`'s `mount()` runs.
    * In multisite, each site gets its own BootstrapResult with its own AdminContext.
    */
-  adminContext: import("../admin/context.ts").AdminContext | null;
+  adminContext: import("jsr:@dune/plugin-admin/admin/context").AdminContext | null;
   /**
    * Pre-created authz system. Present when auth.mode is "dune" and authzStore is "local".
    * Shared between `@dune/plugin-admin` (admin-user tuples) and `mountDuneAuth()`

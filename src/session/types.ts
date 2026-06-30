@@ -7,7 +7,19 @@
  * running behind a load balancer or on Deno Deploy.
  */
 
-import type { AdminSession } from "../admin/types.ts";
+/**
+ * Admin session data stored in the session backend.
+ * Defined here (in core) so that session store implementations do not depend
+ * on the admin plugin package.
+ */
+export interface AdminSession {
+  id: string;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+  /** IP address of the client that created the session */
+  ip?: string;
+}
 
 export interface SessionStore {
   /** Retrieve a session by ID. Returns null if not found or expired. */

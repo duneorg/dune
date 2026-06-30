@@ -14,7 +14,7 @@ import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
-import { getDuneAdminIslands } from "../admin/mount.ts";
+import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";

@@ -18,7 +18,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
-import { getDuneAdminIslands } from "../admin/mount.ts";
+import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 

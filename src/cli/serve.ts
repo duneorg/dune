@@ -26,7 +26,7 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
-import { getDuneAdminIslands } from "../admin/mount.ts";
+import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
@@ -302,7 +302,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Expose job scheduler to admin routes — must happen after createDuneApp so
   // that ctx.adminContext is populated by @dune/plugin-admin's mount() hook.
   if (jobDefs.length > 0 && ctx.adminContext) {
-    (ctx.adminContext as import("../admin/context.ts").AdminContext & {
+    (ctx.adminContext as import("jsr:@dune/plugin-admin/admin/context").AdminContext & {
       jobScheduler?: JobScheduler;
     }).jobScheduler = jobScheduler;
   }

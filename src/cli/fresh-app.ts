@@ -10,7 +10,7 @@
  */
 
 import { App, staticFiles } from "fresh";
-import type { AdminState } from "../admin/types.ts";
+import type { AdminState } from "jsr:@dune/plugin-admin/admin/types";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { mountPlugins } from "../plugins/loader.ts";

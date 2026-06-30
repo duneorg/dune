@@ -9,7 +9,7 @@
  * (i.e. running on Deno Deploy) or when explicitly requested via config.
  */
 
-import type { AdminSession } from "../admin/types.ts";
+import type { AdminSession } from "./types.ts";
 import type { SessionStore } from "./types.ts";
 
 export interface KVSessionStoreConfig {

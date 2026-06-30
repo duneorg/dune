@@ -24,7 +24,7 @@
  * - `@dune/core/plugins` — plugin loader and `PLUGIN_API_VERSION`
  * - `@dune/core/sections` — Visual Page Builder section types and registry
  * - `@dune/core/content` — content query API for headless mode (`getContent()`)
- * - `@dune/core/admin` — headless admin mounting (`mountDuneAdmin`, `getDuneAdminIslands`)
+ * - `@dune/plugin-admin` — admin panel plugin (extracted from core as of 0.24.0)
  *
  * @since 0.6.0
  */
@@ -208,24 +208,8 @@ export type { ImageCache, ImageCacheConfig, CachedImage } from "./images/cache.t
 export { createImageHandler } from "./images/handler.ts";
 export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";
 
-// ── Admin ──────────────────────────────────────────────────────────────────
-
-export { createUserManager } from "./admin/auth/users.ts";
-export type { UserManager, CreateUserInput } from "./admin/auth/users.ts";
-export { createSessionManager } from "./admin/auth/sessions.ts";
-export type { SessionManager } from "./admin/auth/sessions.ts";
-export { createAuthMiddleware } from "./admin/auth/middleware.ts";
-export type { AuthMiddleware } from "./admin/auth/middleware.ts";
-export { hashPassword, verifyPassword } from "./admin/auth/passwords.ts";
-export type {
-  AdminUser,
-  AdminRole,
-  AdminSession,
-  AdminPermission,
-  AuthResult,
-  AdminUserInfo,
-} from "./admin/types.ts";
-export { ROLE_PERMISSIONS, toUserInfo } from "./admin/types.ts";
+// ── Admin (moved to @dune/plugin-admin as of 0.24.0) ──────────────────────
+// These types are now exported from jsr:@dune/plugin-admin.
 
 // ── Workflow ───────────────────────────────────────────────────────────────
 

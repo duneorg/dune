@@ -13,7 +13,7 @@
  * available via Deno's npm: specifier support.
  */
 
-import type { AdminSession } from "../admin/types.ts";
+import type { AdminSession } from "./types.ts";
 import type { SessionStore } from "./types.ts";
 
 // Minimal interface covering the ioredis methods we use, so callers can

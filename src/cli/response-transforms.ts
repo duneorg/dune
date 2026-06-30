@@ -20,8 +20,8 @@
  * Used by both the production and dev request paths in fresh-app.ts.
  */
 
-import type { AuthMiddleware } from "../admin/auth/middleware.ts";
-import type { AdminPermission } from "../admin/types.ts";
+import type { AuthMiddleware } from "jsr:@dune/plugin-admin/admin/auth/middleware";
+import type { AdminPermission } from "jsr:@dune/plugin-admin/admin/types";
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";

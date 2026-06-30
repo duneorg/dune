@@ -4,7 +4,43 @@
 
 import type { WorkflowStage, WorkflowTransition } from "../workflow/types.ts";
 import type { MachineTranslationConfig } from "../mt/types.ts";
-import type { AuthProviderConfig } from "../admin/auth/provider.ts";
+
+/**
+ * Admin user role — inlined here so that config/types.ts does not depend on
+ * the admin plugin package.
+ */
+export type AdminRole = "admin" | "editor" | "author";
+
+/**
+ * Auth provider configuration union — covers all supported provider backends.
+ * Defined here (in core) to avoid a config ↔ plugin-admin circular dependency.
+ */
+export type AuthProviderConfig =
+  | { type: "local" }
+  | {
+    type: "ldap";
+    url: string;
+    baseDn: string;
+    usernameAttr?: string;
+    bindDn?: string;
+    bindPassword?: string;
+    emailAttr?: string;
+    nameAttr?: string;
+    roleMap?: Array<{ group: string; role: AdminRole }>;
+    defaultRole?: AdminRole;
+  }
+  | {
+    type: "saml";
+    entityId: string;
+    acsUrl: string;
+    idpMetadata: string;
+    usernameAttr?: string;
+    emailAttr?: string;
+    nameAttr?: string;
+    roleMap?: Array<{ value: string; role: AdminRole }>;
+    roleAttr?: string;
+    defaultRole?: AdminRole;
+  };
 
 /**
  * A single plugin entry declared in site.yaml under the `plugins:` key.

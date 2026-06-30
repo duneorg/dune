@@ -73,3 +73,7 @@ function resolveType(opts: SessionStoreOptions): "local" | "kv" | "redis" {
   if (opts.type === "kv") return "kv";
   return "local";
 }
+
+// Re-export low-level session primitives for @dune/plugin-admin
+export { createLocalSessionStore } from "./local.ts";
+export type { AdminSession } from "./types.ts";
