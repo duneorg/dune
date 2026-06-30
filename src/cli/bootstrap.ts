@@ -48,7 +48,7 @@ import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { AuthProvider } from "jsr:@dune/plugin-admin/auth/provider";
+import type { AuthProvider } from "jsr:@dune/plugin-admin/admin/auth/provider";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
