@@ -6,7 +6,7 @@ This document describes what is being worked on, what comes next, and the longer
 
 ---
 
-## What ships today (v0.22)
+## What ships today (v0.23)
 
 The core is complete and in production use:
 
@@ -19,13 +19,14 @@ The core is complete and in production use:
 - Admin auth — session-based, OAuth, magic links; role-based access control; admin audit log
 - Public user auth — visitor accounts via OAuth (GitHub/Google/Discord) and magic link; `dune` and `external-jwt` modes; `local`/`session`/`db` user stores; role-based content gating via `roles:` frontmatter
 - Plugins — hooks API, browser entry points (client bundles), admin services, scheduled jobs
+- Pluggable search — `onSearchRecordsCollect` lets plugins inject records into the index; `onSearchEngineCreate` lets plugins replace the engine entirely; `@dune/plugin-meilisearch` and `@dune/plugin-pdf` both register via `plugins:` in `site.yaml` with no code
 - Flex objects — schema-defined custom data types with generated admin CRUD
 - Database layer — SQLite/KV/Postgres backends, typed repositories, SQL migrations
 - CRUD API generation — declare an `api:` block in a schema and get REST endpoints (list/get/create/update/delete) with auth and ownership checks
 - Public file upload, payments (Stripe), background jobs (cron), and a configurable search engine (field weighting, facets, highlighted excerpts, Flex indexing)
 - CDN cache invalidation — Fastly, Bunny, Cloudflare, and custom providers; cache-tags and purge-on-publish
 - Multisite — multiple sites from one process
-- CLI — `dune new`, `dev`, `serve`, `validate`, `migrate:*`, `deploy:init`, `lockfile`, `generate:*`, `jobs:*`
+- CLI — `dune new`, `dev`, `serve`, `validate`, `migrate:*`, `deploy:init`, `lockfile`, `generate:*`, `jobs:*`, `plugin:install`, `plugin:create`
 - MCP server — read tools (pages, search, taxonomy, config) and write tools (content/config mutations); scaffolding via `generate:*`
 - Lockfile UX — `dune upgrade`/`add` auto-sync `deno.lock`; staleness hint at startup; `serve --frozen` for reproducible deploys
 
@@ -35,9 +36,9 @@ The core is complete and in production use:
 
 ### Plugin ecosystem
 
-The install workflow, marketplace UI, and JSR distribution path all exist. First-party packages published so far: `@dune/plugin-inline-edit` (WYSIWYG inline editing), `@dune/plugin-pdf` (PDF serving, text extraction, browser viewer), `@dune/plugin-meilisearch` (Meilisearch search backend).
+The install workflow, marketplace UI, and JSR distribution path all exist. First-party packages published: `@dune/plugin-inline-edit` (WYSIWYG inline editing), `@dune/plugin-pdf` (PDF serving, text extraction, browser viewer), `@dune/plugin-meilisearch` (Meilisearch search backend). All three register via `plugins:` in `site.yaml` with no manual wiring.
 
-`@dune/plugin-pdf` and `@dune/plugin-meilisearch` currently ship as companion libraries that require manual wiring in a site's bootstrap. The next step is full plugin-API integration so they register via `plugins:` in `site.yaml` with no code. Beyond that, the next first-party priorities are analytics, sitemaps, and contact forms.
+The next first-party priorities are analytics, sitemaps, and contact forms. For `@dune/plugin-meilisearch`, the remaining work is an admin panel toggle for switching search backends at runtime and a parallel mode where both engines run simultaneously.
 
 ### 1.0
 

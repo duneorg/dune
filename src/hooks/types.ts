@@ -427,6 +427,41 @@ export interface AdminServicesContext {
 }
 
 /**
+ * Plugin-provided replacement for the built-in block editor.
+ *
+ * A plugin that wants to replace the admin page editor registers this via
+ * {@link AdminServices.contentEditor}. The edit route delegates to
+ * `pageEditorHandler` instead of rendering the default block editor.
+ *
+ * @since 0.24.0
+ */
+export interface ContentEditorPlugin {
+  /**
+   * Handle `GET /admin/pages/edit?path=...`.
+   *
+   * Called with the raw request and the resolved page path and admin prefix.
+   * The handler owns the full response — return HTML, JSON, or a redirect as
+   * needed. The built-in block editor is bypassed entirely when this is set.
+   */
+  pageEditorHandler(
+    req: Request,
+    meta: { pagePath: string; prefix: string },
+  ): Response | Promise<Response>;
+
+  /**
+   * Optional WebSocket upgrade handler for real-time collaboration.
+   *
+   * When present, `GET /admin/api/content-editor/ws?path=...` delegates here
+   * after auth and path validation. Return a `101 Switching Protocols` response
+   * (use `Deno.upgradeWebSocket`). When absent the WS endpoint responds 501.
+   */
+  wsHandler?: (
+    req: Request,
+    user: { id: string; name: string },
+  ) => Response;
+}
+
+/**
  * Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}.
  *
  * @since 0.17.0
@@ -434,6 +469,11 @@ export interface AdminServicesContext {
 export interface AdminServices {
   /** Inline editing manager — the service behind the inline-edit admin endpoints (v0.16+). */
   inlineEdit?: InlineEditManager;
+  /**
+   * Custom page editor — replaces the built-in block editor when set.
+   * @since 0.24.0
+   */
+  contentEditor?: ContentEditorPlugin;
 }
 
 /**

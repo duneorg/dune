@@ -15,7 +15,7 @@ import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { SubmissionManager } from "./submissions.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { HookRegistry, AdminPageRegistration } from "../hooks/types.ts";
+import type { HookRegistry, AdminPageRegistration, ContentEditorPlugin } from "../hooks/types.ts";
 import type { StagingEngine } from "../staging/engine.ts";
 import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";
@@ -50,6 +50,8 @@ export interface AdminContext {
   collab?: CollabManager;
   /** Inline editing manager, provided by a plugin via adminServices (v0.16+). */
   inlineEdit?: InlineEditManager;
+  /** Custom page editor, provided by a plugin via adminServices (v0.24+). Replaces the built-in block editor. */
+  contentEditor?: ContentEditorPlugin;
   imageCache?: ImageCache;
   auditLogger?: AuditLogger;
   metrics?: MetricsCollector;

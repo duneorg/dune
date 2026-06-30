@@ -687,6 +687,7 @@ export async function bootstrap(
       comments: commentManager,
       collab: collabManager,
       inlineEdit: adminServices.inlineEdit,
+      contentEditor: adminServices.contentEditor,
       imageCache,
       auditLogger: auditLogger ?? undefined,
       metrics: metricsEnabled ? metrics : undefined,

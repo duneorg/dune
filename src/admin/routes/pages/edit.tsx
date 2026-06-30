@@ -9,11 +9,16 @@ import type { FreshContext } from "fresh";
 
 export const handler = {
   GET(ctx: FreshContext<AdminState>) {
-    const { engine, prefix } = ctx.state.adminContext;
+    const { engine, prefix, contentEditor } = ctx.state.adminContext;
     const pagePath = ctx.url.searchParams.get("path");
     if (!pagePath) {
       return new Response(null, { status: 302, headers: { Location: `${prefix}/pages` } });
     }
+
+    if (contentEditor) {
+      return contentEditor.pageEditorHandler(ctx.req, { pagePath, prefix });
+    }
+
     const pageIndex = engine.pages.find((p) => p.route === pagePath);
     return ctx.render(<PageEditorRoute data={{ pagePath, pageIndex, prefix }} />);
   },

@@ -82,6 +82,7 @@ export type {
   AdminPageRegistration,
   AdminServices,
   AdminServicesContext,
+  ContentEditorPlugin,
   DunePlugin,
   HookContext,
   HookEvent,
