@@ -62,8 +62,11 @@ export async function mountDuneAdmin(
   // deno-lint-ignore no-explicit-any
   app: App<any>,
   ctx: BootstrapResult,
+  /** AdminContext built by @dune/plugin-admin — when omitted, falls back to ctx.adminContext. */
+  adminCtxOverride?: import("./context.ts").AdminContext,
 ): Promise<void> {
-  const { config, adminContext, pluginAdminPages, pluginPublicRoutes } = ctx;
+  const { config, pluginPublicRoutes } = ctx;
+  const adminContext = adminCtxOverride ?? ctx.adminContext;
   const adminPrefix = config.admin?.path ?? "/admin";
 
   // ── Admin panel ─────────────────────────────────────────────────────────────
@@ -90,6 +93,7 @@ export async function mountDuneAdmin(
     // The admin _middleware enforces authentication; here we additionally
     // honour the plugin-declared permission (if any) so plugin authors can
     // restrict access to a subset of admin roles.
+    const pluginAdminPages = adminContext?.pluginPages;
     if (pluginAdminPages && pluginAdminPages.length > 0 && adminContext) {
       const adminCtx = adminContext;
       for (const page of pluginAdminPages) {

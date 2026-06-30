@@ -16,7 +16,7 @@ import type { HistoryEngine } from "../history/engine.ts";
 import type { SubmissionManager } from "./submissions.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { HookRegistry, AdminPageRegistration } from "../hooks/types.ts";
-import type { ContentEditorPlugin } from "./types.ts";
+import type { ContentEditorPlugin } from "../hooks/types.ts";
 import type { StagingEngine } from "../staging/engine.ts";
 import type { CommentManager } from "./comments.ts";
 import type { CollabManager } from "../collab/mod.ts";

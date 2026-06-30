@@ -76,7 +76,7 @@
  */
 export const PLUGIN_API_VERSION = "0.7";
 
-export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms } from "./loader.ts";
+export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms, mountPlugins } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
   AdminPageRegistration,
@@ -90,4 +90,4 @@ export type {
   PublicRouteRegistration,
   ResponseTransformContext,
 } from "../hooks/types.ts";
-export type { ContentEditorPlugin } from "../admin/types.ts";
+export type { ContentEditorPlugin, MountApi } from "../hooks/types.ts";

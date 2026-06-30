@@ -318,6 +318,44 @@ export async function applyResponseTransforms(
 }
 
 /**
+ * Call every plugin's `mount()` hook in registration order.
+ *
+ * Must be called after `bootstrap()` (so all plugins are loaded and their
+ * `setup()` hooks have run) and after the Fresh `App` is created (so routes
+ * can be registered). Admin services are collected here — the same call that
+ * `bootstrap()` currently makes will move here when the admin plugin takes over.
+ *
+ * Errors in individual plugins' `mount()` are caught and logged; remaining
+ * plugins still mount.
+ *
+ * @since 0.24.0
+ */
+export async function mountPlugins(
+  // deno-lint-ignore no-explicit-any
+  app: import("fresh").App<any>,
+  ctx: import("../cli/bootstrap.ts").BootstrapResult,
+): Promise<void> {
+  const adminCfg = ctx.config.admin;
+  const adminServices = await collectAdminServices(ctx.hooks.plugins(), {
+    storage: ctx.storage,
+    history: ctx.history,
+    config: ctx.config,
+    dataDir: adminCfg?.runtimeDir ?? ".dune/admin",
+    contentDir: ctx.config.system.content.dir,
+  });
+
+  for (const plugin of ctx.hooks.plugins()) {
+    if (!plugin.mount) continue;
+    try {
+      await plugin.mount({ app, bootstrap: ctx, adminServices });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[dune] Plugin "${plugin.name}" mount() failed: ${message}`);
+    }
+  }
+}
+
+/**
  * Collect admin-context services from all registered plugins.
  *
  * Iterates the plugins in registration order and calls each plugin's

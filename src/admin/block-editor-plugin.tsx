@@ -9,7 +9,7 @@
  */
 
 import { h } from "preact";
-import type { ContentEditorPlugin } from "./types.ts";
+import type { ContentEditorPlugin } from "../hooks/types.ts";
 import PageEditor from "./islands/PageEditor.tsx";
 
 function PageEditorRoute(
@@ -37,7 +37,8 @@ export function createBlockEditorPlugin(): ContentEditorPlugin {
           headers: { Location: `${prefix}/pages` },
         });
       }
-      const pageIndex = engine.pages.find((p) => p.route === pagePath);
+      // deno-lint-ignore no-explicit-any
+      const pageIndex = (engine.pages as any[]).find((p) => p.route === pagePath);
       return ctx.render(
         <PageEditorRoute data={{ pagePath, pageIndex, prefix }} />,
       );

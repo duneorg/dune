@@ -2,7 +2,7 @@
  * Admin system types — users, sessions, permissions, and config.
  */
 
-import type { FreshContext } from "fresh";
+export type { ContentEditorPlugin } from "../hooks/types.ts";
 
 /** Admin user stored in data/users/ */
 export interface AdminUser {
@@ -106,39 +106,6 @@ export interface AdminUserInfo {
   name: string;
   createdAt: number;
   enabled: boolean;
-}
-
-/**
- * Plugin-provided replacement for the built-in block editor.
- *
- * Register via {@link AdminServices.contentEditor} in a plugin's `adminServices()`.
- * The edit route delegates to `pageEditorHandler` instead of the default block editor.
- *
- * @since 0.24.0
- */
-export interface ContentEditorPlugin {
-  /**
-   * Handle `GET /admin/pages/edit?path=...`.
-   *
-   * Receives the full Fresh context — call `ctx.render(component)` to render
-   * within the admin layout, or return any `Response` directly. Access
-   * `ctx.state.adminContext` for engine, config, and other admin services.
-   */
-  pageEditorHandler(
-    ctx: FreshContext<AdminState>,
-  ): Response | Promise<Response>;
-
-  /**
-   * Optional WebSocket upgrade handler for real-time collaboration.
-   *
-   * When present, `GET /admin/api/content-editor/ws?path=...` delegates here
-   * after auth and path validation. Return a `101 Switching Protocols` response
-   * via `Deno.upgradeWebSocket`. When absent the WS endpoint responds 501.
-   */
-  wsHandler?: (
-    req: Request,
-    user: { id: string; name: string },
-  ) => Response;
 }
 
 /** Fresh 2 context state for admin routes — set by middleware in fresh-app.ts */

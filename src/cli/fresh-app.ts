@@ -13,7 +13,7 @@ import { App, staticFiles } from "fresh";
 import type { AdminState } from "../admin/types.ts";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
-import { mountDuneAdmin } from "../admin/mount.ts";
+import { mountPlugins } from "../plugins/loader.ts";
 import {
   withSecurityHeaders,
   maybeCompress,
@@ -93,13 +93,15 @@ export async function createDuneApp(
     imageHandler,
     flexEngine,
     pluginAssetDirs,
-    stagingEngine,
     config,
     sharedThemesDir,
     hooks,
     metrics,
-    auth,
   } = ctx;
+  // auth and stagingEngine are owned by the admin plugin; read lazily from
+  // adminContext so they're available after mountPlugins() has run.
+  const getAdminAuth = () => ctx.adminContext?.auth ?? null;
+  const getAdminStaging = () => ctx.adminContext?.staging;
 
   const startTime = Date.now();
   const siteName = engine.site.title;
@@ -583,7 +585,7 @@ export async function createDuneApp(
 
   // 6. Staged preview
   app.get("/__preview", async (fc) => {
-    const result = await serveStagedPreview(fc.url, engine, stagingEngine);
+    const result = await serveStagedPreview(fc.url, engine, getAdminStaging());
     return result ?? withSecurityHeaders(
       renderErrorPage(404, "Not Found", "Preview not found or token invalid.", siteName),
     );
@@ -610,11 +612,10 @@ export async function createDuneApp(
     });
   }
 
-  // 8. Admin panel + plugin routes + public API — delegated to mountDuneAdmin().
-  // This is the same composable function headless developers call directly on
-  // their own Fresh app. Here createDuneApp() calls it internally so full-mode
-  // and headless mode share a single implementation.
-  await mountDuneAdmin(app, ctx);
+  // 8. Admin panel + plugin routes + public API — delegated to mountPlugins().
+  // Each plugin's mount() hook runs here; the built-in admin plugin calls
+  // mountDuneAdmin() internally so full-mode and headless mode share the same path.
+  await mountPlugins(app, ctx);
 
   // 9. Core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
@@ -791,7 +792,7 @@ export async function createDuneApp(
           req,
           response,
           plugins: hooks.plugins(),
-          auth,
+          auth: getAdminAuth(),
           pages: engine.pages,
           config,
           adminPrefix,
@@ -853,7 +854,7 @@ export async function createDuneApp(
           req,
           response,
           plugins: hooks.plugins(),
-          auth,
+          auth: getAdminAuth(),
           pages: engine.pages,
           config,
           adminPrefix,

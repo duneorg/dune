@@ -37,7 +37,11 @@ export interface RunResponseTransformsOptions {
   response: Response;
   /** All registered plugins; filtered on `transformResponse` internally. */
   plugins: DunePlugin[];
-  auth: Pick<AuthMiddleware, "authenticate" | "hasPermission">;
+  /**
+   * Admin auth middleware — null when the admin plugin is disabled or not yet mounted.
+   * When null, all sessions are treated as anonymous (transformAuth stays null).
+   */
+  auth: Pick<AuthMiddleware, "authenticate" | "hasPermission"> | null;
   /** Content index used to match the current URL to a page. */
   pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[];
   config: DuneConfig;
@@ -95,7 +99,7 @@ export async function runPluginResponseTransforms(
   if (isAdminPath(url.pathname, adminPrefix)) return response;
 
   let transformAuth: ResponseTransformContext["auth"] = null;
-  if (hasAdminSessionCookie(req)) {
+  if (auth && hasAdminSessionCookie(req)) {
     try {
       const result = await auth.authenticate(req);
       // Contract (ResponseTransformContext.auth): non-null only when the

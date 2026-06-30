@@ -8,7 +8,6 @@ import type { BlueprintField } from "../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 import type { InlineEditManager } from "../inline-edit/types.ts";
 import type { HistoryEngine } from "../history/engine.ts";
-import type { ContentEditorPlugin } from "../admin/types.ts";
 
 /**
  * All lifecycle events a plugin can subscribe to.
@@ -356,6 +355,31 @@ export interface DunePlugin {
     ctx: AdminServicesContext,
   ) => Promise<AdminServices> | AdminServices;
   /**
+   * Mount Fresh routes onto the app.
+   *
+   * Called by {@link mountPlugins} after `bootstrap()` completes and the Fresh
+   * `App` instance is available, but before the app starts handling requests.
+   * Use this to register routes, middleware, and layouts that require a `FreshContext`
+   * (e.g. an admin panel sub-app, a dashboard, a set of auth routes).
+   *
+   * `adminServices` is the merged output of all plugins' `adminServices()` factories,
+   * collected at mount time. Plugins that contribute an `inlineEdit` manager or
+   * `contentEditor` implementation will see their contributions reflected here.
+   *
+   * @since 0.24.0
+   *
+   * @example
+   * ```ts
+   * import { registerAdminRoutes } from "./routes.ts";
+   *
+   * mount({ app, bootstrap, adminServices }) {
+   *   registerAdminRoutes(app, bootstrap.config, adminServices);
+   * }
+   * ```
+   */
+  mount?: (api: MountApi) => Promise<void> | void;
+
+  /**
    * Transform an HTTP response before it is sent to the client.
    *
    * Called for every response produced by the site (content pages, not admin
@@ -428,6 +452,43 @@ export interface AdminServicesContext {
 }
 
 /**
+ * Plugin-provided replacement for the built-in block editor.
+ *
+ * Register via {@link AdminServices.contentEditor} in a plugin's `adminServices()`.
+ * The edit route delegates to `pageEditorHandler` instead of the default block editor.
+ *
+ * Defined in core (not in `@dune/plugin-admin`) so that alternative editor plugins can
+ * type their implementation without taking a dependency on the admin plugin itself.
+ *
+ * @since 0.24.0
+ */
+export interface ContentEditorPlugin {
+  /**
+   * Handle `GET /admin/pages/edit?path=...`.
+   *
+   * Receives the full Fresh context — call `ctx.render(component)` to render
+   * within the admin layout, or return any `Response` directly.
+   * Access `ctx.state.adminContext` for engine, config, and other admin services.
+   * The context state type is `AdminState` from `@dune/plugin-admin`; typed as
+   * `any` here so core does not depend on admin-internal types.
+   */
+  // deno-lint-ignore no-explicit-any
+  pageEditorHandler(ctx: FreshContext<any>): Response | Promise<Response>;
+
+  /**
+   * Optional WebSocket upgrade handler for real-time collaboration.
+   *
+   * When present, `GET /admin/api/content-editor/ws?path=...` delegates here
+   * after auth and path validation. Return a `101 Switching Protocols` response
+   * via `Deno.upgradeWebSocket`. When absent the WS endpoint responds 501.
+   */
+  wsHandler?: (
+    req: Request,
+    user: { id: string; name: string },
+  ) => Response;
+}
+
+/**
  * Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}.
  *
  * @since 0.17.0
@@ -475,6 +536,33 @@ export interface ResponseTransformContext {
   page: { sourcePath: string; route: string; title: string | null } | null;
   /** Admin panel URL prefix (e.g. `"/admin"`). */
   adminPrefix: string;
+}
+
+/**
+ * Passed to {@link DunePlugin.mount} — provides everything a plugin needs to
+ * register Fresh routes and wire up runtime services.
+ *
+ * @since 0.24.0
+ */
+export interface MountApi {
+  /**
+   * The Fresh `App` instance. Register routes, middleware, and layouts via
+   * `app.get()`, `app.use()`, `app.route()`, etc.
+   */
+  // deno-lint-ignore no-explicit-any
+  app: import("fresh").App<any>;
+  /**
+   * The fully bootstrapped engine context — engine, storage, config, hooks,
+   * image pipeline, auth system, etc.
+   * Typed via import() to avoid a circular type dependency with bootstrap.ts.
+   */
+  bootstrap: import("../cli/bootstrap.ts").BootstrapResult;
+  /**
+   * Merged output of all plugins' `adminServices()` factories, collected just
+   * before `mount()` is called. Plugins that contribute an `inlineEdit` manager
+   * or a `contentEditor` implementation will be visible here.
+   */
+  adminServices: AdminServices;
 }
 
 /** Hook registry interface */

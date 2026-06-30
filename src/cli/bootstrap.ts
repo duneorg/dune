@@ -22,34 +22,11 @@ import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
 import { createImageCache } from "../images/cache.ts";
 import { createImageHandler } from "../images/handler.ts";
-import { createBlockEditorPlugin } from "../admin/block-editor-plugin.tsx";
-import { createUserManager } from "../admin/auth/users.ts";
-import { createSessionManager } from "../admin/auth/sessions.ts";
-import { createSessionStore } from "../session/mod.ts";
-import { createAuthMiddleware } from "../admin/auth/middleware.ts";
-import { LocalRateLimitStore } from "../security/rate-limit-store.ts";
-import type { RateLimitStore } from "../security/rate-limit-store.ts";
-import { LocalAuthProvider } from "../admin/auth/local-provider.ts";
-import { initAdminContext } from "../admin/context.ts";
-import { initContent } from "../content/api.ts";
-import { createWorkflowEngine } from "../workflow/engine.ts";
-import { createScheduler } from "../workflow/scheduler.ts";
 import { createHistoryEngine } from "../history/engine.ts";
-import { createSubmissionManager } from "../admin/submissions.ts";
 import { createFlexEngine } from "../flex/engine.ts";
-import {
-  collectAdminServices,
-  loadPluginAdminConfigs,
-  loadPlugins,
-} from "../plugins/loader.ts";
-import { createStagingEngine } from "../staging/engine.ts";
-import { createCommentManager } from "../admin/comments.ts";
-import { createCollabManager } from "../collab/mod.ts";
-import { AuditLogger } from "../audit/mod.ts";
+import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
-import { createMachineTranslator } from "../mt/mod.ts";
-import type { MachineTranslator } from "../mt/mod.ts";
-import { bootstrapAdminTuples, createDuneAuthSystem } from "../auth/authz.ts";
+import { createDuneAuthSystem } from "../auth/authz.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
@@ -57,7 +34,9 @@ import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
-import { join, resolve } from "@std/path";
+import { createAdminPlugin } from "../plugin-admin/plugin.ts";
+import { initContent } from "../content/api.ts";
+import { resolve } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -67,17 +46,9 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { ImageHandler } from "../images/handler.ts";
 import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
-import type { UserManager } from "../admin/auth/users.ts";
-import type { SessionManager } from "../admin/auth/sessions.ts";
-import type { AuthMiddleware } from "../admin/auth/middleware.ts";
-import type { AuthProvider } from "../admin/auth/provider.ts";
-import type { WorkflowEngine } from "../workflow/engine.ts";
-import type { Scheduler } from "../workflow/scheduler.ts";
 import type { HistoryEngine } from "../history/engine.ts";
-import type { SubmissionManager } from "../admin/submissions.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { StagingEngine } from "../staging/engine.ts";
-import type { CollabManager } from "../collab/mod.ts";
+import type { AuthProvider } from "../admin/auth/provider.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
@@ -93,44 +64,34 @@ export interface BootstrapResult {
   imageHandler: ImageHandler;
   imageProcessor: ImageProcessor;
   imageCache: ImageCache;
-  users: UserManager;
-  sessions: SessionManager;
-  auth: AuthMiddleware;
-  workflow: WorkflowEngine;
-  scheduler: Scheduler;
+  /**
+   * Revision history engine — stays in core because it is part of the
+   * `AdminServicesContext` passed to plugins' `adminServices()` factories, and
+   * because `@dune/plugin-inline-edit` may need it independently of the admin plugin.
+   */
   history: HistoryEngine;
-  submissionManager: SubmissionManager;
+  /**
+   * Flex Objects engine — stays in core because public collections can source
+   * data from flex objects (the `@flex` collection type).
+   */
   flexEngine: FlexEngine;
-  stagingEngine: StagingEngine;
-  /** Real-time collaboration manager */
-  collabManager: CollabManager;
   /** Map of plugin name → absolute asset directory path */
   pluginAssetDirs: Map<string, string>;
   /** Absolute path to shared themes dir (multisite only), for static file serving */
   sharedThemesDir?: string;
-  /** Active authentication provider (local by default, or external if configured) */
-  authProvider: AuthProvider;
-  /** Audit logger — null when admin is disabled or audit.enabled is false */
-  auditLogger: AuditLogger | null;
   /** In-process performance metrics collector */
   metrics: MetricsCollector;
-  /** Machine translation provider — null when not configured */
-  mt: MachineTranslator | null;
-  /** Custom admin pages registered by plugins, for programmatic Fresh route wiring */
-  pluginAdminPages: import("../admin/context.ts").AdminPageRegistration[];
   /** Public-facing routes registered by plugins */
   pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[];
   /**
-   * The per-site AdminContext object.
-   * Null when admin is disabled. In multisite, each site gets its own BootstrapResult
-   * with its own AdminContext — use this instead of getAdminContext() to avoid the
-   * singleton bug where the last-bootstrapped site overwrites the global.
+   * The per-site AdminContext object — null until `@dune/plugin-admin`'s `mount()` runs.
+   * In multisite, each site gets its own BootstrapResult with its own AdminContext.
    */
   adminContext: import("../admin/context.ts").AdminContext | null;
   /**
    * Pre-created authz system. Present when auth.mode is "dune" and authzStore is "local".
-   * `mountDuneAuth()` reuses this rather than creating a second instance, so that
-   * admin-user tuples and site-user tuples share the same in-memory index.
+   * Shared between `@dune/plugin-admin` (admin-user tuples) and `mountDuneAuth()`
+   * (site-user tuples) so both pools use the same in-memory index.
    */
   authz?: DuneAuthSystem;
   /** Paired adapter for the authz system above — needed for hasTuple / bootstrap. */
@@ -158,9 +119,11 @@ export interface BootstrapOptions {
    */
   dev?: boolean;
   /**
-   * Custom authentication provider. When supplied, takes precedence over
-   * `admin.auth_provider` in system.yaml. Use this to inject a fully custom
-   * provider (e.g. OpenID Connect, internal SSO) without modifying config files.
+   * Custom authentication provider for the admin panel.
+   *
+   * When supplied, takes precedence over `admin.auth_provider` in system.yaml.
+   * Forwarded to the built-in admin plugin (`@dune/plugin-admin`). When running
+   * a custom admin plugin that handles its own auth, this option is ignored.
    *
    * @example
    * ```ts
@@ -173,34 +136,6 @@ export interface BootstrapOptions {
   authProvider?: AuthProvider;
 }
 
-/** Select an AuthProvider from config, defaulting to local passwords. */
-function resolveAuthProvider(
-  cfg: import("../config/types.ts").AdminConfig["auth_provider"],
-  users: UserManager,
-): AuthProvider {
-  if (!cfg || cfg.type === "local") return new LocalAuthProvider(users);
-  // The LDAP and SAML providers are unimplemented stubs whose
-  // authenticate() throws on call. Selecting them previously produced an
-  // admin DoS at first login attempt: every request to the login route
-  // crashed without a clear startup signal. Refuse to start so operators
-  // discover the misconfiguration up-front.
-  if (cfg.type === "ldap" || cfg.type === "saml") {
-    throw new Error(
-      `[dune] auth_provider.type "${cfg.type}" is not implemented in this release. ` +
-        `Set auth_provider.type to "local" (or remove the auth_provider section) ` +
-        `to use the built-in local password store. ` +
-        `LDAP and SAML are tracked for a future release.`,
-    );
-  }
-  // Any other unrecognized value is an admin typo — fail closed rather
-  // than silently fall back to local auth.
-  throw new Error(
-    `[dune] auth_provider.type "${
-      (cfg as { type?: string }).type ?? "<missing>"
-    }" is not recognized. ` +
-      `Valid values: "local" (default).`,
-  );
-}
 
 /**
  * Bootstrap the full Dune engine from a root directory.
@@ -303,17 +238,16 @@ export async function bootstrap(
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
-  // Collect plugin asset dirs, template dirs, admin pages, and public routes.
+  // Collect plugin asset dirs, template dirs, and public routes.
+  // pluginAdminPages are no longer aggregated here — @dune/plugin-admin's
+  // mount() reads them from hooks.plugins() and stores them on AdminContext.pluginPages.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
-  const pluginAdminPages:
-    import("../admin/context.ts").AdminPageRegistration[] = [];
   const pluginPublicRoutes:
     import("../hooks/types.ts").PublicRouteRegistration[] = [];
   for (const plugin of hooks.plugins()) {
     if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
     if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
-    if (plugin.adminPages) pluginAdminPages.push(...plugin.adminPages);
     if (plugin.publicRoutes) pluginPublicRoutes.push(...plugin.publicRoutes);
   }
 
@@ -405,7 +339,8 @@ export async function bootstrap(
     cache: imageCache,
   });
 
-  // 10. Workflow, scheduling, and history
+  // 10. History engine — stays in core so AdminServicesContext and @dune/plugin-inline-edit
+  // can both access it without depending on the admin plugin.
   const adminConfig = config.admin ?? {
     path: "/admin",
     sessionLifetime: 86400,
@@ -413,19 +348,8 @@ export async function bootstrap(
     runtimeDir: ".dune/admin",
     enabled: true,
   };
-
   const runtimeDir = adminConfig.runtimeDir ?? ".dune/admin";
   const dataDir = adminConfig.dataDir ?? "data";
-
-  const workflow = createWorkflowEngine(
-    { storage, dataDir: runtimeDir },
-    config.site.workflow ?? undefined,
-  );
-
-  const scheduler = createScheduler({
-    storage,
-    dataDir: runtimeDir,
-  });
 
   const history = createHistoryEngine({
     storage,
@@ -433,105 +357,8 @@ export async function bootstrap(
     maxRevisions: adminConfig.maxRevisions ?? 50,
   });
 
-  const stagingEngine = createStagingEngine({
-    storage,
-    runtimeDir,
-  });
-
-  const commentManager = createCommentManager({ dataDir, runtimeDir });
-
-  // 11. Real-time collaboration (OT-based block editor)
-  const collabManager = createCollabManager({
-    storage,
-    engine,
-    history,
-    contentDir: config.system.content.dir,
-  });
-
-  // 11b. Admin services — collected from plugins loaded in 5a.
-  // inlineEdit has no built-in; a plugin (e.g. @dune/plugin-inline-edit) must
-  // be listed, otherwise inline-edit endpoints respond 501.
-  // contentEditor defaults to the built-in block editor; a plugin may override
-  // it by returning adminServices.contentEditor.
-  const adminServices = await collectAdminServices(hooks.plugins(), {
-    storage,
-    history,
-    config,
-    dataDir: runtimeDir,
-    contentDir: config.system.content.dir,
-  });
-  if (!adminServices.contentEditor) {
-    adminServices.contentEditor = createBlockEditorPlugin();
-  }
-
-  // 12. Admin panel
-  const users = createUserManager({
-    storage,
-    usersDir: `${dataDir}/users`,
-  });
-
-  // Migration warning: detect users left in the old .dune/admin/users location
-  const legacyUsersDir = ".dune/admin/users";
-  if (await storage.exists(legacyUsersDir)) {
-    try {
-      const legacyEntries = await storage.list(legacyUsersDir);
-      if (legacyEntries.some((e) => e.name.endsWith(".json"))) {
-        logger.warn("admin.users.legacy-location", {
-          legacyDir: legacyUsersDir,
-          newDir: `${dataDir}/users`,
-          message: "Move user files or a new default admin will be created",
-        });
-      }
-    } catch { /* ignore */ }
-  }
-
-  // Session store — resolve backend from config, defaulting to local file-backed.
-  // createSessionStore is async (may open a KV handle), so we await it here.
-  const sessionStoreCfg = config.system?.session_store;
-  const resolvedSessionStore = await createSessionStore({
-    type: sessionStoreCfg?.type ?? "local",
-    redisUrl: sessionStoreCfg?.url
-      ? (sessionStoreCfg.url.startsWith("$")
-        ? Deno.env.get(sessionStoreCfg.url.slice(1))
-        : sessionStoreCfg.url)
-      : undefined,
-    storage,
-    sessionsDir: `${runtimeDir}/sessions`,
-    lifetime: adminConfig.sessionLifetime,
-  });
-
-  const sessions = createSessionManager({
-    store: resolvedSessionStore,
-    lifetime: adminConfig.sessionLifetime,
-  });
-
-  // Rate-limit store — always LocalRateLimitStore for now; operators can
-  // replace this by constructing a KVRateLimitStore or RedisRateLimitStore
-  // and passing it via a custom bootstrap wrapper.
-  const rateLimitStore: RateLimitStore = new LocalRateLimitStore();
-
-  // Auth provider — select based on BootstrapOptions injection first, then
-  // admin.auth_provider config, falling back to local passwords.
-  const authProvider: AuthProvider = options.authProvider ??
-    resolveAuthProvider(config.admin?.auth_provider, users);
-
-  // Set Secure cookie flag unless running in a local dev environment.
-  // "localhost" and other HTTP dev setups cannot set Secure cookies via HTTP
-  // (except on localhost in most browsers, where the browser grants an exception).
-  // Default to true (production-safe); disable via the dev option or DUNE_ENV=dev.
-  const secureCookies = !dev && Deno.env.get("DUNE_ENV") !== "dev";
-  const auth = createAuthMiddleware({
-    sessions,
-    users,
-    secure: secureCookies,
-    trustForwardedFor: config.system?.trusted_proxies === true,
-  });
-
-  // Authorization (polizy) — create the authz bundle and bootstrap admin users.
-  // Site-user tuples are bootstrapped later in mountDuneAuth() once the site
-  // user store is available. Both bootstrap calls use this same adapter so they
-  // share the in-memory tuple index.
-  //
+  // 11. Authorization (Polizy) — created in core so that admin-user tuples
+  // (@dune/plugin-admin) and site-user tuples (mountDuneAuth) share one index.
   // Reading auth mode from site config (public auth, not the admin auth provider).
   // deno-lint-ignore no-explicit-any
   const _siteAuthCfg = ((config.site as any).auth) as
@@ -548,13 +375,13 @@ export async function bootstrap(
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
 
-  // Load HMAC key once — shared by admin and site-user authz bundles
+  // Load HMAC key once — shared by admin and site-user authz bundles.
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
     console.error("[dune/authz] Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
     return null;
   });
 
-  if (adminConfig.enabled && _authzStoreCfg === "local") {
+  if (adminConfig.enabled !== false && _authzStoreCfg === "local") {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",
@@ -563,67 +390,32 @@ export async function bootstrap(
       }, storage);
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
-      const allAdminUsers = await users.list();
-      // Only bootstrap tuples for enabled users. Disabled users have already had
-      // their tuples revoked at disable-time (admin user route). Seeding tuples for
-      // disabled users here would re-grant permissions that were intentionally revoked,
-      // allowing authz.check() to pass for users who are blocked at the session layer.
-      const enabledAdminUsers = allAdminUsers.filter((u) =>
-        u.enabled !== false
-      );
-      await bootstrapAdminTuples(
-        bootstrappedAuthz,
-        bootstrappedAuthzAdapter,
-        enabledAdminUsers,
-      );
+      // Admin-user tuples are bootstrapped by @dune/plugin-admin's mount() hook
+      // after it creates the UserManager. Core only creates the empty system here.
     } catch (err) {
       console.warn(
-        "[dune/authz] Admin authz bootstrap failed, falling back to ROLE_PERMISSIONS:",
+        "[dune/authz] Authz system creation failed, falling back to ROLE_PERMISSIONS:",
         err,
       );
-      bootstrappedAuthz = undefined;
-      bootstrappedAuthzAdapter = undefined;
     }
   }
 
-  const submissionManager = createSubmissionManager({
-    storage,
-    submissionsDir: `${dataDir}/submissions`,
-  });
-
-  // 13. Audit logger
-  // Resolve the audit log path under the site root. Reject absolute or
-  // ..-traversed paths that escape the root: an admin-supplied audit
-  // path that escapes (e.g. "/etc/cron.d/foo" or "../../etc/something")
-  // would let the audit logger overwrite arbitrary files at write time.
-  let auditLogger: AuditLogger | null = null;
-  if (adminConfig.enabled !== false && adminConfig.audit?.enabled !== false) {
-    const configuredPath = adminConfig.audit?.logFile;
-    const auditLogFile = configuredPath
-      ? join(root, configuredPath) // join() normalizes ".." so we can detect escapes below
-      : join(root, runtimeDir, "audit.log");
-    // Reject if the resolved path escapes the site root. We use string-prefix
-    // containment (root + sep) which suffices for the file paths used here;
-    // the audit log is created during init() so realpath isn't an option yet.
-    const containmentRoot = root.endsWith("/") || root.endsWith("\\")
-      ? root
-      : root + "/";
-    if (!auditLogFile.startsWith(containmentRoot)) {
-      throw new Error(
-        `[dune] admin.audit.logFile must resolve under the site root. ` +
-          `Got: ${configuredPath} -> ${auditLogFile}`,
-      );
-    }
-    auditLogger = new AuditLogger({ logFile: auditLogFile });
-    await auditLogger.init();
+  // 12. Register the built-in admin plugin before user plugins so user plugins
+  // can override its services via adminServices(). The plugin's setup() runs
+  // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
+  if (adminConfig.enabled !== false) {
+    const adminPlugin = createAdminPlugin(config, storage, {
+      root,
+      dev,
+      authProvider: options.authProvider,
+      authz: bootstrappedAuthz,
+      authzAdapter: bootstrappedAuthzAdapter,
+      hmacKey,
+    });
+    hooks.registerPlugin(adminPlugin);
   }
 
-  // 14. Machine translation
-  const mt: MachineTranslator | null = config.site.machine_translation
-    ? createMachineTranslator(config.site.machine_translation)
-    : null;
-
-  // 15. Metrics collector
+  // 13. Metrics collector
   const metricsEnabled = config.system.metrics?.enabled !== false;
   const metrics = new MetricsCollector({
     slowQueryThresholdMs: config.system.metrics?.slowQueryThresholdMs ?? 100,
@@ -667,59 +459,8 @@ export async function bootstrap(
     });
   }
 
-  // Build the per-site AdminContext object. Also initialize the singleton so
-  // single-site code paths (serve.ts, dev.ts) can still call getAdminContext().
-  // In multisite, fresh-app.ts threads this object through ctx.state.adminContext
-  // instead of relying on the singleton, avoiding the last-writer-wins bug.
-  let adminContextObj: import("../admin/context.ts").AdminContext | null = null;
-  if (adminConfig.enabled) {
-    adminContextObj = {
-      engine,
-      storage,
-      config,
-      auth,
-      users,
-      sessions,
-      prefix: adminConfig.path ?? "/admin",
-      authProvider,
-      workflow,
-      scheduler,
-      history,
-      submissions: submissionManager,
-      flex: flexEngine,
-      hooks,
-      staging: stagingEngine,
-      comments: commentManager,
-      collab: collabManager,
-      inlineEdit: adminServices.inlineEdit,
-      contentEditor: adminServices.contentEditor,
-      imageCache,
-      auditLogger: auditLogger ?? undefined,
-      metrics: metricsEnabled ? metrics : undefined,
-      mt,
-      rateLimitStore,
-      pluginPages: pluginAdminPages.length > 0 ? pluginAdminPages : undefined,
-      authz: bootstrappedAuthz,
-    };
-    initAdminContext(adminContextObj);
-  }
-
   // Initialize the content API singleton so getContent() works in Fresh routes.
-  // This is always safe to call — headless developers need it, full-mode
-  // developers can use it as an escape hatch, and it's a no-op after the first call.
   initContent({ engine, search, collections, taxonomy });
-
-  // Ensure a default admin user exists on first run
-  if (adminConfig.enabled) {
-    const result = await users.ensureDefaultAdmin();
-    if (result.created) {
-      console.log(`\n  🔑 Default admin created — username: admin`);
-      console.log(`     Password written to: ${result.passwordFile}`);
-      console.log(
-        `     Read it, then delete the file and change your password.\n`,
-      );
-    }
-  }
 
   return {
     engine,
@@ -733,25 +474,14 @@ export async function bootstrap(
     imageHandler,
     imageProcessor,
     imageCache,
-    users,
-    sessions,
-    auth,
-    authProvider,
-    workflow,
-    scheduler,
     history,
-    submissionManager,
     flexEngine,
-    stagingEngine,
-    collabManager,
     pluginAssetDirs,
     sharedThemesDir,
-    auditLogger,
     metrics,
-    mt,
-    pluginAdminPages,
     pluginPublicRoutes,
-    adminContext: adminContextObj,
+    // adminContext is null until @dune/plugin-admin's mount() runs inside mountPlugins()
+    adminContext: null,
     authz: bootstrappedAuthz,
     authzAdapter: bootstrappedAuthzAdapter,
     hmacKey,

@@ -224,12 +224,6 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     console.log(`  ⏰ ${jobDefs.length} job(s) scheduled`);
     // Wire ctx.jobs into hook context so plugins can trigger jobs from hooks
     ctx.hooks.setJobContext({ run: (name) => jobScheduler.run(name) });
-    // Expose scheduler to admin routes via adminContext
-    if (ctx.adminContext) {
-      (ctx.adminContext as import("../admin/context.ts").AdminContext & {
-        jobScheduler?: JobScheduler;
-      }).jobScheduler = jobScheduler;
-    }
   }
   const feedEnabled = config.site.feed?.enabled !== false;
 
@@ -302,7 +296,16 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 
   // Assemble the Fresh app with all Dune routes as middleware.
+  // adminContext is set inside createDuneApp (by mountPlugins → plugin-admin's mount()).
   const { app, setShuttingDown } = await createDuneApp(ctx, { root, port, debug, dev: false });
+
+  // Expose job scheduler to admin routes — must happen after createDuneApp so
+  // that ctx.adminContext is populated by @dune/plugin-admin's mount() hook.
+  if (jobDefs.length > 0 && ctx.adminContext) {
+    (ctx.adminContext as import("../admin/context.ts").AdminContext & {
+      jobScheduler?: JobScheduler;
+    }).jobScheduler = jobScheduler;
+  }
 
   // Attach the island build cache so staticFiles() can serve /_fresh/js/* chunks.
   applySnapshot(app);
