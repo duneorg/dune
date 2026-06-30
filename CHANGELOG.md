@@ -5,6 +5,72 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.24.0] — 2026-06-30
+
+### Added
+
+- **`@dune/plugin-admin` — the Dune admin panel is now a standalone JSR package.**
+  The admin panel, block editor, user management, auth middleware, audit logging,
+  machine translation, staging engine, workflow, collab, submissions, and all admin
+  Fresh routes have been extracted from `@dune/core` into
+  [`jsr:@dune/plugin-admin`](https://jsr.io/@dune/plugin-admin). Core is now a pure
+  content engine with no admin-specific code. Existing sites continue to work without
+  changes — the plugin is auto-registered by `bootstrap()`.
+
+- **`DunePlugin.mount(api: MountApi)` lifecycle hook.** Plugins that need to register
+  Fresh routes, middleware, or layouts can now do so in `mount()`, which is called
+  after `bootstrap()` once the Fresh `App` instance is available. `setup()` continues
+  to run at bootstrap time (before the app exists). `MountApi` provides `{ app,
+  bootstrap, adminServices }`.
+
+- **`mountPlugins(app, ctx)` in `@dune/core/plugins`.** Replaces the direct
+  `mountDuneAdmin(app, ctx)` call in headless setups. Calls `collectAdminServices()`
+  then iterates all plugins invoking their `mount()` hooks in registration order.
+  Headless developers: replace `mountDuneAdmin` with `mountPlugins`.
+
+- **25 new subpath exports from `@dune/core`** — exposes internal modules that
+  first-party plugins (and custom admin implementations) depend on:
+  `./hooks`, `./config`, `./storage`, `./staging`, `./workflow`, `./session`,
+  `./audit`, `./mt`, `./security`, `./history`, `./metrics`, `./flex`, `./images`,
+  `./forms`, `./jobs`, `./blueprints`, `./search`, `./nav`, `./types`,
+  `./auth/passwords`, `./auth/provisioner`, `./auth/authz-adapter-local`,
+  `./auth/authz-adapter-db`, `./bootstrap`, `./content/types`.
+
+- **`ContentEditorPlugin` decoupled from `AdminState`.** The interface moved from
+  `src/admin/types.ts` to `src/hooks/types.ts` and now uses `FreshContext<any>`
+  instead of `FreshContext<AdminState>`, so it is expressible in core without
+  importing admin-internal types. The change is backwards-compatible: the type
+  becomes more permissive, not less.
+
+### Changed
+
+- **`BootstrapResult` is significantly slimmer.** Twelve fields that were
+  admin-specific (`users`, `sessions`, `auth`, `authProvider`, `workflow`,
+  `scheduler`, `submissionManager`, `stagingEngine`, `collabManager`, `auditLogger`,
+  `mt`, `pluginAdminPages`) have been removed. `adminContext` remains but is `null`
+  until `mountPlugins()` runs; it is then set by `@dune/plugin-admin`'s `mount()`
+  hook. `history` and `flexEngine` stay in `BootstrapResult` — both are core-level
+  concerns used outside the admin panel.
+
+- **`./admin` subpath export removed from `@dune/core`.** Imports from
+  `jsr:@dune/core/admin` (previously `mount.ts`) are now available from
+  `jsr:@dune/plugin-admin/admin/mount`. This is a breaking change for any code that
+  imported `mountDuneAdmin` or `registerAdminRoutes` from `@dune/core/admin` —
+  update those imports to `@dune/plugin-admin/admin/mount`.
+
+### Migration
+
+No changes to `site.yaml` are required for existing sites. `bootstrap()` continues to
+auto-register the admin plugin when `admin.enabled` is not `false`. Sites that want to
+opt out of the admin panel entirely can now do so cleanly by setting
+`admin: { enabled: false }` in `system.yaml` — no admin routes, user pool, or
+auth overhead will be initialised.
+
+Headless developers who called `mountDuneAdmin(app, ctx)` directly should replace it
+with `mountPlugins(app, ctx)` from `@dune/core/plugins`.
+
+---
+
 ## [0.23.0] — 2026-06-29
 
 ### Added
