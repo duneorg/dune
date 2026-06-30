@@ -26,7 +26,6 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
-import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
@@ -180,7 +179,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log("🏜️  Dune — starting production server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, config, pluginPublicRoutes, storage } = ctx;
+  const { engine, config, pluginPublicRoutes, storage, hooks } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
 
   // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
@@ -230,9 +229,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Collect island paths from plugin public routes so they're included in the bundle.
   // Validate before handing to Builder so a plugin can't name a path with
   // `..` that escapes the workspace root (HIGH-19).
-  const pluginIslandSpecifiers = (pluginPublicRoutes ?? [])
-    .map((r) => r.island)
-    .filter((p): p is string => {
+  const pluginIslandSpecifiers = [
+    ...(pluginPublicRoutes ?? []).map((r) => r.island).filter((p): p is string => {
       if (!isValidPluginIslandSpecifier(p)) {
         if (p !== undefined) {
           logger.warn("plugin.island.rejected", { path: p });
@@ -240,7 +238,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         return false;
       }
       return true;
-    });
+    }),
+    // Collect islandSpecifiers declared by plugins (e.g. @dune/plugin-admin's islands).
+    ...hooks.plugins().flatMap((p) => p.islandSpecifiers ?? []),
+  ];
 
   // Collect island paths from the active theme chain (auto-discovery).
   const themeIslandPaths = await collectThemeIslands(
@@ -277,7 +278,6 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // islands) are materialized as local wrapper modules: Fresh's build cache
   // only accepts file paths (its maybeToFileUrl throws on URLs).
   const allIslandSpecifiers = await materializeRemoteIslands([
-    ...getDuneAdminIslands(),
     ...pluginIslandSpecifiers,
     ...themeIslandPaths,
     ...contentIslandPaths,
@@ -302,9 +302,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Expose job scheduler to admin routes — must happen after createDuneApp so
   // that ctx.adminContext is populated by @dune/plugin-admin's mount() hook.
   if (jobDefs.length > 0 && ctx.adminContext) {
-    (ctx.adminContext as import("jsr:@dune/plugin-admin/admin/context").AdminContext & {
-      jobScheduler?: JobScheduler;
-    }).jobScheduler = jobScheduler;
+    (ctx.adminContext as Record<string, unknown>).jobScheduler = jobScheduler;
   }
 
   // Attach the island build cache so staticFiles() can serve /_fresh/js/* chunks.

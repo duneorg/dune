@@ -247,7 +247,7 @@ const DENO_JSON = `{
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/core": "jsr:@dune/core@^0.23"
+    "@dune/core": "jsr:@dune/core@^0.24"
   },
   "tasks": {
     "dev": "dune dev",
@@ -311,7 +311,7 @@ const HEADLESS_MAIN_TS = `/**
 import { App, staticFiles } from "fresh";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "@dune/core";
-import { mountDuneAdmin, getDuneAdminIslands } from "@dune/core/admin";
+import { mountDuneAdmin, getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 
 // 1. Bootstrap Dune (content index, admin, search, …)
 const ctx = await bootstrap("./");

@@ -34,7 +34,6 @@ import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
-import { createAdminPlugin } from "jsr:@dune/plugin-admin";
 import { initContent } from "../content/api.ts";
 import { resolve } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
@@ -42,15 +41,27 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
-import type { HookRegistry } from "../hooks/types.ts";
+import type { HookRegistry, DunePlugin } from "../hooks/types.ts";
 import type { ImageHandler } from "../images/handler.ts";
 import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { AuthProvider } from "jsr:@dune/plugin-admin/admin/auth/provider";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+
+/**
+ * Minimal auth-provider interface for the admin panel.
+ * The concrete `AuthProvider` type lives in `@dune/plugin-admin/admin/auth/provider`;
+ * this stub lets core accept it without creating a hard publish-time dependency.
+ * @since 0.24.0
+ */
+export interface AdminAuthProvider {
+  readonly type: string;
+  authenticate(credentials: { username: string; password: string; [k: string]: unknown }): Promise<{ id: string; [k: string]: unknown } | null>;
+  initiateLogin?(req: Request): Promise<string | null>;
+  handleCallback?(req: Request): Promise<{ id: string; [k: string]: unknown } | null>;
+}
 
 export interface BootstrapResult {
   engine: DuneEngine;
@@ -87,7 +98,8 @@ export interface BootstrapResult {
    * The per-site AdminContext object — null until `@dune/plugin-admin`'s `mount()` runs.
    * In multisite, each site gets its own BootstrapResult with its own AdminContext.
    */
-  adminContext: import("jsr:@dune/plugin-admin/admin/context").AdminContext | null;
+  /** Populated by `@dune/plugin-admin`'s `mount()` hook; `null` until then. */
+  adminContext: Record<string, unknown> | null;
   /**
    * Pre-created authz system. Present when auth.mode is "dune" and authzStore is "local".
    * Shared between `@dune/plugin-admin` (admin-user tuples) and `mountDuneAuth()`
@@ -133,7 +145,7 @@ export interface BootstrapOptions {
    * const ctx = await bootstrap("./", { authProvider: new MyOidcProvider() });
    * ```
    */
-  authProvider?: AuthProvider;
+  authProvider?: AdminAuthProvider;
 }
 
 
@@ -403,7 +415,14 @@ export async function bootstrap(
   // 12. Register the built-in admin plugin before user plugins so user plugins
   // can override its services via adminServices(). The plugin's setup() runs
   // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
+  // Non-literal dynamic import breaks the circular publish-time dependency between
+  // @dune/core and @dune/plugin-admin (each would otherwise need the other to be
+  // on JSR before it could be published).
   if (adminConfig.enabled !== false) {
+    const adminPkg = "jsr:@dune/plugin-admin";
+    const { createAdminPlugin } = await import(adminPkg) as {
+      createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
+    };
     const adminPlugin = createAdminPlugin(config, storage, {
       root,
       dev,
@@ -411,7 +430,7 @@ export async function bootstrap(
       authz: bootstrappedAuthz,
       authzAdapter: bootstrappedAuthzAdapter,
       hmacKey,
-    });
+    } as Record<string, unknown>);
     hooks.registerPlugin(adminPlugin);
   }
 

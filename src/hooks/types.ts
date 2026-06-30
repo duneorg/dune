@@ -335,6 +335,20 @@ export interface DunePlugin {
    */
   publicRoutes?: PublicRouteRegistration[];
   /**
+   * Preact island file specifiers contributed by this plugin.
+   *
+   * Absolute file paths or remote URLs (e.g. `jsr:@dune/plugin-admin/...`)
+   * that Fresh should include in its island bundle. Plugins that ship islands
+   * outside of `publicRoutes` entries (e.g. the admin panel) set this field
+   * so core can collect them without importing the plugin package directly.
+   *
+   * Specifiers are passed through `materializeRemoteIslands()` before
+   * reaching Fresh's Builder, so remote (https://) URLs are supported.
+   *
+   * @since 0.24.0
+   */
+  islandSpecifiers?: string[];
+  /**
    * Factory for admin-context services contributed by this plugin.
    *
    * Called during bootstrap after core infrastructure (storage, history) is

@@ -199,7 +199,7 @@ export function isMetadataFile(name: string): boolean {
  * Filename stems that mean "this folder is the page" — do not contribute to
  * the route as an additional segment.
  */
-export const RESERVED_STEMS = new Set(["default", "index"]);
+export const RESERVED_STEMS: Set<string> = new Set(["default", "index"]);
 
 /**
  * Returns true when a content file's filename stem should contribute an extra

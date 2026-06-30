@@ -20,8 +20,11 @@
  * Used by both the production and dev request paths in fresh-app.ts.
  */
 
-import type { AuthMiddleware } from "jsr:@dune/plugin-admin/admin/auth/middleware";
-import type { AdminPermission } from "jsr:@dune/plugin-admin/admin/types";
+/** Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`. */
+interface AdminAuthMiddleware {
+  authenticate(req: Request): Promise<{ authenticated: boolean; user?: Record<string, unknown>; [k: string]: unknown } | null>;
+  hasPermission(result: unknown, permission: string): boolean;
+}
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
@@ -41,7 +44,7 @@ export interface RunResponseTransformsOptions {
    * Admin auth middleware — null when the admin plugin is disabled or not yet mounted.
    * When null, all sessions are treated as anonymous (transformAuth stays null).
    */
-  auth: Pick<AuthMiddleware, "authenticate" | "hasPermission"> | null;
+  auth: AdminAuthMiddleware | null;
   /** Content index used to match the current URL to a page. */
   pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[];
   config: DuneConfig;
@@ -105,15 +108,17 @@ export async function runPluginResponseTransforms(
       // Contract (ResponseTransformContext.auth): non-null only when the
       // session is valid AND holds pages.update — same gate the pre-plugin
       // admin-bar injector enforced.
+      // deno-lint-ignore no-explicit-any
+      const r = result as any;
       if (
-        result.authenticated && result.user &&
+        r?.authenticated && r?.user &&
         auth.hasPermission(result, "pages.update")
       ) {
-        const user = result.user;
+        const user = r.user as Record<string, unknown>;
         transformAuth = {
-          username: user.username,
-          role: user.role,
-          hasPermission: (perm) => auth.hasPermission(result, perm as AdminPermission),
+          username: user.username as string,
+          role: user.role as string,
+          hasPermission: (perm) => auth.hasPermission(result, perm as string),
         };
       }
     } catch { /* invalid session — treat as unauthenticated */ }

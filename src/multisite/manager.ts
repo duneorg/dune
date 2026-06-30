@@ -14,7 +14,6 @@ import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
-import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
@@ -70,6 +69,12 @@ export class MultisiteManager {
       islandDir: noCrawlDir,
       routeDir: noCrawlDir,
     });
+    // Admin island specifiers from @dune/plugin-admin — loaded via non-literal
+    // dynamic import to avoid a publish-time circular dependency with @dune/core.
+    const adminMountPkg = "jsr:@dune/plugin-admin/admin/mount";
+    const { getDuneAdminIslands } = await import(adminMountPkg) as {
+      getDuneAdminIslands: () => string[];
+    };
     // Remote (https://) island specs are materialized as local wrappers —
     // Fresh's build cache only accepts file paths.
     for (const spec of await materializeRemoteIslands(getDuneAdminIslands(), firstSiteRoot)) {

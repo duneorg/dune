@@ -18,7 +18,6 @@ import { bootstrap } from "./bootstrap.ts";
 import { createDuneApp } from "./fresh-app.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
-import { getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 
@@ -65,7 +64,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   console.log("🏜️  Dune — starting development server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search, config, pluginPublicRoutes } = ctx;
+  const { engine, collections, taxonomy, search, config, pluginPublicRoutes, hooks } = ctx;
   const adminPrefix = config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
@@ -128,9 +127,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Collect island paths from plugin public routes. Validate before
   // handing to Builder so a plugin can't name a path with `..` that
   // escapes the workspace root (HIGH-19).
-  const pluginIslandSpecifiers = (pluginPublicRoutes ?? [])
-    .map((r) => r.island)
-    .filter((p): p is string => {
+  const pluginIslandSpecifiers = [
+    ...(pluginPublicRoutes ?? []).map((r) => r.island).filter((p): p is string => {
       if (!isValidPluginIslandSpecifier(p)) {
         if (p !== undefined) {
           console.warn(`[dune] plugin island rejected (invalid path): ${JSON.stringify(p)}`);
@@ -138,7 +136,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
         return false;
       }
       return true;
-    });
+    }),
+    // Collect islandSpecifiers declared by plugins (e.g. @dune/plugin-admin's islands).
+    ...hooks.plugins().flatMap((p) => p.islandSpecifiers ?? []),
+  ];
 
   // Collect island paths from the active theme chain (auto-discovery).
   const themeIslandPaths = await collectThemeIslands(
@@ -177,7 +178,6 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // islands) are materialized as local wrapper modules: Fresh's build cache
   // only accepts file paths (its maybeToFileUrl throws on URLs).
   const allIslandSpecifiers = await materializeRemoteIslands([
-    ...getDuneAdminIslands(),
     ...pluginIslandSpecifiers,
     ...themeIslandPaths,
     ...contentIslandPaths,

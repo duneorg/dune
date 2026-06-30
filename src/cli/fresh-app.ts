@@ -10,7 +10,6 @@
  */
 
 import { App, staticFiles } from "fresh";
-import type { AdminState } from "jsr:@dune/plugin-admin/admin/types";
 import { join } from "@std/path";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { mountPlugins } from "../plugins/loader.ts";
@@ -100,8 +99,12 @@ export async function createDuneApp(
   } = ctx;
   // auth and stagingEngine are owned by the admin plugin; read lazily from
   // adminContext so they're available after mountPlugins() has run.
-  const getAdminAuth = () => ctx.adminContext?.auth ?? null;
-  const getAdminStaging = () => ctx.adminContext?.staging;
+  // adminContext is typed as Record<string,unknown> in core to avoid a publish-time
+  // circular dependency with @dune/plugin-admin; cast lazily here.
+  // deno-lint-ignore no-explicit-any
+  const getAdminAuth = (): import("../cli/response-transforms.ts").RunResponseTransformsOptions["auth"] => (ctx.adminContext as any)?.auth ?? null;
+  // deno-lint-ignore no-explicit-any
+  const getAdminStaging = (): import("../staging/engine.ts").StagingEngine | undefined => (ctx.adminContext as any)?.staging;
 
   const startTime = Date.now();
   const siteName = engine.site.title;
@@ -376,7 +379,8 @@ export async function createDuneApp(
   }
 
   // ── App assembly ──────────────────────────────────────────────────────────
-  const app = new App<AdminState>();
+  // deno-lint-ignore no-explicit-any
+  const app = new App<any>();
 
   // 1. Static files — serves /_fresh/js/* from build cache + theme static files
   app.use(staticFiles());
