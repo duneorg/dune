@@ -6,7 +6,7 @@ This document describes what is being worked on, what comes next, and the longer
 
 ---
 
-## What ships today (v0.23)
+## What ships today (v0.24)
 
 The core is complete and in production use:
 
@@ -20,6 +20,7 @@ The core is complete and in production use:
 - Public user auth — visitor accounts via OAuth (GitHub/Google/Discord) and magic link; `dune` and `external-jwt` modes; `local`/`session`/`db` user stores; role-based content gating via `roles:` frontmatter
 - Plugins — hooks API, browser entry points (client bundles), admin services, scheduled jobs
 - Pluggable search — `onSearchRecordsCollect` lets plugins inject records into the index; `onSearchEngineCreate` lets plugins replace the engine entirely; `@dune/plugin-meilisearch` and `@dune/plugin-pdf` both register via `plugins:` in `site.yaml` with no code
+- Replaceable admin content editor — `ContentEditorPlugin` slot in `adminServices`; plugins replace the block editor by registering `pageEditorHandler`; optional WS endpoint for real-time collaboration
 - Flex objects — schema-defined custom data types with generated admin CRUD
 - Database layer — SQLite/KV/Postgres backends, typed repositories, SQL migrations
 - CRUD API generation — declare an `api:` block in a schema and get REST endpoints (list/get/create/update/delete) with auth and ownership checks

@@ -35,7 +35,7 @@ export const handler = {
       return new Response("Invalid path", { status: 400 });
     }
 
-    return contentEditor.wsHandler(ctx.req, {
+    return contentEditor.wsHandler!(ctx.req, {
       id: authResult.user.id,
       name: authResult.user.username,
     });

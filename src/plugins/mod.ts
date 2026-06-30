@@ -82,7 +82,6 @@ export type {
   AdminPageRegistration,
   AdminServices,
   AdminServicesContext,
-  ContentEditorPlugin,
   DunePlugin,
   HookContext,
   HookEvent,
@@ -91,3 +90,4 @@ export type {
   PublicRouteRegistration,
   ResponseTransformContext,
 } from "../hooks/types.ts";
+export type { ContentEditorPlugin } from "../admin/types.ts";

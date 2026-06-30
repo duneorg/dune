@@ -22,6 +22,7 @@ import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
 import { createImageCache } from "../images/cache.ts";
 import { createImageHandler } from "../images/handler.ts";
+import { createBlockEditorPlugin } from "../admin/block-editor-plugin.tsx";
 import { createUserManager } from "../admin/auth/users.ts";
 import { createSessionManager } from "../admin/auth/sessions.ts";
 import { createSessionStore } from "../session/mod.ts";
@@ -447,10 +448,11 @@ export async function bootstrap(
     contentDir: config.system.content.dir,
   });
 
-  // 11b. Inline editing — collected from plugins loaded in 5a. There is no
-  // built-in implementation: a plugin providing adminServices.inlineEdit
-  // (e.g. jsr:@dune/plugin-inline-edit) must be in the site's plugins list,
-  // otherwise the inline-edit admin endpoints respond 501.
+  // 11b. Admin services — collected from plugins loaded in 5a.
+  // inlineEdit has no built-in; a plugin (e.g. @dune/plugin-inline-edit) must
+  // be listed, otherwise inline-edit endpoints respond 501.
+  // contentEditor defaults to the built-in block editor; a plugin may override
+  // it by returning adminServices.contentEditor.
   const adminServices = await collectAdminServices(hooks.plugins(), {
     storage,
     history,
@@ -458,6 +460,9 @@ export async function bootstrap(
     dataDir: runtimeDir,
     contentDir: config.system.content.dir,
   });
+  if (!adminServices.contentEditor) {
+    adminServices.contentEditor = createBlockEditorPlugin();
+  }
 
   // 12. Admin panel
   const users = createUserManager({
