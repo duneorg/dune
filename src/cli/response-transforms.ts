@@ -22,7 +22,7 @@
 
 /** Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`. */
 interface AdminAuthMiddleware {
-  authenticate(req: Request): Promise<{ authenticated: boolean; user?: Record<string, unknown>; [k: string]: unknown } | null>;
+  authenticate(req: Request): Promise<unknown>;
   hasPermission(result: unknown, permission: string): boolean;
 }
 import type { DuneConfig } from "../config/types.ts";

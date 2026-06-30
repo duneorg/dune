@@ -43,9 +43,10 @@ function makeAuth(opts: {
       if (opts.throws) return Promise.reject(new Error("session store down"));
       return Promise.resolve(opts.result ?? { authenticated: false, error: "No session cookie" });
     },
-    hasPermission(authResult: AuthResult, permission: AdminPermission): boolean {
-      if (!authResult.authenticated || !authResult.user) return false;
-      return (opts.permissions ?? []).includes(permission);
+    hasPermission(authResult: unknown, permission: string): boolean {
+      const r = authResult as AuthResult;
+      if (!r.authenticated || !r.user) return false;
+      return (opts.permissions ?? []).includes(permission as AdminPermission);
     },
   };
 }
