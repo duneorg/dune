@@ -9,6 +9,7 @@
  */
 
 import type { PageIndex } from "../content/types.ts";
+import { flexRecordToPageIndex } from "../flex/page-index.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import type { DuneConfig } from "../config/types.ts";
@@ -298,21 +299,6 @@ export function createSearchEngine(
   const stripMarkup = stripSearchMarkup;
 
   /**
-   * Resolve a dot-path into an object, e.g. "taxonomy.category" → obj.taxonomy.category.
-   */
-  function dotGet(obj: Record<string, unknown>, path: string): unknown {
-    const parts = path.split(".");
-    let cur: unknown = obj;
-    for (const p of parts) {
-      if (cur === null || cur === undefined || typeof cur !== "object") {
-        return undefined;
-      }
-      cur = (cur as Record<string, unknown>)[p];
-    }
-    return cur;
-  }
-
-  /**
    * Extract searchable text from a page's content.
    * Returns structured per-field text for weighted scoring.
    */
@@ -387,43 +373,6 @@ export function createSearchEngine(
       customFieldTexts,
       rawBodyText,
       frontmatter,
-    };
-  }
-
-  /**
-   * Build a synthetic PageIndex for a Flex Object record.
-   */
-  function flexRecordToPageIndex(
-    type: string,
-    id: string,
-    fields: Record<string, unknown>,
-  ): PageIndex {
-    const title = typeof fields.title === "string"
-      ? fields.title
-      : typeof fields.name === "string"
-      ? fields.name
-      : `${type}/${id}`;
-
-    return {
-      sourcePath: `flex-objects/${type}/${id}.yaml`,
-      route: `/flex/${type}/${id}`,
-      language: "en",
-      format: "md",
-      template: type,
-      title,
-      navTitle: title,
-      date: null,
-      published: true,
-      status: "published",
-      visible: true,
-      routable: true,
-      isModule: false,
-      order: 0,
-      depth: 1,
-      parentPath: null,
-      taxonomy: {},
-      mtime: 0,
-      hash: "",
     };
   }
 
@@ -637,7 +586,7 @@ export function createSearchEngine(
 
       // Index flex records
       for (const rec of flexRecords) {
-        const page = flexRecordToPageIndex(rec.type, rec.id, rec.fields);
+        const page = flexRecordToPageIndex({ id: rec.id, type: rec.type, fields: rec.fields });
         const textParts: string[] = [];
         const customFieldTexts: Record<string, string> = {};
 

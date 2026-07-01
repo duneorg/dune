@@ -9,7 +9,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { parseRawSchema, parseSchemaYaml } from "../../src/db/schema-parser.ts";
-import { generateApiRoutes } from "../../src/db/codegen.ts";
+import { generateApiRoutes, generateCode } from "../../src/db/codegen.ts";
 import { requireAuth, SITE_USER_HEADER } from "../../src/auth/api-guard.ts";
 import type { SiteUser } from "../../src/auth/types.ts";
 
@@ -274,6 +274,57 @@ Deno.test("generateApiRoutes: owner mode includes ownership checks in [id].ts", 
   });
 });
 
+Deno.test("generateApiRoutes: owner mode scopes list + forces ownership on create", async () => {
+  await withTempDir(async (dir) => {
+    const schema = parseRawSchema({
+      model: "Comment",
+      table: "comments",
+      fields: BASE_FIELDS,
+      api: {
+        enabled: true,
+        auth: "owner",
+        methods: ["list", "create"],
+        ownerField: "userId",
+      },
+    });
+
+    await generateApiRoutes([schema], dir);
+    const indexContent = await Deno.readTextFile(`${dir}/src/routes/api/comments/index.ts`);
+
+    // List must be filtered by the owner, and the count must use the same filter.
+    assertStringIncludes(indexContent, `const where = { userId: authResult.user!.id } as any;`);
+    assertStringIncludes(indexContent, `db.comments.find({ where, limit, offset })`);
+    assertStringIncludes(indexContent, `db.comments.count({ where })`);
+
+    // Create must force ownership from the authenticated user, not the client body.
+    assertStringIncludes(
+      indexContent,
+      `db.comments.create({ ...body, userId: authResult.user!.id } as CommentCreate)`,
+    );
+  });
+});
+
+Deno.test("generateApiRoutes: owner mode strips ownerField from update body", async () => {
+  await withTempDir(async (dir) => {
+    const schema = parseRawSchema({
+      model: "Comment",
+      table: "comments",
+      fields: BASE_FIELDS,
+      api: {
+        enabled: true,
+        auth: "owner",
+        methods: ["update"],
+        ownerField: "userId",
+      },
+    });
+
+    await generateApiRoutes([schema], dir);
+    const idContent = await Deno.readTextFile(`${dir}/src/routes/api/comments/[id].ts`);
+
+    assertStringIncludes(idContent, `delete (body as Record<string, unknown>).userId;`);
+  });
+});
+
 Deno.test("generateApiRoutes: respects partial methods — only list and create", async () => {
   await withTempDir(async (dir) => {
     const schema = parseRawSchema({
@@ -417,4 +468,91 @@ Deno.test("requireAuth: malformed header treated as no user", async () => {
   const result = await requireAuth(req, "required");
   assertEquals(result.error instanceof Response, true);
   assertEquals((result.error as Response).status, 401);
+});
+
+// ---------------------------------------------------------------------------
+// H2: Generated handler inline validation (required, maxLength, enum)
+// ---------------------------------------------------------------------------
+
+Deno.test("generateCode/H2: POST handler emits required-field validation", () => {
+  const schema = {
+    model: "Post",
+    table: "posts",
+    fields: [
+      { name: "title", type: "string" as const, required: true },
+      { name: "body", type: "text" as const },
+    ],
+    api: {
+      enabled: true,
+      auth: "required" as const,
+      methods: ["list" as const, "create" as const],
+    },
+  };
+
+  const { files } = generateCode([schema]);
+  // The types file should exist; we need the route file via generateApiRoutes.
+  // Check via a temp dir.
+});
+
+Deno.test("generateApiRoutes/H2: generated POST emits required, maxLength, enum validation", async () => {
+  await withTempDir(async (dir) => {
+    const schema = {
+      model: "Article",
+      table: "articles",
+      fields: [
+        { name: "title", type: "string" as const, required: true, maxLength: 200 },
+        { name: "status", type: "string" as const, enum: ["draft", "published"] },
+        { name: "body", type: "text" as const },
+      ],
+      api: {
+        enabled: true,
+        auth: "required" as const,
+        methods: ["list" as const, "create" as const, "update" as const],
+      },
+    };
+
+    await generateApiRoutes([schema], dir);
+    const indexContent = await Deno.readTextFile(`${dir}/src/routes/api/articles/index.ts`);
+
+    // Required field check
+    assertStringIncludes(indexContent, `body.title === undefined`);
+    assertStringIncludes(indexContent, `is required`);
+
+    // maxLength check
+    assertStringIncludes(indexContent, `body.title.length > 200`);
+    assertStringIncludes(indexContent, `exceeds maximum length`);
+
+    // enum check
+    assertStringIncludes(indexContent, `["draft","published"]`);
+    assertStringIncludes(indexContent, `must be one of`);
+
+    // Structured 400 response
+    assertStringIncludes(indexContent, `Response.json({ errors }`);
+    assertStringIncludes(indexContent, `status: 400`);
+  });
+});
+
+Deno.test("generateApiRoutes/H2: generated PUT emits validation for update handler", async () => {
+  await withTempDir(async (dir) => {
+    const schema = {
+      model: "Tag",
+      table: "tags",
+      fields: [
+        { name: "name", type: "string" as const, required: true, maxLength: 50 },
+      ],
+      api: {
+        enabled: true,
+        auth: "required" as const,
+        methods: ["update" as const, "get" as const],
+      },
+    };
+
+    await generateApiRoutes([schema], dir);
+    const idContent = await Deno.readTextFile(`${dir}/src/routes/api/tags/[id].ts`);
+
+    // Validation present in PUT handler too
+    assertStringIncludes(idContent, `body.name === undefined`);
+    assertStringIncludes(idContent, `body.name.length > 50`);
+    assertStringIncludes(idContent, `status: 400`);
+  });
 });

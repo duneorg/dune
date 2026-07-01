@@ -14,6 +14,7 @@ import { createCloudflareProvider } from "./cloudflare.ts";
 import { createFastlyProvider } from "./fastly.ts";
 import { createBunnyProvider } from "./bunny.ts";
 import { createCustomProvider } from "./custom.ts";
+import { logger } from "../../core/logger.ts";
 
 /**
  * CDN configuration block from site.yaml.
@@ -41,7 +42,10 @@ export function createCdnProvider(config: CdnConfig | undefined): CdnProvider | 
   switch (config.provider) {
     case "cloudflare": {
       if (!config.cloudflare?.zoneId || !config.cloudflare?.apiToken) {
-        console.warn("[dune] cdn: cloudflare provider requires cloudflare.zoneId and cloudflare.apiToken");
+        logger.warn("cdn.provider.misconfigured", {
+          provider: "cloudflare",
+          reason: "requires cloudflare.zoneId and cloudflare.apiToken",
+        });
         return null;
       }
       return createCloudflareProvider(config.cloudflare);
@@ -49,7 +53,10 @@ export function createCdnProvider(config: CdnConfig | undefined): CdnProvider | 
 
     case "fastly": {
       if (!config.fastly?.serviceId || !config.fastly?.apiKey) {
-        console.warn("[dune] cdn: fastly provider requires fastly.serviceId and fastly.apiKey");
+        logger.warn("cdn.provider.misconfigured", {
+          provider: "fastly",
+          reason: "requires fastly.serviceId and fastly.apiKey",
+        });
         return null;
       }
       return createFastlyProvider(config.fastly);
@@ -57,7 +64,10 @@ export function createCdnProvider(config: CdnConfig | undefined): CdnProvider | 
 
     case "bunny": {
       if (!config.bunny?.apiKey) {
-        console.warn("[dune] cdn: bunny provider requires bunny.apiKey");
+        logger.warn("cdn.provider.misconfigured", {
+          provider: "bunny",
+          reason: "requires bunny.apiKey",
+        });
         return null;
       }
       return createBunnyProvider(config.bunny);
@@ -65,14 +75,17 @@ export function createCdnProvider(config: CdnConfig | undefined): CdnProvider | 
 
     case "custom": {
       if (!config.custom?.purge_url) {
-        console.warn("[dune] cdn: custom provider requires custom.purge_url");
+        logger.warn("cdn.provider.misconfigured", {
+          provider: "custom",
+          reason: "requires custom.purge_url",
+        });
         return null;
       }
       return createCustomProvider(config.custom);
     }
 
     default:
-      console.warn(`[dune] cdn: unknown provider "${config.provider}"`);
+      logger.warn("cdn.provider.unknown", { provider: config.provider });
       return null;
   }
 }

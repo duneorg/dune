@@ -9,12 +9,6 @@ import type { McpTool, McpToolResult, ToolHandler } from "./server.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 
-// ── Text helper ──────────────────────────────────────────────────────────────
-
-function text(content: string): McpToolResult {
-  return { content: [{ type: "text", text: content }] };
-}
-
 function json(data: unknown): McpToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

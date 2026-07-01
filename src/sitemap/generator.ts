@@ -210,6 +210,7 @@ function resolveChangefreq(
 
 function escapeXml(s: string): string {
   // Strip control chars (XML 1.0 forbids most) before escaping
+  // deno-lint-ignore no-control-regex -- stripping control chars is the intent
   const cleaned = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
   return cleaned
     .replace(/&/g, "&amp;")

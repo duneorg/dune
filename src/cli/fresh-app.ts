@@ -114,11 +114,7 @@ export async function createDuneApp(
   const feedEnabled = config.site.feed?.enabled !== false;
   const adminPrefix = config.admin?.path ?? "/admin";
 
-  const searchAnalyticsPath = join(
-    config.admin?.runtimeDir ?? ".dune/admin",
-    "search-analytics.jsonl",
-  );
-  const routes = duneRoutes(engine, collections, flexEngine, search, searchAnalyticsPath);
+  const routes = duneRoutes(engine, collections, flexEngine, search);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
 
   // ── HTTP caching (production only) ─────────────────────────────────────────
@@ -314,6 +310,7 @@ export async function createDuneApp(
     if (typeof s !== "string") return String(s);
     // Strip C0 controls (incl. CR, LF, NUL) and DEL — they break log scrapers
     // and can be used to inject fake log lines.
+    // deno-lint-ignore no-control-regex -- stripping control chars is the intent
     let cleaned = s.replace(/[\x00-\x1f\x7f]/g, "?");
     if (cleaned.length > 256) cleaned = cleaned.slice(0, 256) + "…";
     return cleaned;
@@ -495,7 +492,7 @@ export async function createDuneApp(
   });
 
   // 4. Sitemap
-  app.get("/sitemap.xml", async (fc) => {
+  app.get("/sitemap.xml", async (_fc) => {
     if (!dev && sitemapGzip) {
       return new Response(sitemapGzip, {
         headers: {

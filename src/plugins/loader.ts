@@ -260,6 +260,23 @@ export function isValidPluginIslandSpecifier(spec: unknown): spec is string {
   if (!spec.startsWith("/")) return false;
   const segments = spec.split("/");
   if (segments.some((s) => s === "..")) return false;
+
+  // M1: Decode percent-encoding before the traversal check. A specifier
+  // containing `%2E%2E` passes the literal `".."` test above but resolves to
+  // `".."` when Deno decodes the file:// URL, allowing escape from the workspace.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(spec);
+  } catch {
+    // Malformed percent-encoding — reject.
+    return false;
+  }
+  if (decoded !== spec) {
+    // Re-run the segment check on the decoded form.
+    const decodedSegs = decoded.split("/");
+    if (decodedSegs.some((s) => s === "..")) return false;
+  }
+
   return true;
 }
 

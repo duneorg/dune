@@ -174,7 +174,7 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
     }
   }
 
-  async function portal(user: SiteUser, customerId: string): Promise<{ url: string }> {
+  async function portal(_user: SiteUser, customerId: string): Promise<{ url: string }> {
     const returnUrl = `${baseUrl}/account`;
     return provider.createPortalSession({ customerId, returnUrl });
   }

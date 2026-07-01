@@ -21,31 +21,59 @@ import type { SiteUser } from "./types.ts";
 import { getSiteUser } from "./types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 
-// ── Module-level authz instance ────────────────────────────────────────────────
-
-let _authz: DuneAuthSystem | null = null;
+// ── Per-origin authz registry ──────────────────────────────────────────────────
 
 /**
- * Wire the polizy AuthSystem into the gating layer.
- * Called by `mountDuneAuth()` after constructing the AuthSystem.
- * Pass `null` to revert to the simple array-check fallback.
+ * Map of site origin → DuneAuthSystem.
  *
- * ⚠️  MULTISITE LIMITATION
- * This is a process-wide singleton. In a multisite deployment where multiple
- * sites share the same Deno process and each calls `mountDuneAuth()`, only the
- * **last** site to call `setGatingAuthz()` will have its authz instance used by
- * `checkRolesAsync` / `enforceRoles`. All earlier sites will use the wrong
- * (last-registered) authz instance, causing cross-site privilege leakage.
+ * In multisite deployments each mounted site calls `setGatingAuthz(origin, authz)`.
+ * `checkRolesAsync` / `enforceRolesFromRequest` select the instance by origin so
+ * that each site uses its own permission store.
  *
- * Workaround: in multisite setups, call `enforceRoles(req, user, spec, authz)`
- * with the per-site `authz` argument directly rather than relying on the global.
- *
- * A proper fix requires making the authz instance request-scoped (e.g. via a
- * per-request context map keyed on site origin) — tracked as a future
- * improvement.
+ * Single-site deployments register exactly one entry. When `enforceRolesFromRequest`
+ * is called it will find the single registered origin and use it as the fallback
+ * regardless of the incoming request origin — keeping single-site behaviour unchanged.
  */
-export function setGatingAuthz(authz: DuneAuthSystem | null): void {
-  _authz = authz;
+const _authzByOrigin = new Map<string, DuneAuthSystem>();
+
+/**
+ * Wire a polizy AuthSystem into the gating layer for a specific site origin.
+ *
+ * Call this from `mountDuneAuth()` after constructing the AuthSystem. The origin
+ * argument should be `new URL(config.site.url).origin`.
+ *
+ * Pass `null` as `authz` to remove the registration for that origin (reverts to
+ * the simple array-check fallback for requests to that origin).
+ *
+ * Single-site deployments call this once; multisite deployments call it once per
+ * site with their respective origins.
+ */
+export function setGatingAuthz(authz: DuneAuthSystem | null, origin?: string): void {
+  const key = origin ?? "_default";
+  if (authz === null) {
+    _authzByOrigin.delete(key);
+  } else {
+    _authzByOrigin.set(key, authz);
+  }
+}
+
+/**
+ * Resolve the authz instance for a given request origin.
+ *
+ * Selection logic:
+ * 1. If the origin is registered, return that instance.
+ * 2. If only one origin is registered (single-site), return it regardless of origin.
+ * 3. Otherwise return null (fall back to direct array check).
+ */
+function resolveAuthzForOrigin(requestOrigin: string | null): DuneAuthSystem | null {
+  if (requestOrigin !== null && _authzByOrigin.has(requestOrigin)) {
+    return _authzByOrigin.get(requestOrigin)!;
+  }
+  // Single-site fallback: if exactly one instance is registered, use it.
+  if (_authzByOrigin.size === 1) {
+    return _authzByOrigin.values().next().value as DuneAuthSystem;
+  }
+  return null;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -154,8 +182,7 @@ export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
  * relation logic defined in the schema.
  *
  * @param authzOverride - Optional per-site AuthSystem. Pass the site-specific
- *   `authz` instance in multisite deployments to bypass the process-wide
- *   singleton set by `setGatingAuthz()`. See the warning on `setGatingAuthz`.
+ *   `authz` instance to bypass the per-origin registry lookup.
  */
 export async function checkRolesAsync(
   user: SiteUser | null,
@@ -167,8 +194,11 @@ export async function checkRolesAsync(
   // Empty array spec → any authenticated user, no authz lookup needed
   if (Array.isArray(spec) && spec.length === 0) return true;
 
-  // Use the per-call override when provided; fall back to the process-wide singleton.
-  const effectiveAuthz = authzOverride !== undefined ? authzOverride : _authz;
+  // Use the per-call override when provided; otherwise use the registered singleton
+  // (single-site deployments will have exactly one entry).
+  const effectiveAuthz = authzOverride !== undefined
+    ? authzOverride
+    : (_authzByOrigin.size === 1 ? _authzByOrigin.values().next().value as DuneAuthSystem : null);
 
   if (effectiveAuthz === null) {
     // No authz configured — fall back to direct array check
@@ -224,8 +254,7 @@ export async function checkRolesAsync(
  * Uses `authz.check()` when a polizy AuthSystem is configured (wired via
  * `setGatingAuthz()`), otherwise falls back to the direct array check.
  *
- * @param authzOverride - Optional per-site AuthSystem for multisite deployments.
- *   See the warning on `setGatingAuthz`.
+ * @param authzOverride - Optional per-site AuthSystem to bypass registry lookup.
  *
  * Callers should return the `Response` immediately when it is non-null.
  */
@@ -257,12 +286,11 @@ export async function enforceRoles(
 
 /**
  * Convenience: read the SiteUser from the request and enforce a roles spec in
- * one call.
+ * one call. Selects the authz instance by request origin from the per-origin map.
  *
  * Returns `null` when access is granted, or a Response to return to the client.
  *
- * @param authzOverride - Optional per-site AuthSystem for multisite deployments.
- *   See the warning on `setGatingAuthz`.
+ * @param authzOverride - Optional per-site AuthSystem to bypass registry lookup.
  */
 export async function enforceRolesFromRequest(
   req: Request,
@@ -270,5 +298,12 @@ export async function enforceRolesFromRequest(
   authzOverride?: DuneAuthSystem | null,
 ): Promise<Response | null> {
   const user = getSiteUser(req);
-  return enforceRoles(req, user, spec, authzOverride);
+  // Resolve authz by origin so each site in a multisite deployment uses its own
+  // permission store. Single-site deployments are unaffected: the single
+  // registered entry is used as a fallback when the origin is not in the map.
+  const origin = (() => { try { return new URL(req.url).origin; } catch { return null; } })();
+  const effectiveAuthz = authzOverride !== undefined
+    ? authzOverride
+    : resolveAuthzForOrigin(origin);
+  return enforceRoles(req, user, spec, effectiveAuthz);
 }

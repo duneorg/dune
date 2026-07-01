@@ -7,7 +7,6 @@
  * Gracefully handles 404 (comments model not configured) with a friendly message.
  */
 
-import { h, Fragment } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect, useCallback } from "preact/hooks";
 

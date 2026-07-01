@@ -25,6 +25,7 @@ import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 import { handleWebhook } from "./webhook.ts";
+import { logger } from "../core/logger.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -63,6 +64,9 @@ export async function mountDuneAuth(
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
+  // Derive the canonical origin for per-origin authz registration (M5).
+  let siteOrigin: string | undefined;
+  try { siteOrigin = new URL(config.site.url).origin; } catch { /* ignore */ }
 
   // ── User store ──────────────────────────────────────────────────────────────
   const usersDir = `${dataDir}/site-users`;
@@ -91,11 +95,12 @@ export async function mountDuneAuth(
     : undefined;
 
   if (jwtOpts && (!jwtOpts.issuer || !jwtOpts.audience)) {
-    console.warn(
-      "[dune/auth] external-jwt mode is missing auth.jwt.issuer and/or auth.jwt.audience — " +
+    logger.warn("auth.jwt.unbound", {
+      reason:
+        "external-jwt mode is missing auth.jwt.issuer and/or auth.jwt.audience — " +
         "any token signed by the same IdP (e.g. another tenant on a shared JWKS) will be accepted. " +
         "Set both to bind verification to your application.",
-    );
+    });
   }
 
   const authMiddleware = createSiteAuthMiddleware({
@@ -134,7 +139,7 @@ export async function mountDuneAuth(
     const { createDbAdapter } = await import("../db/adapters/mod.ts");
     const dbAdapter = await createDbAdapter();
     const bundle = createDuneAuthSystem({ authzStore: "db", dbAdapter }, storage);
-    setGatingAuthz(bundle.authz);
+    setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
   } else if (authzStoreCfg === "local") {
@@ -151,7 +156,7 @@ export async function mountDuneAuth(
       ? { authz: existingAuthz, adapter: existingAdapter }
       : createDuneAuthSystem({ authzStore: "local", dataDir, hmacKey }, storage);
 
-    setGatingAuthz(bundle.authz);
+    setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
 
@@ -229,11 +234,12 @@ export async function mountDuneAuth(
   // in the authz tuple (survives restarts) but NOT reflected in the user's
   // session-embedded roles[] until they log out and back in.
   if (userStoreType === "session" && (config as any).payments?.enabled) {
-    console.warn(
-      "[dune/auth] userStore: session + payments: enabled — role grants after payment " +
+    logger.warn("auth.userstore.session_payments_lossy", {
+      reason:
+        "userStore: session + payments: enabled — role grants after payment " +
         "will NOT be reflected in the user's session until they log out and log in again. " +
         "Consider userStore: local to persist role assignments across sessions.",
-    );
+    });
   }
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -354,6 +360,18 @@ export async function mountDuneAuth(
   const webhookCfg = (authConfig as SiteAuthConfig | undefined)?.webhook;
   if (webhookCfg && mountAuthz && mode === "external-jwt") {
     const whSecret = expandEnv(webhookCfg.secret);
+    if (whSecret.trim().length < 16) {
+      // The webhook HMAC is the only thing protecting user.deleted events (which
+      // revoke authz tuples). expandEnv() returns "" for an unset $ENV_VAR, so an
+      // empty/short secret would let anyone forge events. Fail fast rather than
+      // silently verifying against an empty secret.
+      throw new Error(
+        "[dune/auth] Webhook is configured but its secret is empty or too short " +
+          `(resolved from "${webhookCfg.secret}"). Set a cryptographically random ` +
+          "secret of at least 16 characters (e.g. via an environment variable) " +
+          "before enabling the auth webhook.",
+      );
+    }
     const whConfig = {
       provider: webhookCfg.provider,
       secret: whSecret,
@@ -368,7 +386,10 @@ export async function mountDuneAuth(
       })
     );
 
-    console.log(`[dune/auth] Webhook endpoint active: POST /auth/webhook (provider: ${webhookCfg.provider})`);
+    logger.info("auth.webhook.mounted", {
+      route: "POST /auth/webhook",
+      provider: webhookCfg.provider,
+    });
   }
 
   return {

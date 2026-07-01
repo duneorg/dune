@@ -6,7 +6,6 @@
  * display name, email, roles, and a logout button that POSTs to /auth/logout.
  */
 
-import { h } from "preact";
 import type { JSX } from "preact";
 
 /** User data displayed by the {@link ProfileCard} component. */

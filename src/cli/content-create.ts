@@ -33,14 +33,6 @@ export interface ContentCreateOptions {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Slugify a display title for use as a folder name */
-function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 /** Read dir entries and return a map of slug → actual folder name (with any numeric prefix) */
 async function readDirSlugs(dirPath: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();

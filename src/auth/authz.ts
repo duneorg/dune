@@ -46,6 +46,7 @@ import { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { AuthzDbAdapter } from "./authz-adapter-db.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DbAdapter } from "../db/types.ts";
+import { logger } from "../core/logger.ts";
 
 export { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 export { AuthzDbAdapter } from "./authz-adapter-db.ts";
@@ -118,11 +119,12 @@ export function createDuneAuthSystem(
     // process CWD, which is unpredictable in headless/test contexts.
     const dataDir = config.dataDir ?? "data";
     if (!config.dataDir) {
-      console.warn(
-        "[dune/authz] createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
+      logger.warn("authz.datadir.default", {
+        reason:
+          "createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
           "(relative to process CWD). Pass an explicit absolute path to avoid resolving " +
           "permissions to the wrong directory in non-standard server setups.",
-      );
+      });
     }
     adapter = new AuthzLocalAdapter({ storage, dataDir, hmacKey: config.hmacKey });
   }

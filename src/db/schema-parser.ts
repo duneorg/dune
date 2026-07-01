@@ -53,6 +53,12 @@ const VALID_TYPES: DbFieldType[] = [
   "json",
 ];
 
+/**
+ * Model and table names are interpolated into generated TypeScript source files
+ * and output filesystem paths. Restrict to safe identifiers only.
+ */
+const MODEL_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 function isValidType(t: string): t is DbFieldType {
   return (VALID_TYPES as string[]).includes(t);
 }
@@ -129,7 +135,7 @@ function parseApiBlock(
 export function modelToTableName(model: string): string {
   // snake_case-ify and pluralise
   const snake = model
-    .replace(/([A-Z])/g, (m, p1, offset) => (offset > 0 ? "_" : "") + p1.toLowerCase())
+    .replace(/([A-Z])/g, (_m, p1, offset) => (offset > 0 ? "_" : "") + p1.toLowerCase())
     .replace(/^_/, "");
   // Simple pluralisation: append 's' unless already ending in 's'
   return snake.endsWith("s") ? snake : snake + "s";
@@ -153,10 +159,24 @@ export function parseRawSchema(raw: unknown, sourceHint = "<unknown>"): DbSchema
 
   const model = r.model.trim();
 
-  const table =
-    typeof r.table === "string" && r.table.trim()
-      ? r.table.trim()
-      : modelToTableName(model);
+  // Validate model name: must be a safe identifier before any interpolation
+  // into generated TypeScript source or output filesystem paths.
+  if (!MODEL_NAME_RE.test(model)) {
+    throw new Error(
+      `${sourceHint}: model name must match /^[A-Za-z][A-Za-z0-9_]*$/ (got "${model}")`,
+    );
+  }
+
+  const rawTable = typeof r.table === "string" && r.table.trim() ? r.table.trim() : null;
+
+  // Validate table name when explicitly specified.
+  if (rawTable !== null && !MODEL_NAME_RE.test(rawTable)) {
+    throw new Error(
+      `${sourceHint}: table name must match /^[A-Za-z][A-Za-z0-9_]*$/ (got "${rawTable}")`,
+    );
+  }
+
+  const table = rawTable !== null ? rawTable : modelToTableName(model);
 
   if (!r.fields || typeof r.fields !== "object" || Array.isArray(r.fields)) {
     throw new Error(`${sourceHint}: schema "${model}" must have a "fields" object`);

@@ -236,7 +236,7 @@ export async function buildIndex(
  */
 export async function updateIndex(
   existingPages: PageIndex[],
-  existingTaxonomy: TaxonomyMap,
+  _existingTaxonomy: TaxonomyMap,
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
@@ -449,7 +449,7 @@ function buildPageIndex(
   defaultTemplate: string,
   frontmatter: PageFrontmatter,
   mtime: number,
-  rawContent: string,
+  _rawContent: string,
   language: string,
   facetFields?: string[],
   routeCtx?: RouteFileContext,

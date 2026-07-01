@@ -8,7 +8,7 @@
  * resolve URLs, load pages, and render content.
  */
 
-import { join, dirname } from "@std/path";
+import { join } from "@std/path";
 import { logger } from "./logger.ts";
 import { tracer } from "../tracing/mod.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -16,10 +16,6 @@ import type { DuneConfig, SiteConfig } from "../config/types.ts";
 import type {
   Page,
   PageIndex,
-  MediaFile,
-  RenderContext,
-  TemplateComponent,
-  TemplateProps,
 } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
@@ -29,7 +25,7 @@ import { IFRAME_SENDER_SCRIPT } from "../content/formats/media-resolve.ts";
 import { loadBlueprints } from "../blueprints/loader.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
 import { createRouteResolver } from "../routing/resolver.ts";
-import type { RouteResolver, RouteMatch } from "../routing/resolver.ts";
+import type { RouteResolver } from "../routing/resolver.ts";
 import { createThemeLoader } from "../themes/loader.ts";
 import type { ThemeLoader } from "../themes/loader.ts";
 import type { HookRegistry } from "../hooks/types.ts";

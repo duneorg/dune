@@ -21,7 +21,7 @@ import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { createLocalSiteUserStore } from "../auth/user-store.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
-import { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
+import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import { createDbSiteUserStore } from "../auth/user-store-db.ts";
 import type { SiteUserStore } from "../auth/user-store.ts";

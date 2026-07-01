@@ -261,24 +261,39 @@ export class KvStorageAdapter implements StorageAdapter {
   // JSON cache
   // ---------------------------------------------------------------------------
 
+  /**
+   * Sanitize a cache key before use in the KV store.
+   *
+   * Keys derived from user input may contain arbitrary characters. This replaces
+   * any character outside `[a-zA-Z0-9_:/-]` with `_`, matching the convention
+   * used by FileSystemAdapter.cacheKeyToPath(). Colons are preserved so callers
+   * can use structured prefixes like `"page:/blog/post"` without alteration.
+   */
+  private sanitizeCacheKey(key: string): string {
+    return key.replace(/[^a-zA-Z0-9_:\/-]/g, "_");
+  }
+
   async getJSON<T>(key: string): Promise<T | null> {
-    const entry = await this.kv.get<CacheEnvelope<T>>(["c", key]);
+    const safeKey = this.sanitizeCacheKey(key);
+    const entry = await this.kv.get<CacheEnvelope<T>>(["c", safeKey]);
     if (entry.value === null) return null;
     if (entry.value.expires && Date.now() > entry.value.expires) {
-      await this.kv.delete(["c", key]);
+      await this.kv.delete(["c", safeKey]);
       return null;
     }
     return entry.value.data;
   }
 
   async setJSON<T>(key: string, value: T, ttl?: number): Promise<void> {
+    const safeKey = this.sanitizeCacheKey(key);
     const envelope: CacheEnvelope<T> = { data: value };
     if (ttl) envelope.expires = Date.now() + ttl * 1000;
-    await this.kv.set(["c", key], envelope);
+    await this.kv.set(["c", safeKey], envelope);
   }
 
   async deleteJSON(key: string): Promise<void> {
-    await this.kv.delete(["c", key]);
+    const safeKey = this.sanitizeCacheKey(key);
+    await this.kv.delete(["c", safeKey]);
   }
 
   // ---------------------------------------------------------------------------

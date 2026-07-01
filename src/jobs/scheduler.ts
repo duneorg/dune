@@ -9,10 +9,10 @@
  * Multi-process warning: emitted at startup when workers > 1.
  */
 
-import { join } from "@std/path";
 import { matchesCron, nextRunAfter } from "./cron.ts";
 import type { JobContext, JobDefinition, JobState } from "./types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+import { logger } from "../core/logger.ts";
 
 const TICK_INTERVAL_MS = 60_000; // 1 minute
 
@@ -89,7 +89,10 @@ export class JobScheduler {
         { signal: ac.signal },
       ).catch((err: unknown) => {
         if (!this.stopped) {
-          console.error(`[dune/jobs] Deno.cron error for ${d.name}:`, err);
+          this.context.logger.error("jobs.cron_error", {
+            job: d.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       });
     }
@@ -146,7 +149,10 @@ export class JobScheduler {
       if (matchesCron(def.schedule, now)) {
         // Fire in background — do not await so one slow job doesn't block others
         this.executeJob(def).catch((err) => {
-          console.error(`[dune/jobs] Unhandled error in ${def.name}:`, err);
+          this.context.logger.error("jobs.unhandled_error", {
+            job: def.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
       }
     }
@@ -155,7 +161,7 @@ export class JobScheduler {
   private async executeJob(def: JobDefinition): Promise<void> {
     const state = await this.readState(def);
     if (state.status === "running") {
-      console.warn(`[dune/jobs] ${def.name} is already running — skipping this execution`);
+      this.context.logger.warn("jobs.already_running", { job: def.name });
       return;
     }
 
@@ -219,7 +225,10 @@ export class JobScheduler {
         new TextEncoder().encode(JSON.stringify(state, null, 2)),
       );
     } catch (err) {
-      console.warn(`[dune/jobs] Failed to persist state for ${def.name}:`, err);
+      this.context.logger.warn("jobs.state_persist_failed", {
+        job: def.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -230,10 +239,13 @@ export class JobScheduler {
  */
 export function warnIfMultiprocess(jobCount: number, workers: number): void {
   if (jobCount > 0 && workers > 1) {
-    console.warn(
-      `\n⚠  Background jobs are defined but workers > 1. Every worker process will\n` +
-        `   run every job — this causes duplicate execution. Use a single worker\n` +
-        `   process or move to a queue-backed job runner (see docs/deployment/jobs).\n`,
-    );
+    logger.warn("jobs.multiprocess", {
+      jobCount,
+      workers,
+      reason:
+        "Background jobs are defined but workers > 1. Every worker process will run " +
+        "every job — this causes duplicate execution. Use a single worker process or " +
+        "move to a queue-backed job runner (see docs/deployment/jobs).",
+    });
   }
 }

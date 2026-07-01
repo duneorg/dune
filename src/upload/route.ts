@@ -17,6 +17,7 @@
 import type { StorageAdapter } from "../storage/types.ts";
 import type { UploadConfig, UploadResult } from "./handler.ts";
 import { handleUpload } from "./handler.ts";
+import { logger } from "../core/logger.ts";
 
 export interface UploadRouteOptions {
   config: UploadConfig;
@@ -27,8 +28,9 @@ export interface UploadRouteOptions {
    * Receives the raw `Authorization` header value (or null) and should
    * return true when the request may proceed.
    *
-   * When omitted and `config.requireAuth` is true, any non-empty Bearer
-   * token is accepted (useful for simple shared-secret setups).
+   * REQUIRED when `config.requireAuth` is true: without it the handler fails
+   * closed (rejects every upload) and logs an error, because accepting any
+   * non-empty Bearer token is not real authentication.
    */
   validateToken?: (authorization: string | null) => boolean | Promise<boolean>;
 }
@@ -53,10 +55,15 @@ export function createUploadHandler(
       if (validateToken) {
         allowed = await validateToken(authorization);
       } else {
-        // Default: require a non-empty Bearer token
-        allowed = typeof authorization === "string" &&
-          authorization.startsWith("Bearer ") &&
-          authorization.slice(7).trim().length > 0;
+        // Fail closed: requireAuth is on but no real validator was wired.
+        // Accepting "any non-empty Bearer token" is not authentication, so we
+        // reject and surface the misconfiguration loudly instead.
+        logger.error("upload.auth.misconfigured", {
+          reason:
+            "requireAuth is enabled but no validateToken was provided; rejecting upload. " +
+            "Configure a token validator (site.uploads / mountUploadRoutes validateToken).",
+        });
+        allowed = false;
       }
 
       if (!allowed) {

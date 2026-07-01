@@ -13,7 +13,6 @@
  */
 
 import { createStorage } from "../storage/mod.ts";
-import { createFlexEngine } from "../flex/engine.ts";
 import { loadMigrations, applyMigrations } from "../flex/migrations.ts";
 import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import { stringify as stringifyYaml } from "@std/yaml";

@@ -14,6 +14,8 @@
  * unsigned tuples (closing the strip-the-hmac tamper bypass).
  */
 
+import { logger } from "../core/logger.ts";
+
 /** The shape of a stored tuple including the optional hmac field. */
 export interface SignedTuple {
   id: string;
@@ -96,11 +98,11 @@ export async function verifyTuple(
 export async function loadHmacKeyFromEnv(): Promise<CryptoKey | null> {
   const secret = Deno.env.get("DUNE_AUTHZ_HMAC_SECRET");
   if (!secret) {
-    console.warn(
-      "[dune/authz] DUNE_AUTHZ_HMAC_SECRET is not set — " +
-        "tuple file integrity checking is disabled. " +
+    logger.warn("authz.hmac.disabled", {
+      reason:
+        "DUNE_AUTHZ_HMAC_SECRET is not set — tuple file integrity checking is disabled. " +
         "Set this env var and run `dune authz:sign` to enable tamper detection.",
-    );
+    });
     return null;
   }
 

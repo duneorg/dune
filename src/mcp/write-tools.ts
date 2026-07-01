@@ -22,7 +22,6 @@
  *   scaffold_theme    — generate themes/{name}/ scaffold
  */
 
-import { join } from "@std/path";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneEngine } from "../core/engine.ts";

@@ -3,7 +3,7 @@
  * dune jobs:run <name> — trigger a job immediately (dev/ops use only).
  */
 
-import { join, resolve } from "@std/path";
+import { resolve } from "@std/path";
 import { scanJobs } from "../jobs/scanner.ts";
 import { JobScheduler } from "../jobs/scheduler.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
@@ -115,7 +115,6 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
   });
 
   const runtimeDir = ctx.config.admin?.runtimeDir ?? ".dune/admin";
-  const noop = () => {};
   const jobLogger = {
     info: (event: string, data?: Record<string, unknown>) =>
       console.log(`[jobs] ${event}`, data ?? ""),

@@ -8,7 +8,6 @@
  * a "not available" message when the form returns 404.
  */
 
-import { h, Fragment } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect } from "preact/hooks";
 

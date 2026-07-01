@@ -17,7 +17,10 @@ import { MarkdownHandler } from "../src/content/formats/markdown.ts";
 import { TsxHandler } from "../src/content/formats/tsx.ts";
 import { createDuneEngine } from "../src/core/engine.ts";
 import { duneRoutes } from "../src/routing/routes.ts";
+import { createApiHandler } from "../src/api/handlers.ts";
 import { createSearchEngine } from "../src/search/engine.ts";
+import { createTaxonomyEngine } from "../src/taxonomy/engine.ts";
+import { createCollectionEngine } from "../src/collections/engine.ts";
 import { join, extname } from "@std/path";
 
 const MIME: Record<string, string> = {
@@ -77,6 +80,18 @@ async function main() {
   // 6. Set up route handlers
   const routes = duneRoutes(engine, undefined, undefined, search);
 
+  // API handler — shared implementation used by the framework's Fresh app too.
+  const taxonomy = createTaxonomyEngine({
+    pages: engine.pages,
+    taxonomyMap: engine.taxonomyMap,
+  });
+  const collections = createCollectionEngine({
+    pages: engine.pages,
+    taxonomyMap: engine.taxonomyMap,
+    loadPage: engine.loadPage,
+  });
+  const apiHandler = createApiHandler({ engine, collections, taxonomy, search });
+
   // 6. Simple HTTP server (no Fresh dependency for now — pure Deno.serve)
   // This proves the engine works end-to-end. Fresh integration comes next.
   console.log(`[dune] Listening on http://localhost:${PORT}`);
@@ -105,7 +120,9 @@ async function main() {
 
       // API routes
       if (path.startsWith("/api/")) {
-        return await routes.apiHandler(req);
+        const apiRes = await apiHandler(req);
+        if (apiRes) return apiRes;
+        return Response.json({ error: "Not found" }, { status: 404 });
       }
 
       // Favicon

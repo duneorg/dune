@@ -24,6 +24,7 @@ import type {
 import type { TaxonomyMap } from "../content/index-builder.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord } from "../flex/types.ts";
+import { flexRecordToPageIndex } from "../flex/page-index.ts";
 
 /** Options for {@link createCollectionEngine}. */
 export interface CollectionEngineOptions {
@@ -453,7 +454,15 @@ export function createCollectionEngine(
     }
     const records = await flex.list(flexType);
     const recordMap = new Map(records.map((r) => [r._id, r]));
-    const indexes = records.map((r) => flexRecordToIndex(r, flexType));
+    const indexes = records.map((r) =>
+      flexRecordToPageIndex({
+        id: r._id,
+        type: flexType,
+        fields: r,
+        createdAt: r._createdAt,
+        updatedAt: r._updatedAt,
+      })
+    );
     const flexLoader = async (sourcePath: string): Promise<Page> => {
       const id = sourcePath.split("/").pop()?.replace(".yaml", "") ?? "";
       const record = recordMap.get(id) ?? await flex.get(flexType, id);
@@ -535,45 +544,6 @@ export function createCollectionEngine(
 }
 
 // ─── Flex Object → PageIndex / Page adapters ──────────────────────────────────
-
-/**
- * Convert a FlexRecord into a synthetic PageIndex so it can flow through the
- * existing collection filtering, ordering, and pagination pipeline.
- *
- * The synthetic route is `/flex/{type}/{id}`, which the public routing layer
- * maps to a theme template at `themes/{theme}/templates/flex/{type}.tsx`.
- */
-function flexRecordToIndex(record: FlexRecord, type: string): PageIndex {
-  const id = record._id;
-  // Prefer name > title > id as the human-readable label.
-  const title = String((record.name ?? record.title ?? id) as string);
-  const date = record._createdAt
-    ? new Date(record._createdAt).toISOString().split("T")[0]
-    : null;
-
-  return {
-    sourcePath: `flex-objects/${type}/${id}.yaml`,
-    route: `/flex/${type}/${id}`,
-    language: "en",
-    format: "md" as ContentFormat,
-    template: `flex/${type}`,
-    title,
-    navTitle: title,
-    date,
-    // Treat records without an explicit `published` field as published.
-    published: record.published !== false,
-    visible: true,
-    routable: true,
-    isModule: false,
-    order: 0,
-    depth: 0,
-    parentPath: null,
-    taxonomy: {},
-    mtime: Number(record._updatedAt ?? 0),
-    hash: id,
-    status: "published",
-  };
-}
 
 /**
  * Convert a FlexRecord into a synthetic Page so collection consumers can

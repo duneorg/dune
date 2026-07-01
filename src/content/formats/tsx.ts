@@ -61,7 +61,7 @@ export class TsxHandler implements ContentFormatHandler {
    * not by this handler. This just produces the raw component output.
    */
   async renderToHtml(
-    page: Page,
+    _page: Page,
     _ctx: RenderContext,
   ): Promise<string> {
     // TSX pages render themselves via their component — the rendering engine

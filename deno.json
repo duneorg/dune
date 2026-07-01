@@ -82,7 +82,7 @@
     "build": "deno run -A src/cli.ts build",
     "serve": "deno run -A src/cli.ts serve",
     "test": "deno test -A tests/",
-    "check": "deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
+    "check": "deno lint src/ && deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
     "dune": "deno run -A src/cli.ts"
   },
   "compilerOptions": {
@@ -93,7 +93,9 @@
   "lint": {
     "rules": {
       "exclude": [
-        "no-explicit-any"
+        "no-explicit-any",
+        "require-await",
+        "no-import-prefix"
       ]
     }
   }

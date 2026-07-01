@@ -38,6 +38,7 @@
 
 import { isAbsolute, join, normalize, resolve, SEPARATOR } from "@std/path";
 import type { JobDefinition } from "./types.ts";
+import { logger } from "../core/logger.ts";
 
 // ── Path validation ───────────────────────────────────────────────────────────
 
@@ -53,7 +54,10 @@ function resolveJobPath(root: string, declared: string): string | null {
 
   // Reject absolute paths — declared job paths must be relative to the project root.
   if (isAbsolute(stripped)) {
-    console.error(`[dune/jobs] Declared job path must be relative (got "${declared}") — skipped.`);
+    logger.error("jobs.path.not_relative", {
+      declared,
+      reason: "declared job path must be relative — skipped.",
+    });
     return null;
   }
 
@@ -63,9 +67,10 @@ function resolveJobPath(root: string, declared: string): string | null {
   const rootAbs = resolve(root);
   const candidate = resolve(root, normalized);
   if (candidate !== rootAbs && !candidate.startsWith(rootAbs + SEPARATOR)) {
-    console.error(
-      `[dune/jobs] Declared job path "${declared}" escapes the project root — skipped.`,
-    );
+    logger.error("jobs.path.escapes_root", {
+      declared,
+      reason: "declared job path escapes the project root — skipped.",
+    });
     return null;
   }
 
@@ -87,7 +92,10 @@ async function loadJobFile(filePath: string, displayName: string): Promise<JobDe
     }
 
     if (typeof handler !== "function") {
-      console.warn(`[dune/jobs] ${displayName}: missing default export handler — skipped`);
+      logger.warn("jobs.load.missing_handler", {
+        job: displayName,
+        reason: "missing default export handler — skipped",
+      });
       return null;
     }
 
@@ -95,7 +103,10 @@ async function loadJobFile(filePath: string, displayName: string): Promise<JobDe
     const stem = filePath.replace(/\.[^/.]+$/, "").split(SEPARATOR).at(-1) ?? displayName;
     return { name: stem, schedule: schedule.trim(), handler };
   } catch (err) {
-    console.warn(`[dune/jobs] Failed to load ${displayName}:`, err);
+    logger.warn("jobs.load.failed", {
+      job: displayName,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -150,15 +161,13 @@ async function loadAutoDiscovered(root: string): Promise<JobDefinition[]> {
 
   if (!hasJobsDir) return [];
 
-  console.warn(
-    "\n⚠  [dune/jobs] Auto-discovery is deprecated and will be removed in a future release.\n" +
-      "   Any file written to jobs/ is executed automatically — this is a code-execution risk.\n" +
-      "   Add an explicit list to site.yaml to silence this warning:\n\n" +
-      "     site:\n" +
-      "       jobs:\n" +
-      "         - ./jobs/your-job.ts\n\n" +
-      "   Set `jobs: []` to disable all background jobs.\n",
-  );
+  logger.warn("jobs.autodiscovery.deprecated", {
+    reason:
+      "Auto-discovery is deprecated and will be removed in a future release. Any file " +
+      "written to jobs/ is executed automatically — this is a code-execution risk. Add an " +
+      "explicit list to site.yaml (site.jobs: [./jobs/your-job.ts]) to silence this warning, " +
+      "or set jobs: [] to disable all background jobs.",
+  });
 
   let entries: Deno.DirEntry[] = [];
   try {

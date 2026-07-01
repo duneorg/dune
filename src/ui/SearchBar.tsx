@@ -7,7 +7,6 @@
  * move through items, Enter to navigate, Esc to close). Debounces 200ms.
  */
 
-import { h } from "preact";
 import type { JSX } from "preact";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 

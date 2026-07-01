@@ -14,7 +14,7 @@
  * silently discard the query string when serving the raw file.
  */
 
-import { join, dirname } from "@std/path";
+import { join, dirname, normalize, isAbsolute } from "@std/path";
 import { parseFolderName } from "../content/path-utils.ts";
 import { ensureDir } from "@std/fs";
 import type { BootstrapResult } from "../cli/bootstrap.ts";
@@ -231,7 +231,14 @@ export function routeToOutputPath(route: string): string {
   // Has a file extension → write as-is.
   if (/\.[a-z0-9]+$/i.test(stripped)) return stripped;
   // Directory route → index.html inside that directory.
-  return `${stripped}/index.html`;
+  const outputPath = `${stripped}/index.html`;
+  // H4: Guard against path traversal via frontmatter slug. After normalization,
+  // any remaining `../` prefix or absolute path means the slug escapes outDir.
+  const normalized = normalize(outputPath);
+  if (normalized.startsWith("..") || isAbsolute(normalized)) {
+    throw new Error(`[dune/ssg] Unsafe output path from route "${route}": "${outputPath}"`);
+  }
+  return outputPath;
 }
 
 // ─── Writing helpers ──────────────────────────────────────────────────────────
@@ -255,14 +262,27 @@ async function writeRedirectStub(
   const outputPath = routeToOutputPath(route);
   const fullPath = join(outDir, outputPath);
   await ensureDir(dirname(fullPath));
+
+  // M4: Reject dangerous URL schemes that would execute in the visitor's browser.
+  // HTML-escape the location value before interpolating into attribute contexts.
+  let safeLocationRaw = location;
+  if (/^javascript:/i.test(safeLocationRaw) || /^data:/i.test(safeLocationRaw)) {
+    safeLocationRaw = "/";
+  }
+  const safeLocation = safeLocationRaw
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
   await Deno.writeTextFile(fullPath, `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0;url=${location}">
-  <link rel="canonical" href="${location}">
+  <meta http-equiv="refresh" content="0;url=${safeLocation}">
+  <link rel="canonical" href="${safeLocation}">
 </head>
-<body><p>Redirecting to <a href="${location}">${location}</a>…</p></body>
+<body><p>Redirecting to <a href="${safeLocation}">${safeLocation}</a>…</p></body>
 </html>`);
 }
 

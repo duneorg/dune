@@ -61,6 +61,19 @@ function stubFetch(captured: CapturedRequest[], status = 200): () => void {
   return () => { globalThis.fetch = original; };
 }
 
+/**
+ * Stub Deno.resolveDns so the SSRF guard used by the custom provider resolves
+ * test hostnames to a fixed public IP instead of performing a real DNS lookup.
+ * Keeps these tests hermetic (they must not depend on network/DNS).
+ */
+function stubDns(publicIp = "93.184.216.34"): () => void {
+  const original = Deno.resolveDns;
+  // deno-lint-ignore no-explicit-any
+  (Deno as any).resolveDns = (_host: string, recordType: string) =>
+    Promise.resolve(recordType === "A" ? [publicIp] : []);
+  return () => { Deno.resolveDns = original; };
+}
+
 // ─── Cloudflare ──────────────────────────────────────────────────────────────
 
 Deno.test("cloudflare: sends correct Authorization header and endpoint", async () => {
@@ -190,6 +203,7 @@ Deno.test("bunny: throws when purge returns non-2xx", async () => {
 Deno.test("custom: POSTs { urls } body to configured purge_url", async () => {
   const requests: CapturedRequest[] = [];
   const restore = stubFetch(requests);
+  const restoreDns = stubDns();
   try {
     const provider = createCustomProvider({ purge_url: "https://example.com/cdn-purge" });
     await provider.purge({ urls: ["https://example.com/a", "https://example.com/b"] });
@@ -201,6 +215,7 @@ Deno.test("custom: POSTs { urls } body to configured purge_url", async () => {
     const parsed = JSON.parse(requests[0].body);
     assertEquals(parsed.urls, ["https://example.com/a", "https://example.com/b"]);
   } finally {
+    restoreDns();
     restore();
   }
 });
@@ -208,6 +223,7 @@ Deno.test("custom: POSTs { urls } body to configured purge_url", async () => {
 Deno.test("custom: sets Authorization header when api_token provided", async () => {
   const requests: CapturedRequest[] = [];
   const restore = stubFetch(requests);
+  const restoreDns = stubDns();
   try {
     const provider = createCustomProvider({
       purge_url: "https://example.com/cdn-purge",
@@ -217,6 +233,7 @@ Deno.test("custom: sets Authorization header when api_token provided", async () 
 
     assertEquals(requests[0].headers["Authorization"], "Bearer my-secret-token");
   } finally {
+    restoreDns();
     restore();
   }
 });
@@ -224,12 +241,14 @@ Deno.test("custom: sets Authorization header when api_token provided", async () 
 Deno.test("custom: no Authorization header when api_token is absent", async () => {
   const requests: CapturedRequest[] = [];
   const restore = stubFetch(requests);
+  const restoreDns = stubDns();
   try {
     const provider = createCustomProvider({ purge_url: "https://example.com/cdn-purge" });
     await provider.purge({ urls: ["https://example.com/"] });
 
     assertEquals(requests[0].headers["Authorization"], undefined);
   } finally {
+    restoreDns();
     restore();
   }
 });
@@ -237,6 +256,7 @@ Deno.test("custom: no Authorization header when api_token is absent", async () =
 Deno.test("custom: throws on non-2xx response", async () => {
   const requests: CapturedRequest[] = [];
   const restore = stubFetch(requests, 500);
+  const restoreDns = stubDns();
   try {
     const provider = createCustomProvider({ purge_url: "https://example.com/cdn-purge" });
     await assertRejects(
@@ -245,6 +265,7 @@ Deno.test("custom: throws on non-2xx response", async () => {
       "HTTP 500",
     );
   } finally {
+    restoreDns();
     restore();
   }
 });

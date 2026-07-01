@@ -73,17 +73,20 @@ function validateField(
       }
       break;
     }
-    case "text":
-    case "email":
-    case "tel":
-    case "textarea": {
-      if (field.validate?.min !== undefined && value.length < field.validate.min) {
-        errors.push({ field: name, message: `${field.label} must be at least ${field.validate.min} characters.` });
-      }
-      if (field.validate?.max !== undefined && value.length > field.validate.max) {
-        errors.push({ field: name, message: `${field.label} must be at most ${field.validate.max} characters.` });
-      }
-      break;
+  }
+
+  // Length validation for free-text field types. Applies to "email" too — it
+  // must run outside the switch above, since the "email" case there handles
+  // format and would otherwise shadow these length checks.
+  if (
+    field.type === "text" || field.type === "email" ||
+    field.type === "tel" || field.type === "textarea"
+  ) {
+    if (field.validate?.min !== undefined && value.length < field.validate.min) {
+      errors.push({ field: name, message: `${field.label} must be at least ${field.validate.min} characters.` });
+    }
+    if (field.validate?.max !== undefined && value.length > field.validate.max) {
+      errors.push({ field: name, message: `${field.label} must be at most ${field.validate.max} characters.` });
     }
   }
 

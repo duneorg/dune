@@ -21,8 +21,6 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import type { SearchEngine } from "../search/engine.ts";
-import { resolveFacetValue } from "../search/engine.ts";
-import { createSearchAnalytics } from "../search/analytics.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
@@ -74,7 +72,6 @@ export interface FlexDetailTemplateProps {
  */
 export interface DuneRoutes {
   mediaHandler(req: Request): Promise<Response>;
-  apiHandler(req: Request): Promise<Response>;
   /** Handles /_dune/* system introspection endpoints. */
   systemHandler(req: Request): Promise<Response>;
   contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>): Promise<Response>;
@@ -93,10 +90,7 @@ export function duneRoutes(
   collections?: CollectionEngine,
   flex?: FlexEngine,
   search?: SearchEngine,
-  analyticsPath?: string,
 ): DuneRoutes {
-  // Analytics recorder — only created when a path is provided
-  const analytics = analyticsPath ? createSearchAnalytics(analyticsPath) : null;
   return {
     /**
      * Register media serving route.
@@ -134,265 +128,6 @@ export function duneRoutes(
         headers["X-Frame-Options"] = "SAMEORIGIN";
       }
       return new Response(media.data as BodyInit, { headers });
-    },
-
-    /**
-     * Handle API requests (basic v0.1: list pages, get page).
-     */
-    apiHandler: async (req: Request): Promise<Response> => {
-      const url = new URL(req.url);
-      const path = url.pathname;
-
-      // Rate-limit expensive endpoints (search, taxonomy, page list).
-      if (
-        path.startsWith("/api/search") ||
-        path.startsWith("/api/taxonomy") ||
-        path.startsWith("/api/pages")
-      ) {
-        const ip = clientIp(req);
-        if (!publicRateLimiter.check(ip)) {
-          return Response.json(
-            { error: "Too many requests" },
-            {
-              status: 429,
-              headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
-            },
-          );
-        }
-      }
-
-      // GET /api/pages — list all pages
-      if (path === "/api/pages") {
-        const limit = parseInt(url.searchParams.get("limit") ?? "20");
-        const offset = parseInt(url.searchParams.get("offset") ?? "0");
-        const template = url.searchParams.get("template");
-
-        let items = engine.pages
-          .filter((p) => p.published && p.routable)
-          .filter((p) => !template || p.template === template);
-
-        const total = items.length;
-        items = items.slice(offset, offset + limit);
-
-        return Response.json({
-          items: items.map((p) => ({
-            route: p.route,
-            title: p.title,
-            date: p.date,
-            template: p.template,
-            format: p.format,
-            published: p.published,
-            taxonomy: p.taxonomy,
-          })),
-          total,
-          limit,
-          offset,
-        });
-      }
-
-      // GET /api/pages/* — get single page
-      if (path.startsWith("/api/pages/")) {
-        const route = path.replace("/api/pages", "");
-        const result = await engine.resolve(route);
-
-        if (result.type !== "page" || !result.page) {
-          return Response.json({ error: "Page not found" }, { status: 404 });
-        }
-
-        const page = result.page;
-        const html = await page.html();
-
-        return Response.json({
-          route: page.route,
-          title: page.frontmatter.title,
-          date: page.frontmatter.date,
-          template: page.template,
-          format: page.format,
-          html,
-          frontmatter: page.frontmatter,
-          media: page.media.map((m) => ({
-            name: m.name,
-            url: m.url,
-            type: m.type,
-          })),
-        });
-      }
-
-      // GET /api/search/suggest — autocomplete suggestions
-      if (path === "/api/search/suggest") {
-        const q = url.searchParams.get("q") ?? "";
-        const suggestions = search ? await search.suggest(q, 10) : [];
-        return Response.json({ suggestions });
-      }
-
-      // GET /api/search — faceted full-text search
-      if (path === "/api/search") {
-        if (!search) {
-          return Response.json({ results: [], total: 0, query: "", filters: {}, facets: {} });
-        }
-
-        const q = url.searchParams.get("q") ?? "";
-        const filterTemplate = url.searchParams.get("template");
-        const filterPublished = url.searchParams.get("published");
-        const filterLang = url.searchParams.get("lang");
-        const filterFrom = url.searchParams.get("from");
-        const filterTo = url.searchParams.get("to");
-        const limit = Math.min(
-          parseInt(url.searchParams.get("limit") ?? "20"),
-          100,
-        );
-        const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0"));
-
-        // Collect taxonomy filters: taxonomy[category][]=news&taxonomy[tag][]=deno
-        const taxonomyFilters: Record<string, string[]> = {};
-        for (const [key, value] of url.searchParams.entries()) {
-          const match = key.match(/^taxonomy\[([^\]]+)\]\[\]$/);
-          if (match) {
-            const taxName = match[1];
-            if (!taxonomyFilters[taxName]) taxonomyFilters[taxName] = [];
-            taxonomyFilters[taxName].push(value);
-          }
-        }
-
-        // Collect facet filters: facet[template]=post&facet[taxonomy.category]=news
-        const facetFilters: Record<string, string> = {};
-        for (const [key, value] of url.searchParams.entries()) {
-          const match = key.match(/^facet\[([^\]]+)\]$/);
-          if (match) {
-            facetFilters[match[1]] = value;
-          }
-        }
-
-        // Determine configured facet fields from the engine config (passed via engine)
-        // We read facet fields from the engine's search config when available
-        const configuredFacetFields: string[] = (() => {
-          try {
-            const searchCfg = (engine.config as { system?: { search?: { facets?: Array<{ field: string }> } } }).system?.search;
-            return searchCfg?.facets?.map((f) => f.field) ?? [];
-          } catch {
-            return [];
-          }
-        })();
-
-        // Fetch a larger candidate set then filter down
-        const raw = await search.search(q, 500);
-
-        const filtered = raw.filter(({ page: p }) => {
-          if (filterTemplate && p.template !== filterTemplate) return false;
-          if (filterPublished !== null && String(p.published) !== filterPublished) return false;
-          if (filterLang && p.language !== filterLang) return false;
-          if (filterFrom && p.date && p.date < filterFrom) return false;
-          if (filterTo && p.date && p.date > filterTo) return false;
-          for (const [taxName, vals] of Object.entries(taxonomyFilters)) {
-            const pageVals = p.taxonomy[taxName] ?? [];
-            if (!vals.some((v) => pageVals.includes(v))) return false;
-          }
-          // Apply facet filters
-          for (const [field, filterVal] of Object.entries(facetFilters)) {
-            // Build a synthetic frontmatter-like object for resolving dot-paths.
-            // p.extra carries custom facet field values extracted at index time.
-            // Spread p.extra first so standard PageIndex fields (template, published,
-            // etc.) always take precedence — prevents a facet field with the same name
-            // as a standard field from shadowing it in filter matching.
-            const syntheticFm: Record<string, unknown> = {
-              ...(p.extra ?? {}),
-              template: p.template,
-              taxonomy: p.taxonomy,
-              date: p.date,
-              language: p.language,
-              published: p.published,
-            };
-            const val = resolveFacetValue(syntheticFm, field);
-            if (val === undefined) return false;
-            if (Array.isArray(val)) {
-              if (!val.includes(filterVal)) return false;
-            } else {
-              if (val !== filterVal) return false;
-            }
-          }
-          return true;
-        });
-
-        // Compute facet counts across all filtered results (before limit/offset)
-        const facets: Record<string, Record<string, number>> = {};
-        if (configuredFacetFields.length > 0) {
-          for (const field of configuredFacetFields) {
-            facets[field] = {};
-          }
-          for (const { page: p } of filtered) {
-            const syntheticFm: Record<string, unknown> = {
-              ...(p.extra ?? {}),
-              template: p.template,
-              taxonomy: p.taxonomy,
-              date: p.date,
-              language: p.language,
-              published: p.published,
-            };
-            for (const field of configuredFacetFields) {
-              const val = resolveFacetValue(syntheticFm, field);
-              if (val === undefined) continue;
-              const vals = Array.isArray(val) ? val : [val];
-              for (const v of vals) {
-                facets[field][v] = (facets[field][v] ?? 0) + 1;
-              }
-            }
-          }
-        }
-
-        const resultCount = filtered.length;
-        const items = filtered.slice(offset, offset + limit).map(({ page: p, score, excerpt, highlights }) => ({
-          route: p.route,
-          title: p.title,
-          template: p.template,
-          date: p.date,
-          taxonomy: p.taxonomy,
-          score,
-          excerpt,
-          ...(highlights !== undefined ? { highlights } : {}),
-        }));
-
-        // Fire-and-forget analytics recording
-        if (analytics && q.trim()) {
-          analytics.record({ query: q.trim(), resultCount, timestamp: Date.now() }).catch(
-            () => {},
-          );
-        }
-
-        return Response.json({
-          results: items,
-          total: resultCount,
-          query: q,
-          filters: {
-            template: filterTemplate ?? undefined,
-            published: filterPublished ?? undefined,
-            lang: filterLang ?? undefined,
-            from: filterFrom ?? undefined,
-            to: filterTo ?? undefined,
-            taxonomy: Object.keys(taxonomyFilters).length ? taxonomyFilters : undefined,
-          },
-          facets,
-        });
-      }
-
-      // GET /api/taxonomy/:name — list taxonomy values
-      if (path.startsWith("/api/taxonomy/")) {
-        const name = path.replace("/api/taxonomy/", "").split("/")[0];
-        const values = engine.taxonomyMap[name];
-
-        if (!values) {
-          return Response.json({ error: "Taxonomy not found" }, { status: 404 });
-        }
-
-        // Count pages per value
-        const counts: Record<string, number> = {};
-        for (const [value, sourcePaths] of Object.entries(values)) {
-          counts[value] = sourcePaths.length;
-        }
-
-        return Response.json({ name, values: counts });
-      }
-
-      return Response.json({ error: "Not found" }, { status: 404 });
     },
 
     /**
@@ -435,6 +170,10 @@ export function duneRoutes(
       const span = tracer.startSpan("http.request", { pathname: url.pathname });
 
       /** Attach span status + end, then return the response. */
+      // NOTE: `respond` is currently never called — the content handler returns
+      // responses directly, so the span started above is not ended on this path.
+      // Proper tracing wiring is deferred to the routing/routes.ts refactor.
+      // deno-lint-ignore no-unused-vars
       function respond(response: Response | Promise<Response>): Promise<Response> {
         if (response instanceof Promise) {
           return response.then((r) => {

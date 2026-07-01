@@ -7,7 +7,6 @@
  * link email input when "magic" is in providers.
  */
 
-import { h } from "preact";
 import type { JSX } from "preact";
 
 /** Props for the {@link LoginForm} server-rendered component. */

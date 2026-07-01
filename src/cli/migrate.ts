@@ -269,13 +269,6 @@ function xmlText(xml: string, tag: string): string {
   const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\/${tag}>`, "i"));
   return m ? m[1].trim() : "";
 }
-function xmlAll(xml: string, tag: string): string[] {
-  const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\/${tag}>`, "gi");
-  const results: string[] = [];
-  for (const m of xml.matchAll(re)) results.push(m[1].trim());
-  return results;
-}
-
 function parseWxrItems(xml: string): WpItem[] {
   const items: WpItem[] = [];
   const itemBlocks = xml.matchAll(/<item>([\s\S]*?)<\/item>/gi);

@@ -17,6 +17,7 @@ import { createDuneApp } from "../cli/fresh-app.ts";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
+import { logger } from "../core/logger.ts";
 
 export { loadMultisiteConfig };
 
@@ -96,9 +97,7 @@ export class MultisiteManager {
         : undefined;
 
       if (debug) {
-        console.log(
-          `  [multisite] bootstrapping site "${entry.id}" at ${siteRoot}`,
-        );
+        logger.debug("multisite.bootstrap", { site: entry.id, root: siteRoot });
       }
 
       const ctx = await bootstrap(siteRoot, {
@@ -143,9 +142,11 @@ export class MultisiteManager {
         this.defaultSite = initialized;
       }
 
-      console.log(
-        `  ✓ [${entry.id}] ${entry.hostname ?? entry.pathPrefix ?? "(default)"} — ${ctx.engine.pages.length} pages`,
-      );
+      logger.info("multisite.site_ready", {
+        site: entry.id,
+        route: entry.hostname ?? entry.pathPrefix ?? "(default)",
+        pages: ctx.engine.pages.length,
+      });
     }
 
     if (!this.defaultSite && this.sites.length > 0) {
@@ -293,15 +294,18 @@ export class MultisiteManager {
                 await ctx.search.rebuild(ctx.engine.pages);
                 const elapsed = (performance.now() - start).toFixed(0);
                 if (debug) {
-                  console.log(
-                    `  🔄 [${siteRoot}] rebuilt in ${elapsed}ms (${ctx.engine.pages.length} pages)`,
-                  );
+                  logger.debug("multisite.rebuilt", {
+                    root: siteRoot,
+                    durationMs: Number(elapsed),
+                    pages: ctx.engine.pages.length,
+                  });
                 }
                 notifyReload();
               } catch (err) {
-                console.error(
-                  `  ✗ [${siteRoot}] rebuild error: ${err}`,
-                );
+                logger.error("multisite.rebuild_error", {
+                  root: siteRoot,
+                  error: err instanceof Error ? err.message : String(err),
+                });
               }
             }, 200);
           }

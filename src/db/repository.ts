@@ -13,8 +13,6 @@
 
 import type { DbAdapter, DbFieldDef, DbSchema, FindOptions, Repository, WhereClause } from "./types.ts";
 import { KVAdapter } from "./adapters/kv.ts";
-import { SQLiteAdapter } from "./adapters/sqlite.ts";
-
 // ---------------------------------------------------------------------------
 // UUID generation
 // ---------------------------------------------------------------------------
@@ -61,6 +59,17 @@ function safeColumn(key: string, fields: DbFieldDef[]): string {
     return `"${key}"`;
   }
   throw new Error(`Unknown or invalid column identifier: ${JSON.stringify(key)}`);
+}
+
+/**
+ * Escape LIKE pattern wildcards in a user-supplied value.
+ * Without escaping, literal % and _ in the value act as wildcards, allowing
+ * callers to match more rows than intended — bypassing prefix-based filters.
+ * The ESCAPE '\\' clause in the SQL tells SQLite/Postgres to treat the
+ * backslash as the escape character for %, _, and \ itself.
+ */
+function escapeLike(s: string): string {
+  return String(s).replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
 function buildWhereClause<T>(
@@ -132,12 +141,12 @@ function buildWhereClause<T>(
               break;
             }
             case "$contains":
-              parts.push(`${colSql} LIKE ?`);
-              params.push(`%${opVal}%`);
+              parts.push(`${colSql} LIKE ? ESCAPE '\\'`);
+              params.push(`%${escapeLike(opVal as string)}%`);
               break;
             case "$startsWith":
-              parts.push(`${colSql} LIKE ?`);
-              params.push(`${opVal}%`);
+              parts.push(`${colSql} LIKE ? ESCAPE '\\'`);
+              params.push(`${escapeLike(opVal as string)}%`);
               break;
             case "$isNull":
               parts.push(opVal ? `${colSql} IS NULL` : `${colSql} IS NOT NULL`);
@@ -575,7 +584,7 @@ function createKvRepository<T, TCreate, TUpdate>(
 
   return {
     async find(opts?: FindOptions<T>): Promise<T[]> {
-      let all = await allRecords();
+      const all = await allRecords();
       let records = all.map(({ id, record }) => kvRecordToT(id, record));
 
       if (opts?.where) {

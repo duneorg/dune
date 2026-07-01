@@ -7,7 +7,6 @@
  * payment provider — the button just initiates the checkout session.
  */
 
-import { h } from "preact";
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 

@@ -17,6 +17,7 @@
  */
 
 import type { DuneAuthSystem } from "./authz.ts";
+import { logger } from "../core/logger.ts";
 
 export interface WebhookConfig {
   /** IdP provider type — determines signature verification format. */
@@ -28,6 +29,14 @@ export interface WebhookConfig {
    * Default: "x-dune-signature"
    */
   signatureHeader?: string;
+  /**
+   * For the "generic" provider: whether to require the timestamp header
+   * (`x-timestamp` by default) for replay protection.
+   *
+   * Defaults to `true` — requests without a timestamp header are rejected.
+   * Set to `false` only for legacy providers that do not send a timestamp.
+   */
+  requireTimestamp?: boolean;
 }
 
 // ── Signature verification ────────────────────────────────────────────────────
@@ -117,6 +126,7 @@ async function verifyHubSignature(
   secret: string,
   headerName: string,
   timestampHeader?: string,
+  requireTimestampWhenConfigured = true,
 ): Promise<Uint8Array | null> {
   const sigHeader = req.headers.get(headerName);
   if (!sigHeader) return null;
@@ -125,12 +135,19 @@ async function verifyHubSignature(
   if (!sigHeader.startsWith(prefix)) return null;
   const provided = sigHeader.slice(prefix.length);
 
-  // Replay protection — only enforced when the provider sends a timestamp header.
+  // Replay protection — enforced whenever timestampHeader is configured.
+  // M6: When a timestamp header is configured but absent in the request, we now
+  // reject rather than silently skipping — preventing indefinite replay of captured
+  // valid-signature payloads. Pass requireTimestamp=false to opt out for legacy
+  // providers that do not send a timestamp.
   // Number("abc") = NaN and NaN comparisons always return false, so we must
   // check isFinite explicitly to avoid silently skipping the guard.
   if (timestampHeader) {
     const tsRaw = req.headers.get(timestampHeader);
-    if (tsRaw !== null) {
+    if (tsRaw === null) {
+      // Timestamp header configured but absent in request — reject to prevent replays.
+      if (requireTimestampWhenConfigured) return null;
+    } else {
       const tsSeconds = Number(tsRaw);
       if (!Number.isFinite(tsSeconds)) return null;
       if (Math.abs(Date.now() / 1000 - tsSeconds) > WEBHOOK_TOLERANCE_MS / 1000) return null;
@@ -215,12 +232,15 @@ export async function handleWebhook(req: Request, deps: WebhookHandlerDeps): Pro
       body = await verifyHubSignature(req, config.secret, "x-hub-signature-256", "x-auth0-timestamp");
       break;
     case "generic":
-      // Generic providers vary; check x-timestamp when present, skip when absent.
+      // Generic provider: timestamp header required by default (M6: reject when absent
+      // to prevent replay attacks). Set config.requireTimestamp = false to opt out
+      // for legacy providers that do not send a timestamp.
       body = await verifyHubSignature(
         req,
         config.secret,
         config.signatureHeader ?? "x-dune-signature",
         "x-timestamp",
+        config.requireTimestamp !== false,
       );
       break;
   }
@@ -271,9 +291,17 @@ export async function handleWebhook(req: Request, deps: WebhookHandlerDeps): Pro
         tuplesRevoked: count,
       });
 
-      console.log(`[dune/auth/webhook] user.deleted: revoked ${count} tuple(s) for user ${userId}`);
+      logger.info("auth.webhook.user_deleted", {
+        provider: config.provider,
+        userId,
+        tuplesRevoked: count,
+      });
     } catch (err) {
-      console.error("[dune/auth/webhook] Failed to revoke tuples:", err);
+      logger.error("auth.webhook.revoke_failed", {
+        provider: config.provider,
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return new Response(JSON.stringify({ error: "Internal error" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },

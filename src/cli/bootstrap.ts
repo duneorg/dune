@@ -42,7 +42,6 @@ import { initLogger, logger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
-import type { SearchEngine } from "../search/engine.ts";
 import type { HookRegistry, DunePlugin } from "../hooks/types.ts";
 import type { ImageHandler } from "../images/handler.ts";
 import type { ImageProcessor } from "../images/processor.ts";

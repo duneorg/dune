@@ -16,6 +16,7 @@
 import type { StorageAdapter as DuneStorage } from "../storage/types.ts";
 import { signTuple, verifyTuple } from "./authz-hmac.ts";
 import type { SignedTuple } from "./authz-hmac.ts";
+import { logger } from "../core/logger.ts";
 
 /** Read the DUNE_AUTHZ_HMAC_STRICT env flag ("1"/"true"). */
 function authzStrictHmacFromEnv(): boolean {
@@ -118,17 +119,21 @@ export class AuthzLocalAdapter {
                 if (this.hmacKey) {
                   const result = await verifyTuple(tuple, this.hmacKey);
                   if (result === "invalid") {
-                    console.warn(
-                      `[dune/authz] Tuple ${tuple.id} (${e.name}) has an invalid HMAC — ` +
-                        "file may have been tampered with. Tuple NOT loaded.",
-                    );
+                    logger.warn("authz.tuple.invalid_hmac", {
+                      tupleId: tuple.id,
+                      file: e.name,
+                      reason:
+                        "invalid HMAC — file may have been tampered with. Tuple NOT loaded.",
+                    });
                     return;
                   }
                   if (result === "missing" && this.strictHmac) {
-                    console.warn(
-                      `[dune/authz] Tuple ${tuple.id} (${e.name}) is unsigned but strict HMAC ` +
-                        "mode is enabled. Tuple NOT loaded. Run `dune authz:sign` to sign it.",
-                    );
+                    logger.warn("authz.tuple.unsigned_strict", {
+                      tupleId: tuple.id,
+                      file: e.name,
+                      reason:
+                        "unsigned but strict HMAC mode is enabled. Tuple NOT loaded. Run `dune authz:sign` to sign it.",
+                    });
                     return;
                   }
                   // result === "missing" (non-strict): unsigned file, accepted during migration
@@ -205,7 +210,10 @@ export class AuthzLocalAdapter {
             this.tuples.delete(id);
             count++;
           } else {
-            console.warn(`[dune/authz] Failed to delete tuple ${id} from disk:`, err);
+            logger.warn("authz.tuple.delete_failed", {
+              tupleId: id,
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         }
       }

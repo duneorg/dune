@@ -197,7 +197,7 @@ export interface ResourceDeps {
   root: string;
 }
 
-function makeFormsHandler(storage: StorageAdapter, root: string): ResourceHandler {
+function makeFormsHandler(storage: StorageAdapter, _root: string): ResourceHandler {
   return async () => {
     const schemasDir = "schemas";
     const forms: Record<string, unknown>[] = [];
@@ -235,7 +235,7 @@ const AUDIT_LOG_RESOURCE: McpResource = {
   mimeType: "application/json",
 };
 
-function makeAuditLogHandler(storage: StorageAdapter, root: string): ResourceHandler {
+function makeAuditLogHandler(_storage: StorageAdapter, root: string): ResourceHandler {
   return async () => {
     // Audit log is a JSONL file; read the last 50 lines
     const logPath = join(root, ".dune", "admin", "audit.log");

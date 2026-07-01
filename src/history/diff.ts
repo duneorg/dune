@@ -223,7 +223,7 @@ function computeLCS(a: string[], b: string[]): string[] {
  */
 function groupIntoHunks(
   changes: Array<{ type: "add" | "remove" | "equal"; oldIdx: number; newIdx: number; content: string }>,
-  prefixLen: number,
+  _prefixLen: number,
 ): DiffHunk[] {
   if (changes.length === 0) return [];
 

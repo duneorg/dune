@@ -330,6 +330,9 @@ function validateRecord(
   }
 
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    // valueType is always a literal typeof string ("string") supplied by
+    // internal callers, not user input.
+    // deno-lint-ignore valid-typeof
     if (typeof v !== valueType) {
       errors.push({
         path: `${path}.${k}`,

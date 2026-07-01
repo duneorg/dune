@@ -10,6 +10,7 @@
 
 import { decodeBase64Url } from "@std/encoding/base64url";
 import { crypto as stdCrypto } from "@std/crypto";
+import { safeFetch } from "../security/ssrf.ts";
 
 export interface ExternalJwtOptions {
   secret?: string;       // HMAC-SHA256 shared secret
@@ -171,7 +172,9 @@ async function verifyRsa(
 ): Promise<boolean> {
   let jwks: { keys: JwkKey[] };
   try {
-    const res = await fetch(jwksUrl, { signal: AbortSignal.timeout(5000) });
+    // SSRF guard: a misconfigured or attacker-influenced jwksUrl must not be
+    // able to reach internal/loopback/metadata endpoints during verification.
+    const res = await safeFetch(jwksUrl, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return false;
     jwks = await res.json() as { keys: JwkKey[] };
   } catch {

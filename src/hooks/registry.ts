@@ -42,10 +42,9 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
     return handlers.get(event)!;
   }
 
-  // Capture self-reference so setup() can receive the registry as PluginApi.hooks.
-  // The variable is assigned immediately after the object literal is created.
-  let self: HookRegistry;
-
+  // `self` is bound to the registry immediately after the object literal is
+  // created (see below); the closures below capture it lexically and only read
+  // it at call time, after the binding is initialized.
   const registry: HookRegistry = {
     registerPlugin(plugin: DunePlugin): void {
       registeredPlugins.push(plugin);
@@ -129,6 +128,6 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
     },
   };
 
-  self = registry;
+  const self: HookRegistry = registry;
   return registry;
 }

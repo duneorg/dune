@@ -40,6 +40,7 @@ export function isSafeUrl(url: string | null | undefined): boolean {
 
   // Reject any control chars (including tab/newline) — obfuscation vector:
   // "java\tscript:alert(1)" is parsed as javascript: by some browsers.
+  // deno-lint-ignore no-control-regex -- matching control chars is the intent
   if (/[\x00-\x1f\x7f]/.test(raw)) return false;
 
   const trimmed = raw.trimStart();

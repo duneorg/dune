@@ -16,11 +16,9 @@ import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import { applyOrphanProtection } from "./typography.ts";
 import type {
-  ContentFormat,
   ContentHandlerContext,
   MediaFile,
   Page,
-  PageFrontmatter,
   PageIndex,
   RenderContext,
   TemplateComponent,

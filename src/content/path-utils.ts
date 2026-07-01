@@ -8,7 +8,7 @@
  *   _drafts/  → non-routable container
  */
 
-import { basename, dirname } from "@std/path";
+import { dirname } from "@std/path";
 import type { ContentFormat } from "./types.ts";
 
 /** Known content file extensions mapped to their format */

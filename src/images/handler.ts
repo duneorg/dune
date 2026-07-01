@@ -13,7 +13,7 @@
  *   5. Return with proper Content-Type and caching headers
  */
 
-import type { DuneEngine, MediaResponse } from "../core/engine.ts";
+import type { DuneEngine } from "../core/engine.ts";
 import type { ImageProcessor } from "./processor.ts";
 import type { ImageCache } from "./cache.ts";
 

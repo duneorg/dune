@@ -23,6 +23,8 @@ import type { FlexEngine } from "../flex/engine.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+import { enforceRolesFromRequest, parseRolesSpec } from "../auth/gating.ts";
+import { logger } from "../core/logger.ts";
 
 // Per-IP rate limit for public API. Generous enough for legitimate headless
 // consumers (~2 req/sec) but cheap to enforce. Protects against trivial CPU
@@ -102,11 +104,12 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
       // Now we fail closed: emit no Access-Control-Allow-Origin header
       // unless the request origin is in cors_origins.
       if (!warnedMissingSiteUrl) {
-        console.warn(
-          "[dune] site.url is missing or invalid — API CORS will refuse cross-origin requests " +
+        logger.warn("api.cors.missing_site_url", {
+          reason:
+            "site.url is missing or invalid — API CORS will refuse cross-origin requests " +
             "until `site: { url: https://your-site }` is set in site.yaml " +
             "or specific origins are listed in `site.cors_origins`.",
-        );
+        });
         warnedMissingSiteUrl = true;
       }
     }
@@ -170,15 +173,30 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
     }
 
     try {
-      const result = await routeApiRequest(path, url, engine, collections, taxonomy, search, flex);
+      const result = await routeApiRequest(path, url, req, engine, collections, taxonomy, search, flex);
       if (!result) {
         return jsonResponse({ error: "Not found" }, 404, corsHeaders);
+      }
+      // result may be a gating Response (401/403) — return it directly with CORS headers merged in
+      if (result instanceof Response) {
+        const gatingResp = result;
+        const merged = new Response(gatingResp.body, {
+          status: gatingResp.status,
+          headers: new Headers(gatingResp.headers),
+        });
+        for (const [k, v] of Object.entries(corsHeaders)) {
+          merged.headers.set(k, v);
+        }
+        return merged;
       }
       return jsonResponse(result, 200, corsHeaders);
     } catch (err) {
       // Never reflect internal error strings on the public, unauthenticated
       // API. Server-side log retains full context for operators.
-      console.error("[dune public-api]", path, err);
+      logger.error("api.public.error", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return jsonResponse({ error: "Internal server error" }, 500, corsHeaders);
     }
   };
@@ -187,6 +205,7 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
 async function routeApiRequest(
   path: string,
   url: URL,
+  req: Request,
   engine: DuneEngine,
   collections: CollectionEngine,
   taxonomy: TaxonomyEngine,
@@ -290,13 +309,13 @@ async function routeApiRequest(
   // GET /api/pages/:path/children
   if (path.match(/^\/api\/pages\/.+\/children$/)) {
     const pageRoute = path.replace("/api/pages", "").replace(/\/children$/, "");
-    return handlePageChildren(pageRoute, engine);
+    return handlePageChildren(pageRoute, req, engine);
   }
 
   // GET /api/pages/:path/media
   if (path.match(/^\/api\/pages\/.+\/media$/)) {
     const pageRoute = path.replace("/api/pages", "").replace(/\/media$/, "");
-    return handlePageMedia(pageRoute, engine);
+    return handlePageMedia(pageRoute, req, engine);
   }
 
   // GET /api/pages — list all pages
@@ -307,7 +326,7 @@ async function routeApiRequest(
   // GET /api/pages/:path — get single page
   if (path.startsWith("/api/pages/")) {
     const pageRoute = path.replace("/api/pages", "");
-    return handleSinglePage(pageRoute, engine);
+    return handleSinglePage(pageRoute, req, engine);
   }
 
   // === Flex Object public API ===
@@ -415,11 +434,21 @@ async function handlePageList(url: URL, engine: DuneEngine) {
   };
 }
 
-async function handleSinglePage(pageRoute: string, engine: DuneEngine) {
+async function handleSinglePage(pageRoute: string, req: Request, engine: DuneEngine) {
   const result = await engine.resolve(pageRoute);
   if (result.type !== "page" || !result.page) return null;
 
   const page = result.page;
+
+  // Enforce content gating: pages with `roles:` frontmatter must be protected
+  // by the same rules that the routing/rendering layer uses. Without this check,
+  // any unauthenticated caller can read rawContent and rendered HTML via the API.
+  const rolesSpec = parseRolesSpec(page.frontmatter?.roles);
+  if (rolesSpec !== null) {
+    const gatingResponse = await enforceRolesFromRequest(req, rolesSpec);
+    if (gatingResponse !== null) return gatingResponse;
+  }
+
   const html = await page.html();
 
   return {
@@ -440,9 +469,16 @@ async function handleSinglePage(pageRoute: string, engine: DuneEngine) {
   };
 }
 
-async function handlePageChildren(pageRoute: string, engine: DuneEngine) {
+async function handlePageChildren(pageRoute: string, req: Request, engine: DuneEngine) {
   const result = await engine.resolve(pageRoute);
   if (result.type !== "page" || !result.page) return null;
+
+  // Enforce content gating on the parent page before listing its children.
+  const rolesSpec = parseRolesSpec(result.page.frontmatter?.roles);
+  if (rolesSpec !== null) {
+    const gatingResponse = await enforceRolesFromRequest(req, rolesSpec);
+    if (gatingResponse !== null) return gatingResponse;
+  }
 
   const children = await result.page.children();
   return {
@@ -458,9 +494,16 @@ async function handlePageChildren(pageRoute: string, engine: DuneEngine) {
   };
 }
 
-async function handlePageMedia(pageRoute: string, engine: DuneEngine) {
+async function handlePageMedia(pageRoute: string, req: Request, engine: DuneEngine) {
   const result = await engine.resolve(pageRoute);
   if (result.type !== "page" || !result.page) return null;
+
+  // Enforce content gating before revealing the page's media inventory.
+  const rolesSpec = parseRolesSpec(result.page.frontmatter?.roles);
+  if (rolesSpec !== null) {
+    const gatingResponse = await enforceRolesFromRequest(req, rolesSpec);
+    if (gatingResponse !== null) return gatingResponse;
+  }
 
   return {
     items: result.page.media.map((m) => ({

@@ -23,6 +23,7 @@ import { OAUTH_STATE_COOKIE } from "./middleware.ts";
 import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
 import type { OAuthProvider } from "./providers/types.ts";
 import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit.ts";
+import { logger } from "../core/logger.ts";
 
 export interface AuthRoutesConfig {
   userStore: SiteUserStore;
@@ -114,7 +115,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
   // ── OAuth start ────────────────────────────────────────────────────────────
 
-  function oauthStart(req: Request, providerName: string): Response {
+  function oauthStart(_req: Request, providerName: string): Response {
     const provider = providers.get(providerName);
     if (!provider) {
       return new Response("Unknown provider", { status: 404 });
@@ -252,7 +253,10 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
         },
       });
     } catch (err) {
-      console.error(`[dune/auth] OAuth callback error (${providerName}):`, err);
+      logger.error("auth.oauth.callback_error", {
+        provider: providerName,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return new Response("Authentication failed", { status: 500 });
     }
   }
@@ -296,16 +300,20 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
         const text = `Click the link below to log in:\n\n${link}\n\nThis link expires in 15 minutes.`;
         const html = magicEmailHtml(link);
         await sendEmail(email, "Your login link", text, html).catch((err) => {
-          console.error("[dune/auth] Failed to send magic link email:", err);
+          logger.error("auth.magic_link.email_failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
       } else {
         // No email provider — log for development convenience only.
         // Truncate to avoid full tokens appearing in log aggregation tools.
         const devLink = link.length > 100 ? link.slice(0, 100) + "…" : link;
-        console.log(`[dune/auth] Magic link for ${email}: ${devLink}`);
+        logger.info("auth.magic_link.dev", { email, link: devLink });
       }
     } catch (err) {
-      console.error("[dune/auth] Magic link generation error:", err);
+      logger.error("auth.magic_link.generation_error", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     return new Response(JSON.stringify({ ok: true }), {
