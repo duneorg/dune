@@ -44,8 +44,8 @@
     "./search": "./src/search/mod.ts",
     "./i18n": "./src/i18n/rtl.ts",
     "./api": "./src/api/handlers.ts",
-    "./bootstrap": "./src/cli/bootstrap.ts",
-    "./fresh-app": "./src/cli/fresh-app.ts"
+    "./bootstrap": "./src/runtime/bootstrap.ts",
+    "./fresh-app": "./src/runtime/server.ts"
   },
   "imports": {
     "@dune/plugin-admin": "jsr:@dune/plugin-admin@^0.24",

@@ -197,20 +197,40 @@ export interface ContentApi {
   ): Promise<ResolvedPage<FM> | null>;
 }
 
-// ── Singleton ─────────────────────────────────────────────────────────────────
+// ── Factory ───────────────────────────────────────────────────────────────────
 
-interface ContentContext {
+/** The set of engine objects required to build a ContentApi instance. */
+export interface ContentContext {
   engine: DuneEngine;
   search: SearchEngine;
   collections: CollectionEngine;
   taxonomy: TaxonomyEngine;
 }
 
+/**
+ * Create a ContentApi bound to the given engine context.
+ *
+ * Prefer this over {@link getContent} when you have a `BootstrapResult` available —
+ * `bootstrap()` returns `contentApi` directly on the result object since v0.26.
+ *
+ * @example
+ * ```ts
+ * const ctx = await bootstrap("./");
+ * const api = ctx.contentApi; // equivalent to createContentApi(ctx)
+ * const post = await api.page("/blog/hello-world");
+ * ```
+ */
+export function createContentApi(ctx: ContentContext): ContentApi {
+  return buildApi(ctx);
+}
+
+// ── Singleton (deprecated) ────────────────────────────────────────────────────
+
 let _ctx: ContentContext | null = null;
 
 /**
- * Initialize the content API singleton. Called automatically by `bootstrap()`.
- * External callers should not need to call this directly.
+ * Initialize the content API singleton.
+ * @deprecated Use `BootstrapResult.contentApi` instead. Removed in v0.27.
  * @internal
  */
 export function initContent(ctx: ContentContext): void {
@@ -220,14 +240,18 @@ export function initContent(ctx: ContentContext): void {
 /**
  * Return the content API for the current site.
  *
- * Throws if `bootstrap()` has not been called yet — the API requires an
- * initialized engine, search index, and taxonomy engine.
+ * @deprecated Use `BootstrapResult.contentApi` instead. This function will be
+ * removed in v0.27. Prefer accessing `contentApi` from the `BootstrapResult`
+ * returned by `bootstrap()`.
  *
  * @example
  * ```ts
+ * // v0.26+ (preferred)
+ * const ctx = await bootstrap("./");
+ * const api = ctx.contentApi;
+ *
+ * // legacy (still works until v0.27)
  * const api = getContent();
- * const post = await api.page("/blog/hello-world");
- * const recent = api.pages({ limit: 5, orderBy: "date", orderDir: "desc" });
  * ```
  */
 export function getContent(): ContentApi {
