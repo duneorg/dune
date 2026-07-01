@@ -1,6 +1,6 @@
 {
   "name": "@dune/core",
-  "version": "0.24.1",
+  "version": "0.25.0",
   "license": "MIT",
   "author": "zumbrunn (https://zumbrunn.com)",
   "exports": {
@@ -43,7 +43,9 @@
     "./blueprints": "./src/blueprints/mod.ts",
     "./search": "./src/search/mod.ts",
     "./i18n": "./src/i18n/rtl.ts",
-    "./bootstrap": "./src/cli/bootstrap.ts"
+    "./api": "./src/api/handlers.ts",
+    "./bootstrap": "./src/cli/bootstrap.ts",
+    "./fresh-app": "./src/cli/fresh-app.ts"
   },
   "imports": {
     "@dune/plugin-admin": "jsr:@dune/plugin-admin@^0.24",
@@ -80,7 +82,7 @@
     "build": "deno run -A src/cli.ts build",
     "serve": "deno run -A src/cli.ts serve",
     "test": "deno test -A tests/",
-    "check": "deno check src/**/*.ts",
+    "check": "deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
     "dune": "deno run -A src/cli.ts"
   },
   "compilerOptions": {

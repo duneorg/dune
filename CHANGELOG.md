@@ -5,6 +5,147 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.25.0] — 2026-07-01
+
+### Added
+
+- **Deno KV storage adapter (`KvStorageAdapter`).** A new `src/storage/kv.ts`
+  implements the full `StorageAdapter` interface on top of `Deno.openKv()`, making
+  Dune deployable on Deno Deploy without a persistent filesystem. `createStorageAsync()`
+  in `mod.ts` auto-selects the KV adapter when `DENO_KV_URL` is set; the synchronous
+  `createStorage()` continues to return the filesystem adapter for CLI commands.
+  `bootstrap()` now calls `createStorageAsync()` instead of `createStorage()`. Key
+  schema uses multi-segment keys (`["f", ...pathSegments]` for files, `["m", ...]`
+  for metadata, `["c", key]` for cache) to enable efficient prefix scans. Limitations:
+  `watch()` is a no-op on Deno Deploy; files larger than 64 KiB are not supported
+  (use external object storage for large assets).
+
+- **`MemoryStorageAdapter` in `@dune/core/storage`.** An in-memory `StorageAdapter`
+  backed by `Map<string, Uint8Array>` for use in tests and serverless cold-start
+  scenarios. Exposes a `set(path, data)` helper for pre-populating files. All
+  `StorageAdapter` methods are implemented; `watch()` is a no-op.
+
+- **`BootstrapOptions.storage` — injected storage adapter.** Pass a custom
+  `StorageAdapter` (e.g. `MemoryStorageAdapter`) directly to `bootstrap()` to skip
+  filesystem initialisation. When provided, `resolve()` and `createStorageAsync()` are
+  skipped; `loadConfig()` runs with `skipConfigTs: true`.
+
+- **`BootstrapOptions.plugins` — pre-registered plugins.** Plugins passed here are
+  registered before any lifecycle hooks fire, so they participate in the full hook
+  chain including `onSearchEngineCreate` and `onContentIndexReady`.
+
+- **`BootstrapOptions.configOverrides` — top-level config injection.** Apply
+  `Partial<DuneConfig>` overrides after all YAML config is loaded but before plugins
+  run. Useful for disabling admin in test environments without a `dune.config.ts`.
+
+- **TSX content gating (`config.system.content.allowTsxFormat`).** TSX-format pages
+  are only accepted from roles listed in `allowTsxFormat` (default: `["admin"]`).
+  Enforced in `POST /admin/api/pages`; the page editor shows a warning badge for
+  TSX-format pages viewed by non-admin roles.
+
+- **`@dune/plugin-orama` — in-process full-text search plugin.** New first-party
+  package (`jsr:@dune/plugin-orama@^0.1`) providing an Orama 3 search engine with
+  typo tolerance. Registers as `"orama"` via the `onSearchEngineCreate` hook and
+  sets itself as the active engine by default. Configure via `site.yaml`:
+  ```yaml
+  search:
+    engine: orama
+    orama:
+      typoTolerance: true
+  ```
+  or programmatically: `oramaPlugin({ typoTolerance: true })`.
+
+- **`@dune/testing` — in-process test harness.** New first-party package
+  (`jsr:@dune/testing@^0.1`) for plugin and theme authors. `createTestHarness()`
+  boots a full Dune engine backed by `MemoryStorageAdapter` — no filesystem access
+  required. Fixture content and plugins are injected before hooks fire:
+  ```ts
+  const h = await createTestHarness({
+    content: { "01.home/default.md": "---\ntitle: Home\n---\nHello" },
+    plugins: [oramaPlugin()],
+  });
+  assertEquals(h.search.activeEngineName(), "orama");
+  await h.dispose();
+  ```
+
+- **Playwright E2E test suite for the admin panel.** A `playwright.config.ts`
+  + five spec files in `@dune/plugin-admin/tests/e2e/` cover the admin panel's
+  critical paths in a real Chromium browser against a live Dune server:
+  - `auth.spec.ts` — login (correct/wrong credentials, enumeration safety, logout)
+  - `pages.spec.ts` — page CRUD (create, edit, delete)
+  - `workflow.spec.ts` — status picker presence and transition API
+  - `media.spec.ts` — media library page load and file upload
+  - `users.spec.ts` — user creation, role change, and disable (via API)
+  - `settings.spec.ts` — config page load and save
+  Global setup starts a `dune serve` subprocess against a fixture site with a
+  pre-seeded admin user (`admin` / `test-password`). Run with:
+  `deno task test:e2e:install && deno task test:e2e` from the `plugin-admin/`
+  directory. Requires Chromium; CI uses the same task.
+
+- **`@dune/plugin-meilisearch` 0.3.0** — updated to use the `register()` /
+  `setActiveEngine()` API introduced in v0.24's `SearchEngineCreateContext`. Imports
+  core types (`SearchEngine`, `SearchResult`, `PageIndex`, `InjectedSearchRecord`)
+  from `@dune/core/search` rather than bundling its own. Adds `config.active` option
+  (default `true`) to control whether meilisearch becomes the active engine on register.
+
+- **Search admin UI (`/admin/search`).** New page and `SearchPanel` island in
+  `@dune/plugin-admin` exposing the search engine toggle API. Shows all registered
+  engines with a radio-select to switch the active engine, and a parallel-mode
+  checkbox when multiple engines are registered. Available to any user with the
+  `config.read` permission. Nav entry added to the Settings group in the sidebar.
+
+- **`h.fetch()` and `h.render()` in `@dune/testing`.** The test harness now
+  supports in-process HTTP assertions without a real server:
+  ```ts
+  const res = await h.fetch("/api/pages");
+  const body = await h.render("/api/config/site");
+  ```
+  Backed by `createApiHandler` from the new `@dune/core/api` subpath export. Covers
+  all routes under `/api/*` (pages, search, taxonomy, collections, config, nav, flex).
+  Admin and full-stack routes require the Playwright E2E suite.
+
+- **Lockfile CI lint guard (`scripts/lint-dynamic-imports.ts`).** A Deno script
+  that scans `src/` for non-literal `import()` calls that could silently escape
+  `dune lockfile:sync`'s static graph trace. Existing intentional non-literal imports
+  are annotated `// lockfile-safe: <reason>` (10 sites: config loader, plugin loader,
+  theme loader, job scanner, email templates, admin/multisite constant aliases).
+  Wired into `deno task check`; exits non-zero on any unannotated new violation.
+
+- **Deploy guide: `ExecStartPre` pre-flight gate.** Added an "Optional:
+  `ExecStartPre` pre-flight gate" section to the deployment invocation-patterns doc
+  explaining the `--no-lock` flag on the `lockfile:check` line and `--frozen` on
+  `ExecStart`, with a copy-pasteable systemd `[Service]` ini snippet.
+
+- **Inline-edit WebSocket decoupled to `/api/inline-edit/ws`.** The inline-edit
+  WebSocket endpoint moves from `/admin/collab/edit-ws` (inside `@dune/plugin-admin`)
+  to `/api/inline-edit/ws` (registered by core in `fresh-app.ts`). This removes the
+  dependency on `@dune/plugin-admin` being installed for inline editing to work.
+  `@dune/plugin-inline-edit` now hardcodes `/api/inline-edit/ws` as the WS path.
+  `BootstrapResult.adminServices` (new field, type `AdminServices | null`) exposes
+  the merged plugin admin-services map after `mountPlugins()` runs; core uses it to
+  access `inlineEdit` without importing `@dune/plugin-admin`. The old
+  `/admin/collab/edit-ws` route remains in `@dune/plugin-admin` for backwards
+  compatibility.
+
+- **New `@dune/core` subpath exports: `./api` and `./fresh-app`.**
+  - `./api` — `createApiHandler`, `ApiHandlerOptions` (used by `@dune/testing`)
+  - `./fresh-app` — `createDuneApp`, `DuneAppResult`, `DuneAppOptions`
+
+### Changed
+
+- `bootstrap()` is now async end-to-end: it calls `createStorageAsync()` internally.
+  The call signature is unchanged; existing `await bootstrap(root, opts)` calls
+  continue to work.
+
+- **`BootstrapResult.adminServices`** (new field) is `AdminServices | null`.
+  `null` until `mountPlugins()` runs. Plugins do not need to do anything; the field
+  is set automatically during `createDuneApp()`.
+
+- **`mountPlugins()` stores `adminServices` on `BootstrapResult`** after collecting
+  it, so both `mount()` hooks and post-mount core code can read the merged services.
+
+---
+
 ## [0.24.1] — 2026-07-01
 
 ### Security
