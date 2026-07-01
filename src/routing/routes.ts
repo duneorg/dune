@@ -14,57 +14,24 @@
 /** @jsxImportSource preact */
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
-import type { Collection, MediaFile, Page, TemplateComponent, TemplateProps } from "../content/types.ts";
-import { buildPageTitle } from "../content/types.ts";
+import type { Page, TemplateComponent, TemplateProps } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import { generateSearchPage } from "../search/page.ts";
-import { renderSections } from "../sections/mod.ts";
-import type { SectionInstance } from "../sections/mod.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
 import { logger, generateRequestId } from "../core/logger.ts";
 import { tracer } from "../tracing/mod.ts";
+import { handleFlexRoute } from "./flex-handler.ts";
+import { handleTsxPage } from "./tsx-handler.ts";
+import { handleMarkdownPage } from "./content-handler.ts";
+
+export type { FlexListTemplateProps, FlexDetailTemplateProps } from "./flex-handler.ts";
 
 // Per-IP rate limit for public read endpoints (120 req/min).
 const publicRateLimiter = new RateLimiter(120, 60 * 1000);
-
-/**
- * Props passed to a flex type list template.
- * Convention: `themes/{theme}/templates/flex/{type}-list.tsx`
- * Fallback:   `themes/{theme}/templates/flex/list.tsx`
- */
-export interface FlexListTemplateProps {
-  type: string;
-  schema: FlexSchema;
-  records: FlexRecord[];
-  site: DuneEngine["site"];
-  config: DuneEngine["config"];
-  nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
-  pathname: string;
-  Layout?: TemplateComponent;
-  t: (key: string) => string;
-}
-
-/**
- * Props passed to a flex record detail template.
- * Convention: `themes/{theme}/templates/flex/{type}.tsx`
- * Fallback:   `themes/{theme}/templates/flex/detail.tsx`
- */
-export interface FlexDetailTemplateProps {
-  type: string;
-  schema: FlexSchema;
-  record: FlexRecord;
-  site: DuneEngine["site"];
-  config: DuneEngine["config"];
-  nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
-  pathname: string;
-  Layout?: TemplateComponent;
-  t: (key: string) => string;
-}
 
 /**
  * Register all Dune routes on a Fresh App.
@@ -151,56 +118,34 @@ export function duneRoutes(
     },
 
     /**
-     * Catch-all content handler.
-     * Resolves URL → page → renders with template or component.
+     * Catch-all content handler — thin dispatcher.
+     * Resolves URL → page type → delegates to the appropriate sub-handler.
      */
     contentHandler: async (
       req: Request,
       renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>,
     ): Promise<Response> => {
       const url = new URL(req.url);
-      // Bind a per-request correlation ID for structured log lines emitted
-      // during this request. The child logger is local to this invocation and
-      // does not mutate the global logger.
       const reqLog = logger.child({ requestId: generateRequestId(), pathname: url.pathname });
       reqLog.debug("request.start", { method: req.method });
 
-      // Start a per-request tracing span. Ended with the response status just
-      // before returning so every content request is observable via tracing.
       const span = tracer.startSpan("http.request", { pathname: url.pathname });
 
-      /** Attach span status + end, then return the response. */
-      // NOTE: `respond` is currently never called — the content handler returns
-      // responses directly, so the span started above is not ended on this path.
-      // Proper tracing wiring is deferred to the routing/routes.ts refactor.
-      // deno-lint-ignore no-unused-vars
-      function respond(response: Response | Promise<Response>): Promise<Response> {
-        if (response instanceof Promise) {
-          return response.then((r) => {
-            span.setAttribute("status", r.status);
-            span.end();
-            return r;
-          }, (err: unknown) => {
-            span.setStatus("error", err instanceof Error ? err.message : String(err));
-            span.end();
-            throw err;
-          });
-        }
-        span.setAttribute("status", response.status);
+      const respond = async (r: Response | Promise<Response>): Promise<Response> => {
+        const res = await r;
+        span.setAttribute("status", res.status);
         span.end();
-        return Promise.resolve(response);
-      }
+        return res;
+      };
 
       // ── Search route ──────────────────────────────────────────────────────
-      // Intercept /search before content resolution so it is always served,
-      // even when there is no content file at that path.
       if (url.pathname === "/search") {
         const ip = clientIp(req);
         if (!publicRateLimiter.check(ip)) {
-          return new Response("Too many requests", {
+          return respond(new Response("Too many requests", {
             status: 429,
             headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
-          });
+          }));
         }
         const q = url.searchParams.get("q") ?? "";
         const rawResults = search ? await search.search(q, 20) : [];
@@ -211,13 +156,12 @@ export function duneRoutes(
           score: r.score,
         }));
 
-        // Try theme's "search" template first
         const searchTemplate = await engine.themes.loadTemplate("search");
         if (searchTemplate) {
           const layout = await engine.themes.loadLayout("layout");
           const strings = await engine.themes.loadLocale("en");
           const t = (key: string) => (strings[key] ?? key) as string;
-          return renderJsx(
+          return respond(renderJsx(
             h(searchTemplate.component as ComponentType<any>, {
               page: null,
               pageTitle: `Search${q ? `: ${q}` : ""} | ${engine.site.title}`,
@@ -233,172 +177,38 @@ export function duneRoutes(
               searchResults: results,
               dir: directionOf("en", engine.config?.system?.languages?.rtl_override),
             }),
-          );
+          ));
         }
 
-        // Fallback: standalone search page (no theme template available)
         const html = generateSearchPage({
           query: q,
           results,
           site: engine.site,
           siteUrl: engine.site.url || "",
         });
-        return new Response(html, {
+        return respond(new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
+        }));
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      // ── Flex Object public routes ─────────────────────────────────────────
-      // /flex/{type}       → list view   (template: flex/{type}-list or flex/list)
-      // /flex/{type}/{id}  → detail view (template: flex/{type}    or flex/detail)
+      // ── Flex object public routes ─────────────────────────────────────────
       if (flex && url.pathname.startsWith("/flex/")) {
-        const parts = url.pathname.split("/").filter(Boolean); // ["flex", type, ...id]
-        if (parts.length >= 2) {
-          const flexType = decodeURIComponent(parts[1]);
-          const schemas = await flex.loadSchemas();
-          const schema = schemas[flexType];
-          if (!schema) {
-            return renderJsx(
-              h("div", null, `Flex type "${flexType}" not found`),
-              404,
-            );
-          }
-          const strings = await engine.themes.loadLocale("en");
-          const t = (key: string) => (strings[key] ?? key) as string;
-          const layout = await engine.themes.loadLayout("layout");
-          const nav = engine.router.getTopNavigation("en");
-          const baseProps = {
-            type: flexType,
-            schema,
-            site: engine.site,
-            config: engine.config,
-            nav,
-            pathname: url.pathname,
-            Layout: layout ?? undefined,
-            t,
-          };
-
-          if (parts.length === 2) {
-            // List view
-            const records = await flex.list(flexType);
-            const templateNames = [`flex/${flexType}-list`, "flex/list"];
-            let template = null;
-            for (const name of templateNames) {
-              template = await engine.themes.loadTemplate(name);
-              if (template) break;
-            }
-            if (!template) {
-              // Auto-generated list fallback
-              return renderJsx(
-                h("html", null,
-                  h("head", null,
-                    h("title", null, schema.title),
-                    h("meta", { charset: "utf-8" }),
-                    h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-                    h("style", null, "body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:.5rem;text-align:left}th{background:#f5f5f5}a{color:#0066cc}"),
-                  ),
-                  h("body", null,
-                    h("h1", null, `${schema.icon ?? ""} ${schema.title}`),
-                    schema.description ? h("p", null, schema.description) : null,
-                    records.length === 0
-                      ? h("p", null, "No records yet.")
-                      : h("table", null,
-                          h("thead", null,
-                            h("tr", null, ...Object.keys(schema.fields).slice(0, 4).map((f) =>
-                              h("th", { key: f }, schema.fields[f].label ?? f)
-                            )),
-                          ),
-                          h("tbody", null, ...records.map((r) =>
-                            h("tr", { key: r._id },
-                              ...Object.keys(schema.fields).slice(0, 4).map((f) =>
-                                h("td", { key: f },
-                                  h("a", { href: `/flex/${flexType}/${r._id}` },
-                                    f === Object.keys(schema.fields)[0]
-                                      ? String(r[f] ?? r._id)
-                                      : String(r[f] ?? "")
-                                  )
-                                )
-                              )
-                            )
-                          )),
-                        ),
-                  ),
-                ),
-              );
-            }
-            return renderJsx(
-              h(template.component as unknown as ComponentType<FlexListTemplateProps>, {
-                ...baseProps,
-                records,
-              }),
-            );
-          }
-
-          if (parts.length === 3) {
-            // Detail view
-            const recordId = decodeURIComponent(parts[2]);
-            const record = await flex.get(flexType, recordId);
-            if (!record) {
-              return renderJsx(
-                h("div", null, `Record "${recordId}" not found`),
-                404,
-              );
-            }
-            const templateNames = [`flex/${flexType}`, "flex/detail"];
-            let template = null;
-            for (const name of templateNames) {
-              template = await engine.themes.loadTemplate(name);
-              if (template) break;
-            }
-            if (!template) {
-              // Auto-generated detail fallback
-              const title = String((record.name ?? record.title ?? record._id) as string);
-              return renderJsx(
-                h("html", null,
-                  h("head", null,
-                    h("title", null, `${title} — ${schema.title}`),
-                    h("meta", { charset: "utf-8" }),
-                    h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-                    h("style", null, "body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem}dl{display:grid;grid-template-columns:auto 1fr;gap:.5rem 1rem}dt{font-weight:600;color:#555}dd{margin:0}a{color:#0066cc}"),
-                  ),
-                  h("body", null,
-                    h("p", null, h("a", { href: `/flex/${flexType}` }, `← All ${schema.title}`)),
-                    h("h1", null, title),
-                    h("dl", null,
-                      ...Object.entries(record)
-                        .filter(([k]) => !k.startsWith("_"))
-                        .flatMap(([k, v]) => [
-                          h("dt", { key: `dt-${k}` }, schema.fields[k]?.label ?? k),
-                          h("dd", { key: `dd-${k}` }, String(Array.isArray(v) ? v.join(", ") : v ?? "")),
-                        ])
-                    ),
-                  ),
-                ),
-              );
-            }
-            return renderJsx(
-              h(template.component as unknown as ComponentType<FlexDetailTemplateProps>, {
-                ...baseProps,
-                record,
-              }),
-            );
-          }
-        }
+        return respond(handleFlexRoute(engine, url, flex, renderJsx));
       }
       // ─────────────────────────────────────────────────────────────────────
 
       const result = await engine.resolve(url.pathname);
 
-      // Handle redirects
+      // Redirects
       if (result.type === "redirect" && result.redirectTo) {
-        return Response.redirect(
+        return respond(Response.redirect(
           new URL(result.redirectTo, url.origin).toString(),
           301,
-        );
+        ));
       }
 
-      // Not found — try to render through the site theme if a Layout is available
+      // Not found — render 404 through theme if available
       if (result.type === "not-found" || !result.page) {
         const Layout = await engine.themes.loadLayout("layout");
         const siteData = engine.site;
@@ -411,7 +221,7 @@ export function duneRoutes(
             frontmatter: { title: "404 — Not Found" },
             language: defaultLang,
           } as unknown as Page;
-          return renderJsx(
+          return respond(renderJsx(
             h(Layout as unknown as ComponentType<TemplateProps>, {
               site: siteData,
               page: fakePage,
@@ -429,9 +239,9 @@ export function duneRoutes(
               ),
             ),
             404,
-          );
+          ));
         }
-        return renderJsx(
+        return respond(renderJsx(
           h("html", null,
             h("head", null,
               h("title", null, "404 — Not Found"),
@@ -451,296 +261,26 @@ export function duneRoutes(
             ),
           ),
           404,
-        );
+        ));
       }
 
       const page = result.page;
 
       // ── Role-based content gating ───────────────────────────────────────────
-      // Check frontmatter `roles` before rendering. If the page declares access
-      // requirements, enforce them using the SiteUser resolved by the public
-      // auth middleware (injected via x-dune-site-user header).
       {
         const rolesSpec = parseRolesSpec(page.frontmatter.roles);
         if (rolesSpec !== null) {
           const gateResponse = await enforceRolesFromRequest(req, rolesSpec);
-          if (gateResponse !== null) return gateResponse;
+          if (gateResponse !== null) return respond(gateResponse);
         }
       }
       // ───────────────────────────────────────────────────────────────────────
 
-      // Format-aware rendering
       if (page.format === "tsx") {
-        // TSX pages render themselves — optionally with Fresh-style Handlers.
-        // If the TSX file exports `handler`, dispatch the request through it
-        // first (matching Fresh's `export const handler: Handlers<Data>` idiom).
-        const pageHandlers = await page.handlers();
-        if (pageHandlers) {
-          const method = req.method.toUpperCase();
-          const methodFn = pageHandlers[method] ?? pageHandlers["ALL"];
-          if (methodFn) {
-            // Build a minimal Fresh-like ctx so handler signatures match.
-            // render() wraps a component in the same layout logic used below.
-            const Component = await page.component();
-            const ctx = {
-              req,
-              url,
-              params: {},
-              render: async (data: unknown) => {
-                if (!Component) return new Response("TSX component not found", { status: 500 });
-                return renderJsx(h(Component as ComponentType<any>, {
-                  data,
-                  site: engine.site,
-                  config: engine.config,
-                  nav: engine.router.getTopNavigation(page.language),
-                  route: page.route,
-                  params: {},
-                }));
-              },
-              /**
-               * Same-origin CSRF guard for mutating handlers.
-               * Returns 403 if Origin is present and cross-site, null otherwise.
-               * Skip for webhooks / CORS APIs that legitimately accept
-               * cross-origin POST. See ContentHandlerContext.csrfCheck.
-               */
-              csrfCheck: (): Response | null => {
-                const m = req.method;
-                if (m === "GET" || m === "HEAD" || m === "OPTIONS") return null;
-                const origin = req.headers.get("origin");
-                if (origin === null) return null;
-                try {
-                  if (new URL(origin).host !== url.host) {
-                    return Response.json(
-                      { error: "Forbidden: cross-origin request rejected" },
-                      { status: 403 },
-                    );
-                  }
-                } catch {
-                  return Response.json(
-                    { error: "Forbidden: cross-origin request rejected" },
-                    { status: 403 },
-                  );
-                }
-                return null;
-              },
-            };
-            return methodFn(req, ctx);
-          }
-          // No handler for this method — fall through to normal rendering.
-        }
-
-        // TSX pages render themselves
-        const Component = await page.component();
-        if (!Component) {
-          return new Response("TSX component not found", { status: 500 });
-        }
-
-        // Layout wrapping
-        const layoutName = page.frontmatter.layout;
-        if (layoutName === false) {
-          // No layout — component provides full HTML
-          return renderJsx(
-            h(Component as ComponentType<any>, {
-              site: engine.site,
-              config: engine.config,
-              route: page.route,
-              media: createMediaHelper(page.media),
-              params: {},
-            }),
-          );
-        }
-
-        // Wrap in layout
-        const layout = await engine.themes.loadLayout(
-          typeof layoutName === "string" ? layoutName : "default",
-        );
-
-        const content = h(Component as ComponentType<any>, {
-          site: engine.site,
-          config: engine.config,
-          route: page.route,
-          media: createMediaHelper(page.media),
-          params: {},
-        });
-
-        if (layout) {
-          const strings = await engine.themes.loadLocale(page.language ?? "en");
-          const t = (key: string) => (strings[key] ?? key) as string;
-          const pageLangForDir = page.language ?? engine.config?.system?.languages?.default ?? "en";
-          return renderJsx(
-            h(layout as ComponentType<any>, {
-              page,
-              pageTitle: buildPageTitle(page, engine.site.title),
-              site: engine.site,
-              config: engine.config,
-              nav: engine.router.getTopNavigation(page.language),
-              pathname: url.pathname,
-              search: url.search,
-              themeConfig: engine.themeConfig,
-              t,
-              dir: directionOf(pageLangForDir, engine.config?.system?.languages?.rtl_override),
-              children: content,
-            }),
-          );
-        }
-
-        // No layout found — render content directly
-        return renderJsx(content);
+        return respond(handleTsxPage(engine, req, url, page, renderJsx));
       }
 
-      // Markdown pages — render with theme template
-      const templateName = engine.themes.resolveTemplateName(page) ?? "default";
-      const template = await engine.themes.loadTemplate(templateName);
-
-      if (!template) {
-        // Fallback: render markdown HTML directly with minimal page shell
-        const html = await page.html();
-        return renderJsx(
-          h("html", null,
-            h("head", null,
-              h("title", null, buildPageTitle(page, engine.site.title)),
-              h("meta", { charset: "utf-8" }),
-              h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-              h("style", null, `
-                body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #333; }
-                h1 { margin-bottom: 0.5rem; }
-                pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; }
-                code { font-family: "SF Mono", Monaco, monospace; font-size: 0.9em; }
-                a { color: #0066cc; }
-                img { max-width: 100%; }
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
-                th { background: #f5f5f5; }
-                nav a { margin-right: 1rem; }
-              `),
-            ),
-            h("body", null,
-              h("nav", null,
-                h("a", { href: "/" }, engine.site.title),
-              ),
-              h("article", null,
-                h("h1", null, page.frontmatter.title),
-                h("div", { dangerouslySetInnerHTML: { __html: html } }),
-              ),
-            ),
-          ),
-        );
-      }
-
-      // Pre-resolve HTML and pass as children to the template
-      const supportedLangs = engine.config?.system?.languages?.supported ?? [];
-      const defaultLang = engine.config?.system?.languages?.default ?? "en";
-      const includeDefaultInUrl = engine.config?.system?.languages?.include_default_in_url ?? false;
-      const pageLang = page.language ?? defaultLang;
-
-      let html: string;
-      if (page.frontmatter.layout === "page-builder") {
-        // Render page-builder sections instead of markdown body
-        const sectionData = Array.isArray(page.frontmatter.sections)
-          ? (page.frontmatter.sections as SectionInstance[])
-          : [];
-        html = renderSections(sectionData);
-      } else {
-        html = await page.html();
-        if (supportedLangs.length > 1) {
-          html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs);
-        }
-      }
-      const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
-
-      // Load collection if page defines one
-      let collection: Collection | undefined = undefined;
-      if (collections && page.frontmatter.collection) {
-        const collectionDef = page.frontmatter.collection;
-        // Find the PageIndex for this page to use as context
-        const pageIndex = engine.pages.find(p => p.sourcePath === page.sourcePath);
-        if (pageIndex) {
-          collection = await collections.resolve(collectionDef, pageIndex, page.frontmatter as Record<string, unknown>);
-          // Pre-load collection items by calling the async load() method
-          // This ensures items are loaded before template rendering (SSR)
-          if (collection && typeof collection.load === 'function') {
-            await collection.load();
-            // Pre-render HTML for items that need it inline (e.g. post bodies
-            // rendered synchronously in JSX templates). Build per-request
-            // wrapper objects rather than mutating the shared Page objects
-            // from engine.pageCache — avoids races and keeps the cache clean.
-            const enrichedItems = await Promise.all(
-              collection.items.map(async (item) =>
-                Object.assign({}, item as object, { _html: await item.html() }) as unknown as typeof item
-              ),
-            );
-            collection = { ...collection, items: enrichedItems } as typeof collection;
-          }
-        }
-      }
-
-      // Load layout dynamically so it gets ?v=N cache busting on hot-reload.
-      // Templates receive it as a prop instead of using a static import.
-      const layout = await engine.themes.loadLayout("layout");
-      const strings = await engine.themes.loadLocale(page.language ?? "en");
-      const t = (key: string) => (strings[key] ?? key) as string;
-
-      return renderJsx(
-        h(template.component as ComponentType<any>, {
-          page,
-          pageTitle: buildPageTitle(page, engine.site.title),
-          site: engine.site,
-          config: engine.config,
-          nav: engine.router.getTopNavigation(page.language),
-          pathname: url.pathname,
-          search: url.search,
-          collection,
-          Layout: layout ?? undefined,
-          themeConfig: engine.themeConfig,
-          t,
-          dir: directionOf(pageLang, engine.config?.system?.languages?.rtl_override),
-          children: htmlContent,
-        }),
-      );
+      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx));
     },
-  };
-}
-
-/**
- * Rewrite internal links in HTML to include language prefix when needed.
- * E.g. /contact → /de/contact when rendering a German page.
- */
-function rewriteInternalLinks(
-  html: string,
-  lang: string,
-  defaultLang: string,
-  includeDefaultInUrl: boolean,
-  supportedLangs: string[],
-): string {
-  const needsPrefix = lang !== defaultLang || includeDefaultInUrl;
-  if (!needsPrefix) return html;
-
-  const langPrefix = `/${lang}`;
-  const skipPrefixes = ["/themes/", "/content-media/", "/api/", "/admin/", "//", "mailto:", "tel:"];
-  const hasLangPrefix = new RegExp(`^/(${supportedLangs.join("|")})(/|$)`);
-
-  return html.replace(
-    /href="(\/[^"]*)"/g,
-    (_, path: string) => {
-      if (hasLangPrefix.test(path)) return `href="${path}"`;
-      if (skipPrefixes.some((p) => path.startsWith(p))) return `href="${path}"`;
-      if (path.includes(":")) return `href="${path}"`;
-      const newPath = path === "/" ? langPrefix : `${langPrefix}${path}`;
-      return `href="${newPath}"`;
-    },
-  );
-}
-
-/**
- * Build a MediaHelper from a page's media files.
- */
-function createMediaHelper(media: MediaFile[]) {
-  return {
-    url: (filename: string) => {
-      const file = media.find((m) => m.name === filename);
-      return file?.url ?? "";
-    },
-    get: (filename: string) => media.find((m) => m.name === filename) ?? null,
-    list: () => media,
   };
 }
