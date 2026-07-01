@@ -115,6 +115,13 @@ export interface BootstrapResult {
    * is absent. Passed to mountDuneAuth() so the env var is read exactly once.
    */
   hmacKey?: CryptoKey | null;
+  /**
+   * Merged output of all plugins' `adminServices()` factories.
+   * Null until `mountPlugins()` runs (i.e. after `createDuneApp()`).
+   * Exposed here so core can register routes (e.g. `/api/inline-edit/ws`)
+   * that depend on plugin-contributed services without coupling to plugin-admin.
+   */
+  adminServices: import("../hooks/types.ts").AdminServices | null;
 }
 
 export interface BootstrapOptions {
@@ -148,6 +155,28 @@ export interface BootstrapOptions {
    * ```
    */
   authProvider?: AdminAuthProvider;
+  /**
+   * Pre-created storage adapter to use instead of the default filesystem/KV
+   * adapter derived from `root`. When supplied, the `root` parameter is used
+   * only as a logical identifier (e.g. for logging) — no filesystem access is
+   * performed. Intended for use by `@dune/testing`'s `createTestHarness()`.
+   */
+  storage?: StorageAdapter;
+  /**
+   * Plugin instances to register before any lifecycle hooks fire.
+   * Plugins supplied here are registered immediately after the hook registry
+   * is created, before `loadPlugins()` processes `site.yaml` entries.
+   * Intended for use by `@dune/testing`'s `createTestHarness()` so plugin
+   * hooks participate in the full bootstrap lifecycle.
+   */
+  plugins?: DunePlugin[];
+  /**
+   * Top-level DuneConfig overrides applied after all config files are loaded.
+   * Useful for forcing specific config values in tests without writing config
+   * files. Deep-merged over the loaded config.
+   * Intended for use by `@dune/testing`'s `createTestHarness()`.
+   */
+  configOverrides?: Partial<DuneConfig>;
 }
 
 
@@ -160,20 +189,36 @@ export async function bootstrap(
 ): Promise<BootstrapResult> {
   const { debug = false, buildSearch = false, sharedThemesDir, dev = false } =
     options;
-  root = resolve(root); // normalise "." or relative paths to absolute
+  // Only resolve to an absolute path when not using an injected storage —
+  // the harness passes a synthetic root that doesn't exist on disk.
+  if (!options.storage) {
+    root = resolve(root);
+  }
 
-  // 1. Storage
-  const storage = await createStorageAsync({ rootDir: root });
+  // 1. Storage — use injected adapter (e.g. MemoryStorageAdapter for tests) or
+  // auto-select filesystem / KV based on environment.
+  const storage = options.storage ?? await createStorageAsync({ rootDir: root });
 
   // 2. Config
   const config = await loadConfig({
     storage,
     rootDir: root,
-    skipConfigTs: false,
+    // Skip dune.config.ts when storage is injected (no real rootDir on disk).
+    skipConfigTs: !!options.storage,
   });
 
   if (debug) {
     config.system.debug = true;
+  }
+
+  // Apply test/harness config overrides after all file-based config is loaded.
+  if (options.configOverrides) {
+    for (const [k, v] of Object.entries(options.configOverrides)) {
+      if (v !== undefined) {
+        // deno-lint-ignore no-explicit-any
+        (config as any)[k] = v;
+      }
+    }
   }
 
   // Initialize the global logger from config (config.system.logging) or env vars.
@@ -244,7 +289,15 @@ export async function bootstrap(
   // 5. Hooks
   const hooks = createHookRegistry({ config, storage });
 
-  // 5a. Plugin loading — load admin-saved config overrides first, then
+  // 5a. Pre-registered plugins (e.g. from @dune/testing harness) — registered
+  // before loadPlugins() so their hooks participate in the full lifecycle.
+  if (options.plugins) {
+    for (const plugin of options.plugins) {
+      hooks.registerPlugin(plugin);
+    }
+  }
+
+  // 5b. Plugin loading — load admin-saved config overrides first, then
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
   const adminCfg = config.admin ??
@@ -432,7 +485,7 @@ export async function bootstrap(
   // on JSR before it could be published).
   if (adminConfig.enabled !== false) {
     const adminPkg = "jsr:@dune/plugin-admin";
-    const { createAdminPlugin } = await import(adminPkg) as {
+    const { createAdminPlugin } = await import(adminPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin", avoids circular publish-time dep)
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
     const adminPlugin = createAdminPlugin(config, storage, {
@@ -513,6 +566,8 @@ export async function bootstrap(
     pluginPublicRoutes,
     // adminContext is null until @dune/plugin-admin's mount() runs inside mountPlugins()
     adminContext: null,
+    // adminServices is null until mountPlugins() runs inside createDuneApp()
+    adminServices: null,
     authz: bootstrappedAuthz,
     authzAdapter: bootstrappedAuthzAdapter,
     hmacKey,

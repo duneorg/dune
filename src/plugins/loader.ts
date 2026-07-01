@@ -112,7 +112,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
   for (const entry of allEntries) {
     try {
       const importUrl = resolvePluginUrl(entry.src, root);
-      const mod = await import(importUrl);
+      const mod = await import(importUrl); // lockfile-safe: discovery (plugin specifier from site config, handled by plugin discovery subprocess)
 
       const exported = mod.default;
       if (!exported) {
@@ -343,6 +343,11 @@ export async function mountPlugins(
     dataDir: adminCfg?.runtimeDir ?? ".dune/admin",
     contentDir: ctx.config.system.content.dir,
   });
+
+  // Expose on BootstrapResult so core (fresh-app.ts) can register routes that
+  // depend on plugin-contributed services (e.g. /api/inline-edit/ws) without
+  // coupling to @dune/plugin-admin.
+  ctx.adminServices = adminServices;
 
   for (const plugin of ctx.hooks.plugins()) {
     if (!plugin.mount) continue;

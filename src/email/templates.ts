@@ -103,7 +103,7 @@ function buildTsxTemplate(name: string, filePath: string): EmailTemplate {
     name,
     async render(data: Record<string, unknown>) {
       // Dynamically import the TSX component at render time
-      const mod = await import(filePath);
+      const mod = await import(filePath); // lockfile-safe: site-local (TSX email template from site email/ directory)
       const Component = mod.default;
 
       if (typeof Component !== "function") {

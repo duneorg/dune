@@ -5,6 +5,7 @@
 export type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "./types.ts";
 export { FileSystemAdapter } from "./fs.ts";
 export { KvStorageAdapter, openKvStorage } from "./kv.ts";
+export { MemoryStorageAdapter } from "./memory.ts";
 
 import type { StorageAdapter } from "./types.ts";
 import { FileSystemAdapter } from "./fs.ts";

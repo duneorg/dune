@@ -77,7 +77,7 @@ function resolveJobPath(root: string, declared: string): string | null {
 /** Import one job file and return its JobDefinition, or null on failure. */
 async function loadJobFile(filePath: string, displayName: string): Promise<JobDefinition | null> {
   try {
-    const mod = await import(filePath);
+    const mod = await import(filePath); // lockfile-safe: site-local (job file from site jobs/ directory)
     const schedule = mod.schedule;
     const handler = mod.default;
 

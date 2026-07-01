@@ -621,6 +621,58 @@ export async function createDuneApp(
   // mountDuneAdmin() internally so full-mode and headless mode share the same path.
   await mountPlugins(app, ctx);
 
+  // 9a. Inline-edit WebSocket — registered in core so it works independently
+  // of @dune/plugin-admin. Auth via the admin auth provider (same session as
+  // /admin/*) so the cookie-based session grants access without a separate
+  // public-user auth requirement.
+  app.get("/api/inline-edit/ws", async (fc) => {
+    const inlineEdit = ctx.adminServices?.inlineEdit;
+    if (!inlineEdit) {
+      return new Response("Inline editing not enabled", { status: 501 });
+    }
+    if (fc.req.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("Expected WebSocket upgrade", { status: 426 });
+    }
+
+    // Origin check: reject cross-origin WebSocket upgrades (CSWSH).
+    const origin = fc.req.headers.get("origin");
+    if (origin) {
+      try {
+        if (new URL(origin).host !== new URL(fc.req.url).host) {
+          return new Response("Cross-origin WebSocket rejected", { status: 403 });
+        }
+      } catch {
+        return new Response("Cross-origin WebSocket rejected", { status: 403 });
+      }
+    }
+
+    // Validate `path` param: must look like a relative content file path.
+    const sourcePath = new URL(fc.req.url).searchParams.get("path");
+    const SAFE_PATH_RE = /^[a-zA-Z0-9/_.-]+\.(?:md|mdx|yaml|yml|json|tsx)$/;
+    if (!sourcePath || !SAFE_PATH_RE.test(sourcePath) || sourcePath.includes("..")) {
+      return new Response("Invalid path", { status: 400 });
+    }
+
+    // Auth: require an authenticated admin session (via cookie).
+    // deno-lint-ignore no-explicit-any
+    const adminAuth = (ctx.adminContext as any)?.auth;
+    if (!adminAuth) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    const authResult = await adminAuth.authenticate(fc.req).catch(() => null);
+    if (!authResult?.authenticated || !authResult.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    if (!adminAuth.hasPermission(authResult, "pages.update")) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    return inlineEdit.handleUpgrade(fc.req, {
+      id: authResult.user.id,
+      name: authResult.user.username,
+    });
+  });
+
   // 9. Core Dune content API. Admin API routes are handled by fsRoutes above.
   app.all("/api/*", async (fc) => {
     const apiResult = await apiHandler(fc.req);

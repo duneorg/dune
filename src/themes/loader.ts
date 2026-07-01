@@ -355,7 +355,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const absPath = await resolveAbsPath(templatePath, rootDir);
             const mtime = await getMtime(absPath);
             const fileUrl = getImportUrl(absPath);
-            const mod = await import(fileUrl);
+            const mod = await import(fileUrl); // lockfile-safe: site-local (theme/plugin template file, resolved to file:// URL)
             if (!mod.default) continue;
             const component = mod.default as TemplateComponent;
             // Warn about static layout imports that break hot-reload
@@ -379,7 +379,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const absPath = templatePath;
             const mtime = stat.mtime?.getTime() ?? 0;
             const fileUrl = getImportUrl(absPath);
-            const mod = await import(fileUrl);
+            const mod = await import(fileUrl); // lockfile-safe: site-local (theme/plugin template file, resolved to file:// URL)
             if (!mod.default) continue;
             const component = mod.default as TemplateComponent;
             templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
@@ -422,7 +422,7 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
             const absPath = await resolveAbsPath(layoutPath, rootDir);
             const mtime = await getMtime(absPath);
             const fileUrl = getImportUrl(absPath);
-            const mod = await import(fileUrl);
+            const mod = await import(fileUrl); // lockfile-safe: site-local (theme/plugin template file, resolved to file:// URL)
             const component = mod.default as TemplateComponent;
             if (component) {
               layoutCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });

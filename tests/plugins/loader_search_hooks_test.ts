@@ -133,6 +133,8 @@ Deno.test("loadPlugins: a factory plugin's search hooks fire through bootstrap's
         config,
         formats: makeFormats(),
         loadText: () => Promise.resolve(""),
+        register: () => {},
+        setActiveEngine: () => {},
       },
     );
     const search = engineCtx.engine ??
@@ -193,6 +195,8 @@ Deno.test("loadPlugins: no search hooks registered → engine falls back to buil
         config,
         formats: makeFormats(),
         loadText: () => Promise.resolve(""),
+        register: () => {},
+        setActiveEngine: () => {},
       },
     );
 

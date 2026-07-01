@@ -2,10 +2,10 @@
  * Inline editing service port.
  *
  * Core defines this interface and consumes it from the admin panel routes
- * (`/admin/collab/edit-ws`, the presence endpoint, and the content commit /
+ * (`/api/inline-edit/ws`, the presence endpoint, and the content commit /
  * field-patch endpoints). It does not ship an implementation: a plugin
  * provides one via `DunePlugin.adminServices` (e.g.
- * `jsr:@dune/plugin-inline-edit`), and the admin endpoints respond 501 when
+ * `jsr:@dune/plugin-inline-edit`), and the endpoints respond 501 when
  * no plugin has filled the slot.
  *
  * The wire protocol spoken over the WebSocket — and any client-side editor

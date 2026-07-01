@@ -136,7 +136,7 @@ async function loadConfigTs(
   try {
     // Use file:// URL for dynamic import (Deno requires it)
     const fileUrl = `file://${configPath}`;
-    const mod = await import(fileUrl);
+    const mod = await import(fileUrl); // lockfile-safe: site-local (dune.config.ts, resolved to file:// URL)
 
     // Support both default export and named "config" export
     const config = mod.default ?? mod.config;

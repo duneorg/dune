@@ -185,6 +185,8 @@ Deno.test("onSearchEngineCreate: a handler can provide an alternative engine", a
       config: {} as DuneConfig,
       formats: makeFormats(),
       loadText: () => Promise.resolve(""),
+      register: () => {},
+      setActiveEngine: () => {},
     },
   );
 
@@ -209,6 +211,8 @@ Deno.test("onSearchEngineCreate: engine stays null when no handler provides one"
       config: {} as DuneConfig,
       formats: makeFormats(),
       loadText: () => Promise.resolve(""),
+      register: () => {},
+      setActiveEngine: () => {},
     },
   );
   assertEquals(result.engine, null);
