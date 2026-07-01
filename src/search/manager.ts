@@ -35,6 +35,7 @@ export interface SearchManager extends SearchEngine {
   isParallelMode(): boolean;
 }
 
+/** Create a SearchManager with the built-in engine pre-registered as `"built-in"`. */
 export function createSearchManager(
   builtInEngine: SearchEngine,
 ): SearchManager {

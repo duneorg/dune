@@ -52,6 +52,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+/** Options for {@link createDuneApp}. */
 export interface DuneAppOptions {
   root: string;
   port: number;
@@ -60,6 +61,7 @@ export interface DuneAppOptions {
   dev?: boolean;
 }
 
+/** Handles and utilities returned by {@link createDuneApp}. */
 export interface DuneAppResult {
   // deno-lint-ignore no-explicit-any
   app: App<any>;
@@ -79,6 +81,7 @@ export interface DuneAppResult {
 
 // ── Factory ────────────────────────────────────────────────────────────────────
 
+/** Wire a bootstrapped Dune context into a Fresh app, mount all plugins, and return the running app. */
 export async function createDuneApp(
   ctx: BootstrapResult,
   options: DuneAppOptions,

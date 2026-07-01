@@ -32,6 +32,7 @@ export class PathEscapeError extends StorageError {
   }
 }
 
+/** Filesystem-backed storage adapter. Stores all content under `rootDir` and refuses path traversal attempts. */
 export class FileSystemAdapter implements StorageAdapter {
   private cacheDir: string;
   private rootResolved: string;

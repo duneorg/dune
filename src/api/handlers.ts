@@ -78,7 +78,7 @@ export interface ApiHandlerOptions {
 /**
  * Create the full API request handler.
  */
-export function createApiHandler(options: ApiHandlerOptions) {
+export function createApiHandler(options: ApiHandlerOptions): (req: Request) => Promise<Response | null> {
   const { engine, collections, taxonomy, search, flex } = options;
 
   return async function handleApiRequest(req: Request): Promise<Response | null> {

@@ -65,6 +65,7 @@ export interface AdminAuthProvider {
   handleCallback?(req: Request): Promise<{ id: string; [k: string]: unknown } | null>;
 }
 
+/** All services produced by a successful `bootstrap()` call. */
 export interface BootstrapResult {
   engine: DuneEngine;
   storage: StorageAdapter;
@@ -124,6 +125,7 @@ export interface BootstrapResult {
   adminServices: import("../hooks/types.ts").AdminServices | null;
 }
 
+/** Options accepted by `bootstrap()`. All fields are optional. */
 export interface BootstrapOptions {
   debug?: boolean;
   buildSearch?: boolean;

@@ -54,6 +54,7 @@ function segmentsToPath(segs: string[]): string {
   return segs.join("/");
 }
 
+/** Deno KV-backed storage adapter. See module docs for key schema and limitations. */
 export class KvStorageAdapter implements StorageAdapter {
   private kv: Deno.Kv;
 
