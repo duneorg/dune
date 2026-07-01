@@ -5,6 +5,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.26.0] — 2026-07-02
+
+### Changed
+
+- **Runtime module** — `bootstrap.ts` and `fresh-app.ts` have moved from `src/cli/` to a new `src/runtime/` module. The `@dune/core/bootstrap` and `@dune/core/fresh-app` export names are unchanged and keep working; the old `src/cli/` file locations remain as re-export shims until v0.27. `createDuneApp` has been decomposed into focused registration modules (health, feeds, static assets, content middleware).
+- **`BootstrapResult.contentApi`** — the bootstrap result now exposes the content API directly, replacing the previous `initContent()` singleton pattern.
+- **Session lifetime in milliseconds** — `SessionStoreOptions`, `LocalSessionStoreConfig`, and `createSiteSessionManager` now take `lifetimeMs` (milliseconds) as the canonical field, matching the KV backend. The old `lifetime` (seconds) field still works with a deprecation warning and will be removed in v0.27. The YAML `session_store.lifetime` config field (seconds) is unchanged.
+- **Config types split** — the monolithic `config/types.ts` has been split into `site-config.ts`, `system-config.ts`, `admin-config.ts`, and `dune-config.ts`. All types remain re-exported from `config/types.ts`, so existing imports keep working.
+- **Routing handlers extracted** — content, flex, TSX, link-rewriting, and collection-resolution logic moved out of `routes.ts` into dedicated modules under `src/routing/`.
+- **Admin plugin pin** — `@dune/plugin-admin` dependency raised to `^0.25`.
+
+---
+
 ## [0.25.1] — 2026-07-01
 
 ### Security
