@@ -57,12 +57,12 @@ function makeSession(overrides: Partial<AdminSession> = {}): AdminSession {
 // ── get / set ──────────────────────────────────────────────────────────────────
 
 Deno.test("LocalSessionStore: get returns null for missing session", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   assertEquals(await store.get("nonexistent"), null);
 });
 
 Deno.test("LocalSessionStore: set then get returns session", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   const session = makeSession();
   await store.set(session);
   const retrieved = await store.get(session.id);
@@ -71,7 +71,7 @@ Deno.test("LocalSessionStore: set then get returns session", async () => {
 });
 
 Deno.test("LocalSessionStore: get returns null for expired session", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 1 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 1000 });
   const session = makeSession({ expiresAt: Date.now() - 1 }); // already expired
   await store.set(session);
   assertEquals(await store.get(session.id), null);
@@ -80,7 +80,7 @@ Deno.test("LocalSessionStore: get returns null for expired session", async () =>
 // ── delete ─────────────────────────────────────────────────────────────────────
 
 Deno.test("LocalSessionStore: delete removes the session", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   const session = makeSession();
   await store.set(session);
   await store.delete(session.id);
@@ -88,7 +88,7 @@ Deno.test("LocalSessionStore: delete removes the session", async () => {
 });
 
 Deno.test("LocalSessionStore: delete is a no-op for missing session", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   // Should not throw
   await store.delete("does-not-exist");
 });
@@ -96,7 +96,7 @@ Deno.test("LocalSessionStore: delete is a no-op for missing session", async () =
 // ── deleteByUserId ─────────────────────────────────────────────────────────────
 
 Deno.test("LocalSessionStore: deleteByUserId removes all sessions for a user", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
 
   const s1 = makeSession({ id: "aaaa", userId: "alice" });
   const s2 = makeSession({ id: "bbbb", userId: "alice" });
@@ -114,14 +114,14 @@ Deno.test("LocalSessionStore: deleteByUserId removes all sessions for a user", a
 });
 
 Deno.test("LocalSessionStore: deleteByUserId is safe when no sessions exist", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   await store.deleteByUserId("nobody");
 });
 
 // ── cleanup ────────────────────────────────────────────────────────────────────
 
 Deno.test("LocalSessionStore: cleanup removes only expired sessions", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
 
   const active = makeSession({ id: "live", expiresAt: Date.now() + 3600 * 1000 });
   const expired = makeSession({ id: "dead", expiresAt: Date.now() - 1 });
@@ -136,7 +136,7 @@ Deno.test("LocalSessionStore: cleanup removes only expired sessions", async () =
 });
 
 Deno.test("LocalSessionStore: cleanup returns 0 when nothing is expired", async () => {
-  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetime: 3600 });
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
   const s = makeSession();
   await store.set(s);
   assertEquals(await store.cleanup(), 0);
