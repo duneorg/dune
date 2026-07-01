@@ -48,12 +48,12 @@
     "./fresh-app": "./src/runtime/server.ts"
   },
   "imports": {
-    "@dune/plugin-admin": "jsr:@dune/plugin-admin@^0.24",
-    "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@^0.24/admin/mount",
-    "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@^0.24/admin/context",
-    "@dune/plugin-admin/admin/types": "jsr:@dune/plugin-admin@^0.24/admin/types",
-    "@dune/plugin-admin/admin/auth/middleware": "jsr:@dune/plugin-admin@^0.24/admin/auth/middleware",
-    "@dune/plugin-admin/admin/auth/provider": "jsr:@dune/plugin-admin@^0.24/admin/auth/provider",
+    "@dune/plugin-admin": "jsr:@dune/plugin-admin@^0.25",
+    "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@^0.25/admin/mount",
+    "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@^0.25/admin/context",
+    "@dune/plugin-admin/admin/types": "jsr:@dune/plugin-admin@^0.25/admin/types",
+    "@dune/plugin-admin/admin/auth/middleware": "jsr:@dune/plugin-admin@^0.25/admin/auth/middleware",
+    "@dune/plugin-admin/admin/auth/provider": "jsr:@dune/plugin-admin@^0.25/admin/auth/provider",
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",
     "preact/hooks": "npm:preact@^10/hooks",
