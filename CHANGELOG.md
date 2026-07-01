@@ -5,6 +5,32 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.25.1] — 2026-07-01
+
+### Security
+
+- **REST API content gating** — role-based access controls are now enforced on public REST API endpoints, consistent with content gating elsewhere in the framework
+- **Codegen input validation** — generated API route handlers now validate request body fields against schema constraints before executing database writes
+- **DB schema identifier safety** — model and table names from schema definitions are validated against a safe-identifier allowlist before code generation
+- **SSG traversal guard** — static site generation now validates slug values to prevent path traversal; HTML redirect targets are entity-escaped
+- **Per-origin authorization** — the authorization map is now keyed per site origin rather than a shared singleton, preventing cross-site authorization bleed in multisite deployments
+- **Plugin path traversal** — plugin specifiers are percent-decoded before traversal boundary checks
+- **SQL LIKE escaping** — repository LIKE-clause parameters are escaped before query execution
+- **KV cache key sanitization** — storage keys are sanitized before use in the KV cache layer
+- **Webhook timestamp enforcement** — webhook handlers now reject requests missing a timestamp header
+
+### Fixed
+- **Form validator email length** — min/max length constraints on email fields were silently skipped due to a switch-case ordering issue; the email case now falls through to the shared string-length check correctly
+
+### Changed
+- **API routing refactor** — REST API handler logic (pages, search, taxonomy, collections, nav, config) has been moved out of `routes.ts` into a dedicated `src/api/handlers.ts` module. The `apiHandler` method is removed from the `DuneRoutes` interface; the framework mount handles API routing automatically. Sites calling `routes.apiHandler()` directly should remove those calls.
+- **Search analytics removed from `duneRoutes()`** — the `analyticsPath` parameter has been removed; sites passing it should remove the argument.
+- **Flex page index extraction** — `flexRecordToPageIndex()` and `FlexPageIndexInput` have been moved to `src/flex/page-index.ts` for cleaner module boundaries.
+- **Dead code removal** — internal helper functions that were no longer called anywhere (`slugify`, `xmlAll`, `dotGet`, `text`) have been removed, along with unused imports and unused parameters throughout the codebase.
+- **Test improvements** — DNS resolution in CDN provider tests is now stubbed for hermeticity; new test coverage added for form validation, API handlers, and upload routing.
+
+---
+
 ## [0.25.0] — 2026-07-01
 
 ### Added
