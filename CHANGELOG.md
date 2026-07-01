@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.24.1] — 2026-07-01
+
+### Security
+
+- **High: Path traversal via plugin `islandSpecifiers` (build-time).** Plugin-supplied
+  `islandSpecifiers` were spread into the client JS bundler without the path-validation
+  guard already applied to `publicRoutes[].island`. Added `isValidPluginIslandSpecifier()`
+  validation in both `serve.ts` and `dev.ts`; invalid specifiers are rejected with a
+  warning log. Affects `@dune/core` ≥ 0.24.0.
+
+- **High: Stored XSS via unvalidated grid column value in page-builder renderer.**
+  The `columns` frontmatter field accepted by `renderFeatures`, `renderGallery`, and
+  `renderColumns` was interpolated directly into an HTML class attribute without
+  sanitization. Introduced `safeGridCols()` which allowlists values before interpolation.
+
+---
+
 ## [0.24.0] — 2026-06-30
 
 ### Added
