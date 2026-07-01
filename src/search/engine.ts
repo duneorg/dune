@@ -135,7 +135,23 @@ export interface SearchRecordsCollectContext {
  * (pages, injected records) so a plugin engine can index them itself.
  */
 export interface SearchEngineCreateContext {
-  /** Assign to provide an alternative engine; null uses the built-in. */
+  /**
+   * Register a named engine with the SearchManager.
+   * Call `register("meilisearch", engine)` to add the engine to the registry
+   * without immediately making it active. Optionally call `setActiveEngine` to
+   * switch — otherwise the built-in engine remains active.
+   */
+  register: (name: string, engine: SearchEngine) => void;
+  /**
+   * Switch the active engine. Must have been registered via `register` first.
+   * To activate at startup, call this after `register` inside the hook handler.
+   */
+  setActiveEngine: (name: string) => void;
+  /**
+   * @deprecated Assign `engine` to replace the built-in (single-engine path).
+   * Prefer `register()` + `setActiveEngine()` for multi-engine support.
+   * If set, the engine is registered as "default" and set active.
+   */
   engine: SearchEngine | null;
   /** Content pages available to index. */
   pages: PageIndex[];

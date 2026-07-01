@@ -18,6 +18,8 @@ import type {
   SearchEngineCreateContext,
   SearchRecordsCollectContext,
 } from "../search/engine.ts";
+import { createSearchManager } from "../search/manager.ts";
+import type { SearchManager } from "../search/manager.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
 import { createImageCache } from "../images/cache.ts";
@@ -70,7 +72,7 @@ export interface BootstrapResult {
   formats: FormatRegistry;
   collections: CollectionEngine;
   taxonomy: TaxonomyEngine;
-  search: SearchEngine;
+  search: SearchManager;
   hooks: HookRegistry;
   imageHandler: ImageHandler;
   imageProcessor: ImageProcessor;
@@ -303,9 +305,20 @@ export async function bootstrap(
   const injectedRecords = recordsCtx.records;
 
   const searchContentDir = config.system.content.dir;
+  const builtInEngine = createSearchEngine({
+    pages: engine.pages,
+    storage,
+    contentDir: searchContentDir,
+    formats,
+    injectedRecords,
+  });
+  const search = createSearchManager(builtInEngine);
+
   const engineCtx = await hooks.fire<SearchEngineCreateContext>(
     "onSearchEngineCreate",
     {
+      register: (name, eng) => search.register(name, eng),
+      setActiveEngine: (name) => search.setActiveEngine(name),
       engine: null,
       pages: engine.pages,
       injectedRecords,
@@ -322,13 +335,12 @@ export async function bootstrap(
     },
   );
 
-  const search = engineCtx.engine ?? createSearchEngine({
-    pages: engine.pages,
-    storage,
-    contentDir: config.system.content.dir,
-    formats,
-    injectedRecords,
-  });
+  // Legacy backwards-compat: if a plugin set ctx.engine directly (old API),
+  // register it as "default" and activate it.
+  if (engineCtx.engine) {
+    search.register("default", engineCtx.engine);
+    search.setActiveEngine("default");
+  }
 
   if (buildSearch) {
     await search.build();
