@@ -21,6 +21,13 @@ function esc(s: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Resolve a user-supplied column count to a safe CSS class suffix (1–4). */
+const VALID_GRID_COLS = new Set(["1", "2", "3", "4"]);
+function safeGridCols(val: unknown, fallback: "2" | "3" | "4" = "3"): string {
+  const s = String(val ?? fallback);
+  return VALID_GRID_COLS.has(s) ? s : fallback;
+}
+
 /** URL-attribute escape: validate scheme first, then HTML-attr escape. */
 function escUrl(s: unknown, fallback = "#"): string {
   return esc(safeUrl(s == null ? undefined : String(s), fallback));
@@ -167,7 +174,7 @@ function renderHero(s: SectionInstance): string {
 }
 
 function renderFeatures(s: SectionInstance): string {
-  const cols = String(s.columns ?? "3");
+  const cols = safeGridCols(s.columns, "3");
   const items = Array.isArray(s.items) ? s.items as Record<string, unknown>[] : [];
   const cards = items.map((item) => `
     <div class="pb-feature-card">
@@ -231,7 +238,7 @@ function renderCta(s: SectionInstance): string {
 }
 
 function renderGallery(s: SectionInstance): string {
-  const cols = String(s.columns ?? "3");
+  const cols = safeGridCols(s.columns, "3");
   const items = Array.isArray(s.items) ? s.items as Record<string, unknown>[] : [];
   const imgs = items.map((item) => `
     <div>
@@ -309,7 +316,7 @@ function renderText(s: SectionInstance): string {
 }
 
 function renderColumns(s: SectionInstance): string {
-  const count = String(s.count ?? "2");
+  const count = safeGridCols(s.count, "2");
   const cols = [s.col1, s.col2, count === "3" ? s.col3 : null].filter(Boolean);
   const colHtml = cols.map((c) => `<div class="pb-col pb-richtext">${richtext(c)}</div>`).join("");
   return `

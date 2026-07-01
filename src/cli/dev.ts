@@ -138,7 +138,16 @@ export async function devCommand(root: string, options: DevOptions = {}) {
       return true;
     }),
     // Collect islandSpecifiers declared by plugins (e.g. @dune/plugin-admin's islands).
-    ...hooks.plugins().flatMap((p) => p.islandSpecifiers ?? []),
+    // Validate for the same traversal reason as publicRoutes above (HIGH-19).
+    ...hooks.plugins().flatMap((p) =>
+      (p.islandSpecifiers ?? []).filter((s) => {
+        if (!isValidPluginIslandSpecifier(s)) {
+          console.warn(`[dune] plugin islandSpecifier rejected (invalid path): ${JSON.stringify(s)}`);
+          return false;
+        }
+        return true;
+      })
+    ),
   ];
 
   // Collect island paths from the active theme chain (auto-discovery).
