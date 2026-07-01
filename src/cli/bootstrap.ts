@@ -3,7 +3,7 @@
  * Creates storage, loads config, registers format handlers, and creates the engine.
  */
 
-import { createStorage } from "../storage/mod.ts";
+import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
@@ -161,7 +161,7 @@ export async function bootstrap(
   root = resolve(root); // normalise "." or relative paths to absolute
 
   // 1. Storage
-  const storage = createStorage({ rootDir: root });
+  const storage = await createStorageAsync({ rootDir: root });
 
   // 2. Config
   const config = await loadConfig({

@@ -27,7 +27,7 @@
     "./engine": "./src/core/engine.ts",
     "./hooks": "./src/hooks/types.ts",
     "./config": "./src/config/types.ts",
-    "./storage": "./src/storage/types.ts",
+    "./storage": "./src/storage/mod.ts",
     "./staging": "./src/staging/engine.ts",
     "./workflow": "./src/workflow/mod.ts",
     "./session": "./src/session/mod.ts",

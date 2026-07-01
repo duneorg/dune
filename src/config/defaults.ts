@@ -26,6 +26,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
         auto_links: true,
         auto_url_links: true,
       },
+      allowTsxFormat: ["admin"],
     },
     cache: {
       enabled: true,

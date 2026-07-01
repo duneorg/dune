@@ -821,6 +821,13 @@ export interface SystemConfig {
       auto_links: boolean;
       auto_url_links: boolean;
     };
+    /**
+     * Roles permitted to create or save pages with `format: tsx`.
+     * TSX pages execute arbitrary Deno code during SSR and must be treated
+     * as equivalent to server shell access. Default: `["admin"]`.
+     * Set to `[]` to disable TSX content entirely.
+     */
+    allowTsxFormat?: string[];
   };
   cache: {
     enabled: boolean;
