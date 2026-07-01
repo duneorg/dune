@@ -25,8 +25,13 @@ export interface SessionStoreOptions {
   storage?: StorageAdapter;
   /** Directory for session files (local backend). */
   sessionsDir?: string;
-  /** Session lifetime in seconds. */
-  lifetime: number;
+  /** Session lifetime in milliseconds — canonical since v0.26. */
+  lifetimeMs: number;
+  /**
+   * @deprecated Use `lifetimeMs` (milliseconds) instead.
+   * Kept for one minor version; removed in v0.27.
+   */
+  lifetime?: number;
 }
 
 /**
@@ -36,11 +41,12 @@ export interface SessionStoreOptions {
  * or if the resolved backend is "local" but no `storage` adapter is provided.
  */
 export async function createSessionStore(opts: SessionStoreOptions): Promise<SessionStore> {
+  const resolvedLifetimeMs = resolveLifetimeMs(opts);
   const resolved = resolveType(opts);
 
   if (resolved === "kv") {
     const kv = await Deno.openKv();
-    return createKVSessionStore({ kv, lifetimeMs: opts.lifetime * 1000 });
+    return createKVSessionStore({ kv, lifetimeMs: resolvedLifetimeMs });
   }
 
   if (resolved === "redis") {
@@ -50,7 +56,7 @@ export async function createSessionStore(opts: SessionStoreOptions): Promise<Ses
         "Set session_store.url in config or pass redisUrl to createSessionStore().",
       );
     }
-    return createRedisSessionStoreFromUrl(opts.redisUrl, opts.lifetime);
+    return createRedisSessionStoreFromUrl(opts.redisUrl, resolvedLifetimeMs / 1000);
   }
 
   // local
@@ -62,8 +68,19 @@ export async function createSessionStore(opts: SessionStoreOptions): Promise<Ses
   return createLocalSessionStore({
     storage: opts.storage,
     sessionsDir: opts.sessionsDir ?? ".dune/admin/sessions",
-    lifetime: opts.lifetime,
+    lifetimeMs: resolvedLifetimeMs,
   });
+}
+
+function resolveLifetimeMs(opts: SessionStoreOptions): number {
+  if (opts.lifetime !== undefined && opts.lifetimeMs === undefined) {
+    console.warn(
+      "[dune] SessionStoreOptions.lifetime (seconds) is deprecated — use lifetimeMs (milliseconds). " +
+      "Support will be removed in v0.27.",
+    );
+    return opts.lifetime * 1000;
+  }
+  return opts.lifetimeMs;
 }
 
 function resolveType(opts: SessionStoreOptions): "local" | "kv" | "redis" {

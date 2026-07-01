@@ -86,7 +86,7 @@ export async function mountDuneAuth(
   const sessionMgr = createSiteSessionManager({
     storage,
     sessionsDir,
-    lifetime: sessionLifetimeSec,
+    lifetimeMs: sessionLifetimeSec * 1000,
   });
 
   // ── Auth middleware ─────────────────────────────────────────────────────────

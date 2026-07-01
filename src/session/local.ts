@@ -17,14 +17,25 @@ export interface LocalSessionStoreConfig {
   storage: StorageAdapter;
   /** Directory for session files, e.g. ".dune/admin/sessions" */
   sessionsDir: string;
-  /** Session lifetime in seconds — used when writing new sessions */
-  lifetime: number;
+  /** Session lifetime in milliseconds — canonical since v0.26. */
+  lifetimeMs: number;
+  /**
+   * @deprecated Use `lifetimeMs` (milliseconds) instead.
+   * Kept for one minor version; removed in v0.27.
+   */
+  lifetime?: number;
 }
 
 /**
  * Create a file-backed session store using the given StorageAdapter.
  */
 export function createLocalSessionStore(config: LocalSessionStoreConfig): SessionStore {
+  if (config.lifetime !== undefined && config.lifetimeMs === undefined) {
+    console.warn(
+      "[dune] LocalSessionStoreConfig.lifetime (seconds) is deprecated — use lifetimeMs (milliseconds). " +
+      "Support will be removed in v0.27.",
+    );
+  }
   const { storage, sessionsDir } = config;
 
   async function get(id: string): Promise<AdminSession | null> {
