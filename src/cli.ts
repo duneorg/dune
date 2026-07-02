@@ -33,6 +33,7 @@
  */
 
 import { isImportMapError, formatImportMapError } from "./cli/import-map-error.ts";
+import { waitForwardingSignals } from "./cli/forward-signals.ts";
 
 // ── 1. Local source re-exec ────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ if (import.meta.url.startsWith("file://") && !Deno.env.get("DUNE_CONFIG_APPLIED"
       stdout: "inherit",
       stderr: "inherit",
     });
-    const status = await cmd.spawn().status;
+    const status = await waitForwardingSignals(cmd.spawn());
     if (tempDir) {
       await Deno.remove(tempDir, { recursive: true }).catch(() => {});
     }

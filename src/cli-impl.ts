@@ -44,6 +44,7 @@
 /** @module */
 
 import { devCommand } from "./cli/dev.ts";
+import { waitForwardingSignals } from "./cli/forward-signals.ts";
 import { serveCommand } from "./cli/serve.ts";
 import { buildCommand } from "./cli/build.ts";
 import { newCommand } from "./cli/new.ts";
@@ -372,7 +373,7 @@ export async function main() {
         stdout: "inherit",
         stderr: "inherit",
       });
-      const status = await cmd.spawn().status;
+      const status = await waitForwardingSignals(cmd.spawn());
       Deno.exit(status.code);
     } catch {
       // No deno.json in site root — proceed normally
