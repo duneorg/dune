@@ -14,6 +14,7 @@ import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page, TemplateProps } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 const STATUS_TITLES: Record<number, string> = {
   404: "404 — Not Found",
@@ -50,7 +51,7 @@ export async function renderErrorPage(
     const t = (key: string) => (strings[key] ?? key) as string;
     return renderJsx(
       // deno-lint-ignore no-explicit-any
-      h(errorTemplate.component as ComponentType<any>, {
+      await resolveTemplateVNode(errorTemplate.component as ComponentType<any>, {
         page: errorPage,
         pageTitle: `${title} | ${engine.site.title}`,
         site: engine.site,

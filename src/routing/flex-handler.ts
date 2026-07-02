@@ -4,6 +4,7 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { TemplateComponent } from "../content/types.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 /**
  * Props passed to a flex type list template.
@@ -144,10 +145,10 @@ async function handleFlexList(
   }
 
   return render(
-    h(template.component as unknown as ComponentType<FlexListTemplateProps>, {
-      ...baseProps,
-      records,
-    }),
+    await resolveTemplateVNode(
+      template.component as unknown as ComponentType<FlexListTemplateProps>,
+      { ...baseProps, records },
+    ),
   );
 }
 
@@ -201,9 +202,9 @@ async function handleFlexDetail(
   }
 
   return render(
-    h(template.component as unknown as ComponentType<FlexDetailTemplateProps>, {
-      ...baseProps,
-      record,
-    }),
+    await resolveTemplateVNode(
+      template.component as unknown as ComponentType<FlexDetailTemplateProps>,
+      { ...baseProps, record },
+    ),
   );
 }

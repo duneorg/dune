@@ -9,6 +9,7 @@ import type { SectionInstance } from "../sections/mod.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { rewriteInternalLinks } from "./link-rewriter.ts";
 import { resolveCollectionForPage } from "./collection-resolver.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 /**
  * Render a Markdown (or MDX) content page with the site theme.
@@ -87,7 +88,7 @@ export async function handleMarkdownPage(
   const t = (key: string) => (strings[key] ?? key) as string;
 
   return render(
-    h(template.component as ComponentType<any>, {
+    await resolveTemplateVNode(template.component as ComponentType<any>, {
       page,
       pageTitle: buildPageTitle(page, engine.site.title),
       site: engine.site,

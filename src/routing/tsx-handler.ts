@@ -1,11 +1,12 @@
 /** @jsxImportSource preact */
-import { h, type ComponentType } from "preact";
+import type { ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { createMediaHelper } from "./link-rewriter.ts";
 import { renderErrorPage } from "./error-page.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -33,7 +34,7 @@ export async function handleTsxPage(
           if (!Component) {
             return renderErrorPage(engine, url, render, 500, "TSX component not found");
           }
-          return render(h(Component as ComponentType<any>, {
+          return render(await resolveTemplateVNode(Component as ComponentType<any>, {
             data,
             site: engine.site,
             config: engine.config,
@@ -80,7 +81,7 @@ export async function handleTsxPage(
   const layoutName = page.frontmatter.layout;
   if (layoutName === false) {
     return render(
-      h(Component as ComponentType<any>, {
+      await resolveTemplateVNode(Component as ComponentType<any>, {
         site: engine.site,
         config: engine.config,
         route: page.route,
@@ -94,7 +95,7 @@ export async function handleTsxPage(
     typeof layoutName === "string" ? layoutName : "default",
   );
 
-  const content = h(Component as ComponentType<any>, {
+  const content = await resolveTemplateVNode(Component as ComponentType<any>, {
     site: engine.site,
     config: engine.config,
     route: page.route,
@@ -107,7 +108,7 @@ export async function handleTsxPage(
     const t = (key: string) => (strings[key] ?? key) as string;
     const pageLangForDir = page.language ?? engine.config?.system?.languages?.default ?? "en";
     return render(
-      h(layout as ComponentType<any>, {
+      await resolveTemplateVNode(layout as ComponentType<any>, {
         page,
         pageTitle: buildPageTitle(page, engine.site.title),
         site: engine.site,

@@ -8,9 +8,10 @@
 import type { DuneEngine } from "../core/engine.ts";
 import type { StagingEngine } from "./engine.ts";
 import { stringify as stringifyYaml } from "@std/yaml";
-import { h, type ComponentType } from "preact";
+import type { ComponentType, VNode } from "preact";
 import { render as renderToString } from "preact-render-to-string";
 import type { Page } from "../content/types.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 /**
  * Serve a staged draft preview.
@@ -83,7 +84,9 @@ export async function serveStagedPreview(
       collections: {},
     };
 
-    const componentHtml = renderToString(h(template.component as ComponentType<any>, props));
+    const componentHtml = renderToString(
+      await resolveTemplateVNode(template.component as ComponentType<any>, props) as VNode,
+    );
     return new Response(
       `<!DOCTYPE html>${bannerHtml}${componentHtml}</div>`,
       { headers: { "Content-Type": "text/html; charset=utf-8" } },

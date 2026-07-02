@@ -12,7 +12,7 @@
  */
 
 /** @jsxImportSource preact */
-import { h, type ComponentType } from "preact";
+import type { ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -27,6 +27,7 @@ import { handleFlexRoute } from "./flex-handler.ts";
 import { renderErrorPage } from "./error-page.ts";
 import { handleTsxPage } from "./tsx-handler.ts";
 import { handleMarkdownPage } from "./content-handler.ts";
+import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 export type { FlexListTemplateProps, FlexDetailTemplateProps } from "./flex-handler.ts";
 
@@ -162,7 +163,7 @@ export function duneRoutes(
           const strings = await engine.themes.loadLocale("en");
           const t = (key: string) => (strings[key] ?? key) as string;
           return respond(renderJsx(
-            h(searchTemplate.component as ComponentType<any>, {
+            await resolveTemplateVNode(searchTemplate.component as ComponentType<any>, {
               page: null,
               pageTitle: `Search${q ? `: ${q}` : ""} | ${engine.site.title}`,
               site: engine.site,
