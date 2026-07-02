@@ -204,6 +204,22 @@ Templates, components, and islands are resolved through the chain: child overrid
 
 Keep island filenames unique across the chain to avoid module ID collisions.
 
+### Package themes
+
+Register JSR/npm packages in `config/site.yaml`:
+
+```yaml
+themes:
+  - name: paper
+    src: jsr:@dune/theme-paper@1.0.0
+
+theme:
+  name: my-brand
+  parent: paper    # themes/my-brand/ overrides the package
+```
+
+Install: `dune theme:install jsr:@dune/theme-paper@1.0.0`
+
 ---
 
 ## Static assets
