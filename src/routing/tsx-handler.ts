@@ -5,6 +5,7 @@ import type { Page } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { createMediaHelper } from "./link-rewriter.ts";
+import { renderErrorPage } from "./error-page.ts";
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -29,7 +30,9 @@ export async function handleTsxPage(
         url,
         params: {},
         render: async (data: unknown) => {
-          if (!Component) return new Response("TSX component not found", { status: 500 });
+          if (!Component) {
+            return renderErrorPage(engine, url, render, 500, "TSX component not found");
+          }
           return render(h(Component as ComponentType<any>, {
             data,
             site: engine.site,
@@ -71,7 +74,7 @@ export async function handleTsxPage(
 
   const Component = await page.component();
   if (!Component) {
-    return new Response("TSX component not found", { status: 500 });
+    return renderErrorPage(engine, url, render, 500, "TSX component not found");
   }
 
   const layoutName = page.frontmatter.layout;

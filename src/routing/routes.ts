@@ -14,7 +14,6 @@
 /** @jsxImportSource preact */
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
-import type { Page, TemplateComponent, TemplateProps } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
@@ -25,6 +24,7 @@ import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
 import { logger, generateRequestId } from "../core/logger.ts";
 import { tracer } from "../tracing/mod.ts";
 import { handleFlexRoute } from "./flex-handler.ts";
+import { renderErrorPage } from "./error-page.ts";
 import { handleTsxPage } from "./tsx-handler.ts";
 import { handleMarkdownPage } from "./content-handler.ts";
 
@@ -208,60 +208,9 @@ export function duneRoutes(
         ));
       }
 
-      // Not found — render 404 through theme if available
+      // Not found — render 404 through theme (error template → layout → bare)
       if (result.type === "not-found" || !result.page) {
-        const Layout = await engine.themes.loadLayout("layout");
-        const siteData = engine.site;
-        const defaultLang = engine.config?.system?.languages?.default ?? "en";
-        const navData = engine.router.getTopNavigation(defaultLang);
-        if (Layout) {
-          const fakePage = {
-            route: url.pathname,
-            template: "layout",
-            frontmatter: { title: "404 — Not Found" },
-            language: defaultLang,
-          } as unknown as Page;
-          return respond(renderJsx(
-            h(Layout as unknown as ComponentType<TemplateProps>, {
-              site: siteData,
-              page: fakePage,
-              nav: navData,
-              pageTitle: "404 — Not Found",
-              config: engine.config,
-              dir: directionOf(defaultLang),
-            },
-              h("div", { class: "content-page" },
-                h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
-                  h("h1", null, "404"),
-                  h("p", null, "Page not found."),
-                  h("a", { href: "/" }, "← Go home"),
-                ),
-              ),
-            ),
-            404,
-          ));
-        }
-        return respond(renderJsx(
-          h("html", null,
-            h("head", null,
-              h("title", null, "404 — Not Found"),
-              h("meta", { charset: "utf-8" }),
-              h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-              h("style", null, `
-                body { font-family: system-ui, sans-serif; max-width: 600px; margin: 4rem auto; padding: 0 1rem; color: #333; }
-                h1 { font-size: 3rem; margin-bottom: 0.5rem; }
-                p { color: #666; }
-                a { color: #0066cc; }
-              `),
-            ),
-            h("body", null,
-              h("h1", null, "404"),
-              h("p", null, "Page not found: ", url.pathname),
-              h("a", { href: "/" }, "← Go home"),
-            ),
-          ),
-          404,
-        ));
+        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found"));
       }
 
       const page = result.page;
