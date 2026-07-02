@@ -8,7 +8,7 @@
  */
 
 import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createThemeLoader } from "../../src/themes/loader.ts";
+import { createThemeLoader, hasUnsafeStaticLayoutImport } from "../../src/themes/loader.ts";
 import type { StorageAdapter } from "../../src/storage/types.ts";
 import type { Page, PageFrontmatter } from "../../src/content/types.ts";
 
@@ -405,4 +405,42 @@ Deno.test("clearCache: clears locale cache so locale is re-read", async () => {
   const second = await loader.loadLocale("en");
   assertEquals(second.k, "v2");
   assertEquals(readCount, 2); // re-read after cache clear
+});
+
+// ---------------------------------------------------------------------------
+// hasUnsafeStaticLayoutImport
+// ---------------------------------------------------------------------------
+
+Deno.test("hasUnsafeStaticLayoutImport: warns for static import without Layout prop", () => {
+  const source = `
+import Layout from "../components/layout.tsx";
+export default function Page() {
+  return <Layout>hi</Layout>;
+}`;
+  assertEquals(hasUnsafeStaticLayoutImport(source), true);
+});
+
+Deno.test("hasUnsafeStaticLayoutImport: no static import means no warning", () => {
+  const source = `export default function Page({ Layout }) { return <div/>; }`;
+  assertEquals(hasUnsafeStaticLayoutImport(source), false);
+});
+
+Deno.test("hasUnsafeStaticLayoutImport: documented fallback pattern is suppressed", () => {
+  const source = `
+import StaticLayout from "../components/layout.tsx";
+export default function Page({ Layout, page }) {
+  const LayoutComponent = Layout ?? StaticLayout;
+  return <LayoutComponent>{page.title}</LayoutComponent>;
+}`;
+  assertEquals(hasUnsafeStaticLayoutImport(source), false);
+});
+
+Deno.test("hasUnsafeStaticLayoutImport: Layout ?? fallback alone is suppressed", () => {
+  const source = `
+import StaticLayout from "./components/layout.tsx";
+export default function Page(props) {
+  const L = props.Layout ?? StaticLayout;
+  return <L/>;
+}`;
+  assertEquals(hasUnsafeStaticLayoutImport(source), false);
 });

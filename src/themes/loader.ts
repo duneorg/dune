@@ -528,6 +528,22 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
 const _warnedTemplates = new Set<string>();
 
 /**
+ * True when the template source has a static component import but does NOT
+ * use the documented Layout-prop fallback pattern. A static import is fine
+ * as long as the Layout prop takes precedence, e.g.
+ * `const LayoutComponent = Layout ?? StaticLayout;` — that pattern (or any
+ * destructuring of `Layout` from props) suppresses the warning.
+ */
+export function hasUnsafeStaticLayoutImport(source: string): boolean {
+  const hasStaticImport =
+    /import\s+\w+\s+from\s+["'][^"']*\/components\/[^"']*["']/.test(source);
+  if (!hasStaticImport) return false;
+  const usesLayoutProp = /\bLayout\s*\?\?/.test(source) ||
+    /[{,]\s*Layout\s*[},=:]/.test(source);
+  return !usesLayoutProp;
+}
+
+/**
  * Check if a template file contains a static layout import and warn the
  * developer. Static imports like `import Layout from "../components/layout.tsx"`
  * won't be cache-busted during hot-reload — the template must use the `Layout`
@@ -537,8 +553,7 @@ async function warnStaticLayoutImport(templatePath: string, storage: StorageAdap
   if (_warnedTemplates.has(templatePath)) return;
   try {
     const source = await storage.readText(templatePath);
-    // Match: import <anything> from "<path containing /components/>"
-    if (/import\s+\w+\s+from\s+["'][^"']*\/components\/[^"']*["']/.test(source)) {
+    if (hasUnsafeStaticLayoutImport(source)) {
       _warnedTemplates.add(templatePath);
       console.warn(
         `  ⚠️  ${templatePath}: static layout import won't hot-reload.\n` +
