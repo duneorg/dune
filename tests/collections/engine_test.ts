@@ -1211,6 +1211,95 @@ Deno.test("resolveSource @page.children: fetches children of named route", async
   assertEquals(collection.items[0].route, "/blog/post");
 });
 
+Deno.test("resolveSource @page.children: trailing slashes on route or index are equivalent", async () => {
+  // Indexed routes may carry trailing slashes (e.g. "/blog/"); the natural
+  // frontmatter spelling is "/blog" — both directions must match.
+  const blog = makePage({ sourcePath: "02.blog/default.md", route: "/blog/" });
+  const child = makePage({
+    sourcePath: "02.blog/01.post/default.md",
+    route: "/blog/post",
+    parentPath: "/blog/",
+  });
+
+  const allPages = [blog, child];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const contextPage = makePage({ sourcePath: "01.home/default.md", route: "/home" });
+
+  // Index has "/blog/", source says "/blog"
+  const a = await engine.resolve(
+    { items: { "@page.children": "/blog" } },
+    contextPage,
+  );
+  await a.load();
+  assertEquals(a.items.map((p) => p.route), ["/blog/post"]);
+
+  // Source says "/blog/" against an index route of "/blog/"
+  const b = await engine.resolve(
+    { items: { "@page.children": "/blog/" } },
+    contextPage,
+  );
+  await b.load();
+  assertEquals(b.items.map((p) => p.route), ["/blog/post"]);
+});
+
+Deno.test("resolveSource @page.descendants: matches index route with trailing slash", async () => {
+  const blog = makePage({ sourcePath: "02.blog/default.md", route: "/blog/" });
+  const child = makePage({
+    sourcePath: "02.blog/01.post/default.md",
+    route: "/blog/post",
+  });
+  const grandchild = makePage({
+    sourcePath: "02.blog/01.post/01.deep/default.md",
+    route: "/blog/post/deep",
+  });
+
+  const allPages = [blog, child, grandchild];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const contextPage = makePage({ sourcePath: "01.home/default.md", route: "/home" });
+  const collection = await engine.resolve(
+    { items: { "@page.descendants": "/blog" } },
+    contextPage,
+  );
+  await collection.load();
+
+  const routes = collection.items.map((p) => p.route).sort();
+  assertEquals(routes, ["/blog/post", "/blog/post/deep"]);
+});
+
+Deno.test("resolveSource @page.children: root route '/' still resolves", async () => {
+  const root = makePage({ sourcePath: "01.home/default.md", route: "/" });
+  const child = makePage({
+    sourcePath: "01.home/01.sub/default.md",
+    route: "/sub",
+  });
+
+  const allPages = [root, child];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const contextPage = makePage({ sourcePath: "03.other/default.md", route: "/other" });
+  const collection = await engine.resolve(
+    { items: { "@page.children": "/" } },
+    contextPage,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.map((p) => p.route), ["/sub"]);
+});
+
 Deno.test("resolveSource @page.children: returns empty for unknown route", async () => {
   const allPages = [makePage({ sourcePath: "01.home/default.md", route: "/home" })];
   const engine = createCollectionEngine({

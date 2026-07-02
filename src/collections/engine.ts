@@ -252,10 +252,18 @@ export function createCollectionEngine(
   }
 
   function findPageByRoute(route: string): PageIndex | undefined {
-    const normalized = route.startsWith("/") ? route : "/" + route;
-    return pages.find((p) =>
-      p.route === normalized || p.route === route
-    );
+    const withSlash = route.startsWith("/") ? route : "/" + route;
+    // Indexed routes may carry a trailing slash (e.g. "/blog/") while
+    // frontmatter sources naturally spell "/blog" — treat them as equal.
+    const normalized = withSlash.length > 1 && withSlash.endsWith("/")
+      ? withSlash.slice(0, -1)
+      : withSlash;
+    return pages.find((p) => {
+      const pRoute = p.route.length > 1 && p.route.endsWith("/")
+        ? p.route.slice(0, -1)
+        : p.route;
+      return pRoute === normalized;
+    });
   }
 
   function findByTaxonomy(
