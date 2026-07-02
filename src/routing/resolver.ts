@@ -52,6 +52,32 @@ export interface RouteResolver {
 }
 
 /**
+ * Split the language prefix off a URL pathname.
+ *
+ * On multilingual sites (more than one supported language), non-default
+ * languages are served under `/{lang}/...` (and the default too when
+ * `include_default_in_url` is set). Returns the request language and the
+ * pathname with the prefix removed; unprefixed paths get the default
+ * language and the pathname unchanged.
+ *
+ * Pass `config.system.languages` directly as the second argument.
+ */
+export function splitLanguagePrefix(
+  pathname: string,
+  languages?: { supported?: string[]; default?: string },
+): { lang: string; path: string } {
+  const supported = languages?.supported ?? [];
+  const defaultLang = languages?.default ?? "en";
+  if (supported.length > 1) {
+    const first = pathname.split("/").filter(Boolean)[0]?.toLowerCase();
+    if (first && supported.includes(first)) {
+      return { lang: first, path: pathname.slice(1 + first.length) || "/" };
+    }
+  }
+  return { lang: defaultLang, path: pathname };
+}
+
+/**
  * Create a route resolver from page indexes and site config.
  */
 export function createRouteResolver(options: RouteResolverOptions): RouteResolver {

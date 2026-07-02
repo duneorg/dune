@@ -38,6 +38,7 @@ const stubConfig: DuneConfig = {
     timezone: "UTC",
   },
   theme: { name: "default", custom: {} },
+  themeList: [],
   plugins: {},
   pluginList: [],
 };
@@ -77,6 +78,7 @@ function makeEngine(
     createPreviewTheme: (_name: string) => Promise.reject(new Error("not implemented")),
     setPluginTemplateDirs: (_dirs: string[]) => {},
     storage: {} as unknown as DuneEngine["storage"],
+    themePackageStaticDirs: new Map(),
   };
 }
 

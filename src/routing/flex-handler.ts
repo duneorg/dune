@@ -5,6 +5,7 @@ import type { TemplateComponent } from "../content/types.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { splitLanguagePrefix } from "./resolver.ts";
 
 /**
  * Props passed to a flex type list template.
@@ -54,7 +55,8 @@ export async function handleFlexRoute(
   flex: FlexEngine,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
 ): Promise<Response> {
-  const parts = url.pathname.split("/").filter(Boolean); // ["flex", type, ...id]
+  const { lang, path } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
+  const parts = path.split("/").filter(Boolean); // ["flex", type, ...id]
   if (parts.length < 2) {
     return render(h("div", null, "Flex type not specified"), 404);
   }
@@ -66,11 +68,11 @@ export async function handleFlexRoute(
     return render(h("div", null, `Flex type "${flexType}" not found`), 404);
   }
 
-  const strings = await engine.themes.loadLocale("en");
+  const strings = await engine.themes.loadLocale(lang);
   const t = (key: string) => (strings[key] ?? key) as string;
   const layout = await engine.themes.loadLayout("layout");
-  const nav = engine.router.getTopNavigation("en");
-  const navAll = engine.router.getNavigation("en");
+  const nav = engine.router.getTopNavigation(lang);
+  const navAll = engine.router.getNavigation(lang);
   const baseProps = {
     type: flexType,
     schema,
@@ -89,7 +91,7 @@ export async function handleFlexRoute(
   }
 
   if (parts.length === 3) {
-    return handleFlexDetail(engine, url, flex, flexType, schema, baseProps, render);
+    return handleFlexDetail(engine, decodeURIComponent(parts[2]), flex, flexType, schema, baseProps, render);
   }
 
   return render(h("div", null, "Not found"), 404);
@@ -161,15 +163,13 @@ async function handleFlexList(
 
 async function handleFlexDetail(
   engine: DuneEngine,
-  url: URL,
+  recordId: string,
   flex: FlexEngine,
   flexType: string,
   schema: FlexSchema,
   baseProps: Omit<FlexDetailTemplateProps, "record">,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
 ): Promise<Response> {
-  const parts = url.pathname.split("/").filter(Boolean);
-  const recordId = decodeURIComponent(parts[2]);
   const record = await flex.get(flexType, recordId);
   if (!record) {
     return render(h("div", null, `Record "${recordId}" not found`), 404);

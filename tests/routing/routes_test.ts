@@ -88,6 +88,7 @@ const stubConfig: DuneConfig = {
     timezone: "UTC",
   },
   theme: { name: "default", custom: {} },
+  themeList: [],
   plugins: {},
   pluginList: [],
 };
@@ -133,6 +134,7 @@ function makeEngine(
     createPreviewTheme: (_name: string) => Promise.reject(new Error("not implemented")),
     setPluginTemplateDirs: (_dirs: string[]) => {},
     storage: {} as unknown as DuneEngine["storage"],
+    themePackageStaticDirs: new Map(),
   };
 }
 
@@ -332,6 +334,100 @@ Deno.test("rewriteInternalLinks: includes default lang in URL when include_defau
   const html = '<a href="/about">About</a>';
   const result = simulateRewriteInternalLinks(html, "en", "en", true, ["en", "de"]);
   assertEquals(result, '<a href="/en/about">About</a>');
+});
+
+// ---------------------------------------------------------------------------
+// Tests — contentHandler: /search language derivation from URL prefix
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a multilingual engine whose search template captures the props it
+ * receives, with per-language theme locales and navigation.
+ */
+function makeSearchEngine(captured: { props?: Record<string, unknown> }) {
+  const multiLangConfig: DuneConfig = {
+    ...stubConfig,
+    system: {
+      ...stubConfig.system,
+      languages: {
+        supported: ["en", "de"],
+        default: "en",
+        include_default_in_url: false,
+      },
+    },
+  };
+
+  const locales: Record<string, Record<string, string>> = {
+    en: { "search.title": "Search" },
+    de: { "search.title": "Suche" },
+  };
+  const navPages: Record<string, PageIndex[]> = {
+    en: [makePageIndex({ route: "/about", title: "About", language: "en" })],
+    de: [makePageIndex({ route: "/about", title: "Über uns", language: "de" })],
+  };
+
+  const engine = makeEngine([]);
+  (engine as { config: DuneConfig }).config = multiLangConfig;
+  engine.router = {
+    ...engine.router,
+    getNavigation: (lang?: string) => navPages[lang ?? "en"] ?? [],
+    getTopNavigation: (lang?: string) => navPages[lang ?? "en"] ?? [],
+  } as unknown as DuneEngine["router"];
+  engine.themes = {
+    ...engine.themes,
+    loadTemplate: (name: string) =>
+      Promise.resolve(name === "search"
+        ? {
+          name: "search",
+          // Async so resolveTemplateVNode invokes it (and captures props)
+          // without needing a real render pass.
+          component: async (props: Record<string, unknown>) => {
+            captured.props = props;
+            return await Promise.resolve(null);
+          },
+          fromTheme: "default",
+        }
+        : null),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (lang: string) => Promise.resolve(locales[lang] ?? {}),
+  } as unknown as DuneEngine["themes"];
+  return engine;
+}
+
+Deno.test("contentHandler: /de/search renders German locale strings and navigation", async () => {
+  const captured: { props?: Record<string, unknown> } = {};
+  const engine = makeSearchEngine(captured);
+  const { contentHandler } = duneRoutes(engine);
+
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  const res = await contentHandler(new Request("http://localhost/de/search?q=test"), renderJsx);
+
+  assertEquals(res.status, 200);
+  assertExists(captured.props);
+  const t = captured.props!.t as (key: string) => string;
+  assertEquals(t("search.title"), "Suche");
+  const nav = captured.props!.nav as PageIndex[];
+  assertEquals(nav[0].title, "Über uns");
+});
+
+Deno.test("contentHandler: unprefixed /search falls back to default language", async () => {
+  const captured: { props?: Record<string, unknown> } = {};
+  const engine = makeSearchEngine(captured);
+  const { contentHandler } = duneRoutes(engine);
+
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  const res = await contentHandler(new Request("http://localhost/search?q=test"), renderJsx);
+
+  assertEquals(res.status, 200);
+  assertExists(captured.props);
+  const t = captured.props!.t as (key: string) => string;
+  assertEquals(t("search.title"), "Search");
+  const nav = captured.props!.nav as PageIndex[];
+  assertEquals(nav[0].title, "About");
 });
 
 // ---------------------------------------------------------------------------

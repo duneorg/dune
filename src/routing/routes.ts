@@ -28,6 +28,7 @@ import { renderErrorPage } from "./error-page.ts";
 import { handleTsxPage } from "./tsx-handler.ts";
 import { handleMarkdownPage } from "./content-handler.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { splitLanguagePrefix } from "./resolver.ts";
 
 export type { FlexListTemplateProps, FlexDetailTemplateProps } from "./flex-handler.ts";
 
@@ -139,8 +140,14 @@ export function duneRoutes(
         return res;
       };
 
+      // Request language from the URL prefix (/{lang}/... on multilingual sites)
+      const { lang, path: langPath } = splitLanguagePrefix(
+        url.pathname,
+        engine.config?.system?.languages,
+      );
+
       // ── Search route ──────────────────────────────────────────────────────
-      if (url.pathname === "/search") {
+      if (langPath === "/search") {
         const ip = clientIp(req);
         if (!publicRateLimiter.check(ip)) {
           return respond(new Response("Too many requests", {
@@ -160,7 +167,7 @@ export function duneRoutes(
         const searchTemplate = await engine.themes.loadTemplate("search");
         if (searchTemplate) {
           const layout = await engine.themes.loadLayout("layout");
-          const strings = await engine.themes.loadLocale("en");
+          const strings = await engine.themes.loadLocale(lang);
           const t = (key: string) => (strings[key] ?? key) as string;
           return respond(renderJsx(
             await resolveTemplateVNode(searchTemplate.component as ComponentType<any>, {
@@ -168,8 +175,8 @@ export function duneRoutes(
               pageTitle: `Search${q ? `: ${q}` : ""} | ${engine.site.title}`,
               site: engine.site,
               config: engine.config,
-              nav: engine.router.getTopNavigation("en"),
-              navAll: engine.router.getNavigation("en"),
+              nav: engine.router.getTopNavigation(lang),
+              navAll: engine.router.getNavigation(lang),
               translations: engine.router.getTranslations(url.pathname),
               pathname: url.pathname,
               search: url.search,
@@ -178,7 +185,7 @@ export function duneRoutes(
               t,
               searchQuery: q,
               searchResults: results,
-              dir: directionOf("en", engine.config?.system?.languages?.rtl_override),
+              dir: directionOf(lang, engine.config?.system?.languages?.rtl_override),
             }),
           ));
         }
@@ -196,7 +203,7 @@ export function duneRoutes(
       // ─────────────────────────────────────────────────────────────────────
 
       // ── Flex object public routes ─────────────────────────────────────────
-      if (flex && url.pathname.startsWith("/flex/")) {
+      if (flex && langPath.startsWith("/flex/")) {
         return respond(handleFlexRoute(engine, url, flex, renderJsx));
       }
       // ─────────────────────────────────────────────────────────────────────

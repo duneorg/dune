@@ -15,6 +15,7 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { Page, TemplateProps } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { splitLanguagePrefix } from "./resolver.ts";
 
 const STATUS_TITLES: Record<number, string> = {
   404: "404 — Not Found",
@@ -33,10 +34,10 @@ export async function renderErrorPage(
   message: string,
 ): Promise<Response> {
   const title = STATUS_TITLES[statusCode] ?? `${statusCode} — Error`;
-  const defaultLang = engine.config?.system?.languages?.default ?? "en";
-  const dir = directionOf(defaultLang, engine.config?.system?.languages?.rtl_override);
-  const nav = engine.router.getTopNavigation(defaultLang);
-  const navAll = engine.router.getNavigation(defaultLang);
+  const { lang } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
+  const dir = directionOf(lang, engine.config?.system?.languages?.rtl_override);
+  const nav = engine.router.getTopNavigation(lang);
+  const navAll = engine.router.getNavigation(lang);
   const translations = engine.router.getTranslations(url.pathname);
   const Layout = await engine.themes.loadLayout("layout");
 
@@ -44,12 +45,12 @@ export async function renderErrorPage(
     route: url.pathname,
     template: "error",
     frontmatter: { title, statusCode, message },
-    language: defaultLang,
+    language: lang,
   } as unknown as Page;
 
   const errorTemplate = await engine.themes.loadTemplate("error");
   if (errorTemplate) {
-    const strings = await engine.themes.loadLocale(defaultLang);
+    const strings = await engine.themes.loadLocale(lang);
     const t = (key: string) => (strings[key] ?? key) as string;
     return renderJsx(
       // deno-lint-ignore no-explicit-any
