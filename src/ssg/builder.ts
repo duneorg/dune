@@ -166,7 +166,7 @@ export async function buildStatic(
   // ── Static assets ─────────────────────────────────────────────────────────
 
   let assetsWritten = 0;
-  assetsWritten += await copyStaticAssets(root, outDir, config, pluginAssetDirs, sharedThemesDir);
+  assetsWritten += await copyStaticAssets(root, outDir, engine, pluginAssetDirs, sharedThemesDir);
   assetsWritten += await copyContentMedia(join(root, contentDir), outDir);
 
   // ── Hybrid config ─────────────────────────────────────────────────────────
@@ -408,21 +408,25 @@ async function writeSpecialFiles(
 async function copyStaticAssets(
   root: string,
   outDir: string,
-  config: DuneConfig,
+  engine: DuneEngine,
   pluginAssetDirs: Map<string, string>,
   sharedThemesDir?: string,
 ): Promise<number> {
   let count = 0;
-  const theme = config.theme.name;
+  const theme = engine.config.theme.name;
 
   // Site-level static/
   count += await copyDir(join(root, "static"), join(outDir, "static"));
 
-  // Active theme static/ (site-local first, then shared themes dir)
+  // Active theme static/ (site-local, shared pool, then package-backed)
   const themeStaticOut = join(outDir, "themes", theme, "static");
   count += await copyDir(join(root, "themes", theme, "static"), themeStaticOut);
   if (sharedThemesDir) {
     count += await copyDir(join(sharedThemesDir, theme, "static"), themeStaticOut);
+  }
+  const pkgStatic = engine.themePackageStaticDirs.get(theme);
+  if (pkgStatic) {
+    count += await copyDir(pkgStatic, themeStaticOut);
   }
 
   // Plugin assets

@@ -171,11 +171,18 @@ export async function serveStaticFile(
   root: string,
   pathname: string,
   devMode = false,
-  sharedThemesDir?: string,
+  options?: {
+    sharedThemesDir?: string;
+    /** Package-backed theme name → absolute static/ directory. */
+    packageThemeStatic?: ReadonlyMap<string, string>;
+  },
 ): Promise<Response | null> {
+  const sharedThemesDir = options?.sharedThemesDir;
+  const packageThemeStatic = options?.packageThemeStatic;
   let filePath: string;
   let fullPath: string;
   let sharedPath: string | undefined;
+  let packagePath: string | undefined;
 
   if (pathname.startsWith("/themes/") && pathname.includes("/static/")) {
     const themeMatch = pathname.match(/^\/themes\/([^/]+)\/static\/(.+)$/);
@@ -185,6 +192,10 @@ export async function serveStaticFile(
     fullPath = `${root}/themes/${theme}/static/${path}`;
     if (sharedThemesDir) {
       sharedPath = `${sharedThemesDir}/${theme}/static/${path}`;
+    }
+    const pkgStatic = packageThemeStatic?.get(theme);
+    if (pkgStatic) {
+      packagePath = `${pkgStatic}/${path}`;
     }
   } else if (/^\/(favicon\.(ico|svg)|robots\.txt|sitemap\.xml)$/.test(pathname)) {
     filePath = pathname.slice(1);
@@ -197,8 +208,8 @@ export async function serveStaticFile(
   // Security: prevent directory traversal
   if (filePath.includes("..") || filePath.startsWith("/")) return null;
 
-  // Try site-local path first, then shared themes dir.
-  for (const candidate of [fullPath, sharedPath]) {
+  // Try site-local path first, then shared themes dir, then package static dirs.
+  for (const candidate of [fullPath, sharedPath, packagePath]) {
     if (!candidate) continue;
     try {
       const file = await Deno.readFile(candidate);

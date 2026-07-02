@@ -28,6 +28,11 @@ import { createRouteResolver } from "../routing/resolver.ts";
 import type { RouteResolver } from "../routing/resolver.ts";
 import { createThemeLoader } from "../themes/loader.ts";
 import type { ThemeLoader } from "../themes/loader.ts";
+import {
+  buildThemePackageIndex,
+  buildThemePackageStaticDirs,
+  type ThemePackageIndex,
+} from "../themes/packages.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 
@@ -85,6 +90,12 @@ export interface DuneEngine {
   router: RouteResolver;
   /** Theme loader */
   themes: ThemeLoader;
+
+  /**
+   * Package-backed themes: logical name → absolute `static/` directory.
+   * Used when serving `/themes/{name}/static/*` for JSR/npm themes.
+   */
+  themePackageStaticDirs: ReadonlyMap<string, string>;
 
   /**
    * User-controlled theme settings loaded from `data/theme-config.json`.
@@ -166,6 +177,34 @@ export async function createDuneEngine(
   let router: RouteResolver;
   let themes: ThemeLoader;
   let themeConfig: Record<string, unknown> = {};
+  let themePackageIndex: ThemePackageIndex = { byName: new Map(), bySrc: new Map() };
+  let themePackageStaticDirs: ReadonlyMap<string, string> = new Map();
+
+  async function refreshThemePackages(): Promise<void> {
+    const siteRoot = storageRoot ?? Deno.cwd();
+    themePackageIndex = await buildThemePackageIndex({
+      siteRoot,
+      packages: config.themeList ?? [],
+      active: config.theme.src
+        ? { name: config.theme.name, src: config.theme.src }
+        : undefined,
+    });
+    themePackageStaticDirs = buildThemePackageStaticDirs(themePackageIndex);
+  }
+
+  function themeLoaderOptions(name: string, theme = config.theme) {
+    return {
+      storage,
+      themesDir,
+      themeName: name,
+      rootDir: storageRoot,
+      siteRoot: storageRoot,
+      sharedThemesDir,
+      packages: themePackageIndex,
+      activeSrc: theme.src,
+      parentOverride: theme.parent,
+    };
+  }
 
   // Page cache (sourcePath → Page)
   const pageCache = new Map<string, Page>();
@@ -190,8 +229,8 @@ export async function createDuneEngine(
    * flat content files (Grav-style page folders).
    */
   async function discoverThemeTemplateNames(): Promise<Set<string>> {
-    const themeTemplatesDir = `${themesDir}/${config.theme.name}/templates`;
     const names = new Set<string>();
+    const themeTemplatesDir = `${themesDir}/${config.theme.name}/templates`;
     try {
       const entries = await storage.list(themeTemplatesDir);
       for (const entry of entries) {
@@ -200,7 +239,19 @@ export async function createDuneEngine(
         }
       }
     } catch {
-      // No templates directory — no template names
+      // No local templates directory
+    }
+    const pkgRoot = themePackageIndex.byName.get(config.theme.name);
+    if (pkgRoot) {
+      try {
+        for await (const entry of Deno.readDir(join(pkgRoot, "templates"))) {
+          if (entry.isFile && entry.name.endsWith(".tsx")) {
+            names.add(entry.name.slice(0, -".tsx".length));
+          }
+        }
+      } catch {
+        // No templates in package
+      }
     }
     return names;
   }
@@ -209,12 +260,19 @@ export async function createDuneEngine(
    * List available theme names by scanning the themes directory.
    */
   async function getAvailableThemes(): Promise<string[]> {
+    const names = new Set<string>();
+    for (const entry of config.themeList ?? []) {
+      names.add(entry.name);
+    }
     try {
       const entries = await storage.list(themesDir);
-      return entries.filter((e) => !e.isFile).map((e) => e.name);
+      for (const e of entries) {
+        if (!e.isFile) names.add(e.name);
+      }
     } catch {
-      return [];
+      // No themes directory
     }
+    return [...names].sort();
   }
 
   /**
@@ -224,13 +282,7 @@ export async function createDuneEngine(
     const oldName = config.theme.name;
 
     // Re-create the theme loader for the new theme
-    themes = await createThemeLoader({
-      storage,
-      themesDir,
-      themeName: name,
-      rootDir: storageRoot,
-      sharedThemesDir,
-    });
+    themes = await createThemeLoader(themeLoaderOptions(name));
 
     // Update in-memory config
     config.theme.name = name;
@@ -304,6 +356,8 @@ export async function createDuneEngine(
    * Initialize: build index, set up router & theme loader.
    */
   async function init(): Promise<void> {
+    await refreshThemePackages();
+
     // Load blueprints (best-effort — missing blueprints dir is not an error)
     if (blueprintsDir !== null) {
       blueprints = await loadBlueprints(storage, blueprintsDir);
@@ -352,14 +406,8 @@ export async function createDuneEngine(
     // Load theme user config (best-effort)
     await loadThemeConfig();
 
-    // Create theme loader
-    themes = await createThemeLoader({
-      storage,
-      themesDir,
-      themeName: config.theme.name,
-      rootDir: storageRoot,
-      sharedThemesDir,
-    });
+    // Create theme loader (packages already resolved above)
+    themes = await createThemeLoader(themeLoaderOptions(config.theme.name));
   }
 
   /**
@@ -544,6 +592,7 @@ export async function createDuneEngine(
     blueprints: {},
     storage,
     themeConfig: {},
+    themePackageStaticDirs: new Map<string, string>(),
     router: undefined as unknown as RouteResolver,
     themes: undefined as unknown as ThemeLoader,
 
@@ -556,6 +605,7 @@ export async function createDuneEngine(
       engine.router = router;
       engine.themes = themes;
       engine.themeConfig = themeConfig;
+      engine.themePackageStaticDirs = themePackageStaticDirs;
     },
 
     resolve,
@@ -579,7 +629,7 @@ export async function createDuneEngine(
     },
 
     createPreviewTheme(name: string) {
-      return createThemeLoader({ storage, themesDir, themeName: name, rootDir: storageRoot, sharedThemesDir });
+      return createThemeLoader(themeLoaderOptions(name));
     },
 
     setPluginTemplateDirs(dirs: string[]) {

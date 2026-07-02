@@ -52,6 +52,7 @@ import { configCommands } from "./cli/config.ts";
 import { contentCommands } from "./cli/content.ts";
 import { i18nStatusCommand } from "./cli/i18n.ts";
 import { pluginCommands } from "./cli/plugin.ts";
+import { themeCommands } from "./cli/theme.ts";
 import {
   migrateFromGrav,
   migrateFromWordPress,
@@ -158,6 +159,11 @@ Commands:
   plugin:publish      Publish plugin to JSR (runs deno publish in plugin dir)
   plugin:search       Search JSR for Dune plugins
   plugin:update       Update JSR plugins to their latest versions
+
+  theme:list          List local themes and registered package themes
+  theme:install       Register a JSR/npm theme package (--name, --activate)
+  theme:remove        Remove a theme from the themes: registry
+  theme:publish       Publish a theme package to JSR (deno publish)
 
   migrate:flex [type]           Migrate Flex Object records to current schema version
   migrate:from-grav <src>       Import a Grav site (user/pages/ folder)
@@ -316,6 +322,10 @@ export async function main() {
       options.yes = true;
     } else if (args[i] === "--output" && args[i + 1]) {
       options.output = args[++i];
+    } else if (args[i] === "--activate") {
+      options.activate = true;
+    } else if (args[i] === "--name" && args[i + 1]) {
+      options.themeName = args[++i];
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
@@ -527,6 +537,25 @@ export async function main() {
 
       case "plugin:update":
         await pluginCommands.update(root, options.positional as string);
+        break;
+
+      case "theme:list":
+        await themeCommands.list(root);
+        break;
+
+      case "theme:install":
+        await themeCommands.install(root, options.positional as string, {
+          name: options.themeName as string | undefined,
+          activate: options.activate === true,
+        });
+        break;
+
+      case "theme:remove":
+        await themeCommands.remove(root, options.positional as string);
+        break;
+
+      case "theme:publish":
+        await themeCommands.publish(root, options.positional as string);
         break;
 
       case "migrate:from-grav":

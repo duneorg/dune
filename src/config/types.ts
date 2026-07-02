@@ -34,5 +34,6 @@ export type {
 
 export type {
   PluginEntry,
+  ThemePackageEntry,
   DuneConfig,
 } from "./dune-config.ts";

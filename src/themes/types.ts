@@ -4,6 +4,7 @@
 
 import type { TemplateComponent } from "../content/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
+import type { StorageAdapter } from "../storage/types.ts";
 
 /** Theme manifest loaded from theme.yaml */
 export interface ThemeManifest {
@@ -37,8 +38,17 @@ export interface ThemeManifest {
 export interface ResolvedTheme {
   /** Theme manifest */
   manifest: ThemeManifest;
-  /** Base directory of this theme */
+  /**
+   * Theme-relative path prefix for storage operations.
+   * Local themes: `themes/{name}`. Package themes: `""`.
+   */
   dir: string;
+  /** Absolute filesystem root for this theme (templates, static, islands). */
+  absoluteRoot: string;
+  /** Storage adapter rooted at this theme (local dir or package root). */
+  storage: StorageAdapter;
+  /** Package specifier when this theme is loaded from JSR/npm. */
+  src?: string;
   /** Parent theme (if inheritance is used) */
   parent?: ResolvedTheme;
   /** Available template names (e.g., ["default", "post", "blog"]) */

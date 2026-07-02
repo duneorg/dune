@@ -203,11 +203,13 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   // plugin_configs (per-plugin config map) are promoted to DuneConfig
   // top-level rather than nested under "site".
   const themeFromSite = siteYaml.theme;
+  const themeListFromSite = siteYaml.themes;
   const pluginListFromSite = siteYaml.plugins;    // PluginEntry[]
   const pluginCfgsFromSite = siteYaml.plugin_configs; // Record<name, config>
   const autoDiscoverFromSite = siteYaml.auto_discover_plugins; // boolean
   const siteWithoutTop = { ...siteYaml };
   delete siteWithoutTop.theme;
+  delete siteWithoutTop.themes;
   delete siteWithoutTop.plugins;
   delete siteWithoutTop.plugin_configs;
   delete siteWithoutTop.auto_discover_plugins;
@@ -220,6 +222,10 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   // Theme config goes at top level
   if (themeFromSite) {
     config = deepMerge(config, { theme: themeFromSite });
+  }
+
+  if (Array.isArray(themeListFromSite) && themeListFromSite.length > 0) {
+    (config as Record<string, unknown>).themeList = themeListFromSite;
   }
 
   // Plugin list — replace default empty array (arrays are replaced, not merged)

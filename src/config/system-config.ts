@@ -264,7 +264,17 @@ export interface SystemConfig {
 
 /** Theme configuration */
 export interface ThemeConfig {
+  /** Active theme name (local folder and/or registered package name). */
   name: string;
+  /**
+   * When set, the active theme is loaded from this package instead of
+   * `themes/{name}/`. Must be version-pinned (jsr:/npm:).
+   */
+  src?: string;
+  /**
+   * Parent theme for inheritance — local name, import-map alias, or pinned
+   * jsr:/npm: specifier. Overrides `parent` in the active theme's theme.yaml.
+   */
   parent?: string;
   custom: Record<string, unknown>;
 }

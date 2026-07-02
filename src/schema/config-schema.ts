@@ -324,15 +324,32 @@ export const CONFIG_SCHEMA = {
       description: "Theme settings",
       required: ["name"],
       properties: {
-        name: { type: "string", description: "Active theme name (folder under themes/)" },
+        name: { type: "string", description: "Active theme name (local folder or registered package)" },
+        src: {
+          type: "string",
+          description: "When set, load the active theme from this pinned jsr:/npm: package",
+        },
         parent: {
           type: "string",
-          description: "Parent theme name for inheritance",
+          description: "Parent theme — local name, import alias, or pinned jsr:/npm: specifier",
         },
         custom: {
           type: "object",
           description: "Theme-specific settings passed to templates",
           additionalProperties: true,
+        },
+      },
+    },
+
+    themes: {
+      type: "array",
+      description: "Installed theme packages (JSR/npm)",
+      items: {
+        type: "object",
+        required: ["name", "src"],
+        properties: {
+          name: { type: "string", description: "Logical theme name" },
+          src: { type: "string", description: "Pinned jsr:/npm: specifier or local path" },
         },
       },
     },

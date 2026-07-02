@@ -64,15 +64,20 @@ export function registerStaticRoutes(
 
   // /static/* and /themes/* fall through to content resolution when no file matches.
   // This handles the case where a content page has the same name as a static prefix.
+  const staticThemeOptions = () => ({
+    sharedThemesDir,
+    packageThemeStatic: ctx.engine.themePackageStaticDirs,
+  });
+
   app.get("/static/*", async (fc) => {
-    const result = await serveStaticFile(root, fc.url.pathname, dev, sharedThemesDir);
+    const result = await serveStaticFile(root, fc.url.pathname, dev, staticThemeOptions());
     if (result) return withSecurityHeaders(result);
     const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
     return withSecurityHeaders(await routes.contentHandler(fc.req, renderJsx));
   });
 
   app.get("/themes/*", async (fc) => {
-    const result = await serveStaticFile(root, fc.url.pathname, dev, sharedThemesDir);
+    const result = await serveStaticFile(root, fc.url.pathname, dev, staticThemeOptions());
     if (result) return withSecurityHeaders(result);
     const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
     return withSecurityHeaders(await routes.contentHandler(fc.req, renderJsx));

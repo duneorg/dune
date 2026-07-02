@@ -23,6 +23,23 @@ import type { AdminConfig } from "./admin-config.ts";
  *       defaultDescription: "My site"
  * ```
  */
+/**
+ * A theme package installed via JSR/npm and declared in site.yaml under `themes:`.
+ *
+ * @example
+ * ```yaml
+ * themes:
+ *   - name: paper
+ *     src: jsr:@dune/theme-paper@1.0.0
+ * ```
+ */
+export interface ThemePackageEntry {
+  /** Logical name — used in `theme.name`, inheritance, and static URLs. */
+  name: string;
+  /** Version-pinned JSR or npm specifier. */
+  src: string;
+}
+
 export interface PluginEntry {
   /**
    * Module source — local path or registry specifier.
@@ -58,6 +75,11 @@ export interface DuneConfig {
    * Declared in site.yaml under the `plugins:` key.
    */
   pluginList: PluginEntry[];
+  /**
+   * Installed theme packages (JSR/npm).
+   * Declared in site.yaml under the `themes:` key.
+   */
+  themeList: ThemePackageEntry[];
   /**
    * Auto-discover and load any `.ts` files in the site's `plugins/` directory
    * that are not already listed in `pluginList`.

@@ -7,7 +7,12 @@
  *   → Did you mean: ["category", "tag"]?
  */
 
-import type { DuneConfig, SiteConfig, SystemConfig, ThemeConfig } from "./types.ts";
+import type { DuneConfig, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import {
+  assertPinnedThemeSpecifier,
+  assertThemeName,
+  isRemoteThemeSpecifier,
+} from "../themes/reference.ts";
 
 /** A single validation error with path and message. */
 export interface ValidationError {
@@ -27,6 +32,7 @@ export function validateConfig(config: DuneConfig): string[] {
   validateSite(config.site, errors);
   validateSystem(config.system, errors);
   validateTheme(config.theme, errors);
+  validateThemeList(config.themeList, errors);
   validatePlugins(config.plugins, errors);
   validateAdmin(config.admin, errors);
 
@@ -287,9 +293,84 @@ function validateTheme(theme: ThemeConfig, errors: ValidationError[]): void {
   if (theme.parent !== undefined && typeof theme.parent !== "string") {
     errors.push({
       path: "theme.parent",
-      message: "must be a string (parent theme name) or omitted",
+      message: "must be a string (local name, import alias, or pinned jsr:/npm: specifier)",
       got: theme.parent,
     });
+  }
+
+  if (theme.src !== undefined) {
+    if (typeof theme.src !== "string") {
+      errors.push({
+        path: "theme.src",
+        message: "must be a string package specifier when set",
+        got: theme.src,
+      });
+    } else if (isRemoteThemeSpecifier(theme.src)) {
+      try {
+        assertPinnedThemeSpecifier(theme.src);
+      } catch (err) {
+        errors.push({
+          path: "theme.src",
+          message: err instanceof Error ? err.message : String(err),
+          got: theme.src,
+        });
+      }
+    }
+  }
+}
+
+function validateThemeList(
+  themeList: ThemePackageEntry[] | undefined,
+  errors: ValidationError[],
+): void {
+  if (!themeList) return;
+  if (!Array.isArray(themeList)) {
+    errors.push({
+      path: "themeList",
+      message: "must be an array of { name, src } entries",
+      got: themeList,
+    });
+    return;
+  }
+
+  const seen = new Set<string>();
+  for (let i = 0; i < themeList.length; i++) {
+    const entry = themeList[i];
+    const base = `themeList[${i}]`;
+    if (!entry || typeof entry !== "object") {
+      errors.push({ path: base, message: "must be an object with name and src" });
+      continue;
+    }
+    if (typeof entry.name !== "string" || !entry.name.trim()) {
+      errors.push({ path: `${base}.name`, message: "must be a non-empty string", got: entry.name });
+    } else {
+      try {
+        assertThemeName(entry.name);
+      } catch (err) {
+        errors.push({
+          path: `${base}.name`,
+          message: err instanceof Error ? err.message : String(err),
+          got: entry.name,
+        });
+      }
+      if (seen.has(entry.name)) {
+        errors.push({ path: `${base}.name`, message: `duplicate theme name "${entry.name}"` });
+      }
+      seen.add(entry.name);
+    }
+    if (typeof entry.src !== "string" || !entry.src.trim()) {
+      errors.push({ path: `${base}.src`, message: "must be a non-empty package specifier", got: entry.src });
+    } else if (isRemoteThemeSpecifier(entry.src)) {
+      try {
+        assertPinnedThemeSpecifier(entry.src);
+      } catch (err) {
+        errors.push({
+          path: `${base}.src`,
+          message: err instanceof Error ? err.message : String(err),
+          got: entry.src,
+        });
+      }
+    }
   }
 }
 

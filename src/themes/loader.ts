@@ -27,6 +27,15 @@ import { join, dirname, resolve } from "@std/path";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { TemplateComponent, Page, PageIndex } from "../content/types.ts";
 import type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./types.ts";
+import type { ThemePackageIndex } from "./packages.ts";
+import {
+  defaultThemeNameFromSpecifier,
+  isLocalThemePath,
+  isRemoteThemeSpecifier,
+  normalizeThemeSpecifier,
+  resolveThemePackageRoot,
+  resolveThemeSpecifier,
+} from "./reference.ts";
 
 /**
  * Collect absolute paths to all island files across the active theme chain.
@@ -53,7 +62,7 @@ export async function collectThemeIslands(
 
   let current: ResolvedTheme | undefined = theme;
   while (current) {
-    const islandsDir = join(rootDir, current.dir, "islands");
+    const islandsDir = join(current.absoluteRoot, "islands");
     try {
       for await (const entry of Deno.readDir(islandsDir)) {
         if (!entry.isFile || !entry.name.endsWith(".tsx")) continue;
@@ -179,6 +188,16 @@ export interface ThemeLoaderOptions {
    * the same location (site-local or shared).
    */
   sharedThemesDir?: string;
+  /** Absolute site root — required for package theme resolution. */
+  siteRoot?: string;
+  /** Resolved JSR/npm theme packages from site config. */
+  packages?: ThemePackageIndex;
+  /** When the active theme is package-backed (`theme.src`). */
+  activeSrc?: string;
+  /**
+   * site.yaml `theme.parent` — overrides manifest `parent` on the active theme only.
+   */
+  parentOverride?: string;
 }
 
 /** Loads and resolves theme templates, layouts, and locales. Obtain via {@link createThemeLoader}. */
@@ -204,14 +223,16 @@ export interface ThemeLoader {
  */
 export async function createThemeLoader(options: ThemeLoaderOptions): Promise<ThemeLoader> {
   let { storage, themesDir, themeName, rootDir } = options;
-  const { sharedThemesDir } = options;
+  const { sharedThemesDir, siteRoot, packages, activeSrc, parentOverride } = options;
+  const effectiveSiteRoot = siteRoot ?? rootDir ?? Deno.cwd();
 
   // When the theme doesn't exist in the site's own themes/ directory,
   // fall back to the shared themes directory (multi-site setups only).
   if (sharedThemesDir) {
     const localThemeDir = join(themesDir, themeName);
     const localExists = await storage.exists(localThemeDir);
-    if (!localExists) {
+    const packageBacked = Boolean(activeSrc || packages?.byName.has(themeName));
+    if (!localExists && !packageBacked) {
       const { createStorage } = await import("../storage/mod.ts");
       const sharedStorage = createStorage({ rootDir: sharedThemesDir });
       if (await sharedStorage.exists(themeName)) {
@@ -222,8 +243,21 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
     }
   }
 
+  const resolveCtx: ThemeResolveContext = {
+    siteStorage: storage,
+    siteRoot: rootDir ?? effectiveSiteRoot,
+    themesDir,
+    packages: packages ?? { byName: new Map(), bySrc: new Map() },
+  };
+
   // Resolve the theme chain (child → parent → grandparent...)
-  const theme = await resolveTheme(storage, themesDir, themeName);
+  const theme = await resolveThemeChain(
+    themeName,
+    resolveCtx,
+    new Set(),
+    parentOverride,
+    activeSrc,
+  );
 
   // Mutable list of extra template dirs (populated after plugin loading).
   const extraTemplateDirs: string[] = [...(options.extraTemplateDirs ?? [])];
@@ -346,28 +380,32 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
         bumpVersion(cached.absPath);
       }
 
-      // Walk the theme chain: child → parent → grandparent
       let current: ResolvedTheme | undefined = theme;
       while (current) {
-        const templatePath = join(current.dir, "templates", `${name}.tsx`);
+        const active: ResolvedTheme = current;
+        const absPath = join(active.absoluteRoot, "templates", `${name}.tsx`);
         try {
-          if (await storage.exists(templatePath)) {
-            const absPath = await resolveAbsPath(templatePath, rootDir);
-            const mtime = await getMtime(absPath);
-            const fileUrl = getImportUrl(absPath);
-            const mod = await import(fileUrl); // lockfile-safe: site-local (theme/plugin template file, resolved to file:// URL)
-            if (!mod.default) continue;
-            const component = mod.default as TemplateComponent;
-            // Warn about static layout imports that break hot-reload
-            warnStaticLayoutImport(templatePath, storage);
-            templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
-            return { name, component, fromTheme: current.manifest.name };
+          const stat = await Deno.stat(absPath);
+          if (!stat.isFile) {
+            current = active.parent;
+            continue;
           }
+          const mtime = await getMtime(absPath);
+          const fileUrl = getImportUrl(absPath);
+          const mod = await import(fileUrl); // lockfile-safe: theme template (file:// URL)
+          if (!mod.default) {
+            current = active.parent;
+            continue;
+          }
+          const component = mod.default as TemplateComponent;
+          const templatePath = join(active.dir, "templates", `${name}.tsx`);
+          warnStaticLayoutImport(templatePath, active.storage);
+          templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
+          return { name, component, fromTheme: active.manifest.name };
         } catch (err) {
-          // Template file exists but failed to load — log and continue to parent
-          console.warn(`  ⚠️  Failed to load template ${templatePath}: ${err}`);
+          console.warn(`  ⚠️  Failed to load template ${absPath}: ${err}`);
         }
-        current = current.parent;
+        current = active.parent;
       }
 
       // Fallback: check plugin template directories (lowest priority)
@@ -413,26 +451,28 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
         bumpVersion(cached.absPath);
       }
 
-      // Walk theme chain
       let current: ResolvedTheme | undefined = theme;
       while (current) {
-        const layoutPath = join(current.dir, "components", `${name}.tsx`);
+        const active: ResolvedTheme = current;
+        const absPath = join(active.absoluteRoot, "components", `${name}.tsx`);
         try {
-          if (await storage.exists(layoutPath)) {
-            const absPath = await resolveAbsPath(layoutPath, rootDir);
-            const mtime = await getMtime(absPath);
-            const fileUrl = getImportUrl(absPath);
-            const mod = await import(fileUrl); // lockfile-safe: site-local (theme/plugin template file, resolved to file:// URL)
-            const component = mod.default as TemplateComponent;
-            if (component) {
-              layoutCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
-              return component;
-            }
+          const stat = await Deno.stat(absPath);
+          if (!stat.isFile) {
+            current = active.parent;
+            continue;
+          }
+          const mtime = await getMtime(absPath);
+          const fileUrl = getImportUrl(absPath);
+          const mod = await import(fileUrl); // lockfile-safe: theme layout (file:// URL)
+          const component = mod.default as TemplateComponent;
+          if (component) {
+            layoutCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
+            return component;
           }
         } catch {
           // Continue to parent
         }
-        current = current.parent;
+        current = active.parent;
       }
 
       return null;
@@ -453,8 +493,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
       while (current) {
         const localePath = join(current.dir, "locales", `${lang}.json`);
         try {
-          if (await storage.exists(localePath)) {
-            const text = await storage.readText(localePath);
+          if (await current.storage.exists(localePath)) {
+            const text = await current.storage.readText(localePath);
             const parsed = JSON.parse(text) as Record<string, string>;
             if (parsed && typeof parsed === "object") {
               const merged = fallback ? { ...fallback, ...parsed } : parsed;
@@ -568,36 +608,128 @@ async function warnStaticLayoutImport(templatePath: string, storage: StorageAdap
 /**
  * Resolve a theme and its inheritance chain.
  */
-async function resolveTheme(
-  storage: StorageAdapter,
-  themesDir: string,
-  themeName: string,
-  visited: Set<string> = new Set(),
-): Promise<ResolvedTheme> {
-  // Circular inheritance guard
-  if (visited.has(themeName)) {
-    throw new Error(`Circular theme inheritance detected: ${[...visited, themeName].join(" → ")}`);
+interface ThemeResolveContext {
+  siteStorage: StorageAdapter;
+  siteRoot: string;
+  themesDir: string;
+  packages: ThemePackageIndex;
+}
+
+interface LocatedTheme {
+  name: string;
+  storage: StorageAdapter;
+  dir: string;
+  absoluteRoot: string;
+  src?: string;
+}
+
+async function locateTheme(
+  ref: string,
+  ctx: ThemeResolveContext,
+): Promise<LocatedTheme> {
+  const trimmed = ref.trim();
+  const resolvedSpec = await resolveThemeSpecifier(trimmed, ctx.siteRoot);
+
+  const registeredRoot = ctx.packages.byName.get(trimmed);
+  if (registeredRoot) {
+    return await packageLocatedTheme(trimmed, registeredRoot, trimmed);
   }
-  visited.add(themeName);
 
-  const themeDir = join(themesDir, themeName);
+  const normalized = normalizeThemeSpecifier(resolvedSpec);
+  const srcRoot = ctx.packages.bySrc.get(normalized) ?? ctx.packages.bySrc.get(trimmed);
+  if (srcRoot) {
+    const name = ctx.packages.byName.has(trimmed)
+      ? trimmed
+      : defaultThemeNameFromSpecifier(resolvedSpec);
+    return await packageLocatedTheme(name, srcRoot, isRemoteThemeSpecifier(resolvedSpec)
+      ? resolvedSpec
+      : undefined);
+  }
 
-  // Load theme manifest
-  const manifest = await loadThemeManifest(storage, themeDir, themeName);
+  if (isRemoteThemeSpecifier(resolvedSpec) || isLocalThemePath(resolvedSpec)) {
+    const root = await resolveThemePackageRoot(resolvedSpec, ctx.siteRoot);
+    const name = defaultThemeNameFromSpecifier(resolvedSpec);
+    return await packageLocatedTheme(
+      name,
+      root,
+      isRemoteThemeSpecifier(resolvedSpec) ? resolvedSpec : undefined,
+    );
+  }
 
-  // Discover templates
-  const templateNames = await discoverTemplates(storage, themeDir);
-  const layoutNames = await discoverLayouts(storage, themeDir);
+  // Local theme slug under themes/ — directory may not exist yet (empty/custom theme).
+  const localDir = join(ctx.themesDir, trimmed);
+  const absoluteRoot = ctx.themesDir
+    ? join(ctx.siteRoot, localDir)
+    : join(ctx.siteRoot, trimmed);
+  return {
+    name: trimmed,
+    storage: ctx.siteStorage,
+    dir: localDir,
+    absoluteRoot,
+  };
+}
 
-  // Resolve parent theme if specified
+async function packageLocatedTheme(
+  name: string,
+  absoluteRoot: string,
+  src?: string,
+): Promise<LocatedTheme> {
+  const { createStorage } = await import("../storage/mod.ts");
+  return {
+    name,
+    storage: createStorage({ rootDir: absoluteRoot }),
+    dir: "",
+    absoluteRoot,
+    src,
+  };
+}
+
+async function resolveThemeChain(
+  themeRef: string,
+  ctx: ThemeResolveContext,
+  visited: Set<string>,
+  parentOverride?: string,
+  activeSrc?: string,
+  isRoot = true,
+): Promise<ResolvedTheme> {
+  const visitKey = themeRef.trim();
+  if (visited.has(visitKey)) {
+    throw new Error(
+      `Circular theme inheritance detected: ${[...visited, visitKey].join(" → ")}`,
+    );
+  }
+  visited.add(visitKey);
+
+  let located: LocatedTheme;
+  if (isRoot && activeSrc) {
+    const root = ctx.packages.bySrc.get(normalizeThemeSpecifier(activeSrc)) ??
+      await resolveThemePackageRoot(activeSrc, ctx.siteRoot);
+    located = await packageLocatedTheme(themeRef, root, activeSrc);
+  } else {
+    located = await locateTheme(themeRef, ctx);
+  }
+
+  const manifest = await loadThemeManifest(
+    located.storage,
+    located.dir,
+    located.name,
+  );
+
+  const templateNames = await discoverTemplates(located.storage, located.dir);
+  const layoutNames = await discoverLayouts(located.storage, located.dir);
+
+  const parentRef = isRoot ? (parentOverride ?? manifest.parent) : manifest.parent;
   let parent: ResolvedTheme | undefined;
-  if (manifest.parent) {
-    parent = await resolveTheme(storage, themesDir, manifest.parent, visited);
+  if (parentRef) {
+    parent = await resolveThemeChain(parentRef, ctx, visited, undefined, undefined, false);
   }
 
   return {
     manifest,
-    dir: themeDir,
+    dir: located.dir,
+    absoluteRoot: located.absoluteRoot,
+    storage: located.storage,
+    src: located.src,
     parent,
     templateNames,
     layoutNames,
@@ -696,24 +828,5 @@ async function discoverLayouts(
   }
 
   return names;
-}
-
-/**
- * Resolve absolute path for dynamic import.
- */
-async function resolveAbsPath(relativePath: string, rootDir?: string): Promise<string> {
-  const baseDir = rootDir || Deno.cwd();
-  try {
-    // Try relative to rootDir first
-    const fullPath = join(baseDir, relativePath);
-    return await Deno.realPath(fullPath);
-  } catch {
-    // Fallback to cwd
-    try {
-      return await Deno.realPath(relativePath);
-    } catch {
-      return await Deno.realPath(join(Deno.cwd(), relativePath));
-    }
-  }
 }
 

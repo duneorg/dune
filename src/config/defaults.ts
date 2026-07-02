@@ -56,6 +56,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
   },
   plugins: {},
   pluginList: [],
+  themeList: [],
   autoDiscoverPlugins: false,
   admin: {
     path: "/admin",
