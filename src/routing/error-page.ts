@@ -36,6 +36,7 @@ export async function renderErrorPage(
   const defaultLang = engine.config?.system?.languages?.default ?? "en";
   const dir = directionOf(defaultLang, engine.config?.system?.languages?.rtl_override);
   const nav = engine.router.getTopNavigation(defaultLang);
+  const navAll = engine.router.getNavigation(defaultLang);
   const Layout = await engine.themes.loadLayout("layout");
 
   const errorPage = {
@@ -57,6 +58,7 @@ export async function renderErrorPage(
         site: engine.site,
         config: engine.config,
         nav,
+        navAll,
         pathname: url.pathname,
         search: url.search,
         Layout: Layout ?? undefined,

@@ -39,6 +39,7 @@ export async function handleTsxPage(
             site: engine.site,
             config: engine.config,
             nav: engine.router.getTopNavigation(page.language),
+            navAll: engine.router.getNavigation(page.language),
             route: page.route,
             params: {},
           }));
@@ -114,6 +115,7 @@ export async function handleTsxPage(
         site: engine.site,
         config: engine.config,
         nav: engine.router.getTopNavigation(page.language),
+        navAll: engine.router.getNavigation(page.language),
         pathname: url.pathname,
         search: url.search,
         themeConfig: engine.themeConfig,

@@ -18,6 +18,7 @@ export interface FlexListTemplateProps {
   site: DuneEngine["site"];
   config: DuneEngine["config"];
   nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
+  navAll: ReturnType<DuneEngine["router"]["getNavigation"]>;
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
@@ -35,6 +36,7 @@ export interface FlexDetailTemplateProps {
   site: DuneEngine["site"];
   config: DuneEngine["config"];
   nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
+  navAll: ReturnType<DuneEngine["router"]["getNavigation"]>;
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
@@ -66,12 +68,14 @@ export async function handleFlexRoute(
   const t = (key: string) => (strings[key] ?? key) as string;
   const layout = await engine.themes.loadLayout("layout");
   const nav = engine.router.getTopNavigation("en");
+  const navAll = engine.router.getNavigation("en");
   const baseProps = {
     type: flexType,
     schema,
     site: engine.site,
     config: engine.config,
     nav,
+    navAll,
     pathname: url.pathname,
     Layout: layout ?? undefined,
     t,

@@ -367,6 +367,12 @@ export interface TemplateProps {
   /** Top-level navigation pages */
   nav: PageIndex[];
   /**
+   * Full site navigation for the page's language — every page in the index,
+   * ordered, with `depth`, `order`, and `parentPath` for building nested
+   * menus (sidebar filetrees, prev/next links). Same data as `/api/nav`.
+   */
+  navAll?: PageIndex[];
+  /**
    * Text direction for the page's language.
    * Always provided by the engine — themes can use this to set `dir` on
    * their `<html>` element for RTL language support.
