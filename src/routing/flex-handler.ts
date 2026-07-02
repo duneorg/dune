@@ -19,6 +19,7 @@ export interface FlexListTemplateProps {
   config: DuneEngine["config"];
   nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
   navAll: ReturnType<DuneEngine["router"]["getNavigation"]>;
+  translations: ReturnType<DuneEngine["router"]["getTranslations"]>;
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
@@ -37,6 +38,7 @@ export interface FlexDetailTemplateProps {
   config: DuneEngine["config"];
   nav: ReturnType<DuneEngine["router"]["getTopNavigation"]>;
   navAll: ReturnType<DuneEngine["router"]["getNavigation"]>;
+  translations: ReturnType<DuneEngine["router"]["getTranslations"]>;
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
@@ -76,6 +78,7 @@ export async function handleFlexRoute(
     config: engine.config,
     nav,
     navAll,
+    translations: engine.router.getTranslations(url.pathname),
     pathname: url.pathname,
     Layout: layout ?? undefined,
     t,

@@ -13,7 +13,7 @@
  */
 
 import type { SiteConfig } from "../config/types.ts";
-import type { PageIndex } from "../content/types.ts";
+import type { PageIndex, PageTranslation } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
 
 /** Result of {@link RouteResolver.resolve} — matched page or redirect. */
@@ -47,6 +47,7 @@ export interface RouteResolver {
   findBySourcePath(sourcePath: string): PageIndex | undefined;
   getNavigation(lang?: string): PageIndex[];
   getTopNavigation(lang?: string): PageIndex[];
+  getTranslations(route: string): PageTranslation[];
   rebuild(pages: PageIndex[], newHomeSlug?: string): void;
 }
 
@@ -241,6 +242,29 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
      */
     getTopNavigation(lang?: string): PageIndex[] {
       return this.getNavigation(lang).filter((p: PageIndex) => p.depth === 0);
+    },
+
+    /**
+     * List the languages in which a page actually exists, with the
+     * language-prefixed URL for each (respecting `include_default_in_url`).
+     * The route is the language-independent canonical route (no lang prefix).
+     * Includes the page's own language; callers filter it out or mark it
+     * active. Returns [] on single-language sites — the current page is the
+     * only "translation" and switchers/hreflang have nothing to render.
+     */
+    getTranslations(route: string): PageTranslation[] {
+      if (!isMultilingual) return [];
+      const normalized = normalizeRoute(route);
+      const out: PageTranslation[] = [];
+      for (const lang of supportedLangs) {
+        const page = routeMap.get(routeLangKey(normalized, lang));
+        if (!page) continue;
+        const url = lang === defaultLang && !includeDefaultInUrl
+          ? page.route
+          : "/" + lang + page.route;
+        out.push({ lang, route: page.route, url });
+      }
+      return out;
     },
 
     /**

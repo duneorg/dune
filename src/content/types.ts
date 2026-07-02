@@ -354,6 +354,19 @@ export interface Collection {
 
 // === Template & Rendering ===
 
+/**
+ * One available translation of a page — a language the page exists in,
+ * its canonical route, and the language-prefixed URL (root-relative path).
+ */
+export interface PageTranslation {
+  /** Language code, e.g. "en", "de" */
+  lang: string;
+  /** Canonical route shared across languages, e.g. "/about/" */
+  route: string;
+  /** Root-relative URL for this language, e.g. "/de/about/" */
+  url: string;
+}
+
 /** Resolved template component (for .md/.mdx pages) */
 export type TemplateComponent = (props: TemplateProps) => unknown;
 
@@ -372,6 +385,14 @@ export interface TemplateProps {
    * menus (sidebar filetrees, prev/next links). Same data as `/api/nav`.
    */
   navAll?: PageIndex[];
+  /**
+   * Languages in which the current page actually exists, with the
+   * language-prefixed URL for each (respects `include_default_in_url`).
+   * Includes the current page's own language — themes filter it out or
+   * mark it active. Empty on single-language sites. Use for language
+   * switchers and `hreflang` alternate links.
+   */
+  translations?: PageTranslation[];
   /**
    * Text direction for the page's language.
    * Always provided by the engine — themes can use this to set `dir` on

@@ -107,6 +107,8 @@ export type {
   TemplateComponent,
   /** @since 0.1.0 */
   TemplateProps,
+  /** @since 0.25.0 */
+  PageTranslation,
   ContentPageProps,
   RenderContext,
   ContentFormatHandler,

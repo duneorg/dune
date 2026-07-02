@@ -170,6 +170,7 @@ export function duneRoutes(
               config: engine.config,
               nav: engine.router.getTopNavigation("en"),
               navAll: engine.router.getNavigation("en"),
+              translations: engine.router.getTranslations(url.pathname),
               pathname: url.pathname,
               search: url.search,
               Layout: layout ?? undefined,

@@ -55,6 +55,7 @@ function makeEngine(
     router: {
       getNavigation: (_lang?: string) => [],
       getTopNavigation: (_lang?: string) => [],
+      getTranslations: (_route: string) => [],
       resolve: (_pathname: string) => ({ type: "not-found" as const }),
     } as unknown as DuneEngine["router"],
     themes: {

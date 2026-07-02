@@ -95,6 +95,7 @@ export async function handleMarkdownPage(
       config: engine.config,
       nav: engine.router.getTopNavigation(page.language),
       navAll: engine.router.getNavigation(page.language),
+      translations: engine.router.getTranslations(page.route),
       pathname: url.pathname,
       search: url.search,
       collection,
