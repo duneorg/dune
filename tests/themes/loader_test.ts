@@ -348,6 +348,45 @@ Deno.test("loadLocale: walks parent theme chain for locale files", async () => {
   assertEquals(locale.key, "value");
 });
 
+Deno.test("loadLocale: child overrides one key, parent keys survive", async () => {
+  const loader = await makeLoader("child", {
+    "themes/child/theme.yaml": "name: child\nparent: parent\n",
+    "themes/child/locales/en.json": JSON.stringify({ de: "German" }),
+    "themes/parent/locales/en.json": JSON.stringify({ de: "Deutsch", fr: "Français", greeting: "Hello" }),
+  });
+  const locale = await loader.loadLocale("en");
+  // child wins on the overridden key…
+  assertEquals(locale.de, "German");
+  // …but the parent's other keys are still present
+  assertEquals(locale.fr, "Français");
+  assertEquals(locale.greeting, "Hello");
+});
+
+Deno.test("loadLocale: merges per key across a three-level chain", async () => {
+  const loader = await makeLoader("grandchild", {
+    "themes/grandchild/theme.yaml": "name: grandchild\nparent: child\n",
+    "themes/child/theme.yaml": "name: child\nparent: parent\n",
+    "themes/grandchild/locales/en.json": JSON.stringify({ a: "gc" }),
+    "themes/child/locales/en.json": JSON.stringify({ a: "c", b: "c" }),
+    "themes/parent/locales/en.json": JSON.stringify({ a: "p", b: "p", c: "p" }),
+  });
+  const locale = await loader.loadLocale("en");
+  assertEquals(locale, { a: "gc", b: "c", c: "p" });
+});
+
+Deno.test("loadLocale: en fallback is chain-merged too", async () => {
+  const loader = await makeLoader("child", {
+    "themes/child/theme.yaml": "name: child\nparent: parent\n",
+    "themes/child/locales/en.json": JSON.stringify({ greeting: "Hi" }),
+    "themes/parent/locales/en.json": JSON.stringify({ greeting: "Hello", farewell: "Goodbye" }),
+    "themes/parent/locales/fr.json": JSON.stringify({ greeting: "Bonjour" }),
+  });
+  const locale = await loader.loadLocale("fr");
+  // fr overrides greeting; farewell falls back to the chain-merged en
+  assertEquals(locale.greeting, "Bonjour");
+  assertEquals(locale.farewell, "Goodbye");
+});
+
 Deno.test("loadLocale: caches result on second call", async () => {
   let readCount = 0;
   const storage: StorageAdapter = {

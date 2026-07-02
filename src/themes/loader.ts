@@ -480,40 +480,51 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
 
     /**
      * Load theme UI locale strings for a language.
-     * Looks in themes/{theme}/locales/{lang}.json across the theme chain.
-     * Falls back to "en" if the requested language is not found.
-     * Returns a flat object of key → string for use with t(key).
+     * Merges themes/{theme}/locales/{lang}.json per key across the whole
+     * theme chain: parent-most first, child-most last, so a child theme can
+     * override individual keys without copying the parent's locale file.
+     * The chain-merged "en" locale is layered underneath as fallback when
+     * lang != "en". Returns a flat object of key → string for use with t(key).
      */
     async loadLocale(lang: string): Promise<Record<string, string>> {
       const cached = localeCache.get(lang);
       if (cached) return cached;
 
       const fallback = lang !== "en" ? await loader.loadLocale("en") : null;
+
+      // Collect the chain child-most → parent-most, then merge in reverse
+      // so child keys win over parent keys.
+      const chain: ResolvedTheme[] = [];
       let current: ResolvedTheme | undefined = theme;
       while (current) {
-        const localePath = join(current.dir, "locales", `${lang}.json`);
-        try {
-          if (await current.storage.exists(localePath)) {
-            const text = await current.storage.readText(localePath);
-            const parsed = JSON.parse(text) as Record<string, string>;
-            if (parsed && typeof parsed === "object") {
-              const merged = fallback ? { ...fallback, ...parsed } : parsed;
-              localeCache.set(lang, merged);
-              return merged;
-            }
-          }
-        } catch {
-          // Continue to parent theme
-        }
+        chain.push(current);
         current = current.parent;
       }
 
-      if (fallback) {
-        localeCache.set(lang, fallback);
-        return fallback;
+      const merged: Record<string, string> = fallback ? { ...fallback } : {};
+      let found = false;
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const localePath = join(chain[i].dir, "locales", `${lang}.json`);
+        try {
+          if (await chain[i].storage.exists(localePath)) {
+            const text = await chain[i].storage.readText(localePath);
+            const parsed = JSON.parse(text) as Record<string, string>;
+            if (parsed && typeof parsed === "object") {
+              Object.assign(merged, parsed);
+              found = true;
+            }
+          }
+        } catch {
+          // Skip unreadable locale file, continue with the rest of the chain
+        }
       }
-      localeCache.set(lang, {});
-      return {};
+
+      if (!found && !fallback) {
+        localeCache.set(lang, {});
+        return {};
+      }
+      localeCache.set(lang, merged);
+      return merged;
     },
 
     /**
