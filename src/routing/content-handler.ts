@@ -8,7 +8,7 @@ import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { rewriteInternalLinks } from "./link-rewriter.ts";
-import { resolveCollectionForPage } from "./collection-resolver.ts";
+import { resolveCollectionForPage, resolveCollectionsForPage } from "./collection-resolver.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 
 /**
@@ -82,6 +82,9 @@ export async function handleMarkdownPage(
   const collection = collections
     ? await resolveCollectionForPage(page, collections, engine)
     : undefined;
+  const collectionsMap = collections
+    ? await resolveCollectionsForPage(page, collections, engine)
+    : undefined;
 
   const layout = await engine.themes.loadLayout("layout");
   const strings = await engine.themes.loadLocale(page.language ?? "en");
@@ -99,6 +102,7 @@ export async function handleMarkdownPage(
       pathname: url.pathname,
       search: url.search,
       collection,
+      collections: collectionsMap,
       Layout: layout ?? undefined,
       themeConfig: engine.themeConfig,
       t,

@@ -54,6 +54,13 @@ export interface PageFrontmatter {
   };
   collection?: CollectionDefinition;
   /**
+   * Multiple named collections (name → definition). Resolved alongside
+   * `collection` and passed to templates as `props.collections`. Use when a
+   * page renders several independent page lists (e.g. block-based landing
+   * pages showing featured items, recent posts, and events side by side).
+   */
+  collections?: Record<string, CollectionDefinition>;
+  /**
    * Declares this page as the term page for a taxonomy term.
    *
    * Simple form (implies the `tag` vocabulary):
@@ -411,6 +418,12 @@ export interface TemplateProps {
   /** Dynamically loaded layout component (use for hot-reload compatibility) */
   Layout?: TemplateComponent;
   collection?: Collection;
+  /**
+   * Named collections resolved from the page's `collections:` frontmatter
+   * map. Present only when the page declares one and at least one entry
+   * resolves. Keys match the frontmatter map keys.
+   */
+  collections?: Record<string, Collection>;
   /**
    * User-controlled theme settings from `data/theme-config.json`.
    * Populated when the active theme declares a `config_schema` in `theme.yaml`.
