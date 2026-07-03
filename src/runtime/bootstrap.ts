@@ -254,7 +254,12 @@ export async function bootstrap(
         const registry = createMdxComponentRegistry(
           mod.default as Record<string, unknown>,
         );
-        mdxHandler = new MdxHandler({ components: registry });
+        // Optional named export: sanitizer allowances for the markup the
+        // theme's components emit (see MdxSanitizeExtension).
+        const sanitize = mod.sanitize && typeof mod.sanitize === "object"
+          ? mod.sanitize
+          : undefined;
+        mdxHandler = new MdxHandler({ components: registry, sanitize });
         if (debug) {
           const names = Object.keys(mod.default).join(", ");
           logger.debug("mdx.components.loaded", {

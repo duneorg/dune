@@ -36,6 +36,14 @@ export interface SanitizeOptions {
   allowImages?: boolean;
   /** Allow <a> with href. Default: true. */
   allowLinks?: boolean;
+  /**
+   * Allow these attributes in addition to the per-tag defaults.
+   * Keyed by tag name, `*` applies to all allowed tags. Entries ending in
+   * `*` are prefix wildcards (`aria-*`, `data-*`). `on*` event handlers and
+   * `is`/`xmlns` are always stripped regardless; `style` is stripped unless
+   * listed here explicitly (literally, not via wildcard).
+   */
+  extraAttrs?: Record<string, readonly string[]>;
 }
 
 /** Default allowlist — formatting + structural tags found in user content. */
@@ -225,7 +233,7 @@ export function sanitizeHtml(input: string, opts: SanitizeOptions = {}): string 
       continue;
     }
 
-    const attrs = parseAttrs(attrPart, tag);
+    const attrs = parseAttrs(attrPart, tag, opts.extraAttrs);
 
     // Void tags per HTML spec — don't push onto stack.
     const isVoid = VOID_TAGS.has(tag) || selfClosing;
@@ -253,11 +261,32 @@ interface ParsedAttr {
 }
 
 /** Parse an attribute string like `class="foo" href='bar' disabled`. */
-function parseAttrs(src: string, tag: string): ParsedAttr[] {
+function parseAttrs(
+  src: string,
+  tag: string,
+  extraAttrs?: Record<string, readonly string[]>,
+): ParsedAttr[] {
   const out: ParsedAttr[] = [];
   const globalAllowed = TAG_ATTRS["*"] ?? [];
   const tagAllowed = TAG_ATTRS[tag] ?? [];
   const allowedSet = new Set([...globalAllowed, ...tagAllowed]);
+
+  // Caller-supplied extensions: exact names plus `prefix-*` wildcards.
+  const wildcards: string[] = [];
+  let styleAllowed = false;
+  if (extraAttrs) {
+    for (const entry of [...extraAttrs["*"] ?? [], ...extraAttrs[tag] ?? []]) {
+      const name = entry.toLowerCase();
+      if (name.endsWith("*")) {
+        const prefix = name.slice(0, -1);
+        if (prefix) wildcards.push(prefix);
+      } else if (name === "style") {
+        styleAllowed = true;
+      } else if (!name.startsWith("on") && name !== "is" && !name.startsWith("xmlns")) {
+        allowedSet.add(name);
+      }
+    }
+  }
 
   // Regex-based tokenizer — keep it simple.
   const re = /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
@@ -266,12 +295,17 @@ function parseAttrs(src: string, tag: string): ParsedAttr[] {
     const name = m[1].toLowerCase();
     const value = m[2] ?? m[3] ?? m[4] ?? "";
 
-    // Always strip event handlers and style.
+    // Always strip event handlers; strip style unless explicitly allowed.
+    // These checks run before the allowlists, so neither extraAttrs entries
+    // nor wildcards can reopen them.
     if (name.startsWith("on")) continue;
-    if (name === "style") continue;
+    if (name === "style" && !styleAllowed) continue;
     if (name === "is" || name === "xmlns" || name.startsWith("xmlns:")) continue;
 
-    if (!allowedSet.has(name)) continue;
+    if (
+      !allowedSet.has(name) && name !== "style" &&
+      !wildcards.some((p) => name.startsWith(p))
+    ) continue;
 
     // URL attributes: scheme-validate.
     if (URL_ATTRS.has(name)) {

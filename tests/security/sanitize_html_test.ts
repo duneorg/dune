@@ -200,3 +200,60 @@ Deno.test("allowLinks=false strips anchor tags", () => {
   const out = sanitizeHtml(`<p>hi <a href="/x">link</a></p>`, { allowLinks: false });
   assertEquals(out, `<p>hi link</p>`);
 });
+
+// --- extraAttrs (theme mdx-components sanitize extension) ---
+
+Deno.test("extraAttrs allows exact attribute names per tag", () => {
+  const out = sanitizeHtml(`<svg viewBox="0 0 24 24" fill="currentColor"></svg>`, {
+    extraTags: ["svg"],
+    extraAttrs: { svg: ["viewBox", "fill"] },
+  });
+  assertEquals(out, `<svg viewbox="0 0 24 24" fill="currentColor"></svg>`);
+});
+
+Deno.test("extraAttrs wildcard allows aria-* and data-* globally", () => {
+  const out = sanitizeHtml(
+    `<div role="tab" aria-selected="true" data-label="npm" other="x">t</div>`,
+    { extraAttrs: { "*": ["role", "aria-*", "data-*"] } },
+  );
+  assertEquals(out, `<div role="tab" aria-selected="true" data-label="npm">t</div>`);
+});
+
+Deno.test("extraAttrs cannot reopen event handlers", () => {
+  const out = sanitizeHtml(`<div onclick="alert(1)" onerror="x">t</div>`, {
+    extraAttrs: { "*": ["onclick", "on*", "o*", "*"] },
+  });
+  assertEquals(out, `<div>t</div>`);
+});
+
+Deno.test("style stays stripped unless listed literally", () => {
+  const stripped = sanitizeHtml(`<div style="color:red" class="a">t</div>`, {
+    extraAttrs: { "*": ["s*", "sty*"] },
+  });
+  assertEquals(stripped, `<div class="a">t</div>`);
+  const allowed = sanitizeHtml(`<span style="--x:1">t</span>`, {
+    extraAttrs: { span: ["style"] },
+  });
+  assertEquals(allowed, `<span style="--x:1">t</span>`);
+});
+
+Deno.test("extraAttrs does not leak across tags", () => {
+  const out = sanitizeHtml(`<p viewBox="x">t</p>`, {
+    extraAttrs: { svg: ["viewBox"] },
+  });
+  assertEquals(out, `<p>t</p>`);
+});
+
+Deno.test("extraTags custom elements pass through with allowed attrs", () => {
+  const out = sanitizeHtml(
+    `<starlight-tabs data-sync-key="pkg"><section role="tabpanel" hidden>x</section></starlight-tabs>`,
+    {
+      extraTags: ["starlight-tabs", "section"],
+      extraAttrs: { "*": ["role", "data-*", "hidden"] },
+    },
+  );
+  assertEquals(
+    out,
+    `<starlight-tabs data-sync-key="pkg"><section role="tabpanel" hidden>x</section></starlight-tabs>`,
+  );
+});

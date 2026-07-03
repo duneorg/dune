@@ -31,13 +31,19 @@ import type {
   PageFrontmatter,
   RenderContext,
 } from "../types.ts";
-import type { MdxComponentRegistry } from "./mdx-components.ts";
+import type { MdxComponentRegistry, MdxSanitizeExtension } from "./mdx-components.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
 
 /** Options for {@link MdxHandler}. */
 export interface MdxHandlerOptions {
   /** Component registry for MDX content (optional — defaults to empty) */
   components?: MdxComponentRegistry;
+  /**
+   * Sanitizer allowances for the markup the registered components emit
+   * (theme mdx-components `sanitize` export). Applied when the rendered
+   * output is sanitized, i.e. when `trusted_html` is not set.
+   */
+  sanitize?: MdxSanitizeExtension;
 }
 
 /** {@link ContentFormatHandler} for `.mdx` files — Markdown with embedded JSX components. */
@@ -45,9 +51,11 @@ export class MdxHandler implements ContentFormatHandler {
   readonly extensions = [".mdx"];
 
   private components: MdxComponentRegistry | null;
+  private sanitize: MdxSanitizeExtension | null;
 
   constructor(options: MdxHandlerOptions = {}) {
     this.components = options.components ?? null;
+    this.sanitize = options.sanitize ?? null;
   }
 
   /**
@@ -147,9 +155,15 @@ export class MdxHandler implements ContentFormatHandler {
       // rendered output through the same sanitizer the markdown handler uses.
       // This blocks raw <script>, <iframe>, on* event handlers, and unsafe
       // URL schemes that a non-admin author might emit through MDX.
+      // Theme-declared allowances (mdx-components `sanitize` export) widen
+      // the tag/attribute allowlist for the markup the theme's components
+      // emit; script/event-handler/URL-scheme stripping is unaffected.
       if (!ctx.trustedHtml) {
         const { sanitizeHtml } = await import("../../security/sanitize-html.ts");
-        html = sanitizeHtml(html);
+        html = sanitizeHtml(html, {
+          extraTags: this.sanitize?.tags,
+          extraAttrs: this.sanitize?.attributes,
+        });
       }
 
       return html;

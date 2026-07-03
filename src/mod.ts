@@ -120,7 +120,7 @@ export { TsxHandler } from "./content/formats/tsx.ts";
 export { MdxHandler } from "./content/formats/mdx.ts";
 export type { MdxHandlerOptions } from "./content/formats/mdx.ts";
 export { createMdxComponentRegistry } from "./content/formats/mdx-components.ts";
-export type { MdxComponentRegistry } from "./content/formats/mdx-components.ts";
+export type { MdxComponentRegistry, MdxSanitizeExtension } from "./content/formats/mdx-components.ts";
 export { buildIndex, updateIndex } from "./content/index-builder.ts";
 export type { BuildResult, TaxonomyMap } from "./content/index-builder.ts";
 export { loadPage } from "./content/page-loader.ts";
