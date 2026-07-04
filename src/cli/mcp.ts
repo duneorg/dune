@@ -78,8 +78,8 @@ async function lightweightBootstrap(root: string, buildSearch: boolean, debug: b
   if (buildSearch) {
     const se = createSearchEngine({
       pages: engine.pages,
-      storage,
-      contentDir: config.system.content.dir,
+      storage: engine.contentStorage,
+      contentDir: engine.contentDir,
       formats,
     });
     await se.build();
@@ -116,6 +116,13 @@ export async function mcpServeCommand(
 
   // Register tools and resources
   const tools = buildTools({ engine, search });
+  // NOTE: intentionally the raw config value + site storage, not
+  // engine.contentStorage/contentDir. WriteToolDeps.storage is dual-purpose
+  // (content files AND config/site.yaml via update_config/install_plugin),
+  // so this pair only stays correct when content.src is unset. Properly
+  // supporting content.src here needs WriteToolDeps split into separate
+  // content/site storage fields — out of scope for now (mcp write tools
+  // aren't used by content.src's driving use case, multisite demo fixtures).
   const contentDir = config.system?.content?.dir ?? "content";
   const writeTools = buildWriteTools({ engine, storage, root, contentDir });
   const resources = buildResources(engine, storage, root);

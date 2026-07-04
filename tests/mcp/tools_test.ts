@@ -89,6 +89,13 @@ function makeEngine(pages: PageIndex[], resolveMap?: Map<string, Page>): DuneEng
         return new TextEncoder().encode(content);
       },
     } as unknown as DuneEngine["storage"],
+    contentStorage: {
+      async read(path: string): Promise<Uint8Array> {
+        const content = `---\ntitle: Test\npublished: true\n---\n\n# Test\n`;
+        return new TextEncoder().encode(content);
+      },
+    } as unknown as DuneEngine["contentStorage"],
+    contentDir: "content",
     themes: {
       theme: {
         manifest: { name: "starter", version: "0.1", description: "Starter" },

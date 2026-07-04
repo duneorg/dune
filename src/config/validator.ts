@@ -152,6 +152,16 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
       });
     }
 
+    if (system.content.src !== undefined) {
+      if (typeof system.content.src !== "string" || !system.content.src.trim()) {
+        errors.push({
+          path: "system.content.src",
+          message: "must be a non-empty string (local path: ./, ../, or absolute)",
+          got: system.content.src,
+        });
+      }
+    }
+
     if (system.content.markdown) {
       for (const key of ["extra", "auto_links", "auto_url_links"] as const) {
         if (typeof system.content.markdown[key] !== "boolean") {

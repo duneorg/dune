@@ -369,10 +369,10 @@ export async function bootstrap(
   );
   const injectedRecords = recordsCtx.records;
 
-  const searchContentDir = config.system.content.dir;
+  const searchContentDir = engine.contentDir;
   const builtInEngine = createSearchEngine({
     pages: engine.pages,
-    storage,
+    storage: engine.contentStorage,
     contentDir: searchContentDir,
     formats,
     injectedRecords,
@@ -387,13 +387,13 @@ export async function bootstrap(
       engine: null,
       pages: engine.pages,
       injectedRecords,
-      storage,
+      storage: engine.contentStorage,
       contentDir: searchContentDir,
       config,
       formats,
       loadText: (page) =>
         loadPageBodyText(page, {
-          storage,
+          storage: engine.contentStorage,
           contentDir: searchContentDir,
           formats,
         }),

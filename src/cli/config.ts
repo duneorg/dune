@@ -30,6 +30,7 @@ export const configCommands = {
         },
         system: {
           contentDir: config.system.content.dir,
+          contentSrc: config.system.content.src ?? null,
           cacheEnabled: config.system.cache.enabled,
           cacheDriver: config.system.cache.driver,
           cacheLifetime: config.system.cache.lifetime,
@@ -59,6 +60,7 @@ export const configCommands = {
 
     printSection("System", {
       "content.dir": config.system.content.dir,
+      ...(config.system.content.src ? { "content.src": config.system.content.src } : {}),
       "cache.enabled": String(config.system.cache.enabled),
       "cache.driver": config.system.cache.driver,
       "cache.lifetime": `${config.system.cache.lifetime}s`,

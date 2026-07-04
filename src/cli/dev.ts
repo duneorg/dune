@@ -20,6 +20,7 @@ import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts"
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 
 export interface DevOptions {
   port?: number;
@@ -77,7 +78,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // We use a shared mutable reference so the watcher can call it once it is set.
   let notifyContentReload: () => void = () => {};
 
-  const contentDir = `${root}/${engine.config.system.content.dir}`;
+  const contentDir = resolveContentDirPath(engine.config.system.content, root);
   const themesDir = `${root}/themes`;
   const flexObjectsDir = `${root}/flex-objects`;
 
@@ -159,8 +160,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // Collect island paths imported by TSX content pages (auto-discovery).
   const contentIslandPaths = await collectContentIslands(
     engine.pages,
-    root,
-    engine.config.system.content.dir,
+    resolveContentDirPath(engine.config.system.content, root),
   );
 
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by

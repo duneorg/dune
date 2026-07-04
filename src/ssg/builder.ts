@@ -16,6 +16,7 @@
 
 import { join, dirname, normalize, isAbsolute } from "@std/path";
 import { parseFolderName } from "../content/path-utils.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 import { ensureDir } from "@std/fs";
 import type { BootstrapResult } from "../cli/bootstrap.ts";
 import { createDuneApp } from "../cli/fresh-app.ts";
@@ -97,7 +98,7 @@ export async function buildStatic(
   let pagesSkipped = 0;
   const errors: Array<{ route: string; error: string }> = [];
 
-  const contentDir = config.system.content.dir;
+  const contentDirPath = resolveContentDirPath(config.system.content, root);
 
   for (let i = 0; i < allRoutes.length; i += opts.concurrency) {
     const batch = allRoutes.slice(i, i + opts.concurrency);
@@ -107,7 +108,7 @@ export async function buildStatic(
         if (opts.incremental) {
           const pageIndex = engine.pages.find((p) => p.route === route);
           if (pageIndex) {
-            const sourceFile = join(root, contentDir, pageIndex.sourcePath);
+            const sourceFile = join(contentDirPath, pageIndex.sourcePath);
             const hash = await hashFile(sourceFile);
             const cached = manifest.entries[route];
             if (cached && cached.contentHash === hash && hash !== "") {
@@ -167,7 +168,7 @@ export async function buildStatic(
 
   let assetsWritten = 0;
   assetsWritten += await copyStaticAssets(root, outDir, engine, pluginAssetDirs, sharedThemesDir);
-  assetsWritten += await copyContentMedia(join(root, contentDir), outDir);
+  assetsWritten += await copyContentMedia(contentDirPath, outDir);
 
   // ── Hybrid config ─────────────────────────────────────────────────────────
 

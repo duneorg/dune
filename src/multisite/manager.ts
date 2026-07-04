@@ -18,6 +18,7 @@ import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 import { logger } from "../core/logger.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 
 export { loadMultisiteConfig };
 
@@ -257,7 +258,7 @@ export class MultisiteManager {
     notifyReload: () => void,
     debug: boolean,
   ): void {
-    const contentDir = `${siteRoot}/${ctx.engine.config.system.content.dir}`;
+    const contentDir = resolveContentDirPath(ctx.engine.config.system.content, siteRoot);
     const themesDir = `${siteRoot}/themes`;
     const flexObjectsDir = `${siteRoot}/flex-objects`;
 

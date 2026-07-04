@@ -326,6 +326,7 @@ function makeGetConfigHandler(engine: DuneEngine): ToolHandler {
       },
       system: {
         contentDir: config.system.content.dir,
+        contentSrc: config.system.content.src ?? null,
         languages: {
           supported: config.system.languages?.supported ?? [],
           default: config.system.languages?.default ?? "en",
@@ -545,12 +546,12 @@ function makeGetPageSourceHandler(engine: DuneEngine): ToolHandler {
       return errText(`Page not found: ${normalised}`);
     }
 
-    const contentDir = engine.config.system.content.dir;
+    const contentDir = engine.contentDir;
     const fullPath = `${contentDir}/${pageIndex.sourcePath}`;
 
     let rawContent: string;
     try {
-      const bytes = await engine.storage.read(fullPath);
+      const bytes = await engine.contentStorage.read(fullPath);
       rawContent = new TextDecoder().decode(bytes);
     } catch {
       return errText(`Could not read source file: ${pageIndex.sourcePath}`);

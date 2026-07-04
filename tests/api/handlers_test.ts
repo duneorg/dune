@@ -127,6 +127,8 @@ function makeEngine(
     createPreviewTheme: (_name: string) => Promise.reject(new Error("not implemented")),
     setPluginTemplateDirs: (_dirs: string[]) => {},
     storage: {} as unknown as DuneEngine["storage"],
+    contentStorage: {} as unknown as DuneEngine["contentStorage"],
+    contentDir: "content",
   };
 }
 

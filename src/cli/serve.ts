@@ -28,6 +28,7 @@ import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts"
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 
@@ -261,8 +262,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Collect island paths imported by TSX content pages (auto-discovery).
   const contentIslandPaths = await collectContentIslands(
     engine.pages,
-    root,
-    engine.config.system.content.dir,
+    resolveContentDirPath(engine.config.system.content, root),
   );
 
   // Fresh's esbuild deno plugin (WasmWorkspace) auto-detects the import map by

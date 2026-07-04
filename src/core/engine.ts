@@ -19,6 +19,7 @@ import type {
 } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
+import { createContentStorage, resolveContentDirPath } from "../content/content-root.ts";
 import { parseFolderName } from "../content/path-utils.ts";
 import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
 import { IFRAME_SENDER_SCRIPT } from "../content/formats/media-resolve.ts";
@@ -86,6 +87,17 @@ export interface DuneEngine {
   blueprints: BlueprintMap;
   /** Storage adapter for reading and writing site files */
   storage: StorageAdapter;
+  /**
+   * Storage adapter for content, and the contentDir to use with it.
+   * Equal to `{storage, contentDir: config.system.content.dir}` unless
+   * `content.src` is set, in which case this is a separate storage instance
+   * rooted at the resolved external path (contentDir is then `"."`).
+   * External consumers that read/write content (admin services, SSG,
+   * multisite) should use this pair rather than `storage` + the raw
+   * `config.system.content.dir`.
+   */
+  contentStorage: StorageAdapter;
+  contentDir: string;
   /** Route resolver */
   router: RouteResolver;
   /** Theme loader */
@@ -163,8 +175,21 @@ export async function createDuneEngine(
   const { storage, config, formats } = options;
   const hooks = options.hooks;
   const themesDir = options.themesDir ?? "themes";
-  const contentDir = config.system.content.dir;
   const storageRoot = options.storageRoot;
+  const { storage: contentStorage, contentDir } = createContentStorage(
+    config.system.content,
+    storageRoot ?? Deno.cwd(),
+    storage,
+  );
+  // TSX dynamic imports resolve contentFilePath (already contentDir-relative)
+  // against this root. When content.src is unset, contentFilePath still
+  // carries the "{dir}/" prefix, so the site's own storageRoot is correct
+  // (unchanged behavior). When content.src is set, contentDir is "." and
+  // contentFilePath has no prefix — so the import root must be the resolved
+  // external content path instead.
+  const contentStorageRoot = config.system.content.src
+    ? resolveContentDirPath(config.system.content, storageRoot ?? Deno.cwd())
+    : storageRoot;
   const sharedThemesDir = options.sharedThemesDir;
   const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
   const dataDir = config.admin?.dataDir ?? "data";
@@ -337,12 +362,12 @@ export async function createDuneEngine(
     const page = await loadPageFromIndex(
       indexEntry,
       {
-        storage,
+        storage: contentStorage,
         contentDir,
         formats,
         pages,
         loadPage,
-        storageRoot,
+        storageRoot: contentStorageRoot,
         orphanProtection: config.system.typography?.orphan_protection !== false,
         site: config.site,
       },
@@ -371,7 +396,7 @@ export async function createDuneEngine(
 
     // Build content index
     const result = await buildIndex({
-      storage,
+      storage: contentStorage,
       contentDir,
       formats,
       siteHome: config.site.home,
@@ -462,7 +487,7 @@ export async function createDuneEngine(
     if (!resolved) return null;
 
     try {
-      let data = await storage.read(resolved);
+      let data = await contentStorage.read(resolved);
       const contentType = getMimeType(resolved);
 
       // Inject the iframe height-sender script into co-located HTML files.
@@ -495,8 +520,16 @@ export async function createDuneEngine(
    */
   async function resolveMediaPath(decoded: string): Promise<string | null> {
     // Guard against path traversal before any resolution.
+    // When contentDir is "." (content.src set — the site's storage root IS
+    // the content root), `join(".", x)` normalizes away the "./" prefix, so
+    // the `contentDir + "/"` prefix check below never matches even for
+    // legitimate paths. Check for upward escape directly in that case; the
+    // contentStorage adapter's own containment guard is the backstop either way.
     const naive = join(contentDir, decoded);
-    if (!naive.startsWith(contentDir + "/") && naive !== contentDir) {
+    const withinContentDir = contentDir === "."
+      ? naive === "." || (!naive.startsWith("../") && naive !== "..")
+      : naive === contentDir || naive.startsWith(contentDir + "/");
+    if (!withinContentDir) {
       return null;
     }
 
@@ -509,7 +542,7 @@ export async function createDuneEngine(
       const candidate = join(current, segment);
 
       // Fast path: exact match (handles prefixed paths and plain filenames).
-      if (await storage.exists(candidate)) {
+      if (await contentStorage.exists(candidate)) {
         current = candidate;
         continue;
       }
@@ -518,7 +551,7 @@ export async function createDuneEngine(
       // slug matches the clean segment name ("einstieg" → "04.einstieg").
       if (!isLast) {
         try {
-          const entries = await storage.list(current);
+          const entries = await contentStorage.list(current);
           const match = entries.find(
             (e) => e.isDirectory && parseFolderName(e.name).slug === segment,
           );
@@ -555,7 +588,7 @@ export async function createDuneEngine(
         }
 
         const result = await buildIndex({
-          storage,
+          storage: contentStorage,
           contentDir,
           formats,
           siteHome: config.site.home,
@@ -591,6 +624,8 @@ export async function createDuneEngine(
     taxonomyMap: {},
     blueprints: {},
     storage,
+    contentStorage,
+    contentDir,
     themeConfig: {},
     themePackageStaticDirs: new Map<string, string>(),
     router: undefined as unknown as RouteResolver,

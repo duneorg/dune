@@ -16,6 +16,7 @@
 import { join, resolve } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 
 export interface ContentCreateOptions {
   debug?: boolean;
@@ -112,14 +113,13 @@ export async function contentCreateCommand(
 
   // Load config for content dir
   const storage = createStorage({ rootDir: root });
-  let contentDirName = "content";
+  let contentRoot = join(root, "content");
   try {
     const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-    contentDirName = config.system.content.dir ?? "content";
+    contentRoot = resolveContentDirPath(config.system.content, root);
   } catch {
     // Use default
   }
-  const contentRoot = join(root, contentDirName);
 
   // Walk segments, resolving existing folders with numeric prefixes
   let currentDir = contentRoot;

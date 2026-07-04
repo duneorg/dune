@@ -21,6 +21,7 @@ import { dirname, join, resolve } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { bootstrap } from "./bootstrap.ts";
+import { resolveContentDirPath } from "../content/content-root.ts";
 
 export interface ContentDeleteOptions {
   debug?: boolean;
@@ -63,10 +64,10 @@ export async function contentDeleteCommand(
 
   // Bootstrap to get content index (so we can resolve the route)
   const storage = createStorage({ rootDir: root });
-  let contentDirName = "content";
+  let contentRootPath = join(root, "content");
   try {
     const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-    contentDirName = config.system.content.dir ?? "content";
+    contentRootPath = resolveContentDirPath(config.system.content, root);
   } catch {
     // Use default
   }
@@ -91,8 +92,7 @@ export async function contentDeleteCommand(
     }
 
     // Try to find default.md in a folder matching the last segment
-    const contentRoot = join(root, contentDirName);
-    sourcePath = await findContentFile(contentRoot, segments);
+    sourcePath = await findContentFile(contentRootPath, segments);
   }
 
   if (!sourcePath) {
@@ -105,12 +105,11 @@ export async function contentDeleteCommand(
     Deno.exit(1);
   }
 
-  const contentRoot = join(root, contentDirName);
-  const absFilePath = join(contentRoot, sourcePath);
+  const absFilePath = join(contentRootPath, sourcePath);
   const absDir = dirname(absFilePath);
 
   // Security check: ensure the file is within the content root
-  if (!absFilePath.startsWith(contentRoot + "/") && absFilePath !== contentRoot) {
+  if (!absFilePath.startsWith(contentRootPath + "/") && absFilePath !== contentRootPath) {
     const msg = "Path traversal detected — refusing to delete";
     if (options.json) {
       console.log(JSON.stringify({ error: msg }, null, 2));

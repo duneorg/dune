@@ -94,13 +94,12 @@ export async function collectThemeIslands(
  * and they are bundled automatically — no explicit registration needed.
  *
  * @param pages - All indexed content pages (e.g. engine.pages — PageIndex[])
- * @param root - Absolute path to the site root
- * @param contentDir - Content directory name relative to root (e.g. "user")
+ * @param contentRoot - Absolute path to the content root (resolve via
+ *   `resolveContentDirPath()` — accounts for `content.src` when set)
  */
 export async function collectContentIslands(
   pages: PageIndex[],
-  root: string,
-  contentDir: string,
+  contentRoot: string,
 ): Promise<string[]> {
   const seen = new Set<string>();
   const islands: string[] = [];
@@ -113,7 +112,7 @@ export async function collectContentIslands(
   for (const page of pages) {
     if (page.format !== "tsx") continue;
 
-    const absPagePath = join(root, contentDir, page.sourcePath);
+    const absPagePath = join(contentRoot, page.sourcePath);
     let source: string;
     try {
       source = await Deno.readTextFile(absPagePath);

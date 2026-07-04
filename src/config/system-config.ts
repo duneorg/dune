@@ -7,6 +7,13 @@
 export interface SystemConfig {
   content: {
     dir: string;
+    /**
+     * When set, content is loaded from this path instead of `{dir}` under
+     * the site root. Local path only (`./`, `../`, or absolute) — same
+     * semantics as `theme.src`. Gets its own contained storage root; the
+     * site's own storage boundary is never widened.
+     */
+    src?: string;
     markdown: {
       extra: boolean;
       auto_links: boolean;
