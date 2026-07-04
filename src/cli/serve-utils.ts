@@ -384,6 +384,62 @@ export function injectRtlDir(response: Response, rtl: boolean): Response {
   );
 }
 
+// === Base Path Injection (multisite path_prefix routing) ===
+
+/**
+ * Prepend `basePath` to root-relative `href=`/`src=`/`action=` attributes in
+ * an HTML response.
+ *
+ * Themes and content author root-relative links (`href="/blog/post"`,
+ * theme static assets at `href="/themes/{name}/static/..."`, the built-in
+ * search form) with no awareness that the site might be served under a path
+ * prefix (`MultisiteManager`'s `path_prefix` routing strips the prefix on the
+ * way in, but nothing re-adds it to what themes generate). Rather than
+ * requiring every theme to thread `basePath` through every link by hand,
+ * this rewrites the fully-rendered response in one place — the same pattern
+ * `injectRtlDir` already uses for a different cross-cutting concern.
+ *
+ * Only modifies the response when:
+ * 1. `basePath` is set (single-site / hostname-routed multisite sites pass
+ *    `undefined` here and pay no cost)
+ * 2. The Content-Type is text/html
+ * 3. The path is root-relative (single leading `/`, not `//`) and doesn't
+ *    already carry the prefix (idempotent — safe if called more than once)
+ *
+ * Links already built from `site.url` (canonical links, sitemap, feeds) are
+ * untouched — they're absolute (`href="https://..."`) and don't match the
+ * root-relative pattern this targets.
+ */
+export function injectBasePath(response: Response, basePath: string | undefined): Response {
+  if (!basePath) return response;
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  const prefix = basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+  const attrRe = /(href|src|action)="(\/[^"/][^"]*|\/)"/g;
+
+  return new Response(
+    response.body
+      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            const text = new TextDecoder().decode(chunk);
+            const rewritten = text.replace(attrRe, (match, attr: string, path: string) => {
+              if (path === prefix || path.startsWith(`${prefix}/`)) return match;
+              return `${attr}="${prefix}${path}"`;
+            });
+            controller.enqueue(new TextEncoder().encode(rewritten));
+          },
+        }))
+      : null,
+    {
+      status: response.status,
+      headers: new Headers(
+        [...response.headers.entries()].filter(([k]) => k.toLowerCase() !== "content-length"),
+      ),
+    },
+  );
+}
+
 /** Inject the live-reload script before `</body>` or `</html>`. */
 export function injectLiveReload(response: Response): Response {
   const contentType = response.headers.get("Content-Type") ?? "";

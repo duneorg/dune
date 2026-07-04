@@ -211,9 +211,13 @@ export function duneRoutes(
       const result = await engine.resolve(url.pathname);
 
       // Redirects
+      // redirectTo is always site-relative (from resolver.ts / site.yaml
+      // redirects); prepend basePath so the browser re-requests the correct
+      // path-prefixed route rather than the bare site-relative one.
       if (result.type === "redirect" && result.redirectTo) {
+        const target = (engine.site.basePath ?? "") + result.redirectTo;
         return respond(Response.redirect(
-          new URL(result.redirectTo, url.origin).toString(),
+          new URL(target, url.origin).toString(),
           301,
         ));
       }

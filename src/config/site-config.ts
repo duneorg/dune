@@ -21,6 +21,16 @@ export interface SiteConfig {
   title: string;
   description: string;
   url: string;
+  /**
+   * Path prefix this site is served under (e.g. "/papermod"), when running
+   * behind `MultisiteManager`'s `path_prefix` routing mode. Injected at
+   * bootstrap time from `sites.yaml`'s `path_prefix` — never authored in
+   * `site.yaml` directly. Empty/undefined for hostname-routed or single-site
+   * setups. Server-generated redirects and the built-in search page prepend
+   * this; templates should prepend `site.url` (which already includes it)
+   * rather than reading this field directly.
+   */
+  basePath?: string;
   author: {
     name: string;
     email?: string;

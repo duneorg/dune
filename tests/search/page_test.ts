@@ -43,10 +43,21 @@ Deno.test("generateSearchPage: title includes query when present", () => {
   assertStringIncludes(html, "Search: deno");
 });
 
-Deno.test("generateSearchPage: form action is /search", () => {
+Deno.test("generateSearchPage: form action is siteUrl + /search", () => {
   const html = generateSearchPage(makeOptions());
 
-  assertStringIncludes(html, 'action="/search"');
+  assertStringIncludes(html, 'action="https://example.com/search"');
+});
+
+Deno.test("generateSearchPage: form action, fetch, and history use the prefixed base when site.url includes a path prefix", () => {
+  const html = generateSearchPage(makeOptions({
+    siteUrl: "https://example.com/papermod",
+  }));
+
+  assertStringIncludes(html, 'action="https://example.com/papermod/search"');
+  assertStringIncludes(html, "var BASE = \"https://example.com/papermod\"");
+  assertStringIncludes(html, "fetch(BASE + '/api/search?");
+  assertStringIncludes(html, "history.replaceState(null, '', BASE + '/search'");
 });
 
 Deno.test("generateSearchPage: input value is pre-filled with query", () => {

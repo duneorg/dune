@@ -74,8 +74,15 @@ export async function loadPage(
   // Compute the URL prefix for co-located media (based on content directory, not page route)
   const contentDirPath = dirname(index.sourcePath); // e.g. "04.blog/01.post"
   const contentDirRoute = dirPathToRoute(contentDirPath); // e.g. "/blog/post"
-  // Discover co-located media
-  const media = await discoverMedia(storage, contentDir, index.sourcePath, contentDirRoute);
+  // Discover co-located media. Media URLs are embedded directly into rendered
+  // HTML (img/src, etc.) — unlike theme-generated links, there's no
+  // opportunity for a theme to prepend site.url, so basePath is baked in here.
+  const media = await discoverMedia(
+    storage,
+    contentDir,
+    index.sourcePath,
+    (options.site?.basePath ?? "") + contentDirRoute,
+  );
 
   // Build the page with lazy accessors
   const page: Page = {

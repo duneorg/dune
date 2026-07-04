@@ -10,6 +10,7 @@ import {
   injectFeedLinks,
   injectLiveReload,
   injectRtlDir,
+  injectBasePath,
 } from "../cli/serve-utils.ts";
 import { hasAdminSessionCookie } from "../cli/admin-bar-inject.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
@@ -181,6 +182,7 @@ export function registerContentCatchAll(
             ? rtlUrlSegments[1]
             : (config.system.languages?.default ?? "en");
         response = injectRtlDir(response, isRtl(pageLang, config.system.languages?.rtl_override));
+        response = injectBasePath(response, config.site.basePath);
 
         // Cache headers. Admin responses get private/no-store so CDNs/browsers
         // never revalidate a bar-injected body against the anonymous variant.
@@ -238,6 +240,7 @@ export function registerContentCatchAll(
             ? devUrlSegments[1]
             : (config.system.languages?.default ?? "en");
         response = injectRtlDir(response, isRtl(devLang, config.system.languages?.rtl_override));
+        response = injectBasePath(response, config.site.basePath);
         response = injectLiveReload(response);
       }
     } catch (err) {

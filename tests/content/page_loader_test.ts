@@ -159,6 +159,58 @@ Deno.test("loadPage: frontmatter is extracted and available", async () => {
   assertEquals(page.frontmatter.title, "My Page");
 });
 
+Deno.test("loadPage: media URLs include site.basePath when set (multisite path_prefix)", async () => {
+  const index = makeIndex({ sourcePath: "01.home/default.md", route: "/" });
+  const storage = makeStorage({ "content/01.home/default.md": "---\ntitle: Home\n---\n" });
+  storage.list = ((_dir: string) =>
+    Promise.resolve([
+      { name: "cover.jpg", path: "content/01.home/cover.jpg", isFile: true, isDirectory: false },
+    ])) as StorageAdapter["list"];
+
+  const page = await loadPage(index, {
+    storage,
+    contentDir: "content",
+    formats: makeFormats({ title: "Home" }),
+    pages: [index],
+    loadPage: makeLoadPage([]),
+    orphanProtection: false,
+    site: {
+      title: "Test",
+      description: "",
+      url: "https://example.com/papermod",
+      basePath: "/papermod",
+      author: { name: "" },
+      metadata: {},
+      taxonomies: [],
+      routes: {},
+      redirects: {},
+    },
+  });
+
+  assertEquals(page.media.length, 1);
+  assertEquals(page.media[0].url, "/papermod/home/cover.jpg");
+});
+
+Deno.test("loadPage: media URLs are unprefixed when site.basePath is unset", async () => {
+  const index = makeIndex({ sourcePath: "01.home/default.md", route: "/" });
+  const storage = makeStorage({ "content/01.home/default.md": "---\ntitle: Home\n---\n" });
+  storage.list = ((_dir: string) =>
+    Promise.resolve([
+      { name: "cover.jpg", path: "content/01.home/cover.jpg", isFile: true, isDirectory: false },
+    ])) as StorageAdapter["list"];
+
+  const page = await loadPage(index, {
+    storage,
+    contentDir: "content",
+    formats: makeFormats({ title: "Home" }),
+    pages: [index],
+    loadPage: makeLoadPage([]),
+    orphanProtection: false,
+  });
+
+  assertEquals(page.media[0].url, "/home/cover.jpg");
+});
+
 Deno.test("loadPage: throws ContentError when content file missing", async () => {
   const index = makeIndex({ sourcePath: "01.missing/default.md" });
   const storage = makeStorage({}); // empty storage — file doesn't exist

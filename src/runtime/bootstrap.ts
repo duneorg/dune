@@ -141,6 +141,11 @@ export interface BootstrapOptions {
    */
   sharedThemesDir?: string;
   /**
+   * Path prefix this site is served under (multisite `path_prefix` routing).
+   * Set on `config.site.basePath` after config load — see `SiteConfig.basePath`.
+   */
+  basePath?: string;
+  /**
    * When true, disables the Secure cookie flag so session cookies work over
    * plain HTTP in local dev. Defaults to false (production-safe).
    * Also honoured when DUNE_ENV=dev is set in the environment.
@@ -194,7 +199,7 @@ export async function bootstrap(
   root: string,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  const { debug = false, buildSearch = false, sharedThemesDir, dev = false } =
+  const { debug = false, buildSearch = false, sharedThemesDir, basePath, dev = false } =
     options;
   // Only resolve to an absolute path when not using an injected storage —
   // the harness passes a synthetic root that doesn't exist on disk.
@@ -216,6 +221,10 @@ export async function bootstrap(
 
   if (debug) {
     config.system.debug = true;
+  }
+
+  if (basePath) {
+    config.site.basePath = basePath;
   }
 
   // Apply test/harness config overrides after all file-based config is loaded.

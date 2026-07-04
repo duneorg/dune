@@ -121,7 +121,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
   <a href="${escapeHtml(base + "/")}" class="site-link">← ${siteName}</a>
   <div class="search-header">
     <h1>Search</h1>
-    <form action="/search" method="get" class="search-form" id="search-form">
+    <form action="${escapeHtml(base + "/search")}" method="get" class="search-form" id="search-form">
       <input
         type="search"
         name="q"
@@ -140,6 +140,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
   ${resultsSection}
   <script>
     (function () {
+      var BASE = ${JSON.stringify(base)};
       var input = document.getElementById('search-input');
       var resultsList = document.getElementById('search-results');
       var emptyMsg = document.getElementById('search-empty');
@@ -163,7 +164,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
           var li = document.createElement('li');
           li.className = 'search-result';
           li.innerHTML =
-            '<a href="' + escapeHtml(r.route) + '" class="search-result-title">' + escapeHtml(r.title) + '</a>' +
+            '<a href="' + escapeHtml(BASE + r.route) + '" class="search-result-title">' + escapeHtml(r.title) + '</a>' +
             '<p class="search-result-excerpt">' + escapeHtml(r.excerpt) + '</p>' +
             '<span class="search-result-route">' + escapeHtml(r.route) + '</span>';
           resultsList.appendChild(li);
@@ -180,7 +181,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
 
       function doSearch(query) {
         if (!query) { renderResults([], ''); return; }
-        fetch('/api/search?q=' + encodeURIComponent(query) + '&limit=20')
+        fetch(BASE + '/api/search?q=' + encodeURIComponent(query) + '&limit=20')
           .then(function (r) { return r.json(); })
           .then(function (data) { renderResults(data.items || [], query); })
           .catch(function () {});
@@ -199,7 +200,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
         form.addEventListener('submit', function (e) {
           e.preventDefault();
           var q = input ? input.value.trim() : '';
-          history.replaceState(null, '', '/search' + (q ? '?q=' + encodeURIComponent(q) : ''));
+          history.replaceState(null, '', BASE + '/search' + (q ? '?q=' + encodeURIComponent(q) : ''));
           doSearch(q);
         });
       }

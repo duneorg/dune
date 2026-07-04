@@ -227,6 +227,28 @@ Deno.test("contentHandler: issues 301 redirect for redirect result type", async 
   assertExists(res.headers.get("Location"));
 });
 
+Deno.test("contentHandler: redirect Location includes site.basePath when set (multisite path_prefix)", async () => {
+  const engine = makeEngine([], async (route: string) => {
+    if (route === "/old-page") {
+      return { type: "redirect" as const, redirectTo: "/new-page" };
+    }
+    return { type: "not-found" as const };
+  });
+  engine.site = { ...engine.site, basePath: "/papermod" };
+  engine.config = { ...engine.config, site: engine.site };
+
+  const { contentHandler } = duneRoutes(engine);
+  const renderJsx = (_jsx: unknown, _status?: number): Response => {
+    return new Response("should not render", { status: 200 });
+  };
+
+  const req = new Request("http://localhost/old-page");
+  const res = await contentHandler(req, renderJsx);
+
+  assertEquals(res.status, 301);
+  assertEquals(res.headers.get("Location"), "http://localhost/papermod/new-page");
+});
+
 // ---------------------------------------------------------------------------
 // Tests — rewriteInternalLinks (via contentHandler behaviour)
 // ---------------------------------------------------------------------------
