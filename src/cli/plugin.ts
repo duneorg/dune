@@ -102,7 +102,7 @@ export async function pluginInstallCommand(
  * that need a directory, config block, or environment variables to be useful.
  *
  * Matches on the package name within `src` so it works for any specifier form
- * (`jsr:@dune/plugin-pdf`, `jsr:@dune/plugin-pdf@^0.3.0`, etc.).
+ * (`jsr:@dune/plugin-pdf`, `jsr:@dune/plugin-pdf@^1.0.0`, etc.).
  */
 async function printPluginPostInstallHints(
   root: string,
