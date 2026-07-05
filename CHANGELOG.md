@@ -5,6 +5,135 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.27.0] — 2026-07-05
+
+### Removed
+
+- **`src/cli/bootstrap.ts` and `src/cli/fresh-app.ts` re-export shims.** These
+  moved to `src/runtime/bootstrap.ts` / `src/runtime/server.ts` in v0.26 and
+  were kept as shims for one minor version, as planned. The `@dune/core/bootstrap`
+  and `@dune/core/fresh-app` subpath exports are unaffected — they already
+  pointed at the new runtime files. Anything importing the old `src/cli/`
+  paths directly needs to switch to `src/runtime/`.
+- **`SessionStoreOptions.lifetime` / `LocalSessionStoreConfig.lifetime` / the
+  `lifetime` param on `createSiteSessionManager`** (seconds, deprecated since
+  v0.26). `lifetimeMs` (milliseconds) is now the only accepted field. The
+  YAML `session_store.lifetime` config field (seconds) is unaffected — that
+  conversion happens elsewhere and was never deprecated.
+- **`getContent()` / `initContent()`** — the content-API singleton. Headless
+  Fresh routes now reach the content API via `ctx.state.contentApi`, wired by
+  a small piece of middleware in `main.ts` (`mountDuneAdmin` callers add one
+  `app.use()` line; see the headless-mode guide). This is strictly better
+  than the singleton it replaces: it works correctly in multi-site setups
+  (each site's own middleware sets its own `contentApi`, no shared global),
+  and in tests. `createContentApi()` and `BootstrapResult.contentApi` are
+  unaffected — they were already the preferred path since v0.26.
+
+### Added
+
+- **JSR/npm theme packages.** Themes can now be installed as version-pinned
+  packages via a `themes:` registry entry, with package-aware loader
+  inheritance, static asset serving, and `theme:*` CLI commands, alongside
+  the existing local-override and ZIP-install theme mechanisms.
+- **Async template components.** Fresh's `ctx.render` renders synchronously,
+  so an `async function` template component previously produced a silently
+  empty page. `resolveTemplateVNode()` now invokes and awaits async-function
+  templates before handing the vnode to the renderer, applied at every
+  top-level template render site.
+- **`navAll` in `TemplateProps`.** The full ordered page index (depth, order,
+  parentPath — the same data as `/api/nav`) is now available to templates,
+  so docs-style themes can server-render sidebar filetrees and prev/next
+  links instead of fetching `/api/nav` client-side. The existing `nav`
+  (top-level only) is unchanged.
+- **`translations` in `TemplateProps`.** Lists the languages the current page
+  actually exists in, with the language-prefixed URL for each (respects
+  `include_default_in_url`), backed by a new `RouteResolver.getTranslations()`
+  helper. Powers language-switcher UI in themes. Empty on single-language
+  sites.
+- **Named collections map on page frontmatter.** Pages can declare a
+  `collections:` map (name → collection definition) in frontmatter; each
+  entry resolves independently and templates receive them as
+  `props.collections: Record<string, Collection>`. Enables block-based
+  landing pages that show several distinct page lists.
+- **`content.src` config field.** Mirrors `theme.src`: content can now point
+  at an arbitrary local path instead of a subdirectory under the site root,
+  via a separately contained storage adapter that never widens the site's
+  own storage boundary. Useful for multisite setups sharing one content
+  source across many sites without symlinks.
+- **Theme-declared MDX sanitizer allowances.** Themes whose MDX components
+  emit markup outside the sanitizer's default allowlist (`aside`/`section`/
+  `svg`/custom elements, `role`/`aria-*` attributes) can now declare a
+  `sanitize` export widening just the tag/attribute allowlist their
+  components need, instead of sites having to set `trusted_html: true` and
+  disable MDX output sanitization entirely.
+- **Multisite `path_prefix` base-path support.** Prefix-routed sites
+  (`path_prefix: /docs`) previously had the prefix stripped from incoming
+  requests but never re-added to anything the site generated — nav links,
+  theme static asset hrefs, search, redirects, and co-located media URLs all
+  came out root-relative, breaking navigation under the subpath. Server
+  responses are now rewritten to carry the prefix on all root-relative
+  `href`/`src`/`action` attributes.
+- **Custom error templates.** Themes can provide `templates/error.tsx` to
+  customize 404/500 pages; `renderErrorPage()` tries the theme error
+  template first (passing `statusCode` and `message` via synthetic page
+  frontmatter plus the usual `TemplateProps`), then falls back to
+  layout-wrapped markup, then a bare HTML document.
+
+### Fixed
+
+- **CLI re-exec discarded the site's own import map.** The `file://`
+  (local-source) re-exec always used dune's own `deno.json`, so theme TSX
+  dynamic imports failed with "not in import map" for bare specifiers like
+  `preact` — dune's `deno.json` is a workspace member, and its import map
+  doesn't apply to files outside the workspace. When the site root has its
+  own `deno.json`, the CLI now re-execs with a temporary merged config (dune
+  imports + site imports, site wins) instead.
+- **Re-exec'd server processes were orphaned on shutdown.** Both re-exec
+  shims (local-source and JSR paths) awaited the child process's exit
+  without forwarding signals, so killing the shim (SIGTERM from a process
+  manager, SIGHUP on session close) left the actual server running and
+  still listening — the cause of intermittent "address already in use"
+  errors and systemd restarts appearing to do nothing. SIGTERM/SIGINT/SIGHUP
+  are now relayed to the child.
+- **Locale files only inherited from the nearest theme in the chain that had
+  one.** `loadLocale()` returned at the first theme with a
+  `locales/{lang}.json`, so a child theme with a single-key locale file
+  shadowed the parent's entire file. Every locale file in the chain is now
+  merged parent-most first, child-most last (child wins per key), with the
+  chain-merged `en` locale layered underneath as fallback for other
+  languages.
+- **UI language was hardcoded to English on `/search`, flex pages, and error
+  pages.** These three render sites ignored the URL's language prefix for
+  theme locale strings and navigation, so multilingual sites always got
+  English chrome there. A new `splitLanguagePrefix()` resolver helper is now
+  used at all three, so `/de/search` and `/de/flex/...` render with German
+  locale/nav, and a 404 under a language prefix keeps that language's chrome.
+- **Page-folders named `plugins` or `themes` were unreachable at their
+  canonical trailing-slash URL.** `findPageByRoute` didn't normalize a
+  trailing slash before comparing against the reserved `/plugins/*` and
+  `/themes/*` wildcard prefixes, so a content page at exactly `/plugins/`
+  (or `/themes/`) was shadowed by the wildcard static/plugin-asset routes.
+
+### Changed
+
+- **JSR doc-coverage: 100% documented symbols across all 40 public
+  entrypoints** (score component was 77.2%, `allEntrypointsDocs: false`).
+  Two distinct causes: 26 entrypoints had a good top-of-file comment but no
+  `@module` tag, which `deno_doc` requires to recognize it as the module
+  doc; and re-exported symbols whose origin file is itself a separate
+  `deno.json` entrypoint collapse to an unresolved reference in `deno_doc`,
+  discarding any doc comment placed above the whole export statement — a
+  comment placed *inside* the export braces, immediately before the
+  specifier, survives and was the fix applied across `mod.ts` and its
+  barrel files. A further ~15 symbols (UI components, DB adapters, MT
+  translator classes, the staging/flex engines, `MultisiteManager`,
+  `JobScheduler`, `AuditLogger`, and a handful of security helpers) had no
+  doc comment at their actual declaration and needed one written.
+- **`@dune/plugin-admin` dependency raised to `^1.0`** — plugin-admin shipped
+  1.0.0 in this cycle.
+
+---
+
 ## [0.26.0] — 2026-07-02
 
 ### Changed
