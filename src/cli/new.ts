@@ -247,7 +247,7 @@ const DENO_JSON = `{
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/core": "jsr:@dune/core@^0.26"
+    "@dune/core": "jsr:@dune/core@^0.27"
   },
   "tasks": {
     "dev": "dune dev",
@@ -323,10 +323,17 @@ app.use(staticFiles());
 // 3. Dune admin panel (/admin/*) + public API (/api/contact, /api/forms/*)
 await mountDuneAdmin(app, ctx);
 
-// 4. Your own routes — Fresh discovers them from routes/ automatically
+// 4. Make the content API available to your own routes via ctx.state —
+// no global state, works the same in tests and multi-site setups.
+app.use((freshCtx) => {
+  freshCtx.state.contentApi = ctx.contentApi;
+  return freshCtx.next();
+});
+
+// 5. Your own routes — Fresh discovers them from routes/ automatically
 app.fsRoutes("./routes");
 
-// 5. Build island bundles (admin islands + your own islands in islands/)
+// 6. Build island bundles (admin islands + your own islands in islands/)
 const builder = new Builder({
   root: "./",
   islandDir: "./islands",
@@ -335,7 +342,7 @@ const builder = new Builder({
 const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 applySnapshot(app);
 
-// 6. Start server
+// 7. Start server
 Deno.serve({ port: 3000, handler: app.handler() });
 `;
 
@@ -358,11 +365,14 @@ export default function Layout({ children }: { children: unknown }) {
 `;
 
 const HEADLESS_INDEX_TSX = `/** @jsxImportSource preact */
-import { getContent } from "@dune/core/content";
+import type { FreshContext } from "fresh";
+import type { ContentApi } from "@dune/core/content";
 
-// Static render — fetched at request time
-export default function Home() {
-  const pages = getContent().pages({ limit: 5, orderBy: "date", orderDir: "desc" });
+// Static render — fetched at request time. contentApi comes from main.ts's
+// ctx.state middleware (see step 4 there), not a global import.
+export default function Home(ctx: FreshContext) {
+  const contentApi = ctx.state.contentApi as ContentApi;
+  const pages = contentApi.pages({ limit: 5, orderBy: "date", orderDir: "desc" });
   return (
     <div>
       <h1>Welcome</h1>
@@ -380,11 +390,12 @@ export default function Home() {
 
 const HEADLESS_BLOG_INDEX_TSX = `/** @jsxImportSource preact */
 import type { FreshContext, PageProps } from "fresh";
-import { getContent } from "@dune/core/content";
+import type { ContentApi } from "@dune/core/content";
 import type { PageIndex } from "@dune/core";
 
 export async function handler(_req: Request, ctx: FreshContext) {
-  const posts = getContent().pages({
+  const contentApi = ctx.state.contentApi as ContentApi;
+  const posts = contentApi.pages({
     orderBy: "date",
     orderDir: "desc",
   });
@@ -410,10 +421,11 @@ export default function BlogIndex({ data }: PageProps<PageIndex[]>) {
 
 const HEADLESS_BLOG_SLUG_TSX = `/** @jsxImportSource preact */
 import type { FreshContext, PageProps } from "fresh";
-import { getContent, type ResolvedPage } from "@dune/core/content";
+import type { ContentApi, ResolvedPage } from "@dune/core/content";
 
 export async function handler(req: Request, ctx: FreshContext) {
-  const post = await getContent().page(\`/blog/\${ctx.params.slug}/\`);
+  const contentApi = ctx.state.contentApi as ContentApi;
+  const post = await contentApi.page(\`/blog/\${ctx.params.slug}/\`);
   if (!post) return ctx.next();
   return ctx.render(post);
 }

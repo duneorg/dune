@@ -572,7 +572,7 @@ export interface MountApi {
    * image pipeline, auth system, etc.
    * Typed via import() to avoid a circular type dependency with bootstrap.ts.
    */
-  bootstrap: import("../cli/bootstrap.ts").BootstrapResult;
+  bootstrap: import("../runtime/bootstrap.ts").BootstrapResult;
   /**
    * Merged output of all plugins' `adminServices()` factories, collected just
    * before `mount()` is called. Plugins that contribute an `inlineEdit` manager

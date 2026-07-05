@@ -38,7 +38,7 @@ import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
-import { createContentApi, initContent, type ContentApi } from "../content/api.ts";
+import { createContentApi, type ContentApi } from "../content/api.ts";
 import { resolve } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
@@ -566,10 +566,7 @@ export async function bootstrap(
     });
   }
 
-  // Build the explicit ContentApi for BootstrapResult.contentApi.
-  // Also populate the singleton so getContent() keeps working until v0.27.
   const contentApi = createContentApi({ engine, search, collections, taxonomy });
-  initContent({ engine, search, collections, taxonomy });
 
   return {
     engine,

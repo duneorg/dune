@@ -109,8 +109,6 @@ export async function createDuneApp(
 ): Promise<DuneAppResult> {
   const { root, port, debug = false, dev = false } = options;
   const { engine, collections, taxonomy, search, flexEngine, hooks, config, metrics } = ctx;
-  // deno-lint-ignore no-explicit-any
-  const getAdminAuth = (): import("../cli/response-transforms.ts").RunResponseTransformsOptions["auth"] => (ctx.adminContext as any)?.auth ?? null;
 
   const startTime = Date.now();
   const feedEnabled = config.site.feed?.enabled !== false;

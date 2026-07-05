@@ -169,16 +169,10 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
 export function createSiteSessionManager(config: {
   storage: StorageAdapter;
   sessionsDir: string;
-  /** Session lifetime in milliseconds — canonical since v0.26. */
+  /** Session lifetime in milliseconds. */
   lifetimeMs: number;
-  /**
-   * @deprecated Use `lifetimeMs` (milliseconds) instead.
-   * Kept for one minor version; removed in v0.27.
-   */
-  lifetime?: number;
 }): SiteSessionManager {
-  const { storage, sessionsDir } = config;
-  const lifetimeMs = config.lifetimeMs ?? ((config.lifetime ?? 0) * 1000);
+  const { storage, sessionsDir, lifetimeMs } = config;
 
   async function create(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<SiteSession> {
     const id = await generateSessionId();

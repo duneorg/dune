@@ -22,8 +22,8 @@
 import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { logger } from "../core/logger.ts";
-import { bootstrap } from "./bootstrap.ts";
-import { createDuneApp } from "./fresh-app.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
+import { createDuneApp } from "../runtime/server.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
@@ -254,10 +254,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   ];
 
   // Collect island paths from the active theme chain (auto-discovery).
-  const themeIslandPaths = await collectThemeIslands(
-    engine.themes.theme,
-    engine.themes.rootDir,
-  );
+  const themeIslandPaths = await collectThemeIslands(engine.themes.theme);
 
   // Collect island paths imported by TSX content pages (auto-discovery).
   const contentIslandPaths = await collectContentIslands(

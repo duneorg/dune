@@ -4,7 +4,7 @@
  * Reports translation coverage across configured languages.
  */
 
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 
 export interface I18nOptions {
   debug?: boolean;

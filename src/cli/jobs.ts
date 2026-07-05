@@ -9,7 +9,7 @@ import { JobScheduler } from "../jobs/scheduler.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 
 export interface JobsOptions {
   json?: boolean;

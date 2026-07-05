@@ -2,7 +2,7 @@
  * dune content:* — Content inspection and validation commands.
  */
 
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 
 export interface ContentOptions {
   debug?: boolean;

@@ -1,8 +1,8 @@
 import { join, resolve, isAbsolute } from "@std/path";
 import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
-import { bootstrap } from "../cli/bootstrap.ts";
-import { createDuneApp } from "../cli/fresh-app.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
+import { createDuneApp } from "../runtime/server.ts";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";

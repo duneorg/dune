@@ -31,13 +31,8 @@ export interface SessionStoreOptions {
   storage?: StorageAdapter;
   /** Directory for session files (local backend). */
   sessionsDir?: string;
-  /** Session lifetime in milliseconds — canonical since v0.26. */
+  /** Session lifetime in milliseconds. */
   lifetimeMs: number;
-  /**
-   * @deprecated Use `lifetimeMs` (milliseconds) instead.
-   * Kept for one minor version; removed in v0.27.
-   */
-  lifetime?: number;
 }
 
 /**
@@ -47,7 +42,7 @@ export interface SessionStoreOptions {
  * or if the resolved backend is "local" but no `storage` adapter is provided.
  */
 export async function createSessionStore(opts: SessionStoreOptions): Promise<SessionStore> {
-  const resolvedLifetimeMs = resolveLifetimeMs(opts);
+  const resolvedLifetimeMs = opts.lifetimeMs;
   const resolved = resolveType(opts);
 
   if (resolved === "kv") {
@@ -76,17 +71,6 @@ export async function createSessionStore(opts: SessionStoreOptions): Promise<Ses
     sessionsDir: opts.sessionsDir ?? ".dune/admin/sessions",
     lifetimeMs: resolvedLifetimeMs,
   });
-}
-
-function resolveLifetimeMs(opts: SessionStoreOptions): number {
-  if (opts.lifetime !== undefined && opts.lifetimeMs === undefined) {
-    console.warn(
-      "[dune] SessionStoreOptions.lifetime (seconds) is deprecated — use lifetimeMs (milliseconds). " +
-      "Support will be removed in v0.27.",
-    );
-    return opts.lifetime * 1000;
-  }
-  return opts.lifetimeMs;
 }
 
 function resolveType(opts: SessionStoreOptions): "local" | "kv" | "redis" {

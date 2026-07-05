@@ -3,7 +3,7 @@
  * dune build --static — Generate a fully static site in the output directory.
  */
 
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 import { validateConfig } from "../config/validator.ts";
 import { buildStatic } from "../ssg/builder.ts";
 import type { SSGOptions } from "../ssg/types.ts";

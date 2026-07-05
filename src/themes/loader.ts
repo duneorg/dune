@@ -55,7 +55,6 @@ import {
  */
 export async function collectThemeIslands(
   theme: ResolvedTheme,
-  rootDir: string,
 ): Promise<string[]> {
   const seen = new Set<string>();
   const islands: string[] = [];

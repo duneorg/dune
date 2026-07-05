@@ -77,7 +77,7 @@ export interface PageFrontmatter {
    * ```
    *
    * The content API exposes this via `TaxonomyTerm.pageRoute` and
-   * `getContent().termPage(vocab, value)`.
+   * `contentApi.termPage(vocab, value)`.
    */
   termPageFor?: string | Record<string, string>;
   custom?: Record<string, unknown>;

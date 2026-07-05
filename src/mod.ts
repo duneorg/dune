@@ -23,7 +23,7 @@
  * Sub-modules with their own stability guarantees:
  * - `@dune/core/plugins` — plugin loader and `PLUGIN_API_VERSION`
  * - `@dune/core/sections` — Visual Page Builder section types and registry
- * - `@dune/core/content` — content query API for headless mode (`getContent()`)
+ * - `@dune/core/content` — content query API for headless mode (`ContentApi`, via `BootstrapResult.contentApi`)
  * - `@dune/plugin-admin` — admin panel plugin (extracted from core as of 0.24.0)
  *
  * @since 0.6.0

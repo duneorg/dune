@@ -350,7 +350,7 @@ export async function applyResponseTransforms(
 export async function mountPlugins(
   // deno-lint-ignore no-explicit-any
   app: import("fresh").App<any>,
-  ctx: import("../cli/bootstrap.ts").BootstrapResult,
+  ctx: import("../runtime/bootstrap.ts").BootstrapResult,
 ): Promise<void> {
   const adminCfg = ctx.config.admin;
   const adminServices = await collectAdminServices(ctx.hooks.plugins(), {

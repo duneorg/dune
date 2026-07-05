@@ -7,8 +7,8 @@
  *   - normaliseTermPageFor: undefined → undefined
  *   - TaxonomyTerm.pageRoute populated when a termPageFor page exists
  *   - TaxonomyTerm.pageRoute is null when no term page exists
- *   - getContent().termPage() resolves the correct page
- *   - getContent().termPage() returns null for unknown terms
+ *   - contentApi.termPage() resolves the correct page
+ *   - contentApi.termPage() returns null for unknown terms
  *   - Multi-vocab: { category: "politics" } works independently of { tag: "ewr" }
  *   - Unpublished term pages are ignored
  */

@@ -10,7 +10,7 @@
  */
 
 import { join } from "@std/path";
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 import { validateConfig } from "../config/validator.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";

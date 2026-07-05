@@ -2,7 +2,7 @@
  * dune cache:* — Cache management commands.
  */
 
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 
 export interface CacheOptions {
   debug?: boolean;

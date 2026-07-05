@@ -2,7 +2,7 @@
  * Multisite module types.
  */
 
-import type { BootstrapResult } from "../cli/bootstrap.ts";
+import type { BootstrapResult } from "../runtime/bootstrap.ts";
 export type { SiteEntry, MultisiteConfig } from "../config/types.ts";
 
 /** A single bootstrapped site within a {@link MultisiteManager}. */

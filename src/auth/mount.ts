@@ -12,7 +12,7 @@
 
 // deno-lint-ignore no-explicit-any
 import type { App } from "fresh";
-import type { BootstrapResult } from "../cli/bootstrap.ts";
+import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalSiteUserStore } from "./user-store.ts";
 import { createSiteAuthMiddleware, createSiteSessionManager } from "./middleware.ts";
 import { createAuthRoutes } from "./routes.ts";

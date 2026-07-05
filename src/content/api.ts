@@ -4,16 +4,26 @@
  * Provides an ergonomic, idiomatic interface for Fresh route handlers to fetch
  * content from Dune without directly accessing the engine internals.
  *
- * Initialized once via `initContent()` (called automatically by `bootstrap()`).
- * Use `getContent()` anywhere after bootstrap to obtain the API object.
+ * `bootstrap()` returns `contentApi` directly on its result. Make it reachable
+ * from your own route files with a small piece of `main.ts` middleware:
+ *
+ * ```ts
+ * // main.ts
+ * const ctx = await bootstrap("./");
+ * app.use((freshCtx) => {
+ *   freshCtx.state.contentApi = ctx.contentApi;
+ *   return freshCtx.next();
+ * });
+ * ```
  *
  * @example
  * ```ts
  * // routes/blog/[slug].tsx
- * import { getContent, type ResolvedPage } from "@dune/cms/content";
+ * import type { ContentApi, ResolvedPage } from "@dune/cms/content";
  *
  * export async function handler(ctx: FreshContext) {
- *   const post = await getContent().page(`/blog/${ctx.params.slug}`);
+ *   const contentApi = ctx.state.contentApi as ContentApi;
+ *   const post = await contentApi.page(`/blog/${ctx.params.slug}`);
  *   if (!post) return ctx.next();
  *   return ctx.render(post);
  * }
@@ -30,7 +40,7 @@
  *   tags: string[];
  * }
  *
- * const post = await getContent().page<BlogPost>(`/blog/${slug}`);
+ * const post = await contentApi.page<BlogPost>(`/blog/${slug}`);
  * // post?.frontmatter.tags → string[]  ✅
  * ```
  *
@@ -55,7 +65,7 @@ import type { PageIndex } from "./types.ts";
  *
  * @typeParam FM - Frontmatter shape. Defaults to `Record<string, unknown>`.
  *   Pass your own interface for type-safe field access:
- *   `getContent().page<BlogPost>("/blog/hello")`
+ *   `contentApi.page<BlogPost>("/blog/hello")`
  */
 export interface ResolvedPage<FM = Record<string, unknown>> {
   /** URL route — e.g. "/blog/hello-world" */
@@ -92,7 +102,7 @@ export interface ContentSearchResult {
  * If any published page declares `termPageFor` pointing at this term,
  * `pageRoute` is set to that page's route. Otherwise null.
  *
- * Use `getContent().termPage(vocab, value)` to resolve the full page with
+ * Use `contentApi.termPage(vocab, value)` to resolve the full page with
  * rendered HTML and typed frontmatter.
  */
 export interface TaxonomyTerm {
@@ -127,7 +137,7 @@ export interface PagesOptions {
 
 /**
  * The Dune content query API.
- * Obtain an instance via `getContent()`.
+ * Obtain an instance via `BootstrapResult.contentApi` (see the module doc above).
  */
 export interface ContentApi {
   /**
@@ -210,8 +220,9 @@ export interface ContentContext {
 /**
  * Create a ContentApi bound to the given engine context.
  *
- * Prefer this over {@link getContent} when you have a `BootstrapResult` available —
- * `bootstrap()` returns `contentApi` directly on the result object since v0.26.
+ * `bootstrap()` calls this internally and returns the result as
+ * `BootstrapResult.contentApi` — most callers should use that instead of
+ * calling this directly.
  *
  * @example
  * ```ts
@@ -222,45 +233,6 @@ export interface ContentContext {
  */
 export function createContentApi(ctx: ContentContext): ContentApi {
   return buildApi(ctx);
-}
-
-// ── Singleton (deprecated) ────────────────────────────────────────────────────
-
-let _ctx: ContentContext | null = null;
-
-/**
- * Initialize the content API singleton.
- * @deprecated Use `BootstrapResult.contentApi` instead. Removed in v0.27.
- * @internal
- */
-export function initContent(ctx: ContentContext): void {
-  _ctx = ctx;
-}
-
-/**
- * Return the content API for the current site.
- *
- * @deprecated Use `BootstrapResult.contentApi` instead. This function will be
- * removed in v0.27. Prefer accessing `contentApi` from the `BootstrapResult`
- * returned by `bootstrap()`.
- *
- * @example
- * ```ts
- * // v0.26+ (preferred)
- * const ctx = await bootstrap("./");
- * const api = ctx.contentApi;
- *
- * // legacy (still works until v0.27)
- * const api = getContent();
- * ```
- */
-export function getContent(): ContentApi {
-  if (!_ctx) {
-    throw new Error(
-      "[dune] Content API not initialized. Ensure bootstrap() has been called before using getContent().",
-    );
-  }
-  return buildApi(_ctx);
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────

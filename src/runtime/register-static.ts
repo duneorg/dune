@@ -5,10 +5,8 @@ import {
   servePluginAsset,
   withSecurityHeaders,
 } from "../cli/serve-utils.ts";
-import {
-  buildPluginClientBundles,
-  serveClientBundle,
-} from "../cli/client-bundles.ts";
+import type { buildPluginClientBundles } from "../cli/client-bundles.ts";
+import { serveClientBundle } from "../cli/client-bundles.ts";
 
 type ClientBundles = Awaited<ReturnType<typeof buildPluginClientBundles>>;
 

@@ -1,5 +1,5 @@
 /**
- * Integration tests for src/cli/fresh-app.ts — createDuneApp().
+ * Integration tests for src/runtime/server.ts — createDuneApp().
  *
  * Boots a real Dune engine (bootstrap()) against a temp content tree, wires
  * it into a real Fresh App (createDuneApp()), and drives it through
@@ -18,8 +18,8 @@
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
-import { bootstrap } from "../../src/cli/bootstrap.ts";
-import { createDuneApp } from "../../src/cli/fresh-app.ts";
+import { bootstrap } from "../../src/runtime/bootstrap.ts";
+import { createDuneApp } from "../../src/runtime/server.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

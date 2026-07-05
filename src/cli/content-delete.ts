@@ -20,7 +20,7 @@
 import { dirname, join, resolve } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { bootstrap } from "./bootstrap.ts";
+import { bootstrap } from "../runtime/bootstrap.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 
 export interface ContentDeleteOptions {

@@ -97,7 +97,7 @@ export async function themeInstallCommand(
     Deno.exit(1);
   }
 
-  let resolvedSrc = src;
+  const resolvedSrc = src;
   if (isRemoteThemeSpecifier(src)) {
     assertPinnedThemeSpecifier(src);
   }
