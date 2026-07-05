@@ -20,6 +20,10 @@ function normalizeTargetLang(lang: string): string {
   return TARGET_LANG_MAP[lang.toLowerCase()] ?? upper;
 }
 
+/**
+ * DeepL machine translation provider.
+ * Supports both Free (keys ending in ":fx") and Pro API tiers.
+ */
 export class DeepLTranslator implements MachineTranslator {
   readonly provider = "deepl" as const;
 

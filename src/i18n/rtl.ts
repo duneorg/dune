@@ -3,6 +3,8 @@
  *
  * Used by the theme renderer and admin panel to add correct `dir` attributes
  * to HTML pages when the active language uses a right-to-left script.
+ *
+ * @module
  */
 
 /** ISO 639-1 language codes whose primary script is right-to-left. */

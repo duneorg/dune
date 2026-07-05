@@ -30,6 +30,7 @@ const PROVIDER_HREFS: Record<string, string> = {
   discord: "/auth/discord",
 };
 
+/** Server-rendered login form that POSTs to /auth/login, with optional OAuth/magic-link buttons. */
 export default function LoginForm({
   providers = [],
   redirectTo,

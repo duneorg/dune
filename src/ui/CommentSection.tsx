@@ -24,6 +24,7 @@ interface Comment {
   [key: string]: unknown;
 }
 
+/** Client-side island: fetches and posts comments for a page via /api/comments. */
 export default function CommentSection({ pageRoute, className }: CommentSectionProps): JSX.Element {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);

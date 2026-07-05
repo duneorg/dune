@@ -48,10 +48,19 @@ import type { StorageAdapter } from "../storage/types.ts";
 import type { DbAdapter } from "../db/types.ts";
 import { logger } from "../core/logger.ts";
 
-export { AuthzLocalAdapter } from "./authz-adapter-local.ts";
-export { AuthzDbAdapter } from "./authz-adapter-db.ts";
+export {
+  /** Implements polizy's StorageAdapter<string, string> for flat-file storage. */
+  AuthzLocalAdapter,
+} from "./authz-adapter-local.ts";
+export {
+  /** Polizy storage adapter backed by a SQL database. Pass to {@link createDuneAuthSystem} via `authzStore: "db"`. */
+  AuthzDbAdapter,
+} from "./authz-adapter-db.ts";
 export { duneAuthzSchema } from "./authz-schema.ts";
-export type { DuneAuthzSchema } from "./authz-schema.ts";
+export type {
+  /** TypeScript type of the Dune authorization schema — pass to `AuthSystem` generics. */
+  DuneAuthzSchema,
+} from "./authz-schema.ts";
 
 /** The configured Dune AuthSystem type — fully typed against the Dune schema. */
 export type DuneAuthSystem = AuthSystem<typeof duneAuthzSchema>;

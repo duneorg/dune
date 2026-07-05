@@ -44,6 +44,7 @@ const BLOCKLIST = new Set<string>([
   "superuser123",
 ]);
 
+/** Result of a password-strength check — pass, or fail with a reason. */
 export type PasswordCheckResult = { ok: true } | { ok: false; reason: string };
 
 /**

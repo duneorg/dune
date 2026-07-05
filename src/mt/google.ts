@@ -4,6 +4,7 @@
 
 import type { MachineTranslator } from "./types.ts";
 
+/** Google Cloud Translation API v2 (Basic) provider. */
 export class GoogleTranslator implements MachineTranslator {
   readonly provider = "google" as const;
 

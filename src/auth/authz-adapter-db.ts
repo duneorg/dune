@@ -10,6 +10,8 @@
  *   condition_valid_since TEXT, condition_valid_until TEXT
  *
  * Bulk delete uses raw SQL for efficiency (single query vs N individual deletes).
+ *
+ * @module
  */
 
 import type { DbAdapter } from "../db/types.ts";

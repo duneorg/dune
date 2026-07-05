@@ -7,6 +7,8 @@
  *
  * Nothing expensive happens until you call page.html(), page.component(),
  * page.children(), etc.
+ *
+ * @module
  */
 
 import { dirname, extname, join } from "@std/path";

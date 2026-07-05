@@ -27,6 +27,7 @@ interface RateLimitBucket {
   resetAt: number;
 }
 
+/** In-memory or store-backed sliding-window rate limiter. */
 export class RateLimiter {
   private buckets = new Map<string, RateLimitBucket>();
   private readonly store?: RateLimitStore;
@@ -148,6 +149,7 @@ export interface ClientIpOptions {
   trustForwardedFor?: boolean;
 }
 
+/** Resolve the client IP for a request, optionally honoring X-Forwarded-For/X-Real-IP. */
 export function clientIp(req: Request, opts: ClientIpOptions = {}): string {
   if (opts.trustForwardedFor) {
     const fwd = req.headers.get("x-forwarded-for");

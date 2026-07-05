@@ -31,11 +31,13 @@
 
 // ── Core ───────────────────────────────────────────────────────────────────
 
-/**
- * Create and configure a DuneEngine instance.
- * @since 0.1.0
- */
-export { createDuneEngine } from "./core/engine.ts";
+export {
+  /**
+   * Create and configure a DuneEngine instance.
+   * @since 0.1.0
+   */
+  createDuneEngine,
+} from "./core/engine.ts";
 export type {
   /** @since 0.1.0 */
   DuneEngine,
@@ -59,13 +61,18 @@ export {
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-/** @since 0.1.0 */
-export { createStorage } from "./storage/mod.ts";
+export {
+  /** @since 0.1.0 */
+  createStorage,
+} from "./storage/mod.ts";
 export type {
   /** @since 0.1.0 */
   StorageAdapter,
+  /** Entry in a directory listing */
   StorageEntry,
+  /** File/directory metadata */
   StorageStat,
+  /** Filesystem change event */
   WatchEvent,
 } from "./storage/types.ts";
 
@@ -98,10 +105,13 @@ export type {
   PageFrontmatter,
   /** @since 0.1.0 */
   MediaFile,
+  /** Helper for resolving co-located media from within .tsx content pages */
   MediaHelper,
   /** @since 0.1.0 */
   Collection,
+  /** Declarative collection definition (lives in page frontmatter) */
   CollectionDefinition,
+  /** Collection source — where to pull pages from */
   CollectionSource,
   /** @since 0.1.0 */
   TemplateComponent,
@@ -109,8 +119,11 @@ export type {
   TemplateProps,
   /** @since 0.25.0 */
   PageTranslation,
+  /** Props passed to .tsx content pages (the component IS the content) */
   ContentPageProps,
+  /** Render context passed to format handlers at request time */
   RenderContext,
+  /** Content format handler interface — adding new formats is just registering a new handler. */
   ContentFormatHandler,
 } from "./content/types.ts";
 
@@ -123,7 +136,10 @@ export { createMdxComponentRegistry } from "./content/formats/mdx-components.ts"
 export type { MdxComponentRegistry, MdxSanitizeExtension } from "./content/formats/mdx-components.ts";
 export { buildIndex, updateIndex } from "./content/index-builder.ts";
 export type { BuildResult, TaxonomyMap } from "./content/index-builder.ts";
-export { loadPage } from "./content/page-loader.ts";
+export {
+  /** Load a full Page object from a PageIndex entry. */
+  loadPage,
+} from "./content/page-loader.ts";
 
 // ── Routing ────────────────────────────────────────────────────────────────
 
@@ -177,6 +193,7 @@ export type {
    * @since 0.1.0
    */
   PluginApi,
+  /** Hook registry interface */
   HookRegistry,
 } from "./hooks/types.ts";
 
@@ -205,8 +222,18 @@ export type {
   ProcessedImage,
   ImageProcessorConfig,
 } from "./images/processor.ts";
-export { createImageCache } from "./images/cache.ts";
-export type { ImageCache, ImageCacheConfig, CachedImage } from "./images/cache.ts";
+export {
+  /** Create an image cache backed by the storage adapter. */
+  createImageCache,
+} from "./images/cache.ts";
+export type {
+  /** Persistent cache for processed images — avoids re-processing the same source+options. Obtain via {@link createImageCache}. */
+  ImageCache,
+  /** Options for {@link createImageCache}. */
+  ImageCacheConfig,
+  /** A cached processed image retrieved via {@link ImageCache.get}. */
+  CachedImage,
+} from "./images/cache.ts";
 export { createImageHandler } from "./images/handler.ts";
 export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";
 

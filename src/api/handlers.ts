@@ -13,6 +13,8 @@
  *   GET /api/search?q=term      — Full-text search
  *   GET /api/config/site        — Public site config
  *   GET /api/nav                — Navigation tree
+ *
+ * @module
  */
 
 import type { DuneEngine } from "../core/engine.ts";
@@ -68,6 +70,7 @@ function clampInt(raw: string | null, def: number, min: number, max: number): nu
   return n;
 }
 
+/** Options for {@link createApiHandler}. */
 export interface ApiHandlerOptions {
   engine: DuneEngine;
   collections: CollectionEngine;

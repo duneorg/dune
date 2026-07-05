@@ -1,14 +1,3 @@
-/**
- * MultisiteManager — bootstraps N sites from a config/sites.yaml file
- * and dispatches incoming requests to the correct site based on hostname
- * or path-prefix routing.
- *
- * Routing priority (per PRD §multi-site):
- *   1. Exact `Host` header match against `entry.hostname`
- *   2. Longest `entry.pathPrefix` match against `req.url.pathname`
- *   3. Default fallback site (first `default: true`, or first entry)
- */
-
 import { join, resolve, isAbsolute } from "@std/path";
 import { parse as parseYaml } from "@std/yaml";
 import { Builder } from "jsr:@fresh/core@^2/dev";
@@ -22,6 +11,16 @@ import { resolveContentDirPath } from "../content/content-root.ts";
 
 export { loadMultisiteConfig };
 
+/**
+ * MultisiteManager — bootstraps N sites from a config/sites.yaml file
+ * and dispatches incoming requests to the correct site based on hostname
+ * or path-prefix routing.
+ *
+ * Routing priority (per PRD §multi-site):
+ *   1. Exact `Host` header match against `entry.hostname`
+ *   2. Longest `entry.pathPrefix` match against `req.url.pathname`
+ *   3. Default fallback site (first `default: true`, or first entry)
+ */
 export class MultisiteManager {
   private sites: InitializedSite[] = [];
   private defaultSite: InitializedSite | null = null;

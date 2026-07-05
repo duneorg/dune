@@ -40,6 +40,7 @@ export interface ThemePackageEntry {
   src: string;
 }
 
+/** A plugin entry in `site.yaml`'s `plugins:` list. */
 export interface PluginEntry {
   /**
    * Module source — local path or registry specifier.

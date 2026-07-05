@@ -47,17 +47,20 @@ export const DEFAULT_UPLOAD_EXTENSIONS: Readonly<Record<string, string>> = Objec
   ".ods": "application/vnd.oasis.opendocument.spreadsheet",
 });
 
+/** A successful upload content-type check. */
 export interface UploadCheckOk {
   ok: true;
   /** Server-derived content-type — safe to store and replay. */
   contentType: string;
 }
 
+/** A rejected upload content-type check, with the reason it was rejected. */
 export interface UploadCheckRejected {
   ok: false;
   reason: string;
 }
 
+/** Result of validating an uploaded file's content-type. */
 export type UploadCheckResult = UploadCheckOk | UploadCheckRejected;
 
 /**

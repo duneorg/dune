@@ -6,6 +6,8 @@
  *
  * Both files are plain YAML, stored via the storage adapter (so they work
  * with both filesystem and Deno KV backends).
+ *
+ * @module
  */
 
 import { stringify as stringifyYaml } from "@std/yaml";
@@ -21,6 +23,7 @@ import { applyMigrations, loadMigrations, type FlexMigration } from "./migration
 
 // === Options ===
 
+/** Options for {@link createFlexEngine}. */
 export interface FlexEngineOptions {
   storage: StorageAdapter;
   /**
@@ -38,6 +41,7 @@ export interface FlexEngineOptions {
 
 // === Public interface ===
 
+/** Manages Flex Object schemas and record CRUD. Obtain via {@link createFlexEngine}. */
 export interface FlexEngine {
   /**
    * Load all schema definitions.
@@ -86,6 +90,7 @@ export interface FlexEngine {
 
 // === Implementation ===
 
+/** Create a Flex Object engine for loading schemas and managing records. */
 export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
   const { storage } = opts;
   const schemasDir = opts.schemasDir ?? "flex-objects";

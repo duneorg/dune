@@ -30,6 +30,10 @@ async function getClient(url: string): Promise<PostgresClient> {
   return _sqlClient;
 }
 
+/**
+ * PostgreSQL-backed database adapter using npm:postgres.
+ * Selected when `DUNE_DB_URL` starts with `postgres://` or `postgresql://`.
+ */
 export class PostgresAdapter implements DbAdapter {
   readonly #sql: PostgresClient;
 

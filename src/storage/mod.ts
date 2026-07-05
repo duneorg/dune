@@ -1,8 +1,19 @@
 /**
  * Storage module — factory for creating storage adapters.
+ *
+ * @module
  */
 
-export type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "./types.ts";
+export type {
+  /** Unified storage interface */
+  StorageAdapter,
+  /** Entry in a directory listing */
+  StorageEntry,
+  /** File/directory metadata */
+  StorageStat,
+  /** Filesystem change event */
+  WatchEvent,
+} from "./types.ts";
 export { FileSystemAdapter } from "./fs.ts";
 export { KvStorageAdapter, openKvStorage } from "./kv.ts";
 export { MemoryStorageAdapter } from "./memory.ts";

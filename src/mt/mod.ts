@@ -1,5 +1,7 @@
 /**
  * Machine translation module — re-exports all public types and classes.
+ *
+ * @module
  */
 
 export type { MachineTranslator, MachineTranslationConfig } from "./types.ts";

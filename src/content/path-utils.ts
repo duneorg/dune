@@ -6,6 +6,8 @@
  *   name/     → unordered, hidden from nav
  *   _name/    → modular section, non-routable
  *   _drafts/  → non-routable container
+ *
+ * @module
  */
 
 import { dirname } from "@std/path";
@@ -47,6 +49,7 @@ export interface FolderInfo {
   raw: string;
 }
 
+/** Parse a folder name into its components — order prefix, slug, module/draft flags. */
 export function parseFolderName(name: string): FolderInfo {
   const raw = name;
 
@@ -106,6 +109,7 @@ export interface FileInfo {
   language?: string;
 }
 
+/** Parse a content filename into template, format, extension, and optional language. */
 export function parseContentFilename(
   name: string,
   supportedLanguages?: string[],

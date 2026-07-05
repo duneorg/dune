@@ -22,6 +22,7 @@ export interface ProfileCardProps {
   className?: string;
 }
 
+/** Server-rendered card showing a SiteUser's avatar, name, email, roles, and a logout button. */
 export default function ProfileCard({ user, className }: ProfileCardProps): JSX.Element {
   const displayName = user.name ?? user.email;
 

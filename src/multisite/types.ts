@@ -5,6 +5,7 @@
 import type { BootstrapResult } from "../cli/bootstrap.ts";
 export type { SiteEntry, MultisiteConfig } from "../config/types.ts";
 
+/** A single bootstrapped site within a {@link MultisiteManager}. */
 export interface InitializedSite {
   /** The resolved site entry from config/sites.yaml */
   entry: import("../config/types.ts").SiteEntry;

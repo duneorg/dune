@@ -66,11 +66,13 @@ const HOSTNAME_DENYLIST = new Set([
   "metadata",
 ]);
 
+/** Options for the SSRF destination check. */
 export interface SsrfCheckOptions {
   /** Caller opts in to allowing private/loopback destinations (e.g. for CI). */
   allowPrivateDestinations?: boolean;
 }
 
+/** Thrown when a URL is blocked as an SSRF risk (private/loopback destination or denylisted hostname). */
 export class SsrfBlockedError extends Error {
   override name = "SsrfBlockedError";
 }

@@ -6,6 +6,8 @@
  *
  * This is the single entry point that Fresh routes use to
  * resolve URLs, load pages, and render content.
+ *
+ * @module
  */
 
 import { join } from "@std/path";

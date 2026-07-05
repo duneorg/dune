@@ -1,5 +1,7 @@
 /**
  * Performance metrics — public API.
+ *
+ * @module
  */
 
 export { MetricsCollector } from "./collector.ts";

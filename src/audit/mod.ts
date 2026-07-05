@@ -1,6 +1,8 @@
 /**
  * Audit logging module.
  * Re-exports all public types and the AuditLogger class.
+ *
+ * @module
  */
 
 export type {
@@ -13,4 +15,7 @@ export type {
   AuditQueryResult,
 } from "./types.ts";
 
-export { AuditLogger } from "./logger.ts";
+export {
+  /** Appends entries to daily-rotated JSONL files, sharded by date. */
+  AuditLogger,
+} from "./logger.ts";

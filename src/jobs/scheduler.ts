@@ -1,14 +1,3 @@
-/**
- * JobScheduler — minute-tick interval scheduler for background jobs.
- *
- * Fires registered jobs when the current wall-clock minute matches their
- * cron expression. State (lastRun, status, lastError) is persisted to
- * {stateDir}/{name}.json via the StorageAdapter.
- *
- * Error behaviour: log + persist lastError + continue scheduling. No retry.
- * Multi-process warning: emitted at startup when workers > 1.
- */
-
 import { matchesCron, nextRunAfter } from "./cron.ts";
 import type { JobContext, JobDefinition, JobState } from "./types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -24,6 +13,16 @@ export interface JobSchedulerConfig {
   storage: StorageAdapter;
 }
 
+/**
+ * JobScheduler — minute-tick interval scheduler for background jobs.
+ *
+ * Fires registered jobs when the current wall-clock minute matches their
+ * cron expression. State (lastRun, status, lastError) is persisted to
+ * {stateDir}/{name}.json via the StorageAdapter.
+ *
+ * Error behaviour: log + persist lastError + continue scheduling. No retry.
+ * Multi-process warning: emitted at startup when workers > 1.
+ */
 export class JobScheduler {
   private readonly definitions: Map<string, JobDefinition>;
   private readonly context: JobContext;

@@ -15,11 +15,14 @@
  *   4. Reviewers visit /__preview?path=...&token=... — sees rendered draft
  *   5. Editor clicks "Publish" → POST /admin/api/staging/:path/publish
  *   6. Draft is written to the live file and the staging record is deleted
+ *
+ * @module
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
+/** An unpublished draft of a page, stored alongside revision history. */
 export interface StagedDraft {
   /** Source path of the page (e.g. "01.home/default.md") */
   sourcePath: string;
@@ -35,12 +38,14 @@ export interface StagedDraft {
   createdBy?: string;
 }
 
+/** Options for {@link createStagingEngine}. */
 export interface StagingEngineConfig {
   storage: StorageAdapter;
   /** Directory for staging files, e.g. ".dune/admin" */
   runtimeDir: string;
 }
 
+/** Manages staged drafts and their shareable preview tokens. Obtain via {@link createStagingEngine}. */
 export interface StagingEngine {
   /**
    * Create or update a staged draft for a page.
@@ -59,6 +64,7 @@ export interface StagingEngine {
   verify(sourcePath: string, token: string): Promise<StagedDraft | null>;
 }
 
+/** Input for {@link StagingEngine.upsert}. */
 export interface UpsertInput {
   sourcePath: string;
   content: string;
@@ -66,6 +72,7 @@ export interface UpsertInput {
   createdBy?: string;
 }
 
+/** Create a staging engine for saving drafts and generating preview tokens. */
 export function createStagingEngine(config: StagingEngineConfig): StagingEngine {
   const { storage, runtimeDir } = config;
 

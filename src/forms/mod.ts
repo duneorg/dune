@@ -32,6 +32,8 @@
  *       min: 10
  *       max: 2000
  * ```
+ *
+ * @module
  */
 
 export { loadForms, loadForm } from "./loader.ts";

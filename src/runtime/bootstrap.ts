@@ -1,6 +1,8 @@
 /**
  * CLI bootstrap — shared setup logic for CLI commands.
  * Creates storage, loads config, registers format handlers, and creates the engine.
+ *
+ * @module
  */
 
 import { createStorageAsync } from "../storage/mod.ts";

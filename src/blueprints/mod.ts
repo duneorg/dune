@@ -1,5 +1,7 @@
 /**
  * Blueprint system — frontmatter schema validation for typed content models.
+ *
+ * @module
  */
 
 export type {

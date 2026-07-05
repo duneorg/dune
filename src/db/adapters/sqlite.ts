@@ -40,6 +40,12 @@ interface SqliteStatement {
   finalize(): void;
 }
 
+/**
+ * Default database adapter using jsr:@db/sqlite.
+ *
+ * DB path resolves from `DUNE_DB_PATH` env var, falling back to
+ * `data/dune.db` relative to cwd.
+ */
 export class SQLiteAdapter implements DbAdapter {
   readonly #db: SqliteDatabase;
   readonly #inTx: boolean;

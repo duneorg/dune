@@ -39,6 +39,7 @@ interface FormSchema {
   fields: Record<string, FormField>;
 }
 
+/** Client-side island: renders and submits a form fetched from GET /api/forms/{formName}. */
 export default function FormRenderer({
   formName,
   successMessage = "Thank you! Your submission has been received.",

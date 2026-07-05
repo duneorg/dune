@@ -36,6 +36,7 @@ export function debounce(
   };
 }
 
+/** Client-side island: accessible search combobox calling GET /api/search. */
 export default function SearchBar({
   placeholder = "Search...",
   limit = 5,

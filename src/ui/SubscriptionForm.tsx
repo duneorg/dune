@@ -17,6 +17,7 @@ export interface SubscriptionFormProps {
   className?: string;
 }
 
+/** Client-side island: initiates checkout by POSTing to /payments/checkout/{productId}. */
 export default function SubscriptionForm({
   productId,
   label = "Subscribe",

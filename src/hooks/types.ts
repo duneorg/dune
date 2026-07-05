@@ -1,5 +1,7 @@
 /**
  * Hook system types — lifecycle events and plugin definitions.
+ *
+ * @module
  */
 
 import type { DuneConfig } from "../config/types.ts";

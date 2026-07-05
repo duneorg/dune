@@ -18,6 +18,10 @@ import type { DbAdapter } from "../types.ts";
 
 type KvRecord = Record<string, unknown>;
 
+/**
+ * Deno KV-backed database adapter. Auto-selected when `DENO_DEPLOYMENT_ID`
+ * is set (Deno Deploy). Non-id where clauses require a full prefix scan.
+ */
 export class KVAdapter implements DbAdapter {
   readonly #kv: Deno.Kv;
   /** Fields that have a secondary index: tableName -> Set<fieldName> */

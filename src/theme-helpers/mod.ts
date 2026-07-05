@@ -8,6 +8,8 @@
  * ```ts
  * import { formatDate, paginate, truncate } from "@dune/core/theme-helpers";
  * ```
+ *
+ * @module
  */
 
 // ─── Re-exported types ────────────────────────────────────────────────────────
@@ -15,22 +17,42 @@
 // here rather than the internal `../../src/content/types.ts` paths.
 
 export type {
+  /** Content format discriminator */
   ContentFormat,
+  /** Raw frontmatter parsed from YAML (.md/.mdx) or extracted from export (.tsx) */
   PageFrontmatter,
+  /** A co-located media file */
   MediaFile,
+  /** A fully resolved page object (loaded on demand) */
   Page,
+  /** Lightweight page reference for the content index (never loads full content) */
   PageIndex,
+  /** Resolved collection with query results */
   Collection,
+  /** Declarative collection definition (lives in page frontmatter) */
   CollectionDefinition,
+  /** Resolved template component (for .md/.mdx pages) */
   TemplateComponent,
+  /** Props passed to theme templates (for .md/.mdx pages) */
   TemplateProps,
+  /** Props passed to .tsx content pages (the component IS the content) */
   ContentPageProps,
 } from "../content/types.ts";
 
-export type { DuneConfig, SiteConfig, ThemeConfig } from "../config/types.ts";
+export type {
+  /** Top-level Dune configuration (result of merging all config sources) */
+  DuneConfig,
+  /** Site-level configuration (content, identity, metadata) */
+  SiteConfig,
+  /** Theme configuration */
+  ThemeConfig,
+} from "../config/types.ts";
 
 // Re-export the existing title builder so themes don't need a separate import.
-export { buildPageTitle } from "../content/types.ts";
+export {
+  /** Build a formatted page title for the <title> tag: "Title - Descriptor | Site Name". */
+  buildPageTitle,
+} from "../content/types.ts";
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 

@@ -7,6 +7,8 @@
  * Cache key = hex hash of (source path + sorted options JSON).
  * Each cached entry is stored as raw bytes alongside a small
  * .meta.json sidecar with content-type and dimensions.
+ *
+ * @module
  */
 
 import { encodeHex } from "@std/encoding/hex";

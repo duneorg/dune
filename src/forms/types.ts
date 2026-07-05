@@ -73,6 +73,7 @@ export interface FormField {
   validate?: FormFieldValidation;
 }
 
+/** Type-specific validation constraints for a form field. */
 export interface FormFieldValidation {
   /**
    * Minimum bound.

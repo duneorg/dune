@@ -1,13 +1,3 @@
-/**
- * AuditLogger — appends entries to daily-rotated JSONL files.
- *
- * Shards are written to `{dir}/{basename}/YYYY-MM-DD.jsonl`, where `{dir}` and
- * `{basename}` are derived from `logFile`. Queries enumerate only the shards
- * whose date falls within `from`/`to` (or all shards when the range is open).
- * The legacy single-file layout (just `logFile`) is read as a fallback so an
- * upgrade from pre-sharding installs doesn't lose history.
- */
-
 import { dirname, basename, extname, join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import type {
@@ -19,6 +9,15 @@ import type {
 
 const SHARD_RE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
+/**
+ * AuditLogger — appends entries to daily-rotated JSONL files.
+ *
+ * Shards are written to `{dir}/{basename}/YYYY-MM-DD.jsonl`, where `{dir}` and
+ * `{basename}` are derived from `logFile`. Queries enumerate only the shards
+ * whose date falls within `from`/`to` (or all shards when the range is open).
+ * The legacy single-file layout (just `logFile`) is read as a fallback so an
+ * upgrade from pre-sharding installs doesn't lose history.
+ */
 export class AuditLogger {
   private readonly logFile: string;        // legacy path (fallback on read)
   private readonly shardDir: string;       // directory holding daily shards

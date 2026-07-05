@@ -132,6 +132,7 @@ export interface BlueprintFileUploadConfig {
   public_url?: boolean;
 }
 
+/** Validation constraints for a blueprint field. */
 export interface BlueprintFieldValidation {
   /**
    * Minimum bound.

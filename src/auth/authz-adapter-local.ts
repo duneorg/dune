@@ -11,6 +11,8 @@
  * Write and delete operations update both the on-disk file and the in-memory
  * index atomically from the perspective of a single-process Deno server.
  * Multi-process deployments should use AuthzDbAdapter backed by a shared DB.
+ *
+ * @module
  */
 
 import type { StorageAdapter as DuneStorage } from "../storage/types.ts";

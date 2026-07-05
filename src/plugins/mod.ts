@@ -79,15 +79,30 @@ export const PLUGIN_API_VERSION = "0.7";
 export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms, mountPlugins } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
+  /** A custom admin page contributed by a plugin. Registered via `DunePlugin.adminPages`. */
   AdminPageRegistration,
+  /** Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}. */
   AdminServices,
+  /** Context passed to {@link DunePlugin.adminServices} factories. */
   AdminServicesContext,
+  /** A Dune plugin — a plain object (or factory return value) registering hook handlers and optional admin pages, schemas, and static assets. */
   DunePlugin,
+  /** Context passed to each hook handler */
   HookContext,
+  /** All lifecycle events a plugin can subscribe to. Frozen since v0.6.0. */
   HookEvent,
+  /** Hook handler signature */
   HookHandler,
+  /** API surface passed to a plugin's setup() function. */
   PluginApi,
+  /** A public-facing route contributed by a plugin via `DunePlugin.publicRoutes`. */
   PublicRouteRegistration,
+  /** Context passed to {@link DunePlugin.transformResponse}. */
   ResponseTransformContext,
 } from "../hooks/types.ts";
-export type { ContentEditorPlugin, MountApi } from "../hooks/types.ts";
+export type {
+  /** Plugin-provided replacement for the built-in block editor. Register via {@link AdminServices.contentEditor}. */
+  ContentEditorPlugin,
+  /** Passed to {@link DunePlugin.mount} — provides everything a plugin needs to register Fresh routes and wire up runtime services. */
+  MountApi,
+} from "../hooks/types.ts";

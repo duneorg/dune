@@ -61,6 +61,10 @@ function computeStats(sample: LatencySample): LatencyStats {
 
 // ── MetricsCollector ──────────────────────────────────────────────────────────
 
+/**
+ * In-process performance metrics collector. All state is in-memory and
+ * resets on server restart.
+ */
 export class MetricsCollector {
   private readonly startTime: number;
   private totalRequests: number = 0;

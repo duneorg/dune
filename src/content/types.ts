@@ -1,6 +1,8 @@
 /**
  * Content type definitions for Dune CMS.
  * Covers content formats, pages, media, collections, and the format handler interface.
+ *
+ * @module
  */
 
 import type { DuneConfig, SiteConfig } from "../config/types.ts";

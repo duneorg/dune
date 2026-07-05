@@ -27,6 +27,7 @@
 
 import { isSafeUrl } from "./urls.ts";
 
+/** Options for the HTML sanitizer's tag/attribute allowlist. */
 export interface SanitizeOptions {
   /** Allow these tags in addition to the defaults. */
   extraTags?: readonly string[];

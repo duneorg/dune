@@ -7,6 +7,8 @@
  *
  * Used by serve.ts (production), dev.ts (development), multisite/manager.ts,
  * and ssg/builder.ts — all paths go through a single Fresh app.
+ *
+ * @module
  */
 
 import { App, staticFiles } from "fresh";

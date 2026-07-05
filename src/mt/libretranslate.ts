@@ -6,6 +6,11 @@
 
 import type { MachineTranslator } from "./types.ts";
 
+/**
+ * LibreTranslate provider — supports self-hosted instances.
+ * LibreTranslate does not support batch requests, so batch is implemented
+ * as sequential individual requests.
+ */
 export class LibreTranslateTranslator implements MachineTranslator {
   readonly provider = "libretranslate" as const;
 

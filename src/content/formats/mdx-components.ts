@@ -24,6 +24,7 @@ export interface MdxSanitizeExtension {
   attributes?: Record<string, readonly string[]>;
 }
 
+/** Registry of components available within MDX content, keyed by name. */
 export interface MdxComponentRegistry {
   /** Register a component by name for use in MDX content */
   register(name: string, component: unknown): void;

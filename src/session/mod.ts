@@ -6,6 +6,8 @@
  *   2. type === "redis" and redisUrl provided → "redis"
  *   3. type === "kv" → "kv"
  *   4. Default → "local" (file-backed, single-process safe)
+ *
+ * @module
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
@@ -14,8 +16,12 @@ import { createLocalSessionStore } from "./local.ts";
 import { createKVSessionStore } from "./kv.ts";
 import { createRedisSessionStoreFromUrl } from "./redis.ts";
 
-export type { SessionStore } from "./types.ts";
+export type {
+  /** Session store interface — backend-agnostic contract for admin session persistence. */
+  SessionStore,
+} from "./types.ts";
 
+/** Options for {@link createSessionStore}. */
 export interface SessionStoreOptions {
   /** Explicit backend type. Auto-detected when omitted. */
   type?: "local" | "kv" | "redis";
