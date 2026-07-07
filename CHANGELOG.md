@@ -5,6 +5,29 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.28.0] — 2026-07-07
+
+### Added
+
+- **Per-page `theme_config:` frontmatter override.** Pages and sections can
+  now override theme config for themselves and their descendants, resolved
+  the same way as the existing `collections:` frontmatter feature:
+  site-level config, shallow-merged with the nearest ancestor section's
+  override, shallow-merged with the page's own override. Wired into both
+  markdown and TSX content pages — search and error pages intentionally stay
+  on site-level config since they render synthetic non-tree pages.
+
+### Changed
+
+- **`data/theme-config.json` is now namespaced by theme name**
+  (`{"caravan": {...}, "blox": {...}}`), so `switchTheme()` reloading the
+  file for a new theme no longer risks another theme's settings being wiped
+  on the next admin save (`@dune/plugin-admin`'s save handler was updated to
+  match).
+- The in-process page cache is now invalidated on `rebuild()` and on the
+  `onCacheInvalidate` hook, since stale cached HTML would otherwise mask both
+  ordinary content edits and the new section-level theme-config overrides.
+
 ## [0.27.0] — 2026-07-05
 
 ### Removed
