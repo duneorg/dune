@@ -358,6 +358,15 @@ export async function main() {
   if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
       command !== "lockfile:check" && command !== "lockfile:sync" &&
       !import.meta.url.startsWith("file://")) {
+    // We're about to lock into running the published @dune/core package for
+    // the rest of this process tree — see local-checkout-detect.ts for why
+    // that's easy to hit by accident even with a workspace-linked checkout
+    // on disk. Only worth the filesystem walk for the commands a maintainer
+    // would actually use to exercise local changes against a real site.
+    if (command === "dev" || command === "serve") {
+      const { warnIfLocalCheckoutUnused } = await import("./cli/local-checkout-detect.ts");
+      await warnIfLocalCheckoutUnused(Deno.cwd());
+    }
     const { resolve, join: joinPath } = await import("@std/path");
     const absRoot = resolve(root);
     const siteDenoJson = joinPath(absRoot, "deno.json");
