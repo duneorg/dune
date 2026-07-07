@@ -72,8 +72,8 @@ export class MultisiteManager {
     });
     // Admin island specifiers from @dune/plugin-admin — loaded via non-literal
     // dynamic import to avoid a publish-time circular dependency with @dune/core.
-    const adminMountPkg = "jsr:@dune/plugin-admin/admin/mount";
-    const { getDuneAdminIslands } = await import(adminMountPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin/admin/mount")
+    const adminMountPkg = "jsr:@dune/plugin-admin@^1.0/admin/mount";
+    const { getDuneAdminIslands } = await import(adminMountPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin@^1.0/admin/mount")
       getDuneAdminIslands: () => string[];
     };
     // Remote (https://) island specs are materialized as local wrappers —

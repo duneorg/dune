@@ -507,8 +507,8 @@ export async function bootstrap(
   // @dune/core and @dune/plugin-admin (each would otherwise need the other to be
   // on JSR before it could be published).
   if (adminConfig.enabled !== false) {
-    const adminPkg = "jsr:@dune/plugin-admin";
-    const { createAdminPlugin } = await import(adminPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin", avoids circular publish-time dep)
+    const adminPkg = "jsr:@dune/plugin-admin@^1.0";
+    const { createAdminPlugin } = await import(adminPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin@^1.0", avoids circular publish-time dep)
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
     const adminPlugin = createAdminPlugin(config, storage, {
