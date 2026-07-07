@@ -97,6 +97,7 @@ const stubConfig: DuneConfig = {
   theme: { name: "default", custom: {} },
   plugins: {},
   pluginList: [],
+  themeList: [],
 };
 
 function makeEngine(
@@ -129,6 +130,7 @@ function makeEngine(
     storage: {} as unknown as DuneEngine["storage"],
     contentStorage: {} as unknown as DuneEngine["contentStorage"],
     contentDir: "content",
+    themePackageStaticDirs: new Map(),
   };
 }
 
