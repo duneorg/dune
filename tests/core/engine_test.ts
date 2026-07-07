@@ -208,6 +208,7 @@ function makeConfig(overrides: Partial<DuneConfig> = {}): DuneConfig {
     theme: { name: "default", custom: {} },
     plugins: {},
     pluginList: [],
+    themeList: [],
   };
   return { ...base, ...overrides } as DuneConfig;
 }
