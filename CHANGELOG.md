@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.28.1] — 2026-07-07
+
+### Fixed
+
+- **`jsr:@dune/plugin-admin` dynamic import specifiers were bare** (no
+  version constraint), unlike the equivalent import-map entry. These
+  specifiers are intentionally non-literal strings (to avoid a
+  publish-time circular dependency between `@dune/core` and
+  `@dune/plugin-admin`), which meant nothing pinned them to a version —
+  a fresh environment with no matching `deno.lock` entry had no
+  guarantee of resolving the latest published `@dune/plugin-admin`.
+  Both call sites now pin `@^1.0`, matching the import map, and a static
+  regression test asserts the specifiers aren't bare.
+
 ## [0.28.0] — 2026-07-07
 
 ### Added
