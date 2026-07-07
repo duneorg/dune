@@ -63,6 +63,14 @@ export interface PageFrontmatter {
    */
   collections?: Record<string, CollectionDefinition>;
   /**
+   * Per-page/per-section theme config override. Shallow-merged over the
+   * site-level `data/theme-config.json` values (and over any ancestor
+   * section's own `theme_config`) when rendering this page or any of its
+   * descendants — the nearest ancestor's values win. See
+   * `resolveThemeConfig()` in `src/routing/theme-config-resolver.ts`.
+   */
+  theme_config?: Record<string, unknown>;
+  /**
    * Declares this page as the term page for a taxonomy term.
    *
    * Simple form (implies the `tag` vocabulary):

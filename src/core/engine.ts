@@ -238,12 +238,18 @@ export async function createDuneEngine(
 
   /**
    * Load `data/theme-config.json` into the `themeConfig` closure variable.
+   * The file is namespaced by theme name (`{"caravan": {...}, "blox": {...}}`)
+   * so that switching themes doesn't discard another theme's saved settings.
    * Silently ignores missing or malformed files.
    */
   async function loadThemeConfig(): Promise<void> {
     try {
       const raw = await storage.readText(themeConfigPath);
-      themeConfig = JSON.parse(raw) as Record<string, unknown>;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const forTheme = parsed[config.theme.name];
+      themeConfig = (forTheme && typeof forTheme === "object" && !Array.isArray(forTheme))
+        ? forTheme as Record<string, unknown>
+        : {};
     } catch {
       themeConfig = {};
     }

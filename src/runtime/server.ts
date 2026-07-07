@@ -148,6 +148,12 @@ export async function createDuneApp(
   if (metrics && pageCache) {
     metrics.setPageCacheRef(() => pageCache!.stats());
   }
+  if (pageCache) {
+    // Rendered HTML may embed stale content or theme config after a content
+    // rebuild or a theme-config save — drop it so the next request re-renders.
+    hooks.on("onRebuild", () => pageCache!.invalidate());
+    hooks.on("onCacheInvalidate", () => pageCache!.invalidate());
+  }
 
   async function warmPageCache() {
     const toWarm = engine.pages.filter((p) => p.published && p.routable).map((p) => p.route);

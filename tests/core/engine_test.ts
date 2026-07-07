@@ -519,3 +519,58 @@ Deno.test("resolve(): page cache — same page object returned on second access"
   assertEquals(second.type, "page");
   assertEquals(first.page === second.page, true, "cached page should be the identical object");
 });
+
+Deno.test("init(): loadThemeConfig reads only the active theme's namespaced sub-object", async () => {
+  const files = [contentFile("01.home", "Home")];
+  const fm = new Map([["content/01.home/default.md", { title: "Home" }]]);
+
+  const baseStorage = makeStorage(files);
+  const storage: StorageAdapter = {
+    ...baseStorage,
+    readText: (path: string) => {
+      if (path === "data/theme-config.json") {
+        return Promise.resolve(JSON.stringify({
+          caravan: { color_scheme: "green" },
+          blox: { accent: "red" },
+        }));
+      }
+      return baseStorage.readText(path);
+    },
+  };
+
+  const engine = await createDuneEngine({
+    storage,
+    config: makeConfig({ theme: { name: "caravan", custom: {} } }),
+    formats: makeFormats(fm),
+  });
+
+  await engine.init();
+
+  assertEquals(engine.themeConfig, { color_scheme: "green" });
+});
+
+Deno.test("init(): loadThemeConfig defaults to an empty object when the active theme has no saved config", async () => {
+  const files = [contentFile("01.home", "Home")];
+  const fm = new Map([["content/01.home/default.md", { title: "Home" }]]);
+
+  const baseStorage = makeStorage(files);
+  const storage: StorageAdapter = {
+    ...baseStorage,
+    readText: (path: string) => {
+      if (path === "data/theme-config.json") {
+        return Promise.resolve(JSON.stringify({ blox: { accent: "red" } }));
+      }
+      return baseStorage.readText(path);
+    },
+  };
+
+  const engine = await createDuneEngine({
+    storage,
+    config: makeConfig({ theme: { name: "caravan", custom: {} } }),
+    formats: makeFormats(fm),
+  });
+
+  await engine.init();
+
+  assertEquals(engine.themeConfig, {});
+});

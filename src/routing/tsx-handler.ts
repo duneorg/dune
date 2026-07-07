@@ -7,6 +7,7 @@ import { directionOf } from "../i18n/rtl.ts";
 import { createMediaHelper } from "./link-rewriter.ts";
 import { renderErrorPage } from "./error-page.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { resolveThemeConfig } from "./theme-config-resolver.ts";
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -120,7 +121,7 @@ export async function handleTsxPage(
         translations: engine.router.getTranslations(page.route),
         pathname: url.pathname,
         search: url.search,
-        themeConfig: engine.themeConfig,
+        themeConfig: await resolveThemeConfig(page, engine),
         t,
         dir: directionOf(pageLangForDir, engine.config?.system?.languages?.rtl_override),
         children: content,
