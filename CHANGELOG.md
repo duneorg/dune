@@ -5,6 +5,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.28.2] — 2026-07-08
+
+### Added
+
+- **`dune dev`/`dune serve` warn when silently locked into the published
+  package.** `deno run jsr:@dune/core/cli` only workspace-links the
+  entrypoint when `--config` explicitly names (an ancestor of) the
+  workspace root — without it, the CLI silently ran the published
+  `@dune/core` forever even with a usable local workspace checkout on
+  disk. A filesystem walk-up check now warns in that case; it only fires
+  when a real local checkout would have been usable, so ordinary
+  end users running an installed `dune` never see it.
+
 ## [0.28.1] — 2026-07-07
 
 ### Fixed
