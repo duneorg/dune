@@ -5,6 +5,31 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.28.3] — 2026-07-14
+
+### Fixed
+
+- **Declarative collection pagination didn't actually paginate.**
+  `buildCollection()` computed `page`/`pages`/`hasNext`/`hasPrev` from
+  `pagination.size`, but item slicing used the unrelated
+  `offset`/`limit` fields (which default to 0/total) — every paginated
+  collection returned the full unsliced item list while `hasNext`
+  reported as if a next page existed, so no theme's "Older" pagination
+  link ever changed what was rendered. There was also no route-level
+  handling for a `/page:N` segment, so even correct slicing couldn't
+  have known which page a request was for. Both are fixed: item
+  slicing now derives from `pagination.size` and the requested page
+  number, and a trailing `/page:N` segment is now resolved before
+  routing.
+- **`dune validate`'s template check ignored theme inheritance.** A
+  theme that inherits a template from its parent via `theme.yaml`'s
+  `parent:` field rendered correctly at request time, but `validate`
+  only checked the active theme's own `templates/` directory and
+  reported the inherited template as missing — a false-positive
+  failure that could block a release's CI gate for a perfectly valid
+  site. Now delegates to the same parent-chain resolution the runtime
+  template loader already uses.
+
 ## [0.28.2] — 2026-07-08
 
 ### Added
