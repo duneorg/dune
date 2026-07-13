@@ -6,14 +6,16 @@ import type { DuneEngine } from "../core/engine.ts";
  * Load and enrich the collection declared on a page's frontmatter.
  * Returns undefined if the page has no collection, the page index is not
  * found, or the collection fails to resolve.
+ * @param requestedPage 1-based page number from the route's /page:N segment.
  */
 export async function resolveCollectionForPage(
   page: Page,
   collections: CollectionEngine,
   engine: DuneEngine,
+  requestedPage = 1,
 ): Promise<Collection | undefined> {
   if (!page.frontmatter.collection) return undefined;
-  return await resolveDefinition(page.frontmatter.collection, page, collections, engine);
+  return await resolveDefinition(page.frontmatter.collection, page, collections, engine, requestedPage);
 }
 
 /**
@@ -21,11 +23,13 @@ export async function resolveCollectionForPage(
  * (name → collection definition). Enables pages that show several
  * independent page lists — e.g. block-based landing pages. Returns
  * undefined when the page has no `collections:` map or no entry resolves.
+ * @param requestedPage 1-based page number from the route's /page:N segment.
  */
 export async function resolveCollectionsForPage(
   page: Page,
   collections: CollectionEngine,
   engine: DuneEngine,
+  requestedPage = 1,
 ): Promise<Record<string, Collection> | undefined> {
   const defs = page.frontmatter.collections;
   if (!defs || typeof defs !== "object" || Array.isArray(defs)) return undefined;
@@ -38,6 +42,7 @@ export async function resolveCollectionsForPage(
       page,
       collections,
       engine,
+      requestedPage,
     );
     if (collection) resolved[name] = collection;
   }
@@ -49,6 +54,7 @@ async function resolveDefinition(
   page: Page,
   collections: CollectionEngine,
   engine: DuneEngine,
+  requestedPage = 1,
 ): Promise<Collection | undefined> {
   const pageIndex = engine.pages.find((p) => p.sourcePath === page.sourcePath);
   if (!pageIndex) return undefined;
@@ -57,6 +63,7 @@ async function resolveDefinition(
     collectionDef,
     pageIndex,
     page.frontmatter as Record<string, unknown>,
+    requestedPage,
   );
   if (!collection) return undefined;
 

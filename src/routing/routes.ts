@@ -208,7 +208,19 @@ export function duneRoutes(
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      const result = await engine.resolve(url.pathname);
+      // ── Paginated collection page (/page:N) ─────────────────────────────────
+      // Templates render pagination links as `${page.route}page:${n}` — the
+      // trailing segment isn't a real page, it's an instruction to resolve the
+      // owning page's declarative `collection:` at a different page number.
+      // Strip it before route resolution and thread the number through to the
+      // markdown handler, which passes it to the collection engine so it
+      // actually slices a different page of items (see collections/engine.ts).
+      const pageSegmentMatch = url.pathname.match(/^(.*\/)page:(\d+)\/?$/i);
+      const requestedPage = pageSegmentMatch ? Math.max(1, parseInt(pageSegmentMatch[2], 10) || 1) : 1;
+      const resolvePathname = pageSegmentMatch ? pageSegmentMatch[1] : url.pathname;
+      // ─────────────────────────────────────────────────────────────────────
+
+      const result = await engine.resolve(resolvePathname);
 
       // Redirects
       // redirectTo is always site-relative (from resolver.ts / site.yaml
@@ -243,7 +255,7 @@ export function duneRoutes(
         return respond(handleTsxPage(engine, req, url, page, renderJsx));
       }
 
-      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx));
+      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage));
     },
   };
 }

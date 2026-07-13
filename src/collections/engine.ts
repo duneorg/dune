@@ -55,17 +55,20 @@ export interface CollectionEngine {
    * @param definition The collection query definition
    * @param contextPage The page that owns this collection (for @self.* sources)
    * @param contextFrontmatter Full frontmatter of the context page (for @frontmatter sources)
+   * @param requestedPage 1-based page number for paginated collections (from a route's /page:N segment). Ignored when `definition.pagination` is unset.
    */
   resolve(
     definition: CollectionDefinition,
     contextPage: PageIndex,
     contextFrontmatter?: Record<string, unknown>,
+    requestedPage?: number,
   ): Promise<Collection>;
 
   /**
    * Query pages programmatically.
+   * @param requestedPage 1-based page number for paginated collections.
    */
-  query(definition: CollectionDefinition): Promise<Collection>;
+  query(definition: CollectionDefinition, requestedPage?: number): Promise<Collection>;
 
   /**
    * Rebuild with new data (after content index changes).
@@ -415,6 +418,7 @@ export function createCollectionEngine(
     allItems: PageIndex[],
     definition: CollectionDefinition,
     overrideLoadPage?: (sourcePath: string) => Promise<Page>,
+    requestedPage = 1,
   ): Collection {
     const pageLoader = overrideLoadPage ?? loadPage;
     // Apply default published filter
@@ -428,23 +432,30 @@ export function createCollectionEngine(
 
     const total = items.length;
 
-    // Apply offset/limit
-    const offset = definition.offset ?? 0;
-    const limit = definition.limit ?? total;
-    items = items.slice(offset, offset + limit);
-
-    // Determine pagination
     let pageNum = 1;
-    let pageSize = total;
     let totalPages = 1;
+    let offset: number;
+    let limit: number;
 
     if (definition.pagination) {
-      pageSize = typeof definition.pagination === "object"
+      // Paginated collections slice by pageSize + the requested page number
+      // (threaded in from the route's /page:N segment), not by the
+      // unrelated offset/limit frontmatter fields — otherwise every page
+      // renders the same items while page/pages/hasNext/hasPrev report as
+      // if slicing had happened.
+      const pageSize = typeof definition.pagination === "object"
         ? definition.pagination.size
         : 10;
-      totalPages = Math.ceil(total / pageSize);
-      pageNum = Math.floor(offset / pageSize) + 1;
+      totalPages = Math.max(1, Math.ceil(total / pageSize));
+      pageNum = Math.min(Math.max(1, requestedPage), totalPages);
+      offset = (pageNum - 1) * pageSize;
+      limit = pageSize;
+    } else {
+      offset = definition.offset ?? 0;
+      limit = definition.limit ?? total;
     }
+
+    items = items.slice(offset, offset + limit);
 
     return createCollectionObject(items, total, pageNum, totalPages, pageLoader);
   }
@@ -453,6 +464,7 @@ export function createCollectionEngine(
   async function resolveFlexSource(
     flexType: string,
     definition: CollectionDefinition,
+    requestedPage = 1,
   ): Promise<Collection> {
     if (!flex) {
       throw new Error(
@@ -477,7 +489,7 @@ export function createCollectionEngine(
       if (!record) throw new Error(`Flex record not found: ${sourcePath}`);
       return flexRecordToPage(record, flexType);
     };
-    return buildCollection(indexes, definition, flexLoader);
+    return buildCollection(indexes, definition, flexLoader, requestedPage);
   }
 
   return {
@@ -485,22 +497,25 @@ export function createCollectionEngine(
       definition: CollectionDefinition,
       contextPage: PageIndex,
       contextFrontmatter?: Record<string, unknown>,
+      requestedPage = 1,
     ): Promise<Collection> {
       if ("@flex" in definition.items) {
         return resolveFlexSource(
           (definition.items as { "@flex": string })["@flex"],
           definition,
+          requestedPage,
         );
       }
       const sourceItems = resolveSource(definition.items, contextPage, contextFrontmatter);
-      return buildCollection(sourceItems, definition);
+      return buildCollection(sourceItems, definition, undefined, requestedPage);
     },
 
-    async query(definition: CollectionDefinition): Promise<Collection> {
+    async query(definition: CollectionDefinition, requestedPage = 1): Promise<Collection> {
       if ("@flex" in definition.items) {
         return resolveFlexSource(
           (definition.items as { "@flex": string })["@flex"],
           definition,
+          requestedPage,
         );
       }
       // For programmatic queries without a context page, resolve source
@@ -527,7 +542,7 @@ export function createCollectionEngine(
         status: "published",
       };
       const sourceItems = resolveSource(definition.items, dummyContext);
-      return buildCollection(sourceItems, definition);
+      return buildCollection(sourceItems, definition, undefined, requestedPage);
     },
 
     rebuild(newPages: PageIndex[], newTaxonomyMap: TaxonomyMap): void {

@@ -23,6 +23,7 @@ export async function handleMarkdownPage(
   page: Page,
   collections: CollectionEngine | undefined,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
+  requestedPage = 1,
 ): Promise<Response> {
   const templateName = engine.themes.resolveTemplateName(page) ?? "default";
   const template = await engine.themes.loadTemplate(templateName);
@@ -81,10 +82,10 @@ export async function handleMarkdownPage(
   const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 
   const collection = collections
-    ? await resolveCollectionForPage(page, collections, engine)
+    ? await resolveCollectionForPage(page, collections, engine, requestedPage)
     : undefined;
   const collectionsMap = collections
-    ? await resolveCollectionsForPage(page, collections, engine)
+    ? await resolveCollectionsForPage(page, collections, engine, requestedPage)
     : undefined;
   const themeConfig = await resolveThemeConfig(page, engine);
 

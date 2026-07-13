@@ -921,25 +921,66 @@ Deno.test("pagination: pagination object sets page/pages/hasNext/hasPrev", async
     loadPage: makeLoadPage(allPages),
   });
 
-  // Request page 2 of 3 (page size=4, offset=4)
+  // Request page 2 of 3 (page size=4) via the requestedPage argument — this
+  // is what a route's /page:2 segment threads through, not offset/limit
+  // (those are unrelated frontmatter fields and must not affect slicing
+  // when `pagination` is set).
   const collection = await engine.resolve(
     {
       items: { "@self.children": true },
       order: { by: "order", dir: "asc" },
-      offset: 4,
-      limit: 4,
       pagination: { size: 4 },
     },
     parent,
+    undefined,
+    2,
   );
   await collection.load();
 
   assertEquals(collection.items.length, 4);
+  assertEquals(collection.items[0].route, "/blog/post-5");
+  assertEquals(collection.items[3].route, "/blog/post-8");
   assertEquals(collection.total, 10);
   assertEquals(collection.page, 2);
   assertEquals(collection.pages, 3);
   assertEquals(collection.hasNext, true);
   assertEquals(collection.hasPrev, true);
+});
+
+Deno.test("pagination: page 1 and page 2 render different items (regression: limit/offset previously ignored pagination.size)", async () => {
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const children = Array.from({ length: 6 }, (_, i) =>
+    makePage({
+      sourcePath: `02.blog/0${i + 1}.post/default.md`,
+      route: `/blog/post-${i + 1}`,
+      parentPath: "/blog",
+      order: i + 1,
+    })
+  );
+
+  const allPages = [parent, ...children];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const definition = {
+    items: { "@self.children": true as const },
+    order: { by: "order" as const, dir: "asc" as const },
+    pagination: { size: 4 },
+  };
+
+  const page1 = await engine.resolve(definition, parent, undefined, 1);
+  await page1.load();
+  const page2 = await engine.resolve(definition, parent, undefined, 2);
+  await page2.load();
+
+  assertEquals(page1.items.map((p) => p.route), ["/blog/post-1", "/blog/post-2", "/blog/post-3", "/blog/post-4"]);
+  assertEquals(page2.items.map((p) => p.route), ["/blog/post-5", "/blog/post-6"]);
+  assertEquals(page1.hasNext, true);
+  assertEquals(page2.hasNext, false);
+  assertEquals(page2.hasPrev, true);
 });
 
 Deno.test("pagination: first page has hasPrev false", async () => {

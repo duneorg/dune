@@ -250,6 +250,92 @@ Deno.test("contentHandler: redirect Location includes site.basePath when set (mu
 });
 
 // ---------------------------------------------------------------------------
+// Tests — contentHandler: /page:N pagination routing
+// ---------------------------------------------------------------------------
+
+Deno.test("contentHandler: /page:N strips the segment and renders a different collection page", async () => {
+  const parentIndex = makePageIndex({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const childIndexes = Array.from({ length: 6 }, (_, i) =>
+    makePageIndex({
+      sourcePath: `02.blog/0${i + 1}.post/default.md`,
+      route: `/blog/post-${i + 1}`,
+      parentPath: "/blog",
+      order: i + 1,
+    })
+  );
+  const allPageIndexes = [parentIndex, ...childIndexes];
+
+  const blogPage = makeFullPage({
+    sourcePath: "02.blog/default.md",
+    route: "/blog",
+    frontmatter: {
+      title: "Blog",
+      collection: {
+        items: { "@self.children": true },
+        order: { by: "order", dir: "asc" },
+        pagination: { size: 4 },
+      },
+    },
+  });
+
+  const capturedRoutes: string[] = [];
+  const engine = makeEngine(allPageIndexes, async (route: string) => {
+    capturedRoutes.push(route);
+    return { type: "page" as const, page: blogPage };
+  });
+
+  const { createCollectionEngine } = await import("../../src/collections/engine.ts");
+  const collections = createCollectionEngine({
+    pages: allPageIndexes,
+    taxonomyMap: {},
+    loadPage: (sourcePath: string) => {
+      const found = allPageIndexes.find((p) => p.sourcePath === sourcePath);
+      return Promise.resolve(makeFullPage({ sourcePath, route: found?.route ?? sourcePath }));
+    },
+  });
+
+  let capturedCollection: { page: number; items: Array<{ route: string }> } | undefined;
+  engine.themes = {
+    ...engine.themes,
+    resolveTemplateName: (_page: Page) => "default",
+    loadTemplate: (_name: string) =>
+      Promise.resolve({
+        name: "default",
+        component: async (props: { collection?: typeof capturedCollection }) => {
+          capturedCollection = props.collection;
+          return await Promise.resolve(null);
+        },
+        fromTheme: "default",
+      }),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const { contentHandler } = duneRoutes(engine, collections);
+  const renderJsx = (_jsx: unknown, status?: number): Response => new Response("rendered", { status: status ?? 200 });
+
+  // Page 1 (no suffix)
+  await contentHandler(new Request("http://localhost/blog/"), renderJsx);
+  assertEquals(capturedRoutes.at(-1), "/blog/");
+  assertExists(capturedCollection);
+  assertEquals(capturedCollection!.page, 1);
+  assertEquals(capturedCollection!.items.map((p) => p.route), [
+    "/blog/post-1",
+    "/blog/post-2",
+    "/blog/post-3",
+    "/blog/post-4",
+  ]);
+
+  // Page 2 via /page:2 — the resolver must see the stripped base route, and
+  // the collection engine must actually slice a different window of items.
+  await contentHandler(new Request("http://localhost/blog/page:2"), renderJsx);
+  assertEquals(capturedRoutes.at(-1), "/blog/");
+  assertExists(capturedCollection);
+  assertEquals(capturedCollection!.page, 2);
+  assertEquals(capturedCollection!.items.map((p) => p.route), ["/blog/post-5", "/blog/post-6"]);
+});
+
+// ---------------------------------------------------------------------------
 // Tests — rewriteInternalLinks (via contentHandler behaviour)
 // ---------------------------------------------------------------------------
 
