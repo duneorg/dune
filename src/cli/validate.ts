@@ -286,11 +286,17 @@ export async function validateCommand(
       }
     }
 
+    // Resolve against the same theme-chain lookup the runtime engine uses
+    // (child theme -> parent -> grandparent -> plugin template dirs), not
+    // just the active theme's own templates/ directory. Otherwise a theme
+    // that inherits a template via `parent:` (e.g. sirocco inheriting
+    // dune-minimal's search.tsx) is flagged as missing even though it
+    // resolves and renders correctly at request time.
+    const availableTemplates = new Set(engine.themes.getAvailableTemplates());
+
     const missingTemplates: string[] = [];
     for (const tmpl of templatesUsed) {
-      const tmplPath = join(themeDir, `${tmpl}.tsx`);
-      const exists = await storage.exists(tmplPath);
-      if (!exists) {
+      if (!availableTemplates.has(tmpl)) {
         missingTemplates.push(tmpl);
         // Find pages using this template for context
         const using = engine.pages
@@ -300,7 +306,7 @@ export async function validateCommand(
         findings.push({
           category: "template",
           severity: "error",
-          message: `Template "${tmpl}" not found at ${tmplPath}`,
+          message: `Template "${tmpl}" not found in ${themeName}'s theme chain`,
           source: using.join(", "),
         });
       }
@@ -312,7 +318,7 @@ export async function validateCommand(
       } else {
         console.log(`  ❌ Templates: ${missingTemplates.length} missing`);
         for (const t of missingTemplates) {
-          console.log(`     ✗ "${t}" not found in ${themeDir}/`);
+          console.log(`     ✗ "${t}" not found in ${themeName}'s theme chain (checked ${themeDir}/ and any parent themes)`);
         }
       }
     }
