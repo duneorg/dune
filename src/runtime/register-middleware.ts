@@ -123,8 +123,16 @@ export function registerContentCatchAll(
         // includes the injected admin bar and must never be stored anonymously).
         const bypassPageCache = hasAdminSessionCookie(req);
 
+        // Role-gated pages must never enter the shared page cache. The cache is
+        // keyed by pathname only and is not partitioned by authorization, so a
+        // body rendered for an authorized member could otherwise be served to an
+        // anonymous visitor. `gated` is derived at index time (parseRolesSpec),
+        // so this holds regardless of how the member authenticated (cookie,
+        // bearer token, etc.) — a cookie-presence check would miss header auth.
+        const skipSharedCache = bypassPageCache || pageIndex?.gated === true;
+
         // Page cache hit
-        if (pageCache && etag && !bypassPageCache) {
+        if (pageCache && etag && !skipSharedCache) {
           const cached = pageCache.get(url.pathname);
           if (cached?.etag === etag) {
             if (etagMatches(req.headers.get("If-None-Match"), etag)) {
@@ -151,7 +159,7 @@ export function registerContentCatchAll(
         }
 
         // Browser ETag revalidation (skipped for admin-session requests).
-        if (etag && !bypassPageCache && etagMatches(req.headers.get("If-None-Match"), etag)) {
+        if (etag && !skipSharedCache && etagMatches(req.headers.get("If-None-Match"), etag)) {
           response = new Response(null, {
             status: 304,
             headers: { "ETag": etag, "Cache-Control": ccValue },
@@ -185,8 +193,10 @@ export function registerContentCatchAll(
         response = injectBasePath(response, config.site.basePath);
 
         // Cache headers. Admin responses get private/no-store so CDNs/browsers
-        // never revalidate a bar-injected body against the anonymous variant.
-        if (bypassPageCache && response.status === 200) {
+        // never revalidate a bar-injected body against the anonymous variant;
+        // role-gated pages get the same treatment so member-only bodies are
+        // never cached by any shared downstream cache either.
+        if (skipSharedCache && response.status === 200) {
           const h = new Headers(response.headers);
           h.set("Cache-Control", "private, no-store");
           response = new Response(response.body, { status: 200, headers: h });
@@ -201,8 +211,8 @@ export function registerContentCatchAll(
           response = new Response(response.body, { status: 200, headers: h });
         }
 
-        // Store in page cache (never for admin-session responses).
-        if (pageCache && etag && !bypassPageCache && response.status === 200) {
+        // Store in page cache (never for admin-session or role-gated responses).
+        if (pageCache && etag && !skipSharedCache && response.status === 200) {
           const body = await response.arrayBuffer();
           pageCache.set(url.pathname, {
             body: new Uint8Array(body),

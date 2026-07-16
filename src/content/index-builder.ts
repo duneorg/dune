@@ -18,6 +18,7 @@ import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
 import { validateFrontmatter } from "../blueprints/validator.ts";
+import { parseRolesSpec } from "../auth/gating.ts";
 import {
   calculateDepth,
   dirPathToRoute,
@@ -510,6 +511,7 @@ function buildPageIndex(
       ? (sourcePath.split("/").slice(0, -1).join("/") || null)
       : getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},
+    gated: parseRolesSpec(frontmatter.roles) !== null,
     mtime,
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),

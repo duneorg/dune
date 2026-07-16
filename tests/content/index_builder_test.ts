@@ -247,6 +247,20 @@ Deno.test("buildIndex: published=false is preserved on PageIndex", async () => {
   assertEquals(result.pages[0].published, false);
 });
 
+Deno.test("buildIndex: roles frontmatter sets gated=true on PageIndex", async () => {
+  const file = fakeFile("01.members", { roles: "member" });
+  const fm = new Map([["content/01.members/default.md", { title: "Members", roles: "member" }]]);
+  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  assertEquals(result.pages[0].gated, true);
+});
+
+Deno.test("buildIndex: page without roles is not gated", async () => {
+  const file = fakeFile("01.public", {});
+  const fm = new Map([["content/01.public/default.md", { title: "Public" }]]);
+  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  assertEquals(result.pages[0].gated, false);
+});
+
 Deno.test("buildIndex: nav_title falls back to title when absent", async () => {
   const file = fakeFile("01.home", { title: "Home Page" });
   const fm = new Map([["content/01.home/default.md", { title: "Home Page" }]]);

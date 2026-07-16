@@ -259,6 +259,15 @@ export interface PageIndex {
   depth: number;
   parentPath: string | null;
   taxonomy: Record<string, string[]>;
+  /**
+   * True when `frontmatter.roles` declares role-based gating (i.e.
+   * `parseRolesSpec(frontmatter.roles) !== null`). Derived at index time so
+   * the request pipeline can tell a page is access-controlled without loading
+   * it. Used to keep gated pages out of the shared, pathname-keyed page cache.
+   * Absent on synthetic index entries (flex records, collection/search stubs)
+   * that have no role-gating concept — treated as not gated.
+   */
+  gated?: boolean;
   /** File modification time — for incremental cache invalidation */
   mtime: number;
   /** Hash of frontmatter — for change detection */
