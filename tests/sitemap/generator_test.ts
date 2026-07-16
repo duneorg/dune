@@ -217,6 +217,22 @@ Deno.test("generateSitemap: monolingual site collapses the configured home route
   assertEquals(xml.includes("<loc>https://example.com/about</loc>"), true);
 });
 
+Deno.test("generateSitemap: collapses a trailing-slash home route (directory-index page shape, europa-magazin regression)", () => {
+  // Directory-index / template-selector pages get a trailing-slash route
+  // (see src/content/path-utils.ts) — e.g. "/home/", not "/home" — while
+  // homeSlug-derived homeRoute never has a trailing slash. The collapse must
+  // still fire in this (the actual real-world) shape.
+  const pages = [
+    makePage({ route: "/home/", sourcePath: "01.home/default.md" }),
+    makePage({ route: "/articles/", sourcePath: "02.articles/default.md" }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", homeSlug: "home" });
+
+  assertEquals(xml.includes("<loc>https://example.com/</loc>"), true);
+  assertEquals(xml.includes("<loc>https://example.com/home/</loc>"), false);
+  assertEquals(xml.includes("<loc>https://example.com/articles/</loc>"), true);
+});
+
 Deno.test("generateSitemap: monolingual site with no homeSlug configured leaves routes untouched", () => {
   const pages = [makePage({ route: "/home" })];
   const xml = generateSitemap(pages, { siteUrl: "https://example.com" });

@@ -53,14 +53,21 @@ export function generateSitemap(
   const homeRoute = "/" + (options.homeSlug ?? "");
   const isMultilingual = supportedLangs.length > 1;
 
+  // Directory-index pages (the common shape for a home page) get a
+  // trailing-slash route (e.g. "/home/") while homeRoute never has one —
+  // normalize before comparing so the home-route collapse actually fires.
+  const stripTrailingSlash = (route: string): string =>
+    route === "/" ? route : route.replace(/\/$/, "");
+  const isHomeRoute = (p: PageIndex): boolean => stripTrailingSlash(p.route) === homeRoute;
+
   /** Build full URL for a page (with language prefix when multilingual) */
   const pageToUrl = (p: PageIndex): string => {
-    if (!isMultilingual) return base + (p.route === homeRoute ? "/" : p.route);
+    if (!isMultilingual) return base + (isHomeRoute(p) ? "/" : p.route);
     const needsPrefix = p.language !== defaultLang || includeDefaultInUrl;
     if (!needsPrefix) {
-      return base + (p.route === homeRoute ? "/" : p.route);
+      return base + (isHomeRoute(p) ? "/" : p.route);
     }
-    const path = p.route === homeRoute ? "" : p.route;
+    const path = isHomeRoute(p) ? "" : p.route;
     return base + "/" + p.language + path;
   };
 
