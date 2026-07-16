@@ -44,6 +44,7 @@
 
 import { isImportMapError, formatImportMapError } from "./cli/import-map-error.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
+import { buildMergedConfig } from "./cli/merge-config.ts";
 import {
   computeLockPolicy,
   lockPolicyToArgs,
@@ -52,21 +53,6 @@ import {
 } from "./cli/lock-policy.ts";
 
 // ── 1. Local source re-exec ────────────────────────────────────────────────────
-
-/** Rewrite relative import-map values to absolute file:// URLs so the map
- * stays valid when written to a config file in a different directory. */
-function absolutizeImports(
-  imports: Record<string, string>,
-  configUrl: URL,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(imports)) {
-    out[key] = value.startsWith("./") || value.startsWith("../")
-      ? new URL(value, configUrl).href
-      : value;
-  }
-  return out;
-}
 
 /**
  * Decide which --config to re-exec with. Returns dune's own deno.json path,
@@ -89,22 +75,7 @@ async function resolveConfig(
     return { configPath: duneConfigPath }; // no site root / no site deno.json
   }
   try {
-    const dune = JSON.parse(await Deno.readTextFile(duneConfigPath));
-    const site = JSON.parse(await Deno.readTextFile(siteConfigPath));
-    const duneUrl = new URL(`file://${duneConfigPath}`);
-    const siteUrl = new URL(`file://${siteConfigPath}`);
-    const merged = {
-      imports: {
-        ...absolutizeImports(dune.imports ?? {}, duneUrl),
-        ...absolutizeImports(site.imports ?? {}, siteUrl),
-      },
-      scopes: { ...dune.scopes, ...site.scopes },
-      compilerOptions: { ...dune.compilerOptions, ...site.compilerOptions },
-      unstable: [...new Set([...(dune.unstable ?? []), ...(site.unstable ?? [])])],
-      ...(site.nodeModulesDir ?? dune.nodeModulesDir
-        ? { nodeModulesDir: site.nodeModulesDir ?? dune.nodeModulesDir }
-        : {}),
-    };
+    const merged = await buildMergedConfig(duneConfigPath, siteConfigPath);
     const tempDir = await Deno.makeTempDir({ prefix: "dune-config-" });
     const configPath = `${tempDir}/deno.json`;
     await Deno.writeTextFile(configPath, JSON.stringify(merged, null, 2));

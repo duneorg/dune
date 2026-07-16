@@ -23,6 +23,7 @@
  */
 
 import { dirname, join, resolve } from "@std/path";
+import { buildMergedConfig } from "./merge-config.ts";
 
 // ── Startup staleness hint ────────────────────────────────────────────────────
 
@@ -218,8 +219,52 @@ export async function resolveCoreCliSpecifier(siteDenoJson: string): Promise<str
   }
 }
 
-async function runDiscovery(
+/**
+ * The --config= the discovery/caching subprocesses should run with.
+ *
+ * On a JSR install the helper resolves to a jsr: URL whose bare imports come
+ * from JSR package metadata, so the site's own deno.json is enough. From a
+ * local checkout the helper is a file:// module inside the dune source tree,
+ * and its bare specifiers (@std/path, …) exist only in dune's own import map
+ * — spawned with just the site's config, the helper can't even load. Mirror
+ * cli.ts's resolveConfig: merge dune's config under the site's (site wins)
+ * into a temp config and use that instead.
+ *
+ * Side effect, accepted: under the merged config the helper's own dune-source
+ * dependency graph resolves against dune's local import map, so entries for
+ * dune's pins (e.g. jsr:@std/path@^1.1.4) can be added to the site's lockfile
+ * even when the published @dune/core keys them slightly differently. That's
+ * additive-only, tolerated by Deno, and only happens in the
+ * maintainer-running-from-source scenario.
+ *
+ * Caller must remove `tempDir` (when present) after the subprocesses finish.
+ */
+async function prepareSubprocessConfig(
   siteDenoJson: string,
+): Promise<{ configPath: string; tempDir?: string }> {
+  const helperUrl = import.meta.resolve("./lockfile-resolve-helper.ts");
+  if (!helperUrl.startsWith("file://")) {
+    return { configPath: siteDenoJson };
+  }
+  try {
+    const duneConfigPath = new URL("../../deno.json", import.meta.url).pathname;
+    if (await Deno.realPath(duneConfigPath) === await Deno.realPath(siteDenoJson)) {
+      return { configPath: siteDenoJson }; // running against the dune repo itself
+    }
+    const merged = await buildMergedConfig(duneConfigPath, siteDenoJson);
+    const tempDir = await Deno.makeTempDir({ prefix: "dune-lockfile-config-" });
+    const configPath = join(tempDir, "deno.json");
+    await Deno.writeTextFile(configPath, JSON.stringify(merged, null, 2));
+    return { configPath, tempDir };
+  } catch {
+    // Unreadable/non-JSON config on either side — fall back to the site's,
+    // which reproduces the old behavior (and its error message) at worst.
+    return { configPath: siteDenoJson };
+  }
+}
+
+async function runDiscovery(
+  configPath: string,
   scratchLockPath: string,
   root: string,
   opts: { frozen?: boolean } = {},
@@ -229,7 +274,7 @@ async function runDiscovery(
     args: [
       "run",
       "-A",
-      `--config=${siteDenoJson}`,
+      `--config=${configPath}`,
       `--lock=${scratchLockPath}`,
       ...(opts.frozen ? ["--frozen"] : []),
       helperUrl,
@@ -250,7 +295,7 @@ async function runDiscovery(
 }
 
 async function runCacheForSpecifiers(
-  siteDenoJson: string,
+  configPath: string,
   scratchLockPath: string,
   specifiers: string[],
   opts: { frozen?: boolean } = {},
@@ -259,7 +304,7 @@ async function runCacheForSpecifiers(
   const cmd = new Deno.Command(Deno.execPath(), {
     args: [
       "cache",
-      `--config=${siteDenoJson}`,
+      `--config=${configPath}`,
       `--lock=${scratchLockPath}`,
       ...(opts.frozen ? ["--frozen"] : []),
       ...specifiers,
@@ -292,7 +337,7 @@ async function runCacheForSpecifiers(
  * be written as-is.
  */
 async function checkFrozenConsistent(
-  siteDenoJson: string,
+  configPath: string,
   merged: Record<string, unknown>,
   root: string,
   pluginSpecifiers: string[],
@@ -302,8 +347,8 @@ async function checkFrozenConsistent(
   const validationPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   try {
     await Deno.writeTextFile(validationPath, JSON.stringify(merged));
-    await runDiscovery(siteDenoJson, validationPath, root, { frozen: true });
-    await runCacheForSpecifiers(siteDenoJson, validationPath, [
+    await runDiscovery(configPath, validationPath, root, { frozen: true });
+    await runCacheForSpecifiers(configPath, validationPath, [
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
       ...(coreCliSpecifier ? [coreCliSpecifier] : []),
@@ -403,6 +448,7 @@ export async function computeLockfileSync(
 
   const original = await readPristineLockfile(lockfilePath);
 
+  const { configPath, tempDir } = await prepareSubprocessConfig(siteDenoJson);
   const scratchPath = await Deno.makeTempFile({ suffix: ".lock.json" });
   await Deno.remove(scratchPath); // reserve a unique path only; recreate below
   try {
@@ -411,12 +457,12 @@ export async function computeLockfileSync(
     }
 
     const { pluginSpecifiers, clientEntrySpecifiers } = await runDiscovery(
-      siteDenoJson,
+      configPath,
       scratchPath,
       absRoot,
     );
     const coreCliSpecifier = await resolveCoreCliSpecifier(siteDenoJson);
-    await runCacheForSpecifiers(siteDenoJson, scratchPath, [
+    await runCacheForSpecifiers(configPath, scratchPath, [
       ...pluginSpecifiers,
       ...clientEntrySpecifiers,
       ...(coreCliSpecifier ? [coreCliSpecifier] : []),
@@ -426,7 +472,7 @@ export async function computeLockfileSync(
     const { merged, diffs } = mergeLockfiles(original, resolved, upgradeKeys);
 
     const consistency = await checkFrozenConsistent(
-      siteDenoJson,
+      configPath,
       merged,
       absRoot,
       pluginSpecifiers,
@@ -445,6 +491,9 @@ export async function computeLockfileSync(
     };
   } finally {
     await Deno.remove(scratchPath).catch(() => {});
+    if (tempDir) {
+      await Deno.remove(tempDir, { recursive: true }).catch(() => {});
+    }
   }
 }
 

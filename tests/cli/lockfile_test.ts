@@ -325,6 +325,35 @@ plugins:
 });
 
 Deno.test({
+  name: "computeLockfileSync: works against a site whose import map lacks dune's own deps",
+  // Regression test: running from a local checkout, the discovery helper is
+  // a file:// module whose bare imports (@std/path, …) exist only in dune's
+  // own import map. Spawned with just the site's --config= it couldn't load
+  // at all ("Import '@std/path' not a dependency and not in import map"),
+  // which broke lockfile:check/sync for any site outside the dune workspace
+  // — exactly what `dune new` scaffolds. prepareSubprocessConfig now merges
+  // dune's config under the site's for the subprocesses.
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      // Deliberately NOT dune's imports — a bare map like a scaffolded
+      // site's (minus @dune/core, to keep the test off the network).
+      await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({ imports: {} }));
+      await Deno.mkdir(join(root, "config"));
+      await Deno.writeTextFile(join(root, "config", "site.yaml"), `title: Test Site\n`);
+
+      const { status } = await computeLockfileSync(root, new Set());
+      assertEquals(status.lockfilePath, join(root, "deno.lock"));
+      assertEquals(status.consistent, true);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
   name: "computeLockfileSync: diffs against whatever is actually on disk as 'original'",
   // The lockfile commands used to prefer a git-committed copy over disk,
   // worrying that the outer `deno run jsr:@dune/core@X/cli ...` invocation
