@@ -43,6 +43,17 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   lockfile keys exactly, but Deno stores a canonicalized form (`^0.28` as
   `0.28`), so freshly scaffolded sites were reported stale even with a
   complete lockfile. The check now matches at the package level.
+- **Monolingual sites' homepage was sitemapped at its literal route**
+  (e.g. `/home`) instead of `/`, even though that's where the content is
+  actually served — the homeSlug-to-`/` collapse only applied on the
+  multilingual branch of `pageToUrl`. Exclude patterns with a trailing
+  slash (`/posts/`) also matched zero routes instead of behaving like
+  `/posts`; both now normalize.
+- **The home-route collapse still didn't fire for directory-index home
+  pages** (e.g. `01.home/default.md`), the common shape for a homepage —
+  those pages get a trailing-slash route (`/home/`) that didn't
+  exact-match the trailing-slash-free `homeRoute` the collapse compared
+  against.
 
 ## [0.28.4] — 2026-07-16
 
