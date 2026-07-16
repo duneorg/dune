@@ -5,6 +5,31 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.28.4] — 2026-07-16
+
+### Security
+
+- **Role-gated content pages could be served from the shared page
+  cache to unauthenticated visitors.** The cache wasn't partitioned by
+  authorization, and its one bypass signal only covered admin-panel
+  sessions, not the separate site-user (member) auth system that
+  `roles:`-gated pages rely on. Gated pages are now excluded from both
+  the cache read and write paths (derived from the content index, so
+  it holds regardless of authentication method) and get
+  `Cache-Control: private, no-store`.
+
+### Fixed
+
+- **`dune validate` flagged TSX content pages' template as a missing
+  theme template.** The 0.28.3 fix that made the template check walk
+  a theme's parent inheritance chain only excluded `"default"` from
+  the templates-used set, not `"self"` — the sentinel value a `.tsx`
+  content page's template resolves to (the page is its own template).
+  Any site with a TSX content page failed validation looking for a
+  theme template literally named `"self"`.
+
+---
+
 ## [0.28.3] — 2026-07-14
 
 ### Fixed
