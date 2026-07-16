@@ -45,6 +45,7 @@
 
 import { devCommand } from "./cli/dev.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
+import { computeLockPolicy, lockPolicyToArgs, preflightLockPolicy } from "./cli/lock-policy.ts";
 import { serveCommand } from "./cli/serve.ts";
 import { buildCommand } from "./cli/build.ts";
 import { newCommand } from "./cli/new.ts";
@@ -116,7 +117,8 @@ Commands:
   dev                 Start development server with hot-reload
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
-  serve               Start production server
+  serve               Start production server (enforces deno.lock by default;
+                      opt out with --no-frozen or DUNE_FROZEN=0)
   validate            Whole-project lint: config, plugins, templates, schemas, content, skills
 
   cache:clear         Clear all caches
@@ -299,6 +301,10 @@ export async function main() {
       options.trustSource = true;
     } else if (args[i] === "--no-search") {
       options.noSearch = true;
+    } else if (args[i] === "--frozen" || args[i] === "--no-frozen") {
+      // Consumed by computeLockPolicy (which also reads DUNE_FROZEN and
+      // applies the per-command defaults) — matched here so the flags don't
+      // fall through the parser, but not stored in `options`.
     } else if (args[i] === "--app" && args[i + 1]) {
       options.appName = args[++i];
     } else if (args[i] === "--region" && args[i + 1]) {
@@ -374,9 +380,28 @@ export async function main() {
       await Deno.stat(siteDenoJson);
       // Re-exec using cli.ts (not cli-impl.ts) so the entry-point module is
       // executed as a script and calls main() automatically.
+      //
+      // Lockfile flags are rendered explicitly (see cli/lock-policy.ts).
+      // Without them, `--config=<site>` makes the child auto-discover the
+      // site's deno.lock and rewrite it, unfrozen, as a side effect of
+      // resolving its own module graph — silently dirtying the lockfile on
+      // production working trees.
+      const lockPolicy = await computeLockPolicy(args);
+      const lockError = await preflightLockPolicy(lockPolicy);
+      if (lockError) {
+        console.error(lockError);
+        Deno.exit(1);
+      }
       const cliUrl = new URL("./cli.ts", import.meta.url).href;
       const cmd = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", `--config=${siteDenoJson}`, cliUrl, ...args],
+        args: [
+          "run",
+          "-A",
+          `--config=${siteDenoJson}`,
+          ...lockPolicyToArgs(lockPolicy),
+          cliUrl,
+          ...args,
+        ],
         env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
         stdin: "inherit",
         stdout: "inherit",
@@ -433,7 +458,11 @@ export async function main() {
         await serveCommand(root, {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
-          frozen: options.frozen === true,
+          // Effective policy, not the raw flag: serve is frozen by default
+          // (--no-frozen / DUNE_FROZEN=0 opt out). Deno-level enforcement
+          // happens via the re-exec args; this only steers the app-level
+          // staleness message in serveCommand.
+          frozen: (await computeLockPolicy(args)).mode === "frozen",
         });
         break;
 

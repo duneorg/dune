@@ -5,6 +5,34 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **`dune serve` now enforces `deno.lock` at the Deno runtime level by
+  default** and fails closed — with a pointer to `dune lockfile sync` —
+  when the lockfile is missing or out of date. Opt out with `--no-frozen`
+  or `DUNE_FROZEN=0`; opt other commands in with `--frozen` or
+  `DUNE_FROZEN=1`. Previously the CLI's internal re-exec dropped all
+  Deno-level lockfile flags, so no invocation pattern of `serve` had real
+  enforcement. Sites deploying with `serve` should run
+  `dune lockfile check` before upgrading and sync/commit `deno.lock` if
+  it reports gaps.
+- **No dune command implicitly writes `deno.lock` anymore.** When
+  lockfile enforcement is off, the CLI's re-exec now runs with
+  `--no-lock` instead of letting Deno auto-discover and rewrite the
+  site's lockfile as a side effect of module resolution — previously the
+  recommended `deno run --config=deno.json jsr:@dune/core/cli serve`
+  pattern silently dirtied `deno.lock` on server working trees.
+  `dune lockfile sync` is the only thing that writes the lockfile.
+
+### Fixed
+
+- **`dune serve --frozen` was inert.** The flag was documented and
+  forwarded but never parsed, so it neither enabled the app-level
+  staleness check nor any runtime enforcement. It now enables full
+  Deno-level enforcement (and is the default for `serve` — see Changed).
+
 ## [0.28.4] — 2026-07-16
 
 ### Security

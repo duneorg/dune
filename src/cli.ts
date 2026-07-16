@@ -25,6 +25,16 @@
  * Set DUNE_CONFIG_APPLIED=1 to skip the re-exec entirely and run with
  * whatever config the invoking process supplied.
  *
+ * The re-exec'd child is the canonical process: Deno-level flags on the
+ * OUTER invocation do not survive into it (Deno gives a script no way to
+ * introspect its own CLI flags), so anything that must hold for the child —
+ * notably lockfile enforcement — is expressed at the dune level (CLI arg or
+ * env var) and rendered into the child's args; see cli/lock-policy.ts for
+ * the lockfile decision table. Known, accepted non-carryovers: the child
+ * always runs --allow-all regardless of the outer permission set (dune
+ * requires -A), and an outer --watch does not propagate (`dune dev` has its
+ * own watcher).
+ *
  * Because all real imports are deferred to cli-impl.ts via a dynamic import,
  * any "not in import map" error that slips through is caught here and
  * rewritten into an actionable message.
@@ -34,32 +44,15 @@
 
 import { isImportMapError, formatImportMapError } from "./cli/import-map-error.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
+import { buildMergedConfig } from "./cli/merge-config.ts";
+import {
+  computeLockPolicy,
+  lockPolicyToArgs,
+  parseRootArg,
+  preflightLockPolicy,
+} from "./cli/lock-policy.ts";
 
 // ── 1. Local source re-exec ────────────────────────────────────────────────────
-
-/** Extract the --root value from CLI args (mirrors cli-impl.ts parsing). */
-function parseRootArg(args: string[]): string {
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--root" && args[i + 1]) return args[i + 1];
-    if (args[i].startsWith("--root=")) return args[i].slice("--root=".length);
-  }
-  return ".";
-}
-
-/** Rewrite relative import-map values to absolute file:// URLs so the map
- * stays valid when written to a config file in a different directory. */
-function absolutizeImports(
-  imports: Record<string, string>,
-  configUrl: URL,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(imports)) {
-    out[key] = value.startsWith("./") || value.startsWith("../")
-      ? new URL(value, configUrl).href
-      : value;
-  }
-  return out;
-}
 
 /**
  * Decide which --config to re-exec with. Returns dune's own deno.json path,
@@ -82,22 +75,7 @@ async function resolveConfig(
     return { configPath: duneConfigPath }; // no site root / no site deno.json
   }
   try {
-    const dune = JSON.parse(await Deno.readTextFile(duneConfigPath));
-    const site = JSON.parse(await Deno.readTextFile(siteConfigPath));
-    const duneUrl = new URL(`file://${duneConfigPath}`);
-    const siteUrl = new URL(`file://${siteConfigPath}`);
-    const merged = {
-      imports: {
-        ...absolutizeImports(dune.imports ?? {}, duneUrl),
-        ...absolutizeImports(site.imports ?? {}, siteUrl),
-      },
-      scopes: { ...dune.scopes, ...site.scopes },
-      compilerOptions: { ...dune.compilerOptions, ...site.compilerOptions },
-      unstable: [...new Set([...(dune.unstable ?? []), ...(site.unstable ?? [])])],
-      ...(site.nodeModulesDir ?? dune.nodeModulesDir
-        ? { nodeModulesDir: site.nodeModulesDir ?? dune.nodeModulesDir }
-        : {}),
-    };
+    const merged = await buildMergedConfig(duneConfigPath, siteConfigPath);
     const tempDir = await Deno.makeTempDir({ prefix: "dune-config-" });
     const configPath = `${tempDir}/deno.json`;
     await Deno.writeTextFile(configPath, JSON.stringify(merged, null, 2));
@@ -113,9 +91,25 @@ if (import.meta.url.startsWith("file://") && !Deno.env.get("DUNE_CONFIG_APPLIED"
     const duneConfigPath = new URL("../deno.json", import.meta.url).pathname;
     await Deno.stat(duneConfigPath); // verify it exists before re-execing
     const { configPath, tempDir } = await resolveConfig(duneConfigPath);
+    const lockPolicy = await computeLockPolicy(Deno.args);
+    const lockError = await preflightLockPolicy(lockPolicy);
+    if (lockError) {
+      console.error(lockError);
+      if (tempDir) {
+        await Deno.remove(tempDir, { recursive: true }).catch(() => {});
+      }
+      Deno.exit(1);
+    }
     const cmd = new Deno.Command(Deno.execPath(), {
-      args: ["run", "--allow-all", `--config=${configPath}`, import.meta.url, ...Deno.args],
-      env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1" },
+      args: [
+        "run",
+        "--allow-all",
+        `--config=${configPath}`,
+        ...lockPolicyToArgs(lockPolicy),
+        import.meta.url,
+        ...Deno.args,
+      ],
+      env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
