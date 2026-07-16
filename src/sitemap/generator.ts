@@ -55,7 +55,7 @@ export function generateSitemap(
 
   /** Build full URL for a page (with language prefix when multilingual) */
   const pageToUrl = (p: PageIndex): string => {
-    if (!isMultilingual) return base + p.route;
+    if (!isMultilingual) return base + (p.route === homeRoute ? "/" : p.route);
     const needsPrefix = p.language !== defaultLang || includeDefaultInUrl;
     if (!needsPrefix) {
       return base + (p.route === homeRoute ? "/" : p.route);
@@ -179,7 +179,13 @@ function getTranslationGroupKey(
 
 /** Check if a route should be excluded based on prefix patterns. */
 function isExcluded(route: string, patterns: string[]): boolean {
-  return patterns.some((p) => route === p || route.startsWith(p === "/" ? p : p + "/"));
+  return patterns.some((raw) => {
+    // Strip a trailing slash so "/posts/" behaves like "/posts" instead of
+    // silently matching nothing (route.startsWith(p + "/") would become
+    // "/posts//", which no real route has).
+    const p = raw !== "/" && raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    return route === p || route.startsWith(p === "/" ? p : p + "/");
+  });
 }
 
 type ChangeFreq = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";

@@ -203,6 +203,44 @@ Deno.test("generateSitemap: non-excluded pages are unaffected by exclude list", 
   assertEquals(xml.includes("/secret</loc>"), false);
 });
 
+// ─── Regression: monolingual homeSlug collapse (europa-magazin M6 finding) ──
+
+Deno.test("generateSitemap: monolingual site collapses the configured home route to '/'", () => {
+  const pages = [
+    makePage({ route: "/home", sourcePath: "01.home/default.md" }),
+    makePage({ route: "/about", sourcePath: "02.about/default.md" }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", homeSlug: "home" });
+
+  assertEquals(xml.includes("<loc>https://example.com/</loc>"), true);
+  assertEquals(xml.includes("<loc>https://example.com/home</loc>"), false);
+  assertEquals(xml.includes("<loc>https://example.com/about</loc>"), true);
+});
+
+Deno.test("generateSitemap: monolingual site with no homeSlug configured leaves routes untouched", () => {
+  const pages = [makePage({ route: "/home" })];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com" });
+
+  // No homeSlug means homeRoute defaults to "/", which "/home" never matches —
+  // so this must NOT collapse (guards against over-eager collapsing).
+  assertEquals(xml.includes("<loc>https://example.com/home</loc>"), true);
+});
+
+// ─── Regression: exclude pattern with a trailing slash (europa-magazin M6) ──
+
+Deno.test("generateSitemap: exclude pattern with a trailing slash still matches (europa-magazin footgun)", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+    makePage({ route: "/posts", sourcePath: "02.posts/default.md" }),
+    makePage({ route: "/posts/one", sourcePath: "02.posts/01.one/default.md", depth: 1 }),
+  ];
+  const xml = generateSitemap(pages, { siteUrl: "https://example.com", exclude: ["/posts/"] });
+
+  assertEquals(xml.includes("/home</loc>"), true);
+  assertEquals(xml.includes("/posts</loc>"), false);
+  assertEquals(xml.includes("/posts/one</loc>"), false);
+});
+
 Deno.test("generateSitemap: changefreq override for exact route", () => {
   const pages = [
     makePage({ route: "/", depth: 0 }),
