@@ -1,7 +1,7 @@
 /**
- * Regression test for `dune validate`'s template-reference check.
+ * Regression tests for `dune validate`'s template-reference check.
  *
- * Bug: the checker only looked in the active theme's own templates/
+ * Bug 1: the checker only looked in the active theme's own templates/
  * directory, not through the theme's `parent:` inheritance chain that the
  * runtime engine (src/themes/loader.ts) already resolves correctly at
  * request time. A theme that inherits a template from its parent (e.g.
@@ -16,14 +16,23 @@
  * bootstrap() over a two-level theme inheritance chain, mirroring the
  * reported scenario.
  *
+ * Bug 2: the chain-walking fix above didn't carry forward the pre-existing
+ * exclusion of TSX content pages. `page.template` resolves to the sentinel
+ * value "self" for `.tsx` content pages (src/content/path-utils.ts) — the
+ * page is its own template and was never meant to be looked up in a theme's
+ * templates/ directory. Only "default" was excluded from the templates-used
+ * set, so any site with a TSX content page failed `dune validate` looking
+ * for a theme template literally named "self".
+ *
  * NOTE: bootstrap() starts a file-watcher interval that leaks across test
- * boundaries (same caveat as tests/cli/content_delete_test.ts) — this test
- * uses { sanitizeOps: false, sanitizeResources: false }.
+ * boundaries (same caveat as tests/cli/content_delete_test.ts) — these tests
+ * use { sanitizeOps: false, sanitizeResources: false }.
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
+import { validateCommand } from "../../src/cli/validate.ts";
 
 async function withTempSite(
   fn: (root: string) => Promise<void>,
@@ -112,6 +121,64 @@ Deno.test(
       // Sanity: a template that genuinely doesn't exist anywhere in the
       // chain is correctly absent.
       assertEquals(available.includes("does-not-exist-anywhere"), false);
+    });
+  },
+);
+
+Deno.test(
+  "validateCommand: TSX content pages (template \"self\") are not flagged as a missing theme template",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      // Home page — required for bootstrap to resolve a home route.
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
+
+      // A TSX content page — path-utils.ts resolves its `template` to the
+      // sentinel value "self" (the page is its own template), not a name
+      // that should ever be looked up in the theme's templates/ directory.
+      await Deno.mkdir(join(root, "content", "02.custom"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "02.custom", "default.tsx"),
+        `export default function Custom() {\n  return <div>Custom</div>;\n}\n`,
+      );
+
+      // Minimal theme — deliberately has no template named "self".
+      await Deno.mkdir(join(root, "themes", "base", "templates"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "theme.yaml"),
+        "name: base\n",
+      );
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "templates", "default.tsx"),
+        `export default function Default({ children }: { children: unknown }) {\n  return children;\n}\n`,
+      );
+
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "theme:\n  name: base\n",
+      );
+
+      const lines: string[] = [];
+      const origLog = console.log;
+      console.log = (...args: unknown[]) => lines.push(String(args[0]));
+
+      try {
+        await validateCommand(root, { json: true, skills: false });
+      } finally {
+        console.log = origLog;
+      }
+
+      const output = JSON.parse(lines.join(""));
+      const templateFindings = output.findings.filter(
+        (f: { category: string }) => f.category === "template",
+      );
+      assertEquals(templateFindings, []);
+      assertEquals(output.valid, true);
     });
   },
 );

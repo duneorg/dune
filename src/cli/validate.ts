@@ -281,7 +281,7 @@ export async function validateCommand(
     // Collect all unique templates referenced in content
     const templatesUsed = new Set<string>();
     for (const page of engine.pages) {
-      if (page.template && page.template !== "default") {
+      if (page.template && page.template !== "default" && page.template !== "self") {
         templatesUsed.add(page.template);
       }
     }
