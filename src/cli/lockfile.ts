@@ -30,10 +30,18 @@ import { buildMergedConfig } from "./merge-config.ts";
 /**
  * Fast check: does deno.lock look complete for the current deno.json?
  *
- * Only verifies that the @dune/core specifier from the site's import map
- * appears in the lockfile's specifiers section. No subprocesses. Returns true
- * if the lockfile looks stale, false if it looks complete or if any file is
- * unreadable (advisory — errors are silenced).
+ * Only verifies that the @dune/core *package* from the site's import map
+ * appears in the lockfile's specifiers section. Matching is at the package
+ * level, not the exact range string: lockfile keys store Deno's canonical
+ * serialization of the requested range, which can differ textually from the
+ * import map's (e.g. an import of `jsr:@dune/core@^0.28` is stored as
+ * `jsr:@dune/core@0.28` — equivalent ranges, different strings). Whether the
+ * locked range actually satisfies the import is the runtime `--frozen`
+ * check's job; this is only the friendlier pre-flight hint.
+ *
+ * No subprocesses. Returns true if the lockfile looks stale, false if it
+ * looks complete or if any file is unreadable (advisory — errors are
+ * silenced).
  */
 export async function checkLockfileStaleness(root: string): Promise<boolean> {
   try {
@@ -47,7 +55,12 @@ export async function checkLockfileStaleness(root: string): Promise<boolean> {
     const lock = JSON.parse(lockText) as Record<string, unknown>;
     const specifiers = lock.specifiers as Record<string, string> | undefined;
     if (!specifiers) return true;
-    return !(coreSpec in specifiers);
+    if (coreSpec in specifiers) return false;
+    // Strip the version range (the "@" after "jsr:@scope/name") to a
+    // package-level prefix; a versionless import already ends at the name.
+    const rangeAt = coreSpec.lastIndexOf("@");
+    const pkgPrefix = rangeAt > coreSpec.indexOf("@") ? coreSpec.slice(0, rangeAt + 1) : `${coreSpec}@`;
+    return !Object.keys(specifiers).some((key) => key.startsWith(pkgPrefix));
   } catch {
     return false;
   }

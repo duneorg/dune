@@ -24,6 +24,7 @@ import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
 import { loadPlugins } from "../plugins/loader.ts";
+import { ADMIN_MOUNT_SPECIFIER, ADMIN_PLUGIN_SPECIFIER } from "../plugins/builtin.ts";
 
 const root = Deno.args[0] ?? ".";
 
@@ -37,6 +38,14 @@ await loadPlugins({ config, hooks, storage, root });
 const pluginSpecifiers = config.pluginList
   .map((p) => p.src)
   .filter((src) => src.startsWith("jsr:") || src.startsWith("npm:") || src.startsWith("https:"));
+
+// The built-in admin plugin is loaded by bootstrap via a variable-argument
+// dynamic import that Deno's graph builder can't follow, so `deno cache
+// <core>/cli` never records it — it must be reported explicitly or a
+// --frozen serve fails the moment bootstrap loads it (see plugins/builtin.ts).
+if (config.admin?.enabled !== false) {
+  pluginSpecifiers.push(ADMIN_PLUGIN_SPECIFIER, ADMIN_MOUNT_SPECIFIER);
+}
 
 const clientEntrySpecifiers: string[] = [];
 for (const plugin of hooks.plugins()) {

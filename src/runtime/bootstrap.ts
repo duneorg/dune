@@ -7,6 +7,7 @@
 
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
+import { ADMIN_PLUGIN_SPECIFIER } from "../plugins/builtin.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
@@ -505,10 +506,12 @@ export async function bootstrap(
   // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
   // Non-literal dynamic import breaks the circular publish-time dependency between
   // @dune/core and @dune/plugin-admin (each would otherwise need the other to be
-  // on JSR before it could be published).
+  // on JSR before it could be published). Deno can't follow the variable import
+  // statically, so the specifier constant lives in plugins/builtin.ts where the
+  // lockfile discovery helper also reports it — see that module's doc.
   if (adminConfig.enabled !== false) {
-    const adminPkg = "jsr:@dune/plugin-admin@^1.0";
-    const { createAdminPlugin } = await import(adminPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin@^1.0", avoids circular publish-time dep)
+    const adminPkg: string = ADMIN_PLUGIN_SPECIFIER;
+    const { createAdminPlugin } = await import(adminPkg) as {
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
     const adminPlugin = createAdminPlugin(config, storage, {

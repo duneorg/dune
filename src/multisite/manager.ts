@@ -4,6 +4,7 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
+import { ADMIN_MOUNT_SPECIFIER } from "../plugins/builtin.ts";
 import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 import { logger } from "../core/logger.ts";
@@ -72,8 +73,10 @@ export class MultisiteManager {
     });
     // Admin island specifiers from @dune/plugin-admin — loaded via non-literal
     // dynamic import to avoid a publish-time circular dependency with @dune/core.
-    const adminMountPkg = "jsr:@dune/plugin-admin@^1.0/admin/mount";
-    const { getDuneAdminIslands } = await import(adminMountPkg) as { // lockfile-safe: constant ("jsr:@dune/plugin-admin@^1.0/admin/mount")
+    // The specifier constant lives in plugins/builtin.ts where the lockfile
+    // discovery helper also reports it — see that module's doc.
+    const adminMountPkg: string = ADMIN_MOUNT_SPECIFIER;
+    const { getDuneAdminIslands } = await import(adminMountPkg) as {
       getDuneAdminIslands: () => string[];
     };
     // Remote (https://) island specs are materialized as local wrappers —

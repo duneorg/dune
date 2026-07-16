@@ -232,6 +232,43 @@ Deno.test("checkLockfileStaleness: true when @dune/core specifier is absent from
   }
 });
 
+Deno.test("checkLockfileStaleness: false when the lock key is Deno's canonicalized range form", async () => {
+  // Lockfile keys store Deno's canonical serialization of the requested
+  // range: an import of `^0.28` is stored as `0.28` (equivalent ranges,
+  // different strings). Exact-string membership must not report this as
+  // stale — with serve frozen by default it would fail closed on every
+  // freshly scaffolded site.
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.28" },
+    }));
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@0.28": "0.28.4" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: false for a versionless import when the lock has any @dune/core", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core" },
+    }));
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@0.28": "0.28.4" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("checkLockfileStaleness: false when deno.lock is missing (silent)", async () => {
   const root = await Deno.makeTempDir();
   try {

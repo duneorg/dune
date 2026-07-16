@@ -32,6 +32,17 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   forwarded but never parsed, so it neither enabled the app-level
   staleness check nor any runtime enforcement. It now enables full
   Deno-level enforcement (and is the default for `serve` — see Changed).
+- **`dune lockfile sync` didn't record the built-in admin plugin's
+  dependencies**, so a synced lockfile still failed `--frozen` the moment
+  the server loaded the admin plugin (enabled by default). The admin
+  plugin is loaded via a dynamic import Deno's graph builder can't follow
+  statically; the sync discovery now reports it explicitly for
+  admin-enabled sites.
+- **The lockfile staleness hint misfired on caret version ranges.** The
+  pre-start check compared the site's `@dune/core` import string against
+  lockfile keys exactly, but Deno stores a canonicalized form (`^0.28` as
+  `0.28`), so freshly scaffolded sites were reported stale even with a
+  complete lockfile. The check now matches at the package level.
 
 ## [0.28.4] — 2026-07-16
 
