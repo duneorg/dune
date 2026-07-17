@@ -46,7 +46,7 @@ export const DUNE_CORE_RUNTIME_IMPORTS: Record<string, string> = {
   "@db/sqlite": "jsr:@db/sqlite@^0.12",
   "postgres": "npm:postgres@^3.4",
   "ioredis": "npm:ioredis@^5",
-  "polizy": "npm:polizy@^0.2.0",
+  "polizy": "npm:polizy@^0.6.0",
 };
 
 /** The entrypoint-pattern task definitions for dev/build/serve. */

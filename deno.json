@@ -75,7 +75,7 @@
     "@db/sqlite": "jsr:@db/sqlite@^0.12",
     "postgres": "npm:postgres@^3.4",
     "ioredis": "npm:ioredis@^5",
-    "polizy": "npm:polizy@^0.2.0"
+    "polizy": "npm:polizy@^0.6.0"
   },
   "tasks": {
     "dev": "deno run -A src/cli.ts dev",

@@ -144,6 +144,11 @@ export function createDuneAuthSystem(
     // implementation is fully compatible at runtime.
     // deno-lint-ignore no-explicit-any
     storage: adapter as any,
+    // polizy 0.3+ no longer writes to console itself (depth/empty-filter
+    // warnings) — without this it would go silent. Dune's own structured
+    // logger already satisfies polizy's Logger interface (warn/error(message,
+    // meta?)) with no adapter needed.
+    logger,
   });
   return { authz, adapter };
 }
