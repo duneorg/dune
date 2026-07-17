@@ -58,6 +58,32 @@ async function readJson(path: string): Promise<Record<string, unknown> | null> {
   }
 }
 
+/** Quote-aware whitespace tokenizer for a task's command string. */
+function tokenize(cmd: string): string[] {
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  const tokens: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cmd)) !== null) {
+    tokens.push(m[1] ?? m[2] ?? m[3]);
+  }
+  return tokens;
+}
+
+/**
+ * Extract any CLI args a site had customized on its old dev/build/serve task
+ * (e.g. `--port 8080`, `--frozen`) so the migration preserves them instead of
+ * silently dropping them when the task string is replaced wholesale. Finds
+ * the last occurrence of the dune subcommand name (e.g. "serve") in the old
+ * task's tokens and returns everything after it.
+ */
+function extractExtraArgs(oldTaskCmd: string | undefined, commandName: string): string[] {
+  if (!oldTaskCmd) return [];
+  const tokens = tokenize(oldTaskCmd);
+  const idx = tokens.lastIndexOf(commandName);
+  if (idx === -1) return [];
+  return tokens.slice(idx + 1);
+}
+
 function tasksAlreadyMigrated(tasks: Record<string, unknown> | undefined): boolean {
   if (!tasks) return false;
   return ["dev", "build", "serve"].every((cmd) => {
@@ -131,7 +157,15 @@ export async function migrateEntrypointCommand(
   await Deno.writeTextFile(mainTsPath, MAIN_TS_TEMPLATE);
 
   // ── Step 3: main.ts is in place — now it's safe to rewrite tasks ─────────────
-  const newTasks = { ...tasks, ...ENTRYPOINT_TASKS };
+  // Preserve any flags the site had customized on the old task (e.g. a
+  // non-default --port, --frozen) instead of clobbering them with the bare
+  // template — see extractExtraArgs.
+  const newTasks = { ...tasks };
+  for (const [commandName, template] of Object.entries(ENTRYPOINT_TASKS)) {
+    const oldValue = typeof tasks[commandName] === "string" ? tasks[commandName] as string : undefined;
+    const extraArgs = extractExtraArgs(oldValue, commandName);
+    newTasks[commandName] = extraArgs.length > 0 ? `${template} ${extraArgs.join(" ")}` : template;
+  }
   await Deno.writeTextFile(
     denoJsonPath,
     JSON.stringify({ ...denoJson, imports, tasks: newTasks }, null, 2) + "\n",

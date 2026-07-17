@@ -140,6 +140,32 @@ Deno.test("migrate:entrypoint: --dry-run touches nothing", async () => {
   }
 });
 
+Deno.test("migrate:entrypoint: preserves custom flags on old task commands (regression: dropped --port/--frozen)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(
+      join(dir, "deno.json"),
+      JSON.stringify({
+        imports: { "@dune/core": "jsr:@dune/core@^0.28" },
+        tasks: {
+          dev: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli dev --port 8080",
+          build: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli build",
+          serve: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli serve --port 8080 --frozen",
+        },
+      }),
+    );
+    const result = await migrateEntrypointCommand(dir);
+    assertEquals(result.migrated, true);
+
+    const denoJson = JSON.parse(await Deno.readTextFile(join(dir, "deno.json")));
+    assertStringIncludes(denoJson.tasks.dev, "main.ts dev --port 8080");
+    assertEquals(denoJson.tasks.build, "deno run -A main.ts build");
+    assertStringIncludes(denoJson.tasks.serve, "main.ts serve --port 8080 --frozen");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("migrate:entrypoint: rewrites .mcp.json when present", async () => {
   const dir = await makeLegacySite();
   try {
