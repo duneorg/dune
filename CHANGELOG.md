@@ -5,6 +5,43 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.0] — 2026-07-17
+
+### Added
+
+- **`CORE_VERSION` and `CORE_INSTANCE`** exported from `@dune/core/plugins`
+  — identify which `@dune/core` module instance a plugin's own dependency
+  resolution landed on. `CORE_INSTANCE` is a reference sentinel, compared
+  by identity rather than version string, so it catches a same-version
+  dual-load (e.g. a site running core from a local path while a plugin
+  resolves it from JSR) that version comparison alone would miss.
+- **Boot-time core-instance handshake for the admin plugin.** After
+  bootstrap's dynamic import of `@dune/plugin-admin`, compare the
+  sentinel the plugin resolved (re-exported by plugin ≥1.1.3) against
+  this process's own. On mismatch, warn loudly with both versions and a
+  hint — never fail the boot, since a dual-core process degrades subtly
+  rather than catastrophically. Plugins that predate the handshake
+  exports are skipped (no warning). Should never fire once the plugin's
+  floating `@0` core range ships; this is the tripwire for the day that
+  silently stops being true.
+- **The section registry is now exposed on `BootstrapResult`.** Plugins
+  can read `sections` from the injected `AdminContext`/bootstrap result
+  instead of importing the module-level singleton directly, avoiding a
+  split-registry surface when a plugin resolves a different core copy
+  than the host site (see the handshake above).
+
+### Changed
+
+- **`polizy` dependency bumped `0.2.0` → `0.6.0`** (the stale pin was 4
+  minor versions behind npm). Audited every 0.3.0 breaking change against
+  dune's actual usage before bumping: no Prisma adapter (dune uses its
+  own `AuthzLocalAdapter`/`AuthzDbAdapter`), no `throwOnMaxDepth` usage,
+  no `fieldLevelObjects`/`#` ids, exactly one group relation and zero
+  hierarchy relations, and no dangling relation/action refs in
+  `duneAuthzSchema`. The one real gap: polizy 0.3+ stops writing to
+  `console` unless a `logger` is passed — `createDuneAuthSystem` now
+  wires in dune's existing structured logger.
+
 ## [0.30.1] — 2026-07-17
 
 ### Fixed
