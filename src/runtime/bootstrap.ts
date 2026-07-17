@@ -37,6 +37,8 @@ import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { initTracer } from "../tracing/mod.ts";
+import { sectionRegistry } from "../sections/registry.ts";
+import type { SectionRegistry } from "../sections/registry.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
 import { createContentApi, type ContentApi } from "../content/api.ts";
@@ -105,6 +107,16 @@ export interface BootstrapResult {
    */
   /** Populated by `@dune/plugin-admin`'s `mount()` hook; `null` until then. */
   adminContext: Record<string, unknown> | null;
+  /**
+   * Section registry for the Visual Page Builder. Handed to
+   * `@dune/plugin-admin` through this result so the admin panel reads the
+   * same registry instance the renderer uses, instead of importing the
+   * module-level singleton from its own (potentially separately-resolved)
+   * copy of `@dune/core`. Currently the shared singleton; per-site
+   * registries would slot in here.
+   * @since v0.31
+   */
+  sections: SectionRegistry;
   /**
    * Content query API bound to this bootstrap's engine context.
    * Replaces `getContent()` from `@dune/core/content` — no singleton, no global state.
@@ -589,6 +601,7 @@ export async function bootstrap(
     sharedThemesDir,
     metrics,
     pluginPublicRoutes,
+    sections: sectionRegistry,
     contentApi,
     // adminContext is null until @dune/plugin-admin's mount() runs inside mountPlugins()
     adminContext: null,
