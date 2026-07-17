@@ -7,6 +7,17 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ## [Unreleased]
 
+### Added
+
+- **`dune migrate:entrypoint`** moves an existing site from the re-exec
+  path onto the generated `main.ts` entrypoint pattern: writes `main.ts`,
+  merges in any of dune-core's runtime import-map entries the site is
+  missing, and rewrites `dev`/`build`/`serve` tasks (and `.mcp.json` if
+  present) to invoke it directly. Idempotent; refuses to touch a
+  hand-edited `main.ts`; `--dry-run` previews without writing. Run `dune
+  validate` and soak-test a site after migrating before doing the rest of
+  a fleet — see `claudedocs/plan-site-entrypoint.md`'s migration runbook.
+
 ### Changed
 
 - **`dune new` now scaffolds a generated `main.ts` site entrypoint** and

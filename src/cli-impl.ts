@@ -71,6 +71,7 @@ import { updateSkillsCommand } from "./cli/update-skills.ts";
 import { contentDeleteCommand } from "./cli/content-delete.ts";
 import { checkForUpdates } from "./cli/upgrade-check.ts";
 import { upgradeCommand } from "./cli/upgrade.ts";
+import { migrateEntrypointCommand } from "./cli/migrate-entrypoint.ts";
 import {
   codegenCommand,
   migrateGenerateCommand,
@@ -170,6 +171,12 @@ Commands:
   theme:publish       Publish a theme package to JSR (deno publish)
 
   migrate:flex [type]           Migrate Flex Object records to current schema version
+  migrate:entrypoint            Move this site onto the generated main.ts entrypoint
+                                pattern (writes main.ts, adds missing import map
+                                entries, rewrites dev/build/serve tasks). Idempotent;
+                                refuses to touch a hand-edited main.ts. --dry-run to
+                                preview. Run \`dune validate\` afterward and soak-test
+                                before migrating the rest of a fleet.
   migrate:from-grav <src>       Import a Grav site (user/pages/ folder)
   migrate:from-wordpress <src>  Import a WordPress WXR export (.xml)
   migrate:from-markdown <src>   Import a flat folder of markdown files
@@ -542,6 +549,10 @@ export async function main(args: string[] = Deno.args) {
           type: options.positional as string | undefined,
           dryRun: options.dryRun === true,
         });
+        break;
+
+      case "migrate:entrypoint":
+        await migrateEntrypointCommand(root, { dryRun: options.dryRun === true });
         break;
 
       case "mcp:serve":
