@@ -28,10 +28,14 @@ async function makeSite(): Promise<string> {
 
 // ── computeLockPolicy: decision table ─────────────────────────────────────────
 
-Deno.test("computeLockPolicy: serve defaults to frozen", async () => {
+Deno.test("computeLockPolicy: serve defaults to none (frozen is opt-in, not the default)", async () => {
+  // Frozen-by-default for serve briefly shipped (0.29.0) and was reverted:
+  // Deno's --frozen validation refuses to boot against a lockfile containing
+  // entries only reachable through the built-in admin plugin's variable
+  // dynamic import (see this module's doc). Until that's root-caused, no
+  // command defaults to frozen.
   const site = await makeSite();
-  const policy = await computeLockPolicy(["serve", "--root", site], env());
-  assertEquals(policy, { mode: "frozen", lockPath: `${site}/deno.lock` });
+  assertEquals(await computeLockPolicy(["serve", "--root", site], env()), { mode: "none" });
 });
 
 Deno.test("computeLockPolicy: dev defaults to none", async () => {
@@ -44,7 +48,13 @@ Deno.test("computeLockPolicy: other commands default to none", async () => {
   assertEquals(await computeLockPolicy(["build", "--root", site], env()), { mode: "none" });
 });
 
-Deno.test("computeLockPolicy: serve --no-frozen opts out", async () => {
+Deno.test("computeLockPolicy: serve --frozen opts in", async () => {
+  const site = await makeSite();
+  const policy = await computeLockPolicy(["serve", "--root", site, "--frozen"], env());
+  assertEquals(policy, { mode: "frozen", lockPath: `${site}/deno.lock` });
+});
+
+Deno.test("computeLockPolicy: --no-frozen is a no-op against the none default", async () => {
   const site = await makeSite();
   assertEquals(
     await computeLockPolicy(["serve", "--root", site, "--no-frozen"], env()),
@@ -52,24 +62,20 @@ Deno.test("computeLockPolicy: serve --no-frozen opts out", async () => {
   );
 });
 
-Deno.test("computeLockPolicy: DUNE_FROZEN=0 opts serve out", async () => {
+Deno.test("computeLockPolicy: DUNE_FROZEN=1 opts any command in", async () => {
+  const site = await makeSite();
+  for (const command of ["serve", "dev", "build"]) {
+    const policy = await computeLockPolicy([command, "--root", site], env({ DUNE_FROZEN: "1" }));
+    assertEquals(policy.mode, "frozen");
+  }
+});
+
+Deno.test("computeLockPolicy: DUNE_FROZEN=0 is a no-op against the none default", async () => {
   const site = await makeSite();
   assertEquals(
     await computeLockPolicy(["serve", "--root", site], env({ DUNE_FROZEN: "0" })),
     { mode: "none" },
   );
-});
-
-Deno.test("computeLockPolicy: dev --frozen opts in", async () => {
-  const site = await makeSite();
-  const policy = await computeLockPolicy(["dev", "--root", site, "--frozen"], env());
-  assertEquals(policy.mode, "frozen");
-});
-
-Deno.test("computeLockPolicy: DUNE_FROZEN=1 opts dev in", async () => {
-  const site = await makeSite();
-  const policy = await computeLockPolicy(["dev", "--root", site], env({ DUNE_FROZEN: "1" }));
-  assertEquals(policy.mode, "frozen");
 });
 
 Deno.test("computeLockPolicy: explicit flag beats DUNE_FROZEN", async () => {
@@ -96,7 +102,7 @@ Deno.test("computeLockPolicy: lockfile commands are always none", async () => {
 
 Deno.test("computeLockPolicy: --root=value form is honored", async () => {
   const site = await makeSite();
-  const policy = await computeLockPolicy(["serve", `--root=${site}`], env());
+  const policy = await computeLockPolicy(["serve", `--root=${site}`, "--frozen"], env());
   assertEquals(policy, { mode: "frozen", lockPath: `${site}/deno.lock` });
 });
 

@@ -117,8 +117,9 @@ Commands:
   dev                 Start development server with hot-reload
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
-  serve               Start production server (enforces deno.lock by default;
-                      opt out with --no-frozen or DUNE_FROZEN=0)
+  serve               Start production server (--frozen enforces deno.lock;
+                      opt in with --frozen or DUNE_FROZEN=1 — see CHANGELOG
+                      for why this isn't the default yet)
   validate            Whole-project lint: config, plugins, templates, schemas, content, skills
 
   cache:clear         Clear all caches
@@ -458,10 +459,11 @@ export async function main() {
         await serveCommand(root, {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
-          // Effective policy, not the raw flag: serve is frozen by default
-          // (--no-frozen / DUNE_FROZEN=0 opt out). Deno-level enforcement
-          // happens via the re-exec args; this only steers the app-level
-          // staleness message in serveCommand.
+          // Effective policy, not the raw flag: frozen is opt-in (--frozen /
+          // DUNE_FROZEN=1 — see lock-policy.ts's module doc for why serve
+          // doesn't default to it). Deno-level enforcement happens via the
+          // re-exec args; this only steers the app-level staleness message
+          // in serveCommand.
           frozen: (await computeLockPolicy(args)).mode === "frozen",
         });
         break;

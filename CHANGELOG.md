@@ -9,6 +9,25 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Changed
 
+- **`dune serve --frozen` is reverted to opt-in.** 0.29.0 briefly made it
+  the default (see below) but that shipped a live regression: Deno's
+  `--frozen` validation, at least as observed on Deno 2.7.14, refuses to
+  boot against a lockfile containing entries only reachable through the
+  built-in admin plugin's variable-argument dynamic import — even a
+  lockfile `dune lockfile sync` reports as complete. Every site with the
+  admin plugin enabled (the default) failed to start under the 0.29.0
+  default. Root cause is unresolved and most likely implicates Deno's npm
+  dependency hoisting being computed globally rather than scoped to what's
+  statically reachable; see `src/cli/lock-policy.ts`'s module doc for the
+  investigation. **`@dune/core@0.29.0` is yanked on JSR — do not deploy
+  it.** Sites already pinned to it are unaffected by the yank itself (JSR
+  yanking only removes a version from search/latest resolution) but should
+  not enable `--frozen`/`DUNE_FROZEN=1` on `serve` until this is resolved.
+
+## [0.29.0] — 2026-07-16 (yanked — see Unreleased above)
+
+### Changed
+
 - **`dune serve` now enforces `deno.lock` at the Deno runtime level by
   default** and fails closed — with a pointer to `dune lockfile sync` —
   when the lockfile is missing or out of date. Opt out with `--no-frozen`

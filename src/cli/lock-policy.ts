@@ -22,14 +22,28 @@
  * rewriting the lockfile is exactly what `dune lockfile sync` exists to
  * prevent. `sync` is the only writer.
  *
+ * `serve` does NOT default to frozen. It did briefly (0.29.0) but that
+ * shipped a live regression: the built-in admin plugin is loaded via a
+ * variable-argument dynamic import (deliberately, to break the
+ * core<->plugin-admin publish cycle — see plugins/builtin.ts), and Deno's
+ * `--frozen` validation, at least as observed on 2.7.14, refuses to boot
+ * against a lockfile containing entries only reachable through that import —
+ * even a lockfile `dune lockfile sync` reports as complete. Confirmed not to
+ * be a generic "frozen + dynamic import" limitation (a minimal isolated case
+ * with a pure-JSR dynamic import boots fine); reproducible specifically with
+ * Dune's actual graph, most likely implicating Deno's npm dependency
+ * hoisting being computed globally rather than scoped to what's statically
+ * reachable. Root cause is unresolved; frozen enforcement stays opt-in until
+ * it is. See claudedocs/plan-site-entrypoint.md and its sibling docs for the
+ * full investigation.
+ *
  * Decision table (flags win over DUNE_FROZEN, which wins over the default):
  *
  *  | command                       | default | override                        |
  *  |-------------------------------|---------|---------------------------------|
- *  | serve                         | frozen  | --no-frozen / DUNE_FROZEN=0     |
  *  | lockfile:check, lockfile:sync | none    | (none — they scope their own    |
  *  |                               |         | subprocess lockfiles)           |
- *  | everything else               | none    | --frozen / DUNE_FROZEN=1        |
+ *  | everything else (incl. serve) | none    | --frozen / DUNE_FROZEN=1        |
  *
  * This module is part of cli.ts's zero-external-dependency closure — keep it
  * free of bare specifiers.
@@ -94,7 +108,7 @@ export async function computeLockPolicy(
   const command = args[0] ?? "";
   if (SELF_SCOPED_COMMANDS.has(command)) return { mode: "none" };
 
-  let frozen = command === "serve";
+  let frozen = false;
   const envOverride = env.get("DUNE_FROZEN");
   if (envOverride === "1") frozen = true;
   else if (envOverride === "0") frozen = false;
@@ -131,7 +145,7 @@ export async function preflightLockPolicy(policy: LockPolicy): Promise<string | 
     return null;
   } catch {
     return (
-      `[dune] Lockfile enforcement is on (serve default), but no lockfile exists at ${policy.lockPath}.\n` +
+      `[dune] Lockfile enforcement (--frozen) is on, but no lockfile exists at ${policy.lockPath}.\n` +
       `[dune] Run \`dune lockfile sync\` in your site checkout, commit deno.lock, and redeploy.\n` +
       `[dune] To run without lockfile enforcement, pass --no-frozen or set DUNE_FROZEN=0.`
     );
