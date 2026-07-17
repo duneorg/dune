@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.30.1] — 2026-07-17
+
+### Fixed
+
+- **`dune migrate:entrypoint` silently dropped any flags a site had
+  customized on its old `dev`/`build`/`serve` tasks** (e.g. a non-default
+  `--port`, `--frozen`) — the new task string replaced the old one
+  wholesale instead of preserving anything after the subcommand name. A
+  site's `serve` task could go from `... cli serve --port 8080 --frozen`
+  to a bare `deno run -A main.ts serve` with no signal that flags had been
+  lost short of noticing the server came up wrong. Extra args are now
+  extracted from the old task string and appended to the new one.
+  **Sites that already ran `migrate:entrypoint` under 0.30.0** are not
+  self-healed by this fix or by re-running the command — the idempotency
+  check only looks for `"main.ts"` in the task string, and the
+  pre-migration task (the only place the dropped flags existed) has
+  already been overwritten. If that's you, recover the flags from git
+  history (`git log -p -- deno.json`, the commit before the migration)
+  and re-apply them by hand.
+
 ## [0.30.0] — 2026-07-17
 
 ### Added
