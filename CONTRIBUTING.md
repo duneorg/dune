@@ -23,6 +23,8 @@ deno task test # runs the test suite
 - Add or update tests for any changed behaviour
 - Run `deno task check` before submitting
 - Describe what the PR does and why in the description
+- If your change might be breaking, check it against [VERSIONING.md](VERSIONING.md)
+  before proposing a version bump — not every export/behavior change qualifies
 
 ## Reporting issues
 
