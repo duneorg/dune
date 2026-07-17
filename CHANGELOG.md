@@ -9,6 +9,21 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Changed
 
+- **`dune new` now scaffolds a generated `main.ts` site entrypoint** and
+  points `deno.json`'s `dev`/`build`/`serve` tasks and `.mcp.json` at it
+  directly (`deno run -A main.ts <command>`), instead of the global `dune`
+  shim or a `jsr:@dune/core@X.Y.Z/cli` re-exec. The site's own
+  `deno.json`/`deno.lock` now govern the process natively — no re-exec, no
+  synthesized temp config, no two-process resolution to keep consistent.
+  `main.ts` is a one-liner (`import { cli } from "@dune/core/cli"; await
+  cli({ root: import.meta.dirname });`) — treat it as generated, not a
+  place to customize; `dune upgrade` will refuse to touch it if its
+  contents diverge from the template. The scaffold's import map now also
+  includes dune-core's own internal runtime dependencies (previously
+  supplied for free by the re-exec's config merge — see
+  `claudedocs/plan-site-entrypoint.md` for the full design and cost
+  breakdown). Existing sites are unaffected until migrated via `dune
+  upgrade`; the old re-exec paths still work.
 - **`dune serve --frozen` is reverted to opt-in.** 0.29.0 briefly made it
   the default (see below) but that shipped a live regression: Deno's
   `--frozen` validation, at least as observed on Deno 2.7.14, refuses to

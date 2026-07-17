@@ -233,12 +233,54 @@ const MCP_JSON = `{
   "mcpServers": {
     "dune": {
       "command": "deno",
-      "args": ["run", "-A", "jsr:@dune/core/cli", "mcp:serve"],
+      "args": ["run", "-A", "main.ts", "mcp:serve"],
       "cwd": "."
     }
   }
 }
 `;
+
+/**
+ * The site's entrypoint. Deliberately a one-liner: \`deno run -A main.ts
+ * <command>\` runs as the site's own process with the site's own
+ * deno.json/deno.lock governing natively — no re-exec, no synthesized
+ * config. \`dune upgrade\` refuses to touch this file if its contents don't
+ * match this template; treat it as generated, not a place to customize.
+ */
+const MAIN_TS = `import { cli } from "@dune/core/cli";
+
+await cli({ root: import.meta.dirname });
+`;
+
+/**
+ * Every import dune-core's own internal code needs, beyond \`@dune/core\`
+ * itself and the site's own preact/theme deps. With no re-exec to merge in
+ * dune's own import map on top of the site's, the site's map has to carry
+ * this whole closure itself — see plan-site-entrypoint.md's "costs" section.
+ * Keep this in sync with dune's own deno.json imports (minus @std/assert,
+ * a dev/test-only dependency, and the @dune/plugin-admin/* subpath entries,
+ * which nothing reaches via a bare specifier — only via the literal jsr:
+ * string in bootstrap.ts's variable dynamic import, which needs no import
+ * map entry at all).
+ */
+const DUNE_CORE_RUNTIME_IMPORTS = {
+  "fresh": "jsr:@fresh/core@^2",
+  "@std/yaml": "jsr:@std/yaml@^1",
+  "@std/path": "jsr:@std/path@^1.1.4",
+  "@std/fs": "jsr:@std/fs@^1",
+  "@std/crypto": "jsr:@std/crypto@^1",
+  "@std/encoding": "jsr:@std/encoding@^1",
+  "marked": "npm:marked@^15",
+  "gray-matter": "npm:gray-matter@^4",
+  "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
+  "sharp": "npm:sharp@^0.33",
+  "nodemailer": "npm:nodemailer@^6",
+  "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2",
+  "@db/sqlite": "jsr:@db/sqlite@^0.12",
+  "postgres": "npm:postgres@^3.4",
+  "ioredis": "npm:ioredis@^5",
+  "polizy": "npm:polizy@^0.2.0",
+};
 
 const DENO_JSON = `{
   "imports": {
@@ -247,12 +289,13 @@ const DENO_JSON = `{
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/core": "jsr:@dune/core@^0.29"
+    "@dune/core": "jsr:@dune/core@^0.29",
+${Object.entries(DUNE_CORE_RUNTIME_IMPORTS).map(([k, v]) => `    "${k}": "${v}"`).join(",\n")}
   },
   "tasks": {
-    "dev": "dune dev",
-    "build": "dune build",
-    "serve": "dune serve"
+    "dev": "deno run -A --watch=main.ts main.ts dev",
+    "build": "deno run -A main.ts build",
+    "serve": "deno run -A main.ts serve"
   },
   "compilerOptions": {
     "jsx": "react-jsx",
@@ -485,6 +528,7 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await Deno.writeTextFile(`${dir}/content/02.blog/blog.md`, BLOG_MD);
   await Deno.writeTextFile(`${dir}/content/02.blog/01.hello-world/post.md`, FIRST_POST);
   await Deno.writeTextFile(`${dir}/deno.json`, DENO_JSON);
+  await Deno.writeTextFile(`${dir}/main.ts`, MAIN_TS);
   await Deno.writeTextFile(`${dir}/.vscode/settings.json`, VSCODE_SETTINGS);
   await Deno.writeTextFile(`${dir}/.mcp.json`, MCP_JSON);
 
@@ -506,6 +550,7 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`    themes/starter/islands/NavToggle.tsx  (Preact island — mobile nav)`);
   console.log(`    themes/starter/templates/default.tsx`);
   console.log(`    deno.json`);
+  console.log(`    main.ts                 (site entrypoint — generated, don't customize)`);
   if (skillsResult.installed > 0) {
     console.log(`    .claude/skills/         (${skillsResult.installed} AI agent skill files)`);
   }
