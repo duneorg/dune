@@ -39,6 +39,12 @@
  * any "not in import map" error that slips through is caught here and
  * rewritten into an actionable message.
  *
+ * This module also re-exports the callable `cli()` entry (see cli-impl.ts)
+ * for sites that generate a `main.ts` importing `@dune/core/cli` directly —
+ * that's a plain function call with no re-exec involved, so everything above
+ * is gated behind `import.meta.main`: merely importing this module (rather
+ * than running it as the invoked script) must not trigger any of it.
+ *
  * @module
  */
 
@@ -86,7 +92,10 @@ async function resolveConfig(
   }
 }
 
-if (import.meta.url.startsWith("file://") && !Deno.env.get("DUNE_CONFIG_APPLIED")) {
+if (
+  import.meta.main && import.meta.url.startsWith("file://") &&
+  !Deno.env.get("DUNE_CONFIG_APPLIED")
+) {
   try {
     const duneConfigPath = new URL("../deno.json", import.meta.url).pathname;
     await Deno.stat(duneConfigPath); // verify it exists before re-execing
@@ -126,13 +135,19 @@ if (import.meta.url.startsWith("file://") && !Deno.env.get("DUNE_CONFIG_APPLIED"
 
 // ── 2. Load real CLI ───────────────────────────────────────────────────────────
 
-try {
-  const { main } = await import("./cli-impl.ts");
-  await main();
-} catch (err) {
-  if (isImportMapError(err)) {
-    console.error(formatImportMapError(err as Error));
-    Deno.exit(1);
+if (import.meta.main) {
+  try {
+    const { main } = await import("./cli-impl.ts");
+    await main();
+  } catch (err) {
+    if (isImportMapError(err)) {
+      console.error(formatImportMapError(err as Error));
+      Deno.exit(1);
+    }
+    throw err;
   }
-  throw err;
 }
+
+// ── 3. Callable export for generated site entrypoints ─────────────────────────
+
+export { cli } from "./cli-impl.ts";

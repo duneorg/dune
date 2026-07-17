@@ -245,12 +245,11 @@ Deploy options (used with deploy:init):
   --out <dir>         Output directory for generated files (default: site root)
 `;
 
-export async function main() {
+export async function main(args: string[] = Deno.args) {
   // Suppress Fresh's built-in update nag — Dune owns the upgrade UX and
   // "Fresh X.Y is available" is an internal detail site users shouldn't see.
   Deno.env.set("FRESH_NO_UPDATE_CHECK", "true");
 
-  const args = Deno.args;
   const command = args[0];
 
   if (!command || command === "--help" || command === "-h") {
@@ -763,5 +762,26 @@ export async function main() {
     }
     Deno.exit(1);
   }
+}
+
+/**
+ * Callable entry for a site's generated `main.ts` (`import { cli } from
+ * "@dune/core/cli"; await cli({ root: import.meta.dirname });`) — no re-exec
+ * involved, since the site's own `deno.json`/`deno.lock` already govern this
+ * process natively as soon as `main.ts` is the invoked script.
+ *
+ * `opts.root` is injected as `--root` unless the caller already passed one
+ * explicitly on the command line (which wins). Passing `import.meta.dirname`
+ * makes root resolution independent of the process's cwd — important since
+ * `main.ts` may be invoked by an absolute path from a service manager with no
+ * particular working directory set.
+ */
+export async function cli(opts: { root?: string } = {}): Promise<void> {
+  const args = [...Deno.args];
+  const hasRoot = args.some((a) => a === "--root" || a.startsWith("--root="));
+  if (opts.root && !hasRoot) {
+    args.push("--root", opts.root);
+  }
+  await main(args);
 }
 
