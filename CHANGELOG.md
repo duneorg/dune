@@ -5,7 +5,7 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
-## [Unreleased]
+## [0.30.0] — 2026-07-17
 
 ### Added
 
@@ -34,7 +34,7 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   supplied for free by the re-exec's config merge — see
   `claudedocs/plan-site-entrypoint.md` for the full design and cost
   breakdown). Existing sites are unaffected until migrated via `dune
-  upgrade`; the old re-exec paths still work.
+  migrate:entrypoint`; the old re-exec paths still work.
 - **`dune serve --frozen` is reverted to opt-in.** 0.29.0 briefly made it
   the default (see below) but that shipped a live regression: Deno's
   `--frozen` validation, at least as observed on Deno 2.7.14, refuses to
