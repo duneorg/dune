@@ -64,6 +64,8 @@
  * @since 0.6.0
  */
 
+import denoJson from "../../deno.json" with { type: "json" };
+
 /**
  * Current plugin API version.
  *
@@ -75,6 +77,27 @@
  * @since 0.3.0
  */
 export const PLUGIN_API_VERSION = "0.7";
+
+/**
+ * The version of this loaded `@dune/core` module instance.
+ * @since 0.31.0
+ */
+export const CORE_VERSION: string = denoJson.version;
+
+/**
+ * Identity sentinel for this loaded copy of `@dune/core`.
+ *
+ * Compared **by reference** (`===`) to detect the same package being resolved
+ * into a process twice — e.g. a plugin whose `@dune/core` version range the
+ * host site's pinned version can't satisfy, or a site running core from a
+ * local path while a plugin resolves it from JSR. Version strings can't catch
+ * the latter case (both copies may report the same version); module identity
+ * catches both. `@dune/plugin-admin` re-exports the sentinel it resolved so
+ * `bootstrap()` can verify both landed on one instance.
+ *
+ * @since 0.31.0
+ */
+export const CORE_INSTANCE: Readonly<Record<never, never>> = Object.freeze({});
 
 export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms, mountPlugins } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";

@@ -7,7 +7,7 @@
 
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { ADMIN_PLUGIN_SPECIFIER } from "../plugins/builtin.ts";
+import { ADMIN_PLUGIN_SPECIFIER, adminCoreMismatch } from "../plugins/builtin.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
@@ -523,9 +523,12 @@ export async function bootstrap(
   // lockfile discovery helper also reports it — see that module's doc.
   if (adminConfig.enabled !== false) {
     const adminPkg: string = ADMIN_PLUGIN_SPECIFIER;
-    const { createAdminPlugin } = await import(adminPkg) as {
+    const adminModule = await import(adminPkg) as Record<string, unknown> & {
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
+    const mismatch = adminCoreMismatch(adminModule);
+    if (mismatch) console.warn(mismatch);
+    const { createAdminPlugin } = adminModule;
     const adminPlugin = createAdminPlugin(config, storage, {
       root,
       dev,
