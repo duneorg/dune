@@ -10,9 +10,12 @@ export {
   resolveFacetValue,
 } from "./engine.ts";
 export type {
+  FacetCounts,
   /** Full-text search engine over the Dune content index. Obtain via {@link createSearchEngine}. */
   SearchEngine,
   SearchEngineOptions,
+  SearchFilter,
+  SearchOptions,
   /** A single result returned by {@link SearchEngine.search}. */
   SearchResult,
   SearchEngineCreateContext,
