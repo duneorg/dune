@@ -249,7 +249,13 @@ async function routeApiRequest(
     // large limits force the search engine to allocate huge result arrays.
     const rawLimit = parseInt(url.searchParams.get("limit") ?? "20", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
-    const results = await search.search(q, limit);
+    const sort = url.searchParams.get("sort") === "date" ? "date" : "relevance";
+    // "type" mirrors the `subtype` facet field declared via
+    // `system.search.facets` in site.yaml — "all" (or omitted) means no filter.
+    const type = url.searchParams.get("type");
+    const filter = type && type !== "all" ? { field: "subtype", value: type } : undefined;
+    const results = await search.search(q, limit, { sort, filter });
+    const facets = search.facetCounts ? await search.facetCounts(q, "subtype") : {};
     return {
       items: results.map((r) => ({
         route: r.page.route,
@@ -261,6 +267,7 @@ async function routeApiRequest(
       })),
       total: results.length,
       query: q,
+      facets,
     };
   }
 

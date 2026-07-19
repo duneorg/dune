@@ -12,7 +12,12 @@
  * to make theirs the default.
  */
 
-import type { SearchEngine, SearchResult } from "./engine.ts";
+import type {
+  FacetCounts,
+  SearchEngine,
+  SearchOptions,
+  SearchResult,
+} from "./engine.ts";
 import type { PageIndex } from "../content/types.ts";
 
 /** Extended search interface with multi-engine management. */
@@ -81,13 +86,19 @@ export function createSearchManager(
       await Promise.all([...engines.values()].map((e) => e.rebuild(pages)));
     },
 
-    async search(query: string, limit = 10): Promise<SearchResult[]> {
+    async search(
+      query: string,
+      limit = 10,
+      options?: SearchOptions,
+    ): Promise<SearchResult[]> {
       if (!parallel) {
-        return engines.get(active)!.search(query, limit);
+        return engines.get(active)!.search(query, limit, options);
       }
       // Parallel: fan out, merge by score, deduplicate by route.
       const allResults = await Promise.all(
-        [...engines.values()].map((e) => e.search(query, limit).catch(() => [] as SearchResult[])),
+        [...engines.values()].map((e) =>
+          e.search(query, limit, options).catch(() => [] as SearchResult[])
+        ),
       );
       const seen = new Set<string>();
       const merged: SearchResult[] = [];
@@ -98,6 +109,13 @@ export function createSearchManager(
         }
       }
       return merged.slice(0, limit);
+    },
+
+    facetCounts(query: string, field: string): Promise<FacetCounts> {
+      const engine = engines.get(active)!;
+      return engine.facetCounts
+        ? engine.facetCounts(query, field)
+        : Promise.resolve({});
     },
 
     async suggest(prefix: string, limit = 10): Promise<string[]> {

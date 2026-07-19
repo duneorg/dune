@@ -91,6 +91,28 @@ export interface SearchResult {
   facetValues?: Record<string, string | string[]>;
 }
 
+/**
+ * Narrows results to documents whose `field` resolves to exactly `value`.
+ * `field` is either a {@link PageIndex} top-level property name (`template`,
+ * `language`) or a facet field declared via `system.search.facets[].field`
+ * in `site.yaml`, resolved from {@link PageIndex.extra}.
+ */
+export interface SearchFilter {
+  field: string;
+  value: string;
+}
+
+/** Options accepted by {@link SearchEngine.search}. */
+export interface SearchOptions {
+  /** Narrow results to a single field=value match. */
+  filter?: SearchFilter;
+  /** Result order. Default: `"relevance"`. */
+  sort?: "relevance" | "date";
+}
+
+/** Value → count map returned by {@link SearchEngine.facetCounts}. */
+export type FacetCounts = Record<string, number>;
+
 /** Full-text search engine over the Dune content index. Obtain via {@link createSearchEngine}. */
 export interface SearchEngine {
   /** Build the search index (call after content index is ready) */
@@ -101,7 +123,18 @@ export interface SearchEngine {
    * Async to allow external search backends (e.g. Meilisearch) to make
    * network calls. The built-in in-memory engine resolves immediately.
    */
-  search(query: string, limit?: number): Promise<SearchResult[]>;
+  search(
+    query: string,
+    limit?: number,
+    options?: SearchOptions,
+  ): Promise<SearchResult[]>;
+  /**
+   * Count distinct values of `field` across all documents matching `query`
+   * (ignoring `limit` and any filter) — used to render facet tabs with
+   * counts. Optional: engines that don't implement faceting simply omit it,
+   * and callers should treat a missing method as "no counts available".
+   */
+  facetCounts?(query: string, field: string): Promise<FacetCounts>;
   /** Rebuild index (after content changes) */
   rebuild(pages: PageIndex[]): Promise<void>;
   /**
@@ -540,6 +573,81 @@ export function createSearchEngine(
       (end < text.length ? "..." : "");
   }
 
+  /**
+   * Score every indexed document against `query`, returning all matches
+   * (score > 0) unsorted and unfiltered. Shared by `search()` and
+   * `facetCounts()` so counts reflect the full candidate set, not just the
+   * page of results returned to the caller.
+   */
+  function scoreAllCandidates(query: string): SearchResult[] {
+    const queryTerms = tokenize(query);
+    if (queryTerms.length === 0) return [];
+
+    // Pre-compile one RegExp per term.  These are reused across all
+    // candidate documents — avoids constructing N_terms × N_docs regexp
+    // objects on every search call.
+    const termRegexps = queryTerms.map(
+      (t) => new RegExp(escapeRegex(t), "g"),
+    );
+
+    // Find candidate documents (any term matches)
+    const candidates = new Set<string>();
+    for (const term of queryTerms) {
+      // Prefix matching for partial terms
+      for (const [indexedTerm, docs] of invertedIndex.entries()) {
+        if (indexedTerm.startsWith(term) || term.startsWith(indexedTerm)) {
+          for (const sp of docs) candidates.add(sp);
+        }
+      }
+    }
+
+    const results: SearchResult[] = [];
+    for (const sp of candidates) {
+      const doc = documents.get(sp);
+      if (!doc) continue;
+
+      const { score, excerpt, highlights } = scoreDocument(
+        doc,
+        queryTerms,
+        termRegexps,
+      );
+      if (score > 0) {
+        const result: SearchResult = { page: doc.page, score, excerpt };
+        if (highlightMatches) {
+          result.highlights = highlights;
+        }
+        results.push(result);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Resolve a facet `field` name against a page: `template`/`language` read
+   * the corresponding {@link PageIndex} property directly, anything else is
+   * looked up in {@link PageIndex.extra} (populated from `system.search.facets`
+   * in `site.yaml`).
+   */
+  function resolveFieldValue(
+    page: PageIndex,
+    field: string,
+  ): string | string[] | undefined {
+    if (field === "template") return page.template;
+    if (field === "language") return page.language;
+    return page.extra?.[field];
+  }
+
+  function matchesFilter(page: PageIndex, filter: SearchFilter): boolean {
+    const val = resolveFieldValue(page, filter.field);
+    if (Array.isArray(val)) return val.includes(filter.value);
+    return val === filter.value;
+  }
+
+  function dateValue(page: PageIndex): number {
+    return page.date ? new Date(page.date).getTime() : 0;
+  }
+
   return {
     async build(): Promise<void> {
       invertedIndex.clear();
@@ -651,52 +759,36 @@ export function createSearchEngine(
       }
     },
 
-    search(query: string, limit: number = 20): Promise<SearchResult[]> {
-      const queryTerms = tokenize(query);
-      if (queryTerms.length === 0) return Promise.resolve([]);
+    search(
+      query: string,
+      limit: number = 20,
+      options?: SearchOptions,
+    ): Promise<SearchResult[]> {
+      const results = scoreAllCandidates(query);
+      const filtered = options?.filter
+        ? results.filter((r) => matchesFilter(r.page, options.filter!))
+        : results;
 
-      // Pre-compile one RegExp per term.  These are reused across all
-      // candidate documents — avoids constructing N_terms × N_docs regexp
-      // objects on every search call.
-      const termRegexps = queryTerms.map(
-        (t) => new RegExp(escapeRegex(t), "g"),
-      );
-
-      // Find candidate documents (any term matches)
-      const candidates = new Set<string>();
-      for (const term of queryTerms) {
-        // Prefix matching for partial terms
-        for (const [indexedTerm, docs] of invertedIndex.entries()) {
-          if (indexedTerm.startsWith(term) || term.startsWith(indexedTerm)) {
-            for (const sp of docs) candidates.add(sp);
-          }
-        }
+      if (options?.sort === "date") {
+        filtered.sort((a, b) => dateValue(b.page) - dateValue(a.page));
+      } else {
+        filtered.sort((a, b) => b.score - a.score);
       }
 
-      // Score and rank
-      const results: SearchResult[] = [];
-      for (const sp of candidates) {
-        const doc = documents.get(sp);
-        if (!doc) continue;
+      return Promise.resolve(filtered.slice(0, limit));
+    },
 
-        const { score, excerpt, highlights } = scoreDocument(
-          doc,
-          queryTerms,
-          termRegexps,
-        );
-        if (score > 0) {
-          const result: SearchResult = { page: doc.page, score, excerpt };
-          if (highlightMatches) {
-            result.highlights = highlights;
-          }
-          results.push(result);
+    facetCounts(query: string, field: string): Promise<FacetCounts> {
+      const counts: FacetCounts = {};
+      for (const { page } of scoreAllCandidates(query)) {
+        const val = resolveFieldValue(page, field);
+        if (Array.isArray(val)) {
+          for (const v of val) counts[v] = (counts[v] ?? 0) + 1;
+        } else if (val) {
+          counts[val] = (counts[val] ?? 0) + 1;
         }
       }
-
-      // Sort by score (descending)
-      results.sort((a, b) => b.score - a.score);
-
-      return Promise.resolve(results.slice(0, limit));
+      return Promise.resolve(counts);
     },
 
     async rebuild(newPages: PageIndex[]): Promise<void> {
