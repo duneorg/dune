@@ -156,13 +156,28 @@ export function duneRoutes(
           }));
         }
         const q = url.searchParams.get("q") ?? "";
-        const rawResults = search ? await search.search(q, 20) : [];
+        const sort = url.searchParams.get("sort") === "date" ? "date" : "relevance";
+        // "type" mirrors the `subtype` facet field declared via
+        // `system.search.facets` in site.yaml; "facet[subtype]" is kept for
+        // back-compat with existing theme templates. "all"/absent = no filter.
+        const type = url.searchParams.get("type") ??
+          url.searchParams.get("facet[subtype]");
+        const filter = type && type !== "all"
+          ? { field: "subtype", value: type }
+          : undefined;
+        const rawResults = search
+          ? await search.search(q, 50, { sort, filter })
+          : [];
         const results = rawResults.map((r) => ({
           route: r.page.route,
           title: r.page.title,
           excerpt: r.excerpt,
           score: r.score,
+          template: r.page.template,
         }));
+        const facetCounts = q && search?.facetCounts
+          ? await search.facetCounts(q, "subtype")
+          : {};
 
         const searchTemplate = await engine.themes.loadTemplate("search");
         if (searchTemplate) {
@@ -185,6 +200,9 @@ export function duneRoutes(
               t,
               searchQuery: q,
               searchResults: results,
+              searchFacetCounts: facetCounts,
+              searchSort: sort,
+              searchType: type ?? "",
               dir: directionOf(lang, engine.config?.system?.languages?.rtl_override),
             }),
           ));
