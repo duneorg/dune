@@ -5,6 +5,25 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.1] — 2026-07-20
+
+### Added
+
+- **`SearchEngine.search()` accepts `filter`/`sort` options, and an optional
+  `facetCounts()` method** — the built-in in-memory engine implements both.
+  `filter` narrows results to a single `field=value` match (`template`/
+  `language`, or any facet field declared via `system.search.facets` in
+  `site.yaml`); `sort` orders by `"relevance"` (default) or `"date"`.
+  `facetCounts(query, field)` returns a value→count map across all matches,
+  independent of `limit`/`filter` — used to render facet tabs with counts.
+- **`GET /api/search` and the built-in `/search` page** gained `sort` and
+  `type` query params (`type` filters on the `subtype` facet field) and a
+  `facets` field in the response/template props. See
+  [Search](docs/content/07.reference/04.search) for details.
+- **`SearchFilter`, `SearchOptions`, `FacetCounts`** exported from
+  `@dune/core/search` for plugins implementing an alternative `SearchEngine`
+  (e.g. `@dune/plugin-meilisearch`).
+
 ## [0.31.0] — 2026-07-17
 
 ### Added
