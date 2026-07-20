@@ -48,15 +48,37 @@
  * @module
  */
 
-import { isImportMapError, formatImportMapError } from "./cli/import-map-error.ts";
+import {
+  formatImportMapError,
+  isImportMapError,
+} from "./cli/import-map-error.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
 import { buildMergedConfig } from "./cli/merge-config.ts";
+import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
 import {
   computeLockPolicy,
   lockPolicyToArgs,
   parseRootArg,
   preflightLockPolicy,
 } from "./cli/lock-policy.ts";
+
+// ── 0. Optional --env-file loading ─────────────────────────────────────────────
+//
+// Must run before either re-exec below: both spread `Deno.env.toObject()`
+// into the child's env, so anything loaded here propagates through every
+// re-exec layer (local-source and remote/JSR) for free.
+
+if (import.meta.main) {
+  const envFileArg = parseEnvFileArg(Deno.args);
+  if (envFileArg) {
+    try {
+      await loadEnvFile(envFileArg, parseRootArg(Deno.args));
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      Deno.exit(1);
+    }
+  }
+}
 
 // ── 1. Local source re-exec ────────────────────────────────────────────────────
 
@@ -118,7 +140,11 @@ if (
         import.meta.url,
         ...Deno.args,
       ],
-      env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
+      env: {
+        ...Deno.env.toObject(),
+        DUNE_CONFIG_APPLIED: "1",
+        DENO_NO_UPDATE_CHECK: "1",
+      },
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
