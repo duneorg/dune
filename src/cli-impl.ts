@@ -45,7 +45,13 @@
 
 import { devCommand } from "./cli/dev.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
-import { computeLockPolicy, lockPolicyToArgs, preflightLockPolicy } from "./cli/lock-policy.ts";
+import {
+  computeLockPolicy,
+  lockPolicyToArgs,
+  parseRootArg,
+  preflightLockPolicy,
+} from "./cli/lock-policy.ts";
+import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
 import { serveCommand } from "./cli/serve.ts";
 import { buildCommand } from "./cli/build.ts";
 import { newCommand } from "./cli/new.ts";
@@ -57,9 +63,9 @@ import { pluginCommands } from "./cli/plugin.ts";
 import { themeCommands } from "./cli/theme.ts";
 import {
   migrateFromGrav,
-  migrateFromWordPress,
-  migrateFromMarkdown,
   migrateFromHugo,
+  migrateFromMarkdown,
+  migrateFromWordPress,
 } from "./cli/migrate.ts";
 import { schemaExportCommand } from "./cli/schema.ts";
 import { validateCommand } from "./cli/validate.ts";
@@ -96,7 +102,10 @@ function resolveVersion(): { version: string; source: string } {
       const denoJsonPath = new URL("../deno.json", url).pathname;
       const denoJson = JSON.parse(Deno.readTextFileSync(denoJsonPath));
       const root = new URL("../", url).pathname.replace(/\/$/, "");
-      return { version: denoJson.version ?? "unknown", source: `source: ${root}` };
+      return {
+        version: denoJson.version ?? "unknown",
+        source: `source: ${root}`,
+      };
     } catch {
       return { version: "unknown", source: "source (local)" };
     }
@@ -210,6 +219,10 @@ Commands:
 Options:
   --port <n>          Server port (default: 3000)
   --root <dir>        Site root directory (default: .)
+  --env-file[=path]   Load KEY=VALUE pairs from a dotenv file (default: .env)
+                      into the environment before startup. Off by default —
+                      nothing is auto-loaded without this flag. Values already
+                      set in the environment always take precedence.
   --debug             Enable debug output
   --json              Output machine-parseable JSON (build, content:*, config:*)
   --version, -V       Show version and install source
@@ -257,6 +270,20 @@ export async function main(args: string[] = Deno.args) {
   // "Fresh X.Y is available" is an internal detail site users shouldn't see.
   Deno.env.set("FRESH_NO_UPDATE_CHECK", "true");
 
+  // Redundant with (and a no-op after) cli.ts's own --env-file loading on the
+  // normal `dune` invocation path — kept here too so the `cli()` callable
+  // export (generated main.ts entrypoints, which import this module directly
+  // and never go through cli.ts's import.meta.main block) also supports it.
+  const envFileArg = parseEnvFileArg(args);
+  if (envFileArg) {
+    try {
+      await loadEnvFile(envFileArg, parseRootArg(args));
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      Deno.exit(1);
+    }
+  }
+
   const command = args[0];
 
   if (!command || command === "--help" || command === "-h") {
@@ -277,7 +304,9 @@ export async function main(args: string[] = Deno.args) {
   const upgradeKeys: string[] = [];
   for (let i = 1; i < args.length; i++) {
     if (args[i] === "--upgrade" && args[i + 1]) {
-      upgradeKeys.push(...args[++i].split(",").map((s) => s.trim()).filter(Boolean));
+      upgradeKeys.push(
+        ...args[++i].split(",").map((s) => s.trim()).filter(Boolean),
+      );
     } else if (args[i] === "--port" && args[i + 1]) {
       options.port = args[++i];
     } else if (args[i] === "--root" && args[i + 1]) {
@@ -368,16 +397,20 @@ export async function main(args: string[] = Deno.args) {
   // process's own module graph against the site's real deno.lock with no
   // --frozen, silently writing to it before the lockfile command's own
   // careful read-of-original logic ever runs.
-  if (!Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
-      command !== "lockfile:check" && command !== "lockfile:sync" &&
-      !import.meta.url.startsWith("file://")) {
+  if (
+    !Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
+    command !== "lockfile:check" && command !== "lockfile:sync" &&
+    !import.meta.url.startsWith("file://")
+  ) {
     // We're about to lock into running the published @dune/core package for
     // the rest of this process tree — see local-checkout-detect.ts for why
     // that's easy to hit by accident even with a workspace-linked checkout
     // on disk. Only worth the filesystem walk for the commands a maintainer
     // would actually use to exercise local changes against a real site.
     if (command === "dev" || command === "serve") {
-      const { warnIfLocalCheckoutUnused } = await import("./cli/local-checkout-detect.ts");
+      const { warnIfLocalCheckoutUnused } = await import(
+        "./cli/local-checkout-detect.ts"
+      );
       await warnIfLocalCheckoutUnused(Deno.cwd());
     }
     const { resolve, join: joinPath } = await import("@std/path");
@@ -409,7 +442,11 @@ export async function main(args: string[] = Deno.args) {
           cliUrl,
           ...args,
         ],
-        env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1", DENO_NO_UPDATE_CHECK: "1" },
+        env: {
+          ...Deno.env.toObject(),
+          DUNE_CONFIG_APPLIED: "1",
+          DENO_NO_UPDATE_CHECK: "1",
+        },
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
@@ -452,7 +489,9 @@ export async function main(args: string[] = Deno.args) {
           outDir: options.outDir as string | undefined,
           baseUrl: options.baseUrl as string | undefined,
           noIncremental: options.noIncremental === true,
-          concurrency: options.concurrency ? parseInt(options.concurrency as string) : undefined,
+          concurrency: options.concurrency
+            ? parseInt(options.concurrency as string)
+            : undefined,
           hybrid: options.hybrid === true,
           includeDrafts: options.includeDrafts === true,
           verbose: options.verbose === true,
@@ -502,11 +541,17 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "content:list":
-        await contentCommands.list(root, { debug: options.debug === true, json: options.json === true });
+        await contentCommands.list(root, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
         break;
 
       case "content:check":
-        await contentCommands.check(root, { debug: options.debug === true, json: options.json === true });
+        await contentCommands.check(root, {
+          debug: options.debug === true,
+          json: options.json === true,
+        });
         break;
 
       case "content:i18n-status":
@@ -552,7 +597,9 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "migrate:entrypoint":
-        await migrateEntrypointCommand(root, { dryRun: options.dryRun === true });
+        await migrateEntrypointCommand(root, {
+          dryRun: options.dryRun === true,
+        });
         break;
 
       case "mcp:serve":
@@ -795,4 +842,3 @@ export async function cli(opts: { root?: string } = {}): Promise<void> {
   }
   await main(args);
 }
-
