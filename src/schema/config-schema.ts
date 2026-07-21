@@ -285,6 +285,12 @@ export const CONFIG_SCHEMA = {
               items: { type: "string" },
               description: "Additional frontmatter fields to include in search index",
             },
+            page_size: {
+              type: "integer",
+              minimum: 1,
+              default: 20,
+              description: "Default results per page when a request doesn't specify limit",
+            },
           },
         },
         metrics: {

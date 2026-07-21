@@ -247,8 +247,11 @@ async function routeApiRequest(
     }
     // Cap and floor the limit. parseInt accepts garbage as NaN, and very
     // large limits force the search engine to allocate huge result arrays.
-    const rawLimit = parseInt(url.searchParams.get("limit") ?? "200", 10);
-    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : 200;
+    // Default page size is per-site (system.search.page_size), falling back
+    // to 20 — a client-supplied `limit` param always overrides it.
+    const defaultLimit = engine.config?.system?.search?.page_size ?? 20;
+    const rawLimit = parseInt(url.searchParams.get("limit") ?? String(defaultLimit), 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : defaultLimit;
     const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
     const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
     const sort = url.searchParams.get("sort") === "date" ? "date" : "relevance";

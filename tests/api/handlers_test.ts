@@ -331,12 +331,45 @@ Deno.test("createApiHandler GET /api/search: offset pages through results withou
   assertEquals(new Set(allRoutes).size, 25); // no duplicates
 });
 
-Deno.test("createApiHandler GET /api/search: default limit is 200, not 20", async () => {
-  const handler = makeHandlerWithSearch(makeFakeSearchEngine(300));
+Deno.test("createApiHandler GET /api/search: default limit is 20 when site config sets none", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(30));
   const res = await handler(new Request("http://localhost/api/search?q=test"));
   const body = await res!.json();
-  assertEquals(body.items.length, 200);
+  assertEquals(body.items.length, 20);
   assertEquals(body.hasMore, true);
+});
+
+Deno.test("createApiHandler GET /api/search: default limit honors system.search.page_size", async () => {
+  const engine = makeEngine([]);
+  engine.config = { ...engine.config, system: { ...engine.config.system, search: { page_size: 5 } } };
+  const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
+  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const handler = createApiHandler({
+    engine,
+    collections,
+    taxonomy,
+    search: makeFakeSearchEngine(30),
+  });
+  const res = await handler(new Request("http://localhost/api/search?q=test"));
+  const body = await res!.json();
+  assertEquals(body.items.length, 5);
+  assertEquals(body.hasMore, true);
+});
+
+Deno.test("createApiHandler GET /api/search: client-supplied limit overrides site default", async () => {
+  const engine = makeEngine([]);
+  engine.config = { ...engine.config, system: { ...engine.config.system, search: { page_size: 5 } } };
+  const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
+  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const handler = createApiHandler({
+    engine,
+    collections,
+    taxonomy,
+    search: makeFakeSearchEngine(30),
+  });
+  const res = await handler(new Request("http://localhost/api/search?q=test&limit=15"));
+  const body = await res!.json();
+  assertEquals(body.items.length, 15);
 });
 
 Deno.test("createApiHandler GET /api/search: negative offset is clamped to 0", async () => {

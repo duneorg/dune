@@ -137,6 +137,12 @@ export interface SystemConfig {
     highlight?: boolean;
     /** Character length of returned excerpts. Default: 160 */
     excerpt_length?: number;
+    /**
+     * Default number of results returned per page by /api/search and the
+     * SSR /search route when the request doesn't specify `limit`. Default: 20.
+     * A client-supplied `limit` query param still overrides this per request.
+     */
+    page_size?: number;
   };
   /**
    * Session persistence backend.
