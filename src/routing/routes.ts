@@ -167,9 +167,10 @@ export function duneRoutes(
           : undefined;
         const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
         const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
-        // Per-site default (system.search.page_size), falling back to 20 —
-        // mirrors /api/search's default so SSR and client-side paging agree.
-        const searchLimit = engine.config?.system?.search?.page_size ?? 20;
+        // Per-site default (system.search.page_size), falling back to 50 —
+        // the SSR page's original default, kept distinct from /api/search's
+        // 20 since a rendered results page has room for more per screen.
+        const searchLimit = engine.config?.system?.search?.page_size ?? 50;
         // Fetch one extra beyond the page size to know if there's a next
         // page, without a separate total-count query (see /api/search for
         // the same trick).

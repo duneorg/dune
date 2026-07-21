@@ -288,8 +288,8 @@ export const CONFIG_SCHEMA = {
             page_size: {
               type: "integer",
               minimum: 1,
-              default: 20,
-              description: "Default results per page when a request doesn't specify limit",
+              description:
+                "Default results per page when a request doesn't specify limit, applied to both /api/search and the SSR /search route. Unset falls back to 20 for /api/search and 50 for SSR.",
             },
           },
         },

@@ -139,8 +139,11 @@ export interface SystemConfig {
     excerpt_length?: number;
     /**
      * Default number of results returned per page by /api/search and the
-     * SSR /search route when the request doesn't specify `limit`. Default: 20.
-     * A client-supplied `limit` query param still overrides this per request.
+     * SSR /search route when the request doesn't specify `limit`, applying
+     * identically to both once set. When unset, /api/search falls back to
+     * 20 and the SSR /search route falls back to 50 (its original default,
+     * since a rendered results page has room for more per screen). A
+     * client-supplied `limit` query param still overrides this per request.
      */
     page_size?: number;
   };

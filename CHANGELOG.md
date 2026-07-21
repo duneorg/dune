@@ -5,6 +5,38 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.2] — 2026-07-21
+
+### Added
+
+- **`--env-file[=path]` flag for `dune dev`/`serve`.** Off by default —
+  loads a simple `KEY=VALUE` dotenv file into the process environment
+  before any plugin/config loading reads it, so a plugin needing a secret
+  (e.g. `plugin-meilisearch`'s `MEILI_API_KEY`) doesn't silently get no
+  value when running `dune dev` directly instead of through a wrapper that
+  manually exports a project's `.env`. A value already set in the
+  environment always wins over the file; an explicitly-requested file that
+  doesn't exist is a hard error.
+- **`SearchOptions` gains `offset`, and `/api/search`/the SSR `/search`
+  route gain `offset`/`hasMore`/`system.search.page_size`.** Lets a caller
+  page through a result set instead of only ever getting the first page.
+  `hasMore` is computed by fetching one extra result and slicing it off, so
+  "is there another page" is knowable without a separate total-count query.
+  `page_size` sets a site-wide default for both routes, applied identically
+  once set; unset, the existing defaults are unchanged (20 for
+  `/api/search`, 50 for the SSR page). `SearchEngine.search()`'s return
+  type is unchanged.
+
+### Fixed
+
+- **A site's `minimumDependencyAge` setting was silently dropped from the
+  merged config used for `dune dev`'s re-exec.** `buildMergedConfig()` only
+  copied `imports`/`scopes`/`compilerOptions`/`unstable`/`nodeModulesDir`
+  into the temp workspace-root config — a site pinning a package to an
+  exact version and declaring a `minimumDependencyAge` exclude for it kept
+  getting rejected as "too new" under `dune dev`, since the process that
+  actually ran the freshness check never had the exclude at all.
+
 ## [0.31.1] — 2026-07-20
 
 ### Added
