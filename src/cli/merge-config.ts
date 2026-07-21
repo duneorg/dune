@@ -50,9 +50,21 @@ export async function buildMergedConfig(
     },
     scopes: { ...dune.scopes, ...site.scopes },
     compilerOptions: { ...dune.compilerOptions, ...site.compilerOptions },
-    unstable: [...new Set([...(dune.unstable ?? []), ...(site.unstable ?? [])])],
+    unstable: [
+      ...new Set([...(dune.unstable ?? []), ...(site.unstable ?? [])]),
+    ],
     ...(site.nodeModulesDir ?? dune.nodeModulesDir
       ? { nodeModulesDir: site.nodeModulesDir ?? dune.nodeModulesDir }
+      : {}),
+    // Deno only accepts this field in a workspace-root config, which the
+    // merged temp config always is (see the module doc) — dropping it here
+    // silently disabled a site's own opt-out of the 24h default freshness
+    // window for its own first-party package pins.
+    ...(site.minimumDependencyAge ?? dune.minimumDependencyAge
+      ? {
+        minimumDependencyAge: site.minimumDependencyAge ??
+          dune.minimumDependencyAge,
+      }
       : {}),
   };
 }
