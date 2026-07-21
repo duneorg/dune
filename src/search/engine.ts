@@ -108,6 +108,11 @@ export interface SearchOptions {
   filter?: SearchFilter;
   /** Result order. Default: `"relevance"`. */
   sort?: "relevance" | "date";
+  /**
+   * Skip this many matching results before collecting `limit` of them —
+   * for paging through a result set. Default: `0`.
+   */
+  offset?: number;
 }
 
 /** Value → count map returned by {@link SearchEngine.facetCounts}. */
@@ -775,7 +780,8 @@ export function createSearchEngine(
         filtered.sort((a, b) => b.score - a.score);
       }
 
-      return Promise.resolve(filtered.slice(0, limit));
+      const offset = options?.offset ?? 0;
+      return Promise.resolve(filtered.slice(offset, offset + limit));
     },
 
     facetCounts(query: string, field: string): Promise<FacetCounts> {

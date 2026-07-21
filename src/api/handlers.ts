@@ -238,23 +238,31 @@ async function routeApiRequest(
   // GET /api/search?q=term
   if (path === "/api/search") {
     const q = url.searchParams.get("q");
-    if (!q) return { items: [], total: 0, query: "" };
+    if (!q) return { items: [], total: 0, query: "", hasMore: false, offset: 0 };
     // Cap query length: long queries explode tokenization/fuzzy-match cost
     // and create an unauthenticated CPU-DoS vector. 256 chars is far above
     // any natural search query.
     if (q.length > 256) {
-      return { items: [], total: 0, query: q.slice(0, 256), error: "Query too long" };
+      return { items: [], total: 0, query: q.slice(0, 256), error: "Query too long", hasMore: false, offset: 0 };
     }
     // Cap and floor the limit. parseInt accepts garbage as NaN, and very
     // large limits force the search engine to allocate huge result arrays.
-    const rawLimit = parseInt(url.searchParams.get("limit") ?? "20", 10);
-    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
+    const rawLimit = parseInt(url.searchParams.get("limit") ?? "200", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : 200;
+    const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+    const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
     const sort = url.searchParams.get("sort") === "date" ? "date" : "relevance";
     // "type" mirrors the `subtype` facet field declared via
     // `system.search.facets` in site.yaml — "all" (or omitted) means no filter.
     const type = url.searchParams.get("type");
     const filter = type && type !== "all" ? { field: "subtype", value: type } : undefined;
-    const results = await search.search(q, limit, { sort, filter });
+    // Fetch one extra result beyond `limit` so "is there another page?" is
+    // knowable without a separate total-count query — SearchEngine.search()
+    // only returns a page of results, not a total, and adding one wouldn't
+    // be free for every engine (a second Meilisearch request).
+    const fetched = await search.search(q, limit + 1, { sort, filter, offset });
+    const hasMore = fetched.length > limit;
+    const results = hasMore ? fetched.slice(0, limit) : fetched;
     const facets = search.facetCounts ? await search.facetCounts(q, "subtype") : {};
     return {
       items: results.map((r) => ({
@@ -268,6 +276,8 @@ async function routeApiRequest(
       total: results.length,
       query: q,
       facets,
+      hasMore,
+      offset,
     };
   }
 
