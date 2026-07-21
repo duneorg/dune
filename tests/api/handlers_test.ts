@@ -264,6 +264,88 @@ Deno.test("createApiHandler GET /api/taxonomy/:name: returns 404 for nonexistent
   assertExists((await res!.json()).error);
 });
 
+// ── GET /api/search ──────────────────────────────────────────────────────────
+
+/** A fake SearchEngine whose search() actually honors limit/offset, so the
+ * handler's "fetch limit+1 to compute hasMore" trick can be tested end to
+ * end without a real content index. */
+function makeFakeSearchEngine(totalResults: number): SearchEngine {
+  const all = Array.from({ length: totalResults }, (_, i) =>
+    makePageIndex({
+      sourcePath: `page-${i}/default.md`,
+      route: `/page-${i}`,
+      title: `Result ${i}`,
+    }));
+  return {
+    search: (_query: string, limit = 200, options?: { offset?: number }) => {
+      const offset = options?.offset ?? 0;
+      return Promise.resolve(
+        all.slice(offset, offset + limit).map((page) => ({
+          page,
+          score: 1,
+          excerpt: "excerpt",
+        })),
+      );
+    },
+    suggest: () => Promise.resolve([]),
+    build: () => Promise.resolve(),
+  } as unknown as SearchEngine;
+}
+
+function makeHandlerWithSearch(search: SearchEngine): (req: Request) => Promise<Response | null> {
+  const engine = makeEngine([]);
+  const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
+  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  return createApiHandler({ engine, collections, taxonomy, search });
+}
+
+Deno.test("createApiHandler GET /api/search: hasMore is false when results fit within limit", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(5));
+  const res = await handler(new Request("http://localhost/api/search?q=test&limit=10"));
+  const body = await res!.json();
+  assertEquals(body.items.length, 5);
+  assertEquals(body.hasMore, false);
+  assertEquals(body.offset, 0);
+});
+
+Deno.test("createApiHandler GET /api/search: hasMore is true when more results exist beyond limit", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(50));
+  const res = await handler(new Request("http://localhost/api/search?q=test&limit=10"));
+  const body = await res!.json();
+  assertEquals(body.items.length, 10);
+  assertEquals(body.hasMore, true);
+  // The limit+1 fetch trick must never leak the extra probe result.
+  assertEquals(body.items[body.items.length - 1].route, "/page-9");
+});
+
+Deno.test("createApiHandler GET /api/search: offset pages through results without gaps", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(25));
+  const page1 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=0")))!.json();
+  const page2 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=10")))!.json();
+  const page3 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=20")))!.json();
+  assertEquals(page1.hasMore, true);
+  assertEquals(page2.hasMore, true);
+  assertEquals(page3.hasMore, false);
+  assertEquals(page3.items.length, 5);
+  const allRoutes = [...page1.items, ...page2.items, ...page3.items].map((i: { route: string }) => i.route);
+  assertEquals(new Set(allRoutes).size, 25); // no duplicates
+});
+
+Deno.test("createApiHandler GET /api/search: default limit is 200, not 20", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(300));
+  const res = await handler(new Request("http://localhost/api/search?q=test"));
+  const body = await res!.json();
+  assertEquals(body.items.length, 200);
+  assertEquals(body.hasMore, true);
+});
+
+Deno.test("createApiHandler GET /api/search: negative offset is clamped to 0", async () => {
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(5));
+  const res = await handler(new Request("http://localhost/api/search?q=test&offset=-5"));
+  const body = await res!.json();
+  assertEquals(body.offset, 0);
+});
+
 // ── Unknown route ──────────────────────────────────────────────────────────
 
 Deno.test("createApiHandler: unknown /api/* path returns 404", async () => {

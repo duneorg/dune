@@ -139,6 +139,52 @@ Deno.test("search options: no filter returns all matches", async () => {
   assertEquals(results.length, 3);
 });
 
+Deno.test("search options: offset skips the first N results", async () => {
+  const engine = createSearchEngine({
+    pages: makePages(),
+    storage: makeStorage(bodyMap),
+    contentDir: "content",
+    formats: makeFormats(bodyMap),
+  });
+  await engine.build();
+
+  const all = await engine.search("europe", 10, { sort: "date" });
+  const skipped = await engine.search("europe", 10, { sort: "date", offset: 1 });
+  assertEquals(skipped.map((r) => r.page.title), all.slice(1).map((r) => r.page.title));
+});
+
+Deno.test("search options: offset + limit pages through results without gaps or dupes", async () => {
+  const engine = createSearchEngine({
+    pages: makePages(),
+    storage: makeStorage(bodyMap),
+    contentDir: "content",
+    formats: makeFormats(bodyMap),
+  });
+  await engine.build();
+
+  const page1 = await engine.search("europe", 2, { sort: "date", offset: 0 });
+  const page2 = await engine.search("europe", 2, { sort: "date", offset: 2 });
+  assertEquals(page1.length, 2);
+  assertEquals(page2.length, 1);
+  assertEquals(
+    [...page1, ...page2].map((r) => r.page.title),
+    ["Post B", "PDF C", "Article A"],
+  );
+});
+
+Deno.test("search options: offset beyond the result count returns an empty page", async () => {
+  const engine = createSearchEngine({
+    pages: makePages(),
+    storage: makeStorage(bodyMap),
+    contentDir: "content",
+    formats: makeFormats(bodyMap),
+  });
+  await engine.build();
+
+  const results = await engine.search("europe", 10, { offset: 100 });
+  assertEquals(results, []);
+});
+
 Deno.test("search options: sort=date orders newest first regardless of score", async () => {
   const engine = createSearchEngine({
     pages: makePages(),

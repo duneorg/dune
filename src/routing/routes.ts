@@ -165,9 +165,17 @@ export function duneRoutes(
         const filter = type && type !== "all"
           ? { field: "subtype", value: type }
           : undefined;
-        const rawResults = search
-          ? await search.search(q, 50, { sort, filter })
+        const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+        const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
+        const searchLimit = 200;
+        // Fetch one extra beyond the page size to know if there's a next
+        // page, without a separate total-count query (see /api/search for
+        // the same trick).
+        const fetched = search
+          ? await search.search(q, searchLimit + 1, { sort, filter, offset })
           : [];
+        const hasMore = fetched.length > searchLimit;
+        const rawResults = hasMore ? fetched.slice(0, searchLimit) : fetched;
         const results = rawResults.map((r) => ({
           route: r.page.route,
           title: r.page.title,
@@ -203,6 +211,9 @@ export function duneRoutes(
               searchFacetCounts: facetCounts,
               searchSort: sort,
               searchType: type ?? "",
+              searchHasMore: hasMore,
+              searchOffset: offset,
+              searchLimit,
               dir: directionOf(lang, engine.config?.system?.languages?.rtl_override),
             }),
           ));
