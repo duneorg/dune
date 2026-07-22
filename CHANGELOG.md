@@ -5,6 +5,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.3] — 2026-07-23
+
+### Fixed
+
+- **`dune theme:install` didn't resolve a theme's declared `parent:`.** A
+  theme can extend another via `parent: {name}` in `theme.yaml`, but the
+  loader only resolves that reference against a package already registered
+  under that exact name in `site.themes` (or a local `themes/{name}/`
+  dir) — `theme:install` never populated that, so installing a theme whose
+  parent wasn't already installed left the inheritance silently unresolved
+  at runtime (e.g. `sirocco` → `dune-minimal`).
+  Now walks the parent chain and installs any missing ancestor, recursing
+  through multi-level chains, idempotent on repeat installs. There's no
+  recorded "install source" for a parent slug, so one is derived by
+  convention: a sibling package directory (`theme-{parent}` next to the
+  child's own package dir) for local path installs, or a same-scope
+  `theme-{parent}` JSR package resolved to its latest published version for
+  remote installs. Fails with an actionable error if the sibling directory
+  doesn't exist or the JSR parent isn't published yet.
+
 ## [0.31.2] — 2026-07-21
 
 ### Added

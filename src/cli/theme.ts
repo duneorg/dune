@@ -46,7 +46,9 @@ export async function themeListCommand(root: string): Promise<void> {
 
   console.log("\nTheme packages:\n");
   if (packages.length === 0) {
-    console.log("  (none — add with dune theme:install jsr:@scope/theme-name@1.0.0)");
+    console.log(
+      "  (none — add with dune theme:install jsr:@scope/theme-name@1.0.0)",
+    );
   } else {
     for (const pkg of packages) {
       console.log(`  ${pkg.name}  ←  ${pkg.src}`);
@@ -70,7 +72,9 @@ export async function themeListCommand(root: string): Promise<void> {
   }
 
   if (theme?.name) {
-    console.log(`\nActive: ${theme.name}${theme.src ? ` via ${theme.src}` : ""}\n`);
+    console.log(
+      `\nActive: ${theme.name}${theme.src ? ` via ${theme.src}` : ""}\n`,
+    );
   } else {
     console.log();
   }
@@ -93,8 +97,12 @@ export async function themeInstallCommand(
   root = resolve(root);
 
   if (!src) {
-    console.error("Usage: dune theme:install <src> [--name <slug>] [--activate]");
-    console.error('  <src>  jsr:@scope/theme-name@1.0.0, npm:pkg@1.0.0, or ./path/to/theme');
+    console.error(
+      "Usage: dune theme:install <src> [--name <slug>] [--activate]",
+    );
+    console.error(
+      "  <src>  jsr:@scope/theme-name@1.0.0, npm:pkg@1.0.0, or ./path/to/theme",
+    );
     Deno.exit(1);
   }
 
@@ -188,7 +196,7 @@ export async function themeInstallCommand(
  * Mutates `existing` in place (caller still owns writing site.yaml) and
  * adds deno.json imports for remote ancestors along the way.
  */
-async function ensureParentChainInstalled(
+export async function ensureParentChainInstalled(
   root: string,
   packageRoot: string,
   childSrc: string,
@@ -201,7 +209,9 @@ async function ensureParentChainInstalled(
   for (;;) {
     let manifestText: string;
     try {
-      manifestText = await Deno.readTextFile(join(currentPackageRoot, "theme.yaml"));
+      manifestText = await Deno.readTextFile(
+        join(currentPackageRoot, "theme.yaml"),
+      );
     } catch {
       return;
     }
@@ -218,8 +228,17 @@ async function ensureParentChainInstalled(
       // not present locally — needs installing
     }
 
-    const parentSrc = await deriveParentSpecifier(currentSrc, parentSlug, currentPackageRoot, root);
-    console.log(`  Resolving parent theme "${parentSlug}" (required by "${defaultThemeNameFromSpecifier(currentSrc)}")…`);
+    const parentSrc = await deriveParentSpecifier(
+      currentSrc,
+      parentSlug,
+      currentPackageRoot,
+      root,
+    );
+    console.log(
+      `  Resolving parent theme "${parentSlug}" (required by "${
+        defaultThemeNameFromSpecifier(currentSrc)
+      }")…`,
+    );
     const parentRoot = await resolveThemePackageRoot(parentSrc, root);
 
     existing.push({ name: parentSlug, src: parentSrc });
@@ -242,7 +261,7 @@ async function ensureParentChainInstalled(
  * `theme-{parent}` JSR package (looked up for its latest published
  * version) for registry installs.
  */
-async function deriveParentSpecifier(
+export async function deriveParentSpecifier(
   childSrc: string,
   parentSlug: string,
   childPackageRoot: string,
@@ -272,7 +291,9 @@ async function deriveParentSpecifier(
     }
     const scope = m[1].replace(/^@/, "");
     const pkgName = `theme-${parentSlug}`;
-    const res = await fetch(`https://api.jsr.io/scopes/${scope}/packages/${pkgName}`);
+    const res = await fetch(
+      `https://api.jsr.io/scopes/${scope}/packages/${pkgName}`,
+    );
     if (!res.ok) {
       throw new Error(
         `Parent theme "${parentSlug}" (jsr:@${scope}/${pkgName}) is not published on JSR yet — ` +
@@ -300,33 +321,49 @@ async function addThemeImport(root: string, specifier: string): Promise<void> {
   try {
     denoJson = JSON.parse(await Deno.readTextFile(denoJsonPath));
   } catch {
-    console.log(`  ⚠  No deno.json — add import manually: "${importKeyForThemeSpecifier(specifier)}": "${specifier}"`);
+    console.log(
+      `  ⚠  No deno.json — add import manually: "${
+        importKeyForThemeSpecifier(specifier)
+      }": "${specifier}"`,
+    );
     return;
   }
 
   const imports = (denoJson.imports ?? {}) as Record<string, string>;
   const key = importKeyForThemeSpecifier(specifier);
   if (imports[key] && imports[key] !== specifier) {
-    console.log(`  ℹ  deno.json already maps "${key}" → "${imports[key]}" (unchanged)`);
+    console.log(
+      `  ℹ  deno.json already maps "${key}" → "${imports[key]}" (unchanged)`,
+    );
   } else if (!imports[key]) {
     imports[key] = specifier;
     denoJson.imports = imports;
-    await Deno.writeTextFile(denoJsonPath, JSON.stringify(denoJson, null, 2) + "\n");
+    await Deno.writeTextFile(
+      denoJsonPath,
+      JSON.stringify(denoJson, null, 2) + "\n",
+    );
     console.log(`  ✓ Added deno.json import: "${key}": "${specifier}"`);
   }
 
   console.log(`\n  🔒 Syncing lockfile…`);
   try {
     await lockfileSyncCommand(root, {});
-    console.log(`  Commit deno.lock along with config changes before deploying.`);
+    console.log(
+      `  Commit deno.lock along with config changes before deploying.`,
+    );
   } catch {
-    console.log(`  ⚠  Lockfile sync failed — run "dune lockfile:sync" manually.`);
+    console.log(
+      `  ⚠  Lockfile sync failed — run "dune lockfile:sync" manually.`,
+    );
   }
 }
 
 // ─── theme:remove ───────────────────────────────────────────────────────────
 
-export async function themeRemoveCommand(root: string, name: string): Promise<void> {
+export async function themeRemoveCommand(
+  root: string,
+  name: string,
+): Promise<void> {
   root = resolve(root);
   if (!name) {
     console.error("Usage: dune theme:remove <name>");
@@ -334,10 +371,11 @@ export async function themeRemoveCommand(root: string, name: string): Promise<vo
   }
 
   const siteYamlPath = join(root, "config", "site.yaml");
-  const site = (parseYaml(await Deno.readTextFile(siteYamlPath)) ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const site =
+    (parseYaml(await Deno.readTextFile(siteYamlPath)) ?? {}) as Record<
+      string,
+      unknown
+    >;
   const existing = Array.isArray(site.themes)
     ? site.themes as ThemePackageEntry[]
     : [];
@@ -350,17 +388,24 @@ export async function themeRemoveCommand(root: string, name: string): Promise<vo
 
   const theme = site.theme as { name?: string; src?: string } | undefined;
   if (theme?.name === name) {
-    console.log(`  ℹ  "${name}" is the active theme — update theme.name in site.yaml manually.`);
+    console.log(
+      `  ℹ  "${name}" is the active theme — update theme.name in site.yaml manually.`,
+    );
   }
 
   await Deno.writeTextFile(siteYamlPath, stringifyYaml(site).trimEnd() + "\n");
   console.log(`✓ Removed theme "${name}" from config/site.yaml`);
-  console.log(`  Remove the deno.json import and run lockfile:sync if no longer needed.`);
+  console.log(
+    `  Remove the deno.json import and run lockfile:sync if no longer needed.`,
+  );
 }
 
 // ─── theme:publish ──────────────────────────────────────────────────────────
 
-export async function themePublishCommand(root: string, dir?: string): Promise<void> {
+export async function themePublishCommand(
+  root: string,
+  dir?: string,
+): Promise<void> {
   root = resolve(root);
   let themeDir: string;
 
@@ -371,10 +416,14 @@ export async function themePublishCommand(root: string, dir?: string): Promise<v
     const candidates: string[] = [];
     try {
       for await (const e of Deno.readDir(packagesDir)) {
-        if (e.isDirectory && e.name.startsWith("theme-")) candidates.push(e.name);
+        if (e.isDirectory && e.name.startsWith("theme-")) {
+          candidates.push(e.name);
+        }
       }
     } catch {
-      console.error('No packages/ directory. Pass a path: dune theme:publish ./packages/theme-paper');
+      console.error(
+        "No packages/ directory. Pass a path: dune theme:publish ./packages/theme-paper",
+      );
       Deno.exit(1);
     }
     if (candidates.length === 0) {
@@ -393,7 +442,9 @@ export async function themePublishCommand(root: string, dir?: string): Promise<v
     await Deno.stat(join(themeDir, "deno.json"));
     await Deno.stat(join(themeDir, "theme.yaml"));
   } catch {
-    console.error(`Theme package must contain deno.json and theme.yaml (${themeDir})`);
+    console.error(
+      `Theme package must contain deno.json and theme.yaml (${themeDir})`,
+    );
     Deno.exit(1);
   }
 
@@ -411,7 +462,9 @@ export async function themePublishCommand(root: string, dir?: string): Promise<v
     Deno.exit(code ?? 1);
   }
   console.log(`\n✓ Theme published to JSR.`);
-  console.log(`  Sites can install with: dune theme:install jsr:<scope>/<name>@<version>`);
+  console.log(
+    `  Sites can install with: dune theme:install jsr:<scope>/<name>@<version>`,
+  );
 }
 
 export const themeCommands = {
