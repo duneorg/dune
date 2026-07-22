@@ -12,7 +12,7 @@
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
-import { join, resolve } from "@std/path";
+import { dirname, join, relative, resolve } from "@std/path";
 import type { ThemePackageEntry } from "../config/types.ts";
 import { lockfileSyncCommand } from "./lockfile.ts";
 import {
@@ -20,6 +20,7 @@ import {
   assertThemeName,
   defaultThemeNameFromSpecifier,
   importKeyForThemeSpecifier,
+  isLocalThemePath,
   isRemoteThemeSpecifier,
   resolveThemePackageRoot,
 } from "../themes/reference.ts";
@@ -111,8 +112,9 @@ export async function themeInstallCommand(
   }
 
   console.log(`  Verifying theme package…`);
+  let packageRoot: string;
   try {
-    await resolveThemePackageRoot(src, root);
+    packageRoot = await resolveThemePackageRoot(src, root);
   } catch (err) {
     console.error(`  ✗ ${err instanceof Error ? err.message : String(err)}`);
     Deno.exit(1);
@@ -131,6 +133,19 @@ export async function themeInstallCommand(
   const existing = Array.isArray(site.themes)
     ? site.themes as ThemePackageEntry[]
     : [];
+
+  // A theme can declare `parent: {name}` in theme.yaml to inherit
+  // templates/locales it doesn't define itself. The loader resolves that
+  // reference by looking for a package registered under exactly that name
+  // in site.themes (or a local themes/{name}/ dir) — it does not know how
+  // to fetch it, so without this the parent silently fails to resolve at
+  // runtime (a behavioral gap, not a type/config error).
+  try {
+    await ensureParentChainInstalled(root, packageRoot, resolvedSrc, existing);
+  } catch (err) {
+    console.error(`  ✗ ${err instanceof Error ? err.message : String(err)}`);
+    Deno.exit(1);
+  }
 
   const idx = existing.findIndex((e) => e.name === name);
   if (idx >= 0) {
@@ -165,6 +180,118 @@ export async function themeInstallCommand(
   }
 
   console.log(`\n  Run "dune dev" to load the theme.`);
+}
+
+/**
+ * Walk a theme's `parent:` chain (theme.yaml) and register/install any
+ * ancestor not already present as a package or local themes/{name} dir.
+ * Mutates `existing` in place (caller still owns writing site.yaml) and
+ * adds deno.json imports for remote ancestors along the way.
+ */
+async function ensureParentChainInstalled(
+  root: string,
+  packageRoot: string,
+  childSrc: string,
+  existing: ThemePackageEntry[],
+): Promise<void> {
+  let currentPackageRoot = packageRoot;
+  let currentSrc = childSrc;
+  const seen = new Set<string>();
+
+  for (;;) {
+    let manifestText: string;
+    try {
+      manifestText = await Deno.readTextFile(join(currentPackageRoot, "theme.yaml"));
+    } catch {
+      return;
+    }
+    const manifest = (parseYaml(manifestText) ?? {}) as { parent?: string };
+    const parentSlug = manifest.parent?.trim();
+    if (!parentSlug || seen.has(parentSlug)) return;
+    seen.add(parentSlug);
+
+    if (existing.some((e) => e.name === parentSlug)) return;
+    try {
+      await Deno.stat(join(root, "themes", parentSlug));
+      return; // already present as a local theme dir
+    } catch {
+      // not present locally — needs installing
+    }
+
+    const parentSrc = await deriveParentSpecifier(currentSrc, parentSlug, currentPackageRoot, root);
+    console.log(`  Resolving parent theme "${parentSlug}" (required by "${defaultThemeNameFromSpecifier(currentSrc)}")…`);
+    const parentRoot = await resolveThemePackageRoot(parentSrc, root);
+
+    existing.push({ name: parentSlug, src: parentSrc });
+    console.log(`  ✓ Registered parent theme "${parentSlug}" ← ${parentSrc}`);
+
+    if (isRemoteThemeSpecifier(parentSrc)) {
+      await addThemeImport(root, parentSrc);
+    }
+
+    currentPackageRoot = parentRoot;
+    currentSrc = parentSrc;
+  }
+}
+
+/**
+ * Derive an install specifier for a theme's parent, from the child's own
+ * specifier — there's no recorded "install source" for a parent slug in
+ * theme.yaml, just the bare name, so this infers one by convention:
+ * a sibling package directory for local/path installs, or a same-scope
+ * `theme-{parent}` JSR package (looked up for its latest published
+ * version) for registry installs.
+ */
+async function deriveParentSpecifier(
+  childSrc: string,
+  parentSlug: string,
+  childPackageRoot: string,
+  siteRoot: string,
+): Promise<string> {
+  if (isLocalThemePath(childSrc)) {
+    const siblingAbs = join(dirname(childPackageRoot), `theme-${parentSlug}`);
+    try {
+      await Deno.stat(join(siblingAbs, "theme.yaml"));
+    } catch {
+      throw new Error(
+        `Theme depends on parent "${parentSlug}", but no sibling package found at ` +
+          `${siblingAbs}. Install it manually with dune theme:install first.`,
+      );
+    }
+    const rel = relative(siteRoot, siblingAbs);
+    return rel.startsWith(".") ? rel : `./${rel}`;
+  }
+
+  if (childSrc.startsWith("jsr:")) {
+    const m = childSrc.match(/^jsr:(@[^/]+)\/theme-[^@/]+@/);
+    if (!m) {
+      throw new Error(
+        `Could not derive a JSR specifier for parent theme "${parentSlug}" from "${childSrc}" — ` +
+          `expected a jsr:@scope/theme-{name}@version specifier.`,
+      );
+    }
+    const scope = m[1].replace(/^@/, "");
+    const pkgName = `theme-${parentSlug}`;
+    const res = await fetch(`https://api.jsr.io/scopes/${scope}/packages/${pkgName}`);
+    if (!res.ok) {
+      throw new Error(
+        `Parent theme "${parentSlug}" (jsr:@${scope}/${pkgName}) is not published on JSR yet — ` +
+          `install it manually once it is, or use a local path install instead.`,
+      );
+    }
+    const data = await res.json() as { latestVersion?: string };
+    if (!data.latestVersion) {
+      throw new Error(
+        `Parent theme "${parentSlug}" (jsr:@${scope}/${pkgName}) has no published version yet.`,
+      );
+    }
+    return `jsr:@${scope}/${pkgName}@${data.latestVersion}`;
+  }
+
+  throw new Error(
+    `Don't know how to auto-install parent theme "${parentSlug}" for source "${childSrc}" — ` +
+      `install it manually with dune theme:install.`,
+  );
 }
 
 async function addThemeImport(root: string, specifier: string): Promise<void> {
