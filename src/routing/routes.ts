@@ -23,6 +23,7 @@ import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
 import { logger, generateRequestId } from "../core/logger.ts";
 import { tracer } from "../tracing/mod.ts";
+import { createTranslator } from "../i18n/translate.ts";
 import { handleFlexRoute } from "./flex-handler.ts";
 import { renderErrorPage } from "./error-page.ts";
 import { handleTsxPage } from "./tsx-handler.ts";
@@ -194,7 +195,7 @@ export function duneRoutes(
         if (searchTemplate) {
           const layout = await engine.themes.loadLayout("layout");
           const strings = await engine.themes.loadLocale(lang);
-          const t = (key: string) => (strings[key] ?? key) as string;
+          const t = createTranslator(strings);
           return respond(renderJsx(
             await resolveTemplateVNode(searchTemplate.component as ComponentType<any>, {
               page: null,

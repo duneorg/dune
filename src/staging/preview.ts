@@ -12,6 +12,7 @@ import type { ComponentType, VNode } from "preact";
 import { render as renderToString } from "preact-render-to-string";
 import type { Page } from "../content/types.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { createTranslator } from "../i18n/translate.ts";
 
 /**
  * Serve a staged draft preview.
@@ -72,7 +73,7 @@ export async function serveStagedPreview(
     };
 
     const locale = await engine.themes.loadLocale(pageIndex.language ?? "en");
-    const t = (key: string) => (locale[key] ?? key) as string;
+    const t = createTranslator(locale);
 
     const props = {
       page: synthPage as Page,

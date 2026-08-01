@@ -5,6 +5,7 @@ import type { TemplateComponent } from "../content/types.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { createTranslator } from "../i18n/translate.ts";
 import { splitLanguagePrefix } from "./resolver.ts";
 
 /**
@@ -69,7 +70,7 @@ export async function handleFlexRoute(
   }
 
   const strings = await engine.themes.loadLocale(lang);
-  const t = (key: string) => (strings[key] ?? key) as string;
+  const t = createTranslator(strings);
   const layout = await engine.themes.loadLayout("layout");
   const nav = engine.router.getTopNavigation(lang);
   const navAll = engine.router.getNavigation(lang);

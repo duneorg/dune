@@ -7,6 +7,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import { renderSections } from "../sections/mod.ts";
 import type { SectionInstance } from "../sections/mod.ts";
 import { directionOf } from "../i18n/rtl.ts";
+import { createTranslator } from "../i18n/translate.ts";
 import { rewriteInternalLinks } from "./link-rewriter.ts";
 import { resolveCollectionForPage, resolveCollectionsForPage } from "./collection-resolver.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
@@ -91,7 +92,7 @@ export async function handleMarkdownPage(
 
   const layout = await engine.themes.loadLayout("layout");
   const strings = await engine.themes.loadLocale(page.language ?? "en");
-  const t = (key: string) => (strings[key] ?? key) as string;
+  const t = createTranslator(strings);
 
   return render(
     await resolveTemplateVNode(template.component as ComponentType<any>, {

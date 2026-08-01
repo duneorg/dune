@@ -4,6 +4,7 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
+import { createTranslator } from "../i18n/translate.ts";
 import { createMediaHelper } from "./link-rewriter.ts";
 import { renderErrorPage } from "./error-page.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
@@ -108,7 +109,7 @@ export async function handleTsxPage(
 
   if (layout) {
     const strings = await engine.themes.loadLocale(page.language ?? "en");
-    const t = (key: string) => (strings[key] ?? key) as string;
+    const t = createTranslator(strings);
     const pageLangForDir = page.language ?? engine.config?.system?.languages?.default ?? "en";
     return render(
       await resolveTemplateVNode(layout as ComponentType<any>, {

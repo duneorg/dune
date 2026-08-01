@@ -430,6 +430,16 @@ export interface TemplateProps {
    * ```
    */
   dir: "ltr" | "rtl";
+  /**
+   * Theme UI-string translator, built from the theme chain's merged
+   * `locales/{lang}.json`. `t(key)` returns the key itself if missing (a
+   * visible, debuggable signal outside production; empty string in
+   * production). `t(key, fallback)` returns `fallback` instead when the
+   * key is missing — the normal path while a locale file is incrementally
+   * filled in, not an error condition.
+   * Always provided by the engine.
+   */
+  t: (key: string, fallback?: string) => string;
   /** Current request pathname (for canonical, hreflang, language switcher) */
   pathname?: string;
   /** Current request query string, e.g. "?submitted=1" (empty string when none) */

@@ -14,6 +14,7 @@ import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page, TemplateProps } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
+import { createTranslator } from "../i18n/translate.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { splitLanguagePrefix } from "./resolver.ts";
 
@@ -51,7 +52,7 @@ export async function renderErrorPage(
   const errorTemplate = await engine.themes.loadTemplate("error");
   if (errorTemplate) {
     const strings = await engine.themes.loadLocale(lang);
-    const t = (key: string) => (strings[key] ?? key) as string;
+    const t = createTranslator(strings);
     return renderJsx(
       // deno-lint-ignore no-explicit-any
       await resolveTemplateVNode(errorTemplate.component as ComponentType<any>, {
@@ -82,6 +83,7 @@ export async function renderErrorPage(
         pageTitle: title,
         config: engine.config,
         dir,
+        t: createTranslator(await engine.themes.loadLocale(lang)),
       },
         h("div", { class: "content-page" },
           h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
