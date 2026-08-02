@@ -5,6 +5,30 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.4] — 2026-08-02
+
+### Fixed
+
+- **`t(key, fallback)` never honored an explicit fallback.** The theme
+  UI-string translator returned the key itself on a miss with no way to
+  opt into anything else, so every theme's local `tr(key, fallback)`
+  wrapper — written assuming `t(key)` returned nullish on a miss so its
+  own `?? fallback` could kick in — had dead fallback logic. Practical
+  symptom: raw locale keys (e.g. `"cta.learn_more"`) rendering verbatim on
+  real pages instead of the intended text.
+  New contract, centralizing what had been 6 duplicated
+  `(key) => strings[key] ?? key` closures into one `createTranslator()`
+  helper: `t(key)` with a match returns it, unchanged; `t(key, fallback)`
+  with no match returns `fallback`, no warning — the normal, expected path
+  while a locale file is incrementally filled in; `t(key)` with no match
+  and no fallback warns once per distinct key (deduped, not per render)
+  and renders the raw key outside production, or an empty string when
+  `DUNE_ENV=production`.
+  Also formally documents `t` on `TemplateProps` (it was always passed at
+  render time but never part of the typed contract) and threads a real
+  translator into the error page's bare-layout fallback path, which
+  previously rendered with no `t` at all.
+
 ## [0.31.3] — 2026-07-23
 
 ### Fixed
