@@ -365,6 +365,7 @@ export async function mountPlugins(
     // separate content/data storage fields — out of scope for now since
     // content.src's driving use case (multisite demo fixtures) has no admin.
     contentDir: ctx.config.system.content.dir,
+    hooks: ctx.hooks,
   });
 
   // Expose on BootstrapResult so core (fresh-app.ts) can register routes that
