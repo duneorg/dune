@@ -465,6 +465,14 @@ export interface AdminServicesContext {
   contentDir: string;
   /** History engine for recording content revisions. */
   history: HistoryEngine;
+  /**
+   * The engine's hook registry. Admin-service factories that write content
+   * outside the standard admin CRUD routes (e.g. a real-time editing
+   * session) should fire the matching `onPageCreate`/`onPageUpdate`/
+   * `onPageDelete` event themselves after a successful write — those routes
+   * fire it inline, but a service instantiated here has no other way to.
+   */
+  hooks: HookRegistry;
 }
 
 /**
