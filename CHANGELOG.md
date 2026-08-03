@@ -5,6 +5,49 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.6] — 2026-08-02
+
+### Added
+
+- **`content:create`/`content:delete` fire `onPageCreate`/`onPageDelete`.**
+  These are single, explicit, human-invoked page mutations — the same
+  conceptual action as creating/deleting a page through the admin UI, which
+  already fired these hooks. `content:delete` reuses the hook registry from
+  the `bootstrap()` call it already makes to resolve the route.
+- **`migrate:from-{grav,wordpress,markdown,hugo} --fire-hooks`** opts into
+  firing `onPageCreate` per imported page. Off by default: a bulk import
+  running per-page hooks (webhooks, derived-content regeneration) is far
+  more likely to be an unwanted surprise than a wanted feature.
+- **`DuneEngine.indexErrors`** exposes `buildIndex()`'s per-file parse
+  errors, which previously went nowhere past a debug-log line. `dune
+  validate` now reports each as a "content" category error finding; `dune
+  content:list`/`content:check` surface them too.
+- **CI now runs `deno task check`** on PRs and pushes to `main`. The
+  `lint-dynamic-imports` guard (shipped in v0.25) had never actually run in
+  CI — the only workflow triggered on tag push and only ran `deno publish`.
+
+### Fixed
+
+- **A content file with malformed frontmatter was silently dropped from
+  routing, search, and the sitemap** with zero signal beyond a debug log —
+  `dune validate` reported a clean pass with a silently-shrunk page count.
+- **gray-matter's content-keyed cache could make a broken file "heal"
+  itself after the first encounter in a process's lifetime.** It caches its
+  mutable result object *before* parsing the YAML block, only when called
+  without an options argument — a parse that throws still leaves the
+  half-populated object cached, so a second parse of the identical string
+  (e.g. two `bootstrap()` calls in the same process) silently returns the
+  cached object instead of re-throwing. Both content format handlers now
+  pass an explicit (empty) options object, bypassing the cache entirely.
+
+### Changed
+
+- **`@dune/testing`'s stale `@dune/core@^0.25` pin bumped to `^0.31`** —
+  the last workspace member still on the old range; the others were
+  already current.
+
+---
+
 ## [0.31.5] — 2026-08-02
 
 ### Added
