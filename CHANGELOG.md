@@ -28,6 +28,15 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`dune serve` now starts the workflow scheduler's polling loop.**
+  `@dune/plugin-admin`'s scheduled publish/unpublish/archive feature has
+  always supported scheduling, cancelling, and listing pending actions —
+  the admin panel's UI and API routes all worked. But nothing ever executed
+  a due action: a page scheduled to publish next Friday would sit there
+  forever, silently, with no error anywhere. `serve` now starts the
+  scheduler after `createDuneApp()` populates `adminContext`, exactly like
+  it already does for the unrelated background-jobs scheduler. Requires
+  `@dune/plugin-admin` ≥1.1.4 (see that package's changelog).
 - **A content file with malformed frontmatter was silently dropped from
   routing, search, and the sitemap** with zero signal beyond a debug log —
   `dune validate` reported a clean pass with a silently-shrunk page count.
