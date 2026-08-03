@@ -27,6 +27,9 @@ export const contentCommands = {
         total: engine.pages.length,
         published: engine.pages.filter((p) => p.published).length,
         drafts: engine.pages.filter((p) => !p.published).length,
+        // Files that failed to index (e.g. malformed frontmatter) — dropped
+        // from `pages` entirely, so this is the only signal they existed.
+        indexErrors: engine.indexErrors,
         pages: sorted.map((p) => ({
           route: p.route,
           template: p.template,
@@ -59,6 +62,15 @@ export const contentCommands = {
     console.log(`\n  Total: ${engine.pages.length} pages`);
     console.log(`  Published: ${engine.pages.filter((p) => p.published).length}`);
     console.log(`  Drafts: ${engine.pages.filter((p) => !p.published).length}`);
+
+    if (engine.indexErrors.length > 0) {
+      console.log(
+        `\n  ⚠️  ${engine.indexErrors.length} file(s) failed to index and are missing from this list — run \`dune validate\` for details:`,
+      );
+      for (const err of engine.indexErrors) {
+        console.log(`     ✗ ${err.path}: ${err.message}`);
+      }
+    }
   },
 
   /**
@@ -69,6 +81,14 @@ export const contentCommands = {
     const { engine } = ctx;
 
     const issues: Array<{ sourcePath: string; message: string }> = [];
+
+    // Files that failed to index (e.g. malformed frontmatter) are dropped
+    // from `engine.pages` entirely — surface them here too, not just via
+    // `dune validate`, so `content:check` doesn't report a clean pass while
+    // silently missing pages.
+    for (const indexError of engine.indexErrors) {
+      issues.push({ sourcePath: indexError.path, message: `Failed to index: ${indexError.message}` });
+    }
 
     for (const page of engine.pages) {
       // Check for missing titles

@@ -391,6 +391,18 @@ export async function validateCommand(
 
     const contentIssues: ContentIssue[] = [];
 
+    // Content-index build errors (e.g. malformed frontmatter) drop a file
+    // from `engine.pages` entirely — no route, no search entry, no sitemap
+    // entry — with zero other signal that it happened. Surface them as
+    // findings instead of letting a shrunk page count pass silently.
+    for (const indexError of engine.indexErrors) {
+      contentIssues.push({
+        sourcePath: indexError.path,
+        message: `Failed to index: ${indexError.message}`,
+        severity: "error",
+      });
+    }
+
     for (const page of engine.pages) {
       if (!page.title) {
         contentIssues.push({

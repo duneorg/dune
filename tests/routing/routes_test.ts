@@ -109,6 +109,7 @@ function makeEngine(
     taxonomyMap: {
       tag: { deno: ["01.home/default.md"] },
     },
+    indexErrors: [],
     router: {
       getNavigation: (_lang?: string) => [],
       getTopNavigation: (_lang?: string) => [],

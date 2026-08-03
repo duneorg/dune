@@ -111,6 +111,7 @@ function makeEngine(
     pages,
     blueprints: {},
     taxonomyMap,
+    indexErrors: [],
     router: {
       getNavigation: (_lang?: string) => [],
       getTopNavigation: (_lang?: string) => [],

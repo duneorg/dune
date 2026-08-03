@@ -21,6 +21,7 @@ import type {
 } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
+import type { IndexError } from "../content/index-builder.ts";
 import { createContentStorage, resolveContentDirPath } from "../content/content-root.ts";
 import { parseFolderName } from "../content/path-utils.ts";
 import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
@@ -85,6 +86,13 @@ export interface DuneEngine {
   pages: PageIndex[];
   /** The taxonomy reverse map */
   taxonomyMap: Record<string, Record<string, string[]>>;
+  /**
+   * Non-fatal errors from the last content-index build (e.g. malformed
+   * frontmatter). A file that errors is silently dropped from `pages` —
+   * routing, search, and the sitemap never see it — so this is the only
+   * signal that happened. Empty when the last build had no errors.
+   */
+  indexErrors: IndexError[];
   /** Loaded blueprint definitions (template name → definition) */
   blueprints: BlueprintMap;
   /** Storage adapter for reading and writing site files */
@@ -200,6 +208,7 @@ export async function createDuneEngine(
   // State
   let pages: PageIndex[] = [];
   let taxonomyMap: Record<string, Record<string, string[]>> = {};
+  let indexErrors: IndexError[] = [];
   let blueprints: BlueprintMap = {};
   let router: RouteResolver;
   let themes: ThemeLoader;
@@ -416,6 +425,7 @@ export async function createDuneEngine(
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
+    indexErrors = result.errors;
 
     if (config.system.debug) {
       logger.debug("index.built", {
@@ -608,6 +618,7 @@ export async function createDuneEngine(
         });
         pages = result.pages;
         taxonomyMap = result.taxonomyMap;
+        indexErrors = result.errors;
         router.rebuild(pages, result.homeSlug);
 
         span.setAttribute("pageCount", pages.length);
@@ -630,6 +641,7 @@ export async function createDuneEngine(
     site: config.site,
     pages: [],
     taxonomyMap: {},
+    indexErrors: [],
     blueprints: {},
     storage,
     contentStorage,
@@ -644,6 +656,7 @@ export async function createDuneEngine(
       // Sync closure state to engine properties
       engine.pages = pages;
       engine.taxonomyMap = taxonomyMap;
+      engine.indexErrors = indexErrors;
       engine.blueprints = blueprints ?? {};
       engine.router = router;
       engine.themes = themes;
@@ -660,6 +673,7 @@ export async function createDuneEngine(
       // Sync closure state after rebuild
       engine.pages = pages;
       engine.taxonomyMap = taxonomyMap;
+      engine.indexErrors = indexErrors;
       engine.blueprints = blueprints ?? {};
     },
 

@@ -182,3 +182,70 @@ Deno.test(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// v0.31.6 — content-index build errors are surfaced instead of silently
+// dropping the file from routing/search/sitemap with no other signal.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "validateCommand: a content file with malformed frontmatter is reported, not silently dropped",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
+
+      // Malformed YAML frontmatter (unterminated flow sequence) — this must
+      // throw during extractFrontmatter() and be dropped from engine.pages
+      // entirely, with the only signal being engine.indexErrors.
+      await Deno.mkdir(join(root, "content", "02.broken"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "02.broken", "default.md"),
+        "---\ntitle: [oops\n---\n\n# Broken\n",
+      );
+
+      await Deno.mkdir(join(root, "themes", "base", "templates"), { recursive: true });
+      await Deno.writeTextFile(join(root, "themes", "base", "theme.yaml"), "name: base\n");
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "templates", "default.tsx"),
+        `export default function Default({ children }: { children: unknown }) {\n  return children;\n}\n`,
+      );
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(join(root, "config", "site.yaml"), "theme:\n  name: base\n");
+
+      // Confirm the file really was dropped from the index, not just flagged.
+      const ctx = await bootstrap(root, {});
+      assertEquals(ctx.engine.pages.some((p) => p.sourcePath.includes("02.broken")), false);
+      assertEquals(ctx.engine.indexErrors.length, 1);
+      assertEquals(ctx.engine.indexErrors[0].path.includes("02.broken"), true);
+
+      const lines: string[] = [];
+      const origLog = console.log;
+      const origExit = Deno.exit;
+      console.log = (...args: unknown[]) => lines.push(String(args[0]));
+      Deno.exit = ((_code?: number) => {
+        throw new Error("exit");
+      }) as typeof Deno.exit;
+      try {
+        await validateCommand(root, { json: true, skills: false });
+      } catch {
+        // Expected — validateCommand exits 1 when invalid.
+      } finally {
+        console.log = origLog;
+        Deno.exit = origExit;
+      }
+
+      const output = JSON.parse(lines.join(""));
+      assertEquals(output.valid, false);
+      const contentFindings = output.findings.filter(
+        (f: { category: string; message: string }) =>
+          f.category === "content" && f.message.startsWith("Failed to index"),
+      );
+      assertEquals(contentFindings.length, 1);
+    });
+  },
+);
