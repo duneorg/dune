@@ -523,7 +523,7 @@ export async function bootstrap(
   // lockfile discovery helper also reports it — see that module's doc.
   if (adminConfig.enabled !== false) {
     const adminPkg: string = ADMIN_PLUGIN_SPECIFIER;
-    const adminModule = await import(adminPkg) as Record<string, unknown> & {
+    const adminModule = await import(adminPkg) as Record<string, unknown> & { // lockfile-safe: constant from plugins/builtin.ts, reported by lockfile discovery
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
     const mismatch = adminCoreMismatch(adminModule);

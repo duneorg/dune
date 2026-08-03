@@ -76,7 +76,7 @@ export class MultisiteManager {
     // The specifier constant lives in plugins/builtin.ts where the lockfile
     // discovery helper also reports it — see that module's doc.
     const adminMountPkg: string = ADMIN_MOUNT_SPECIFIER;
-    const { getDuneAdminIslands } = await import(adminMountPkg) as {
+    const { getDuneAdminIslands } = await import(adminMountPkg) as { // lockfile-safe: constant from plugins/builtin.ts, reported by lockfile discovery
       getDuneAdminIslands: () => string[];
     };
     // Remote (https://) island specs are materialized as local wrappers —
