@@ -5,6 +5,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.5] — 2026-08-02
+
+### Added
+
+- **`AdminServicesContext.hooks`** — admin-service factories that write
+  content outside the standard admin CRUD routes (e.g. a real-time editing
+  session) previously had no path to the hook registry at all, so
+  `onPageCreate`/`onPageUpdate`/`onPageDelete` never fired for edits made
+  through such a service — the admin CRUD routes fire these inline
+  themselves, but a service instantiated via `adminServices()` had no
+  other way to. Now exposes the engine's `HookRegistry` so those factories
+  can fire the matching event themselves after a successful write.
+
 ## [0.31.4] — 2026-08-02
 
 ### Fixed
