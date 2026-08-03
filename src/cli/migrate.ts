@@ -15,6 +15,10 @@ import { join, basename, extname, dirname } from "@std/path";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { ensureDir, exists } from "@std/fs";
 import { sanitizeHtml } from "../security/sanitize-html.ts";
+import { createStorage } from "../storage/mod.ts";
+import { loadConfig } from "../config/mod.ts";
+import { createHookRegistry } from "../hooks/registry.ts";
+import { loadPlugins } from "../plugins/loader.ts";
 
 // ---------------------------------------------------------------------------
 // Shared utilities
@@ -34,6 +38,51 @@ interface MigrateOptions {
    * malicious third-party export cannot plant persistent XSS.
    */
   trustSource?: boolean;
+  /**
+   * Fire `onPageCreate` for each imported page. Off by default: a bulk
+   * import of thousands of posts running per-page hooks (potentially
+   * regenerating derived content, calling a webhook) is far more likely to
+   * be an unwanted surprise — a flaky import, a spammed webhook endpoint —
+   * than a wanted feature. Unlike `dune content:create` (a single, explicit,
+   * human-invoked mutation), migration is a bulk operation; this is an
+   * explicit opt-in, not a default.
+   */
+  fireHooks?: boolean;
+}
+
+/**
+ * Per-page `onPageCreate` firer for migration commands. A no-op instance is
+ * used when `--fire-hooks` isn't passed, so the common (fast) path never
+ * loads plugins at all.
+ */
+interface MigrationHooks {
+  firePageCreate(sourcePath: string, title: string): Promise<void>;
+}
+
+const noopMigrationHooks: MigrationHooks = {
+  async firePageCreate() {},
+};
+
+/**
+ * Loads plugins and returns a hook firer, once per migration command
+ * invocation (not per page) — `loadPlugins()` imports plugin modules, which
+ * would be wasteful to repeat for every imported page.
+ */
+async function createMigrationHooks(root: string, enabled: boolean): Promise<MigrationHooks> {
+  if (!enabled) return noopMigrationHooks;
+  const storage = createStorage({ rootDir: root });
+  const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
+  const hooks = createHookRegistry({ config, storage });
+  await loadPlugins({ config, hooks, storage, root });
+  return {
+    async firePageCreate(sourcePath: string, title: string) {
+      try {
+        await hooks.fire("onPageCreate", { sourcePath, title });
+      } catch (err) {
+        warn(`onPageCreate hook failed for ${sourcePath}: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+  };
 }
 
 interface MigrateResult {
@@ -99,13 +148,24 @@ function serialisePage(fm: Record<string, unknown>, body: string): string {
 }
 
 /**
- * Write a file, creating parent directories as needed.
- * No-ops when dryRun is true.
+ * Write a page file, creating parent directories as needed, and fire
+ * `onPageCreate` for it (a no-op unless `--fire-hooks` was passed — see
+ * `createMigrationHooks`). No-ops entirely when dryRun is true, since
+ * nothing was actually created.
  */
-async function writeFile(path: string, content: string, dryRun: boolean): Promise<void> {
+async function writeFile(
+  path: string,
+  content: string,
+  dryRun: boolean,
+  hookCtx?: { hooks: MigrationHooks; contentDir: string; title: string },
+): Promise<void> {
   if (dryRun) return;
   await ensureDir(dirname(path));
   await Deno.writeTextFile(path, content);
+  if (hookCtx) {
+    const sourcePath = path.slice(hookCtx.contentDir.length).replace(/^[/\\]/, "");
+    await hookCtx.hooks.firePageCreate(sourcePath, hookCtx.title);
+  }
 }
 
 /** Copy a binary file, creating parent directories as needed. */
@@ -213,6 +273,7 @@ export async function migrateFromGrav(
   }
 
   const result: MigrateResult = { imported: 0, skipped: 0, errors: [] };
+  const migrationHooks = await createMigrationHooks(root, options.fireHooks === true);
 
   for await (const filePath of walk(gravPages)) {
     const ext = extname(filePath).toLowerCase();
@@ -232,7 +293,11 @@ export async function migrateFromGrav(
 
         const dest = join(contentDir, rel);
         if (options.verbose) info(`  ${rel}`);
-        await writeFile(dest, serialisePage(duneFm, body), dry);
+        await writeFile(dest, serialisePage(duneFm, body), dry, {
+          hooks: migrationHooks,
+          contentDir,
+          title: String(duneFm.title ?? ""),
+        });
         result.imported++;
       } catch (err) {
         result.errors.push(`${rel}: ${err}`);
@@ -329,6 +394,7 @@ export async function migrateFromWordPress(
   log(`  Found ${items.length} items (posts + pages)\n`);
 
   const result: MigrateResult = { imported: 0, skipped: 0, errors: [] };
+  const migrationHooks = await createMigrationHooks(root, options.fireHooks === true);
 
   // Separate posts from pages
   const posts = items.filter((i) => i.postType === "post");
@@ -357,7 +423,11 @@ export async function migrateFromWordPress(
       const body = options.trustSource ? post.content : sanitizeHtml(post.content);
       if (options.verbose) info(`blog/${folderName}/post.md`);
       try {
-        await writeFile(dest, serialisePage(fm, body), dry);
+        await writeFile(dest, serialisePage(fm, body), dry, {
+          hooks: migrationHooks,
+          contentDir,
+          title: post.title,
+        });
         result.imported++;
       } catch (err) {
         result.errors.push(`${folderName}: ${err}`);
@@ -371,7 +441,11 @@ export async function migrateFromWordPress(
         published: true,
         collection: { items: { "@self.children": true }, order: { by: "date", dir: "desc" } },
       };
-      await writeFile(blogDefault, serialisePage(blogFm, ""), dry);
+      await writeFile(blogDefault, serialisePage(blogFm, ""), dry, {
+        hooks: migrationHooks,
+        contentDir,
+        title: "Blog",
+      });
     }
   }
 
@@ -391,7 +465,11 @@ export async function migrateFromWordPress(
       const body = options.trustSource ? page.content : sanitizeHtml(page.content);
       if (options.verbose) info(`${folderName}/default.md`);
       try {
-        await writeFile(dest, serialisePage(fm, body), dry);
+        await writeFile(dest, serialisePage(fm, body), dry, {
+          hooks: migrationHooks,
+          contentDir,
+          title: page.title,
+        });
         result.imported++;
       } catch (err) {
         result.errors.push(`${folderName}: ${err}`);
@@ -424,6 +502,7 @@ export async function migrateFromMarkdown(
   }
 
   const result: MigrateResult = { imported: 0, skipped: 0, errors: [] };
+  const migrationHooks = await createMigrationHooks(root, options.fireHooks === true);
 
   // Collect all .md files at top level (non-recursive first pass)
   const mdFiles: string[] = [];
@@ -460,7 +539,11 @@ export async function migrateFromMarkdown(
 
       const dest = join(contentDir, folderName, "default.md");
       if (options.verbose) info(`${folderName}/default.md  ←  ${filename}`);
-      await writeFile(dest, serialisePage(fm, body), dry);
+      await writeFile(dest, serialisePage(fm, body), dry, {
+        hooks: migrationHooks,
+        contentDir,
+        title: String(fm.title ?? ""),
+      });
       result.imported++;
     } catch (err) {
       result.errors.push(`${filename}: ${err}`);
@@ -491,7 +574,11 @@ export async function migrateFromMarkdown(
           const relSlug = rel.replace(/\.md$/, "").split("/").map(slugify).join("/");
           const dest = join(subDest, relSlug, "default.md");
           if (options.verbose) info(`${basename(subDest)}/${rel}`);
-          await writeFile(dest, serialisePage(fm, body), dry);
+          await writeFile(dest, serialisePage(fm, body), dry, {
+            hooks: migrationHooks,
+            contentDir,
+            title: String(fm.title ?? ""),
+          });
           result.imported++;
         } catch (err) {
           result.errors.push(`${rel}: ${err}`);
@@ -632,6 +719,7 @@ export async function migrateFromHugo(
   const hugoStatic = join(srcDir, "static");
 
   const result: MigrateResult = { imported: 0, skipped: 0, errors: [] };
+  const migrationHooks = await createMigrationHooks(root, options.fireHooks === true);
 
   // Walk content directory, preserving folder structure
   for await (const filePath of walk(hugoContent)) {
@@ -655,7 +743,11 @@ export async function migrateFromHugo(
         // Convert Hugo numbered sections to Dune format (already numbered usually)
         const dest = join(contentDir, destRel);
         if (options.verbose) info(destRel);
-        await writeFile(dest, serialisePage(duneFm, body), dry);
+        await writeFile(dest, serialisePage(duneFm, body), dry, {
+          hooks: migrationHooks,
+          contentDir,
+          title: String(duneFm.title ?? ""),
+        });
         result.imported++;
       } catch (err) {
         result.errors.push(`${rel}: ${err}`);

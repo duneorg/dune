@@ -228,3 +228,40 @@ Deno.test("content:create: includes today's date in frontmatter", async () => {
     assertStringIncludes(content, `date: ${today}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// onPageCreate hook firing (v0.31.6 — single explicit page mutations fire
+// hooks unconditionally, unlike bulk migration commands)
+// ---------------------------------------------------------------------------
+
+Deno.test("content:create: fires onPageCreate for a registered plugin", async () => {
+  await withTempSite(async (root) => {
+    await Deno.mkdir(join(root, "config"), { recursive: true });
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "plugins:\n  - src: ./plugins/test-plugin.ts\n",
+    );
+    await Deno.mkdir(join(root, "plugins"), { recursive: true });
+    await Deno.writeTextFile(
+      join(root, "plugins", "test-plugin.ts"),
+      `export default {
+        name: "test-plugin",
+        version: "1.0.0",
+        hooks: {
+          async onPageCreate(ctx) {
+            await Deno.writeTextFile(
+              new URL("../.hook-fired.json", import.meta.url).pathname,
+              JSON.stringify(ctx.data),
+            );
+          },
+        },
+      };\n`,
+    );
+
+    await contentCreateCommand(root, "/blog/hello", { title: "Hello" });
+
+    const marker = JSON.parse(await readFile(join(root, ".hook-fired.json")));
+    assertEquals(marker.title, "Hello");
+    assertStringIncludes(marker.sourcePath, "01.blog/01.hello/default.md");
+  });
+});

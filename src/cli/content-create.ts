@@ -16,7 +16,10 @@
 import { join, resolve } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
+import type { DuneConfig } from "../config/mod.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
+import { createHookRegistry } from "../hooks/registry.ts";
+import { loadPlugins } from "../plugins/loader.ts";
 
 export interface ContentCreateOptions {
   debug?: boolean;
@@ -114,8 +117,9 @@ export async function contentCreateCommand(
   // Load config for content dir
   const storage = createStorage({ rootDir: root });
   let contentRoot = join(root, "content");
+  let config: DuneConfig | undefined;
   try {
-    const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
+    config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
     contentRoot = resolveContentDirPath(config.system.content, root);
   } catch {
     // Use default
@@ -217,6 +221,22 @@ export async function contentCreateCommand(
 
   const relPath = filePath.replace(root + "/", "");
   const route = "/" + normalised;
+
+  // Fire onPageCreate — this is a single, explicit, human-invoked page
+  // mutation, the same conceptual action as creating a page through the
+  // admin UI (which already fires this hook). Unlike bulk migration
+  // commands, there's no performance concern with loading plugins for one
+  // page. A plugin/hook failure is logged but does not fail the command —
+  // the page was already written successfully.
+  if (config) {
+    try {
+      const hooks = createHookRegistry({ config, storage });
+      await loadPlugins({ config, hooks, storage, root });
+      await hooks.fire("onPageCreate", { sourcePath: relPath, title });
+    } catch (err) {
+      console.error(`  ⚠  onPageCreate hook failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
 
   if (options.json) {
     console.log(JSON.stringify({

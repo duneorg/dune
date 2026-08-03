@@ -20,7 +20,7 @@
 import { dirname, join, resolve } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { bootstrap } from "../runtime/bootstrap.ts";
+import { bootstrap, type BootstrapResult } from "../runtime/bootstrap.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 
 export interface ContentDeleteOptions {
@@ -74,8 +74,9 @@ export async function contentDeleteCommand(
 
   // Try to find the page in the content index via bootstrap
   let sourcePath: string | null = null;
+  let ctx: BootstrapResult | undefined;
   try {
-    const ctx = await bootstrap(root, { debug: options.debug });
+    ctx = await bootstrap(root, { debug: options.debug });
     const page = ctx.engine.pages.find((p) => p.route === normalised);
     if (page) sourcePath = page.sourcePath;
   } catch {
@@ -182,6 +183,19 @@ export async function contentDeleteCommand(
       deleted.push(dirname(relPath) + "/");
     } catch {
       // Non-fatal — ignore
+    }
+  }
+
+  // Fire onPageDelete — single, explicit, human-invoked page mutation, same
+  // conceptual action as deleting a page through the admin UI (which already
+  // fires this hook). Reuses the hook registry from the bootstrap() call
+  // above rather than instantiating a second one; skipped entirely if that
+  // bootstrap failed (no plugin/hook context to fire into in that case).
+  if (ctx) {
+    try {
+      await ctx.hooks.fire("onPageDelete", { sourcePath: relPath });
+    } catch (err) {
+      console.error(`  ⚠  onPageDelete hook failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 

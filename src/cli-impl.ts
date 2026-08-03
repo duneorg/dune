@@ -247,6 +247,9 @@ Migration options (used with migrate:from-*):
   --dry-run           Report what would be imported without writing files
   --verbose           Print each imported page
   --trust-source      Skip HTML sanitization — only use for sources you fully trust
+  --fire-hooks        Fire onPageCreate for each imported page (off by default —
+                      a bulk import running per-page hooks, e.g. webhooks, is
+                      more likely a surprise than a feature; opt in deliberately)
 
 Content create options (used with content:create):
   --title <text>      Page title (default: derived from slug)
@@ -335,6 +338,8 @@ export async function main(args: string[] = Deno.args) {
       options.dryRun = true;
     } else if (args[i] === "--trust-source") {
       options.trustSource = true;
+    } else if (args[i] === "--fire-hooks") {
+      options.fireHooks = true;
     } else if (args[i] === "--no-search") {
       options.noSearch = true;
     } else if (args[i] === "--frozen" || args[i] === "--no-frozen") {
@@ -662,6 +667,7 @@ export async function main(args: string[] = Deno.args) {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+          fireHooks: options.fireHooks === true,
         });
         break;
 
@@ -671,6 +677,7 @@ export async function main(args: string[] = Deno.args) {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+          fireHooks: options.fireHooks === true,
         });
         break;
 
@@ -680,6 +687,7 @@ export async function main(args: string[] = Deno.args) {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+          fireHooks: options.fireHooks === true,
         });
         break;
 
@@ -689,6 +697,7 @@ export async function main(args: string[] = Deno.args) {
           dryRun: options.dryRun === true,
           verbose: options.verbose === true,
           trustSource: options.trustSource === true,
+          fireHooks: options.fireHooks === true,
         });
         break;
 

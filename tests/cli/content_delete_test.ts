@@ -292,3 +292,46 @@ Deno.test(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// onPageDelete hook firing (v0.31.6 — reuses the hook registry from the
+// bootstrap() call already made to resolve the route, single explicit page
+// mutation fires unconditionally like the admin UI does)
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "content:delete fires onPageDelete for a registered plugin",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await createFolderPage(root, "01.blog");
+
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "plugins:\n  - src: ./plugins/test-plugin.ts\n",
+      );
+      await Deno.mkdir(join(root, "plugins"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "plugins", "test-plugin.ts"),
+        `export default {
+          name: "test-plugin",
+          version: "1.0.0",
+          hooks: {
+            async onPageDelete(ctx) {
+              await Deno.writeTextFile(
+                new URL("../.hook-fired.json", import.meta.url).pathname,
+                JSON.stringify(ctx.data),
+              );
+            },
+          },
+        };\n`,
+      );
+
+      await contentDeleteCommand(root, "/blog", { confirm: true });
+
+      const marker = JSON.parse(await Deno.readTextFile(join(root, ".hook-fired.json")));
+      assertStringIncludes(marker.sourcePath, "01.blog/default.md");
+    });
+  },
+);
