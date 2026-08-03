@@ -28,6 +28,7 @@ import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts"
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
+import type { Scheduler, ScheduledAction } from "../workflow/mod.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
@@ -311,6 +312,20 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     (ctx.adminContext as Record<string, unknown>).jobScheduler = jobScheduler;
   }
 
+  // Start the workflow scheduler's polling loop (scheduled publish/unpublish/
+  // archive). plugin-admin's mount() only constructs the Scheduler (CRUD:
+  // schedule/cancel/list) and an executeScheduledAction callback — it never
+  // calls .start()/.tick() itself, because mount() also runs during one-shot
+  // commands (dune build, SSG) where a live polling interval would be wrong.
+  // dune serve is the one long-running process that should own this, exactly
+  // like jobScheduler above.
+  const adminCtxForScheduler = ctx.adminContext as
+    | { scheduler?: Scheduler; executeScheduledAction?: (action: ScheduledAction) => Promise<void> }
+    | null;
+  if (adminCtxForScheduler?.scheduler && adminCtxForScheduler.executeScheduledAction) {
+    adminCtxForScheduler.scheduler.start(adminCtxForScheduler.executeScheduledAction);
+  }
+
   // Attach the island build cache so staticFiles() can serve /_fresh/js/* chunks.
   applySnapshot(app);
 
@@ -332,6 +347,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     // before the process exits.
     setShuttingDown(true);
     jobScheduler.stop();
+    adminCtxForScheduler?.scheduler?.stop();
     console.log(`\n[dune] received ${signal}, draining connections...`);
     ac.abort();
   };
