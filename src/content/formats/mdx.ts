@@ -66,7 +66,11 @@ export class MdxHandler implements ContentFormatHandler {
     raw: string,
     _filePath: string,
   ): Promise<PageFrontmatter> {
-    const { data } = matter(raw);
+    // See markdown.ts's extractFrontmatter for why the {} options argument
+    // is required here (bypasses gray-matter's cache, which stores a mutable
+    // result object before parsing and can otherwise leave a broken file
+    // silently "healed" on a later parse of the same content in-process).
+    const { data } = matter(raw, {});
 
     return {
       title: "",
@@ -81,7 +85,7 @@ export class MdxHandler implements ContentFormatHandler {
    * Extract the MDX body (everything after the frontmatter block).
    */
   extractBody(raw: string, _filePath: string): string | null {
-    const { content } = matter(raw);
+    const { content } = matter(raw, {});
     return content.trim() || null;
   }
 

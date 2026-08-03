@@ -40,7 +40,15 @@ export class MarkdownHandler implements ContentFormatHandler {
     raw: string,
     _filePath: string,
   ): Promise<PageFrontmatter> {
-    const { data } = matter(raw);
+    // Passing an options object (even empty) bypasses gray-matter's
+    // content-keyed cache — required, not a style choice. That cache stores
+    // the mutable result object *before* parsing the YAML block, so a parse
+    // that throws (e.g. malformed frontmatter) still leaves a corrupted
+    // half-populated object sitting in the cache; an identical string parsed
+    // again later in the same process (e.g. a dev-mode rebuild) silently
+    // returns that corrupted object instead of throwing again — a broken
+    // file "heals" itself after the first encounter with no fix applied.
+    const { data } = matter(raw, {});
 
     // Ensure required fields have defaults
     return {
@@ -56,7 +64,7 @@ export class MarkdownHandler implements ContentFormatHandler {
    * Extract the markdown body (everything after the frontmatter block).
    */
   extractBody(raw: string, _filePath: string): string | null {
-    const { content } = matter(raw);
+    const { content } = matter(raw, {});
     return content.trim() || null;
   }
 
