@@ -34,6 +34,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   text instead of being parsed. Plain `.md` pages were unaffected (`marked`
   supports GFM tables by default) — MDX was the one format silently missing
   it. Added `remark-gfm` and wired it into the compile call.
+- **Collections silently reverse-sorted unless `dir: asc` was spelled out.**
+  `collection:` blocks and the programmatic `Collection.order()` both
+  defaulted to `dir: "desc"` for every `by` value, not just `date` — so
+  `order: { by: title }` and `order: { by: order }` (folder numeric prefix)
+  quietly sorted Z→A / highest-to-lowest instead of the expected A→Z /
+  natural-prefix order, inconsistent with `content.pages()`'s own `asc`
+  default and with the ascending nav/sibling sort in `page-loader.ts`. The
+  default is now conditional on `by`: `date` still defaults to `desc`
+  (newest-first, the universal blog convention every doc example already
+  uses), everything else now defaults to `asc`.
 
 ### Docs
 
