@@ -8,6 +8,7 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { newCommand } from "../../src/cli/new.ts";
+import { bootstrap } from "../../src/runtime/bootstrap.ts";
 
 Deno.test("dune new: writes a one-line main.ts calling cli()", async () => {
   const dir = await Deno.makeTempDir();
@@ -20,6 +21,52 @@ Deno.test("dune new: writes a one-line main.ts calling cli()", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("dune new: site.yaml declares theme.name matching the scaffolded themes/ directory (regression: rendered with no theme applied at all)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await newCommand(dir);
+    const siteYaml = await Deno.readTextFile(join(dir, "config", "site.yaml"));
+    assertStringIncludes(siteYaml, "theme:");
+    assertStringIncludes(siteYaml, "name: starter");
+
+    const themeDirExists = await Deno.stat(join(dir, "themes", "starter"))
+      .then((s) => s.isDirectory)
+      .catch(() => false);
+    assertEquals(themeDirExists, true, "themes/starter/ must exist to match the declared theme.name");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test(
+  "dune new: a freshly-scaffolded site actually resolves its own theme's template (not the bare no-theme fallback)",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const dir = await Deno.makeTempDir();
+    try {
+      await newCommand(dir);
+      const ctx = await bootstrap(dir, {});
+      const template = await ctx.engine.themes.loadTemplate("default");
+      assertEquals(
+        template !== null,
+        true,
+        "loadTemplate(\"default\") returned null — the scaffold's own theme isn't being resolved, " +
+          "content would silently render through the bare unstyled fallback instead",
+      );
+    } finally {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await Deno.remove(dir, { recursive: true });
+          break;
+        } catch (err) {
+          if (attempt >= 4) throw err;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+    }
+  },
+);
 
 Deno.test("dune new: tasks invoke main.ts, not the dune shim or a jsr: re-exec", async () => {
   const dir = await Deno.makeTempDir();

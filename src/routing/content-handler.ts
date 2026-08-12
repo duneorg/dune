@@ -12,6 +12,14 @@ import { rewriteInternalLinks } from "./link-rewriter.ts";
 import { resolveCollectionForPage, resolveCollectionsForPage } from "./collection-resolver.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { logger } from "../core/logger.ts";
+
+// Dedupe by template name so a broken theme configuration doesn't spam the
+// log on every page render — one warning per distinct missing template name
+// per process is enough to make the fallback below discoverable, which it
+// previously was not at all (see the "dune new never wrote theme:" bug this
+// was found alongside).
+const warnedMissingTemplates = new Set<string>();
 
 /**
  * Render a Markdown (or MDX) content page with the site theme.
@@ -30,6 +38,17 @@ export async function handleMarkdownPage(
   const template = await engine.themes.loadTemplate(templateName);
 
   if (!template) {
+    if (!warnedMissingTemplates.has(templateName)) {
+      warnedMissingTemplates.add(templateName);
+      logger.warn("theme.template.not_found", {
+        templateName,
+        themeName: engine.config?.theme?.name,
+        sourcePath: page.sourcePath,
+        reason:
+          "Rendering a bare unstyled fallback instead. Check theme.name in " +
+          "config/site.yaml and that a matching directory exists under themes/.",
+      });
+    }
     const html = await page.html();
     return render(
       h("html", null,
