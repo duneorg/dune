@@ -123,6 +123,7 @@ export class MdxHandler implements ContentFormatHandler {
 
       // Lazy import @mdx-js/mdx (heavy dependency, only load when needed)
       const { compile, run } = await import("@mdx-js/mdx");
+      const { default: remarkGfm } = await import("remark-gfm");
 
       // Compile MDX source to a JS module string
       const compiled = await compile(mdxSource, {
@@ -130,6 +131,13 @@ export class MdxHandler implements ContentFormatHandler {
         outputFormat: "function-body",
         development: false,
         providerImportSource: undefined,
+        // Without this, @mdx-js/mdx's remark parser only supports plain
+        // CommonMark — GFM tables (`| a | b |`), strikethrough, task lists,
+        // and autolinks all render as literal text instead of being parsed.
+        // The plain-Markdown handler (marked, in markdown.ts) supports GFM
+        // tables by default with no equivalent configuration; MDX pages were
+        // the one format where this silently didn't work.
+        remarkPlugins: [remarkGfm],
       });
 
       // Merge registry components + co-located imports into one scope.

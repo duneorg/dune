@@ -40,6 +40,7 @@ export const DUNE_CORE_RUNTIME_IMPORTS: Record<string, string> = {
   "marked": "npm:marked@^15",
   "gray-matter": "npm:gray-matter@^4",
   "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
+  "remark-gfm": "npm:remark-gfm@^4",
   "sharp": "npm:sharp@^0.33",
   "nodemailer": "npm:nodemailer@^6",
   "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2",

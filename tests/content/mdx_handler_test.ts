@@ -207,6 +207,34 @@ Deno.test("MdxHandler: render MDX with lists", async () => {
   assertEquals(html.includes("Item one"), true);
 });
 
+Deno.test("MdxHandler: renders GFM tables (regression: MDX compile had no remarkGfm, tables rendered as literal text)", async () => {
+  const handler = new MdxHandler();
+
+  const page = createMockPage(
+    "| Deutsch | Français |\n|---------|----------|\n| Hallo | Bonjour |",
+    "page.mdx",
+  );
+
+  const ctx = createMockRenderContext();
+  const html = await handler.renderToHtml(page, ctx);
+
+  assertEquals(html.includes("<table>"), true);
+  assertEquals(html.includes("<th>Deutsch</th>"), true);
+  assertEquals(html.includes("<td>Hallo</td>"), true);
+  // The bug: without remarkGfm, this renders as a literal <p>| Deutsch | ...
+  assertEquals(html.includes("| Deutsch |"), false);
+});
+
+Deno.test("MdxHandler: renders GFM strikethrough", async () => {
+  const handler = new MdxHandler();
+
+  const page = createMockPage("~~struck~~", "page.mdx");
+  const ctx = createMockRenderContext();
+  const html = await handler.renderToHtml(page, ctx);
+
+  assertEquals(html.includes("<del>struck</del>"), true);
+});
+
 Deno.test("MdxHandler: empty rawContent returns empty string", async () => {
   const handler = new MdxHandler();
 
