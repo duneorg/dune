@@ -139,7 +139,7 @@ Theme templates live in `themes/<name>/templates/*.tsx`. They receive rendered c
 import type { TemplateProps } from "@dune/content/types";
 import { db } from "@/db";
 
-export default async function PostTemplate({ page, content, site }: TemplateProps) {
+export default async function PostTemplate({ page, children, site }: TemplateProps) {
   const comments = await db.comments.find({
     where: { pageRoute: page.route },
     orderBy: "createdAt",
@@ -148,7 +148,7 @@ export default async function PostTemplate({ page, content, site }: TemplateProp
   return (
     <article>
       <h1>{page.title}</h1>
-      <div dangerouslySetInnerHTML={{ __html: content }} />
+      <div>{children}</div>
       {comments.map(c => <div key={c.id}>{c.body}</div>)}
     </article>
   );
@@ -158,10 +158,10 @@ export default async function PostTemplate({ page, content, site }: TemplateProp
 | Prop | Type | Contents |
 |------|------|----------|
 | `page` | `PageMeta` | Frontmatter, route, template name, language |
-| `content` | `string` | Rendered HTML (from md/mdx source) |
+| `children` | `unknown` | Pre-rendered content — a Preact vnode already wrapping the rendered HTML of the md/mdx body |
 | `site` | `SiteConfig` | Values from `site.yaml` |
 
-`content` is the rendered HTML of the Markdown/MDX body. For TSX content pages, the content file IS the component — no template is involved.
+`children` is already a rendered vnode, not a raw HTML string — render it directly (`<div>{children}</div>`), don't pass it to `dangerouslySetInnerHTML`. For TSX content pages, the content file IS the component — no template is involved.
 
 Referencing a template that doesn't exist in the active theme is a validation error caught by `dune validate`.
 
