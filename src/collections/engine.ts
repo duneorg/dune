@@ -217,7 +217,8 @@ export function createCollectionEngine(
   function isFlatSibling(page: PageIndex, p: PageIndex, myDir: string): boolean {
     if (dirname(p.sourcePath) !== myDir) return false;
     if (!p.route || !page.route || p.route === page.route) return false;
-    const prefix = page.route === "/" ? "/" : page.route + "/";
+    const base = page.route.endsWith("/") ? page.route.slice(0, -1) : page.route;
+    const prefix = base === "" ? "/" : base + "/";
     return p.route.startsWith(prefix) && !p.route.slice(prefix.length).includes("/");
   }
 

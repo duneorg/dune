@@ -283,6 +283,38 @@ Deno.test("resolveSource @self.children: includes flat content files in same dir
   assertEquals(collection.items[0].route, "/articles/my-article");
 });
 
+Deno.test("resolveSource @self.children: matches flat siblings when parent route has trailing slash", async () => {
+  // Folder-index pages' own route can carry a trailing slash (e.g. "/arbeitswelt/").
+  // The flat-sibling prefix must not double up to "/arbeitswelt//", which would
+  // never match a real child route like "/arbeitswelt/test".
+  const listing = makePage({
+    sourcePath: "articles/default.md",
+    route: "/articles/",
+    parentPath: null,
+  });
+  const flatArticle = makePage({
+    sourcePath: "articles/my-article.md",
+    route: "/articles/my-article",
+    parentPath: "articles",
+  });
+
+  const allPages = [listing, flatArticle];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true } },
+    listing,
+  );
+  await collection.load();
+
+  assertEquals(collection.items.length, 1);
+  assertEquals(collection.items[0].route, "/articles/my-article");
+});
+
 Deno.test("resolveSource @self.children: reserved stems in same directory are not flat children", async () => {
   // articles/index.md alongside articles/default.md — index.md is reserved, not a flat child
   const listing = makePage({
