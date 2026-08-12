@@ -27,6 +27,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   template written from the doc would destructure `content` as `undefined`
   and render nothing. The shipped scaffold's own `DefaultTemplate` already
   used `children` correctly; this was a stale doc, not a second runtime bug.
+- **MDX pages had no GFM support — tables rendered as literal text.**
+  `mdx.ts`'s compile step passed no `remarkPlugins`, so `@mdx-js/mdx`'s
+  remark parser only supported plain CommonMark: `| a | b |` table syntax,
+  `~~strikethrough~~`, task lists, and autolinks all rendered as literal
+  text instead of being parsed. Plain `.md` pages were unaffected (`marked`
+  supports GFM tables by default) — MDX was the one format silently missing
+  it. Added `remark-gfm` and wired it into the compile call.
+
+### Docs
+
+- **`skills/dune-content.md`** now documents that two adjacent lists with
+  the same marker merge into one list under a blank line alone — standard
+  CommonMark behavior shared by every compliant parser, not a Dune quirk —
+  and the `---` thematic-break technique to force a real break between them.
 
 ---
 
