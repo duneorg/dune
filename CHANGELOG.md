@@ -5,6 +5,31 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [0.31.7] — 2026-08-04
+
+### Fixed
+
+- **`dune new` never wrote a `theme:` block into `config/site.yaml`**, even
+  though it creates `themes/starter/` right alongside it. With `theme:`
+  absent, config fell back to a hardcoded `theme.name: "default"` — a theme
+  that doesn't exist in a fresh scaffold — so every newly-scaffolded site
+  silently rendered through a bare unstyled built-in fallback instead of its
+  own theme, with no warning anywhere. Confirmed live: a fresh `dune new`
+  site returned 200 but never used its own `layout.tsx` (no nav links, no
+  `NavToggle` island, generic fallback CSS). Also added a warning (deduped
+  by template name) when this fallback fires at all, for any site whose
+  `theme.name` doesn't resolve, hand-configured or scaffolded — this bug was
+  invisible for as long as it was specifically because the fallback never
+  said anything.
+- **`skills/dune-content.md` documented a `content: string` template prop
+  that doesn't exist.** The real prop is `children` (a pre-rendered vnode,
+  threaded through from `content-handler.ts`'s `children: htmlContent`) — a
+  template written from the doc would destructure `content` as `undefined`
+  and render nothing. The shipped scaffold's own `DefaultTemplate` already
+  used `children` correctly; this was a stale doc, not a second runtime bug.
+
+---
+
 ## [0.31.6] — 2026-08-02
 
 ### Added
