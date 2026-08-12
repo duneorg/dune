@@ -26,6 +26,19 @@ import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord } from "../flex/types.ts";
 import { flexRecordToPageIndex } from "../flex/page-index.ts";
 
+/**
+ * Default sort direction when `order.dir` is omitted: newest-first for
+ * dates (the universal blog convention), oldest/lowest-first for
+ * everything else — matching `content.pages()`'s `orderDir` default and
+ * page-loader.ts's nav/sibling sort, both of which are ascending for
+ * `order`/`title`. A single blanket "desc" default here previously made
+ * `by: title`/`by: order` silently reverse-sort unless `dir: asc` was
+ * spelled out.
+ */
+function defaultOrderDir(by: string): "asc" | "desc" {
+  return by === "date" ? "desc" : "asc";
+}
+
 /** Options for {@link createCollectionEngine}. */
 export interface CollectionEngineOptions {
   /** All page indexes */
@@ -380,7 +393,7 @@ export function createCollectionEngine(
     if (!order) return items;
 
     const sorted = [...items];
-    const dir = order.dir === "asc" ? 1 : -1;
+    const dir = (order.dir ?? defaultOrderDir(order.by)) === "asc" ? 1 : -1;
 
     sorted.sort((a, b) => {
       let result = 0;
@@ -669,9 +682,9 @@ function createCollectionObject(
     hasNext: page < totalPages,
     hasPrev: page > 1,
 
-    order(by: string, dir: "asc" | "desc" = "desc"): Collection {
+    order(by: string, dir?: "asc" | "desc"): Collection {
       const sorted = [...indexItems].sort((a, b) => {
-        const mult = dir === "asc" ? 1 : -1;
+        const mult = (dir ?? defaultOrderDir(by)) === "asc" ? 1 : -1;
         switch (by) {
           case "date":
             return ((a.date ?? "").localeCompare(b.date ?? "")) * mult;

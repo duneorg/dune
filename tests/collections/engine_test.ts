@@ -834,6 +834,102 @@ Deno.test("applyOrder: order field sorts by numeric order property", async () =>
   assertEquals(collection.items[2].route, "/blog/third");
 });
 
+Deno.test("applyOrder: by title with dir omitted defaults to ascending (regression: used to silently reverse-sort)", async () => {
+  const charlie = makePage({
+    sourcePath: "02.blog/01.c/default.md",
+    route: "/blog/c",
+    title: "Charlie",
+    parentPath: "/blog",
+  });
+  const alice = makePage({
+    sourcePath: "02.blog/02.a/default.md",
+    route: "/blog/a",
+    title: "Alice",
+    parentPath: "/blog",
+  });
+
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const allPages = [parent, charlie, alice];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true }, order: { by: "title" } },
+    parent,
+  );
+  await collection.load();
+
+  assertEquals(collection.items[0].route, "/blog/a");
+  assertEquals(collection.items[1].route, "/blog/c");
+});
+
+Deno.test("applyOrder: by order with dir omitted defaults to ascending (regression: used to silently reverse-sort)", async () => {
+  const third = makePage({
+    sourcePath: "02.blog/03.third/default.md",
+    route: "/blog/third",
+    order: 3,
+    parentPath: "/blog",
+  });
+  const first = makePage({
+    sourcePath: "02.blog/01.first/default.md",
+    route: "/blog/first",
+    order: 1,
+    parentPath: "/blog",
+  });
+
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const allPages = [parent, third, first];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true }, order: { by: "order" } },
+    parent,
+  );
+  await collection.load();
+
+  assertEquals(collection.items[0].route, "/blog/first");
+  assertEquals(collection.items[1].route, "/blog/third");
+});
+
+Deno.test("applyOrder: by date with dir omitted still defaults to descending (newest-first, unchanged)", async () => {
+  const older = makePage({
+    sourcePath: "02.blog/01.older/default.md",
+    route: "/blog/older",
+    date: "2026-01-01",
+    parentPath: "/blog",
+  });
+  const newer = makePage({
+    sourcePath: "02.blog/02.newer/default.md",
+    route: "/blog/newer",
+    date: "2026-06-01",
+    parentPath: "/blog",
+  });
+
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const allPages = [parent, older, newer];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const collection = await engine.resolve(
+    { items: { "@self.children": true }, order: { by: "date" } },
+    parent,
+  );
+  await collection.load();
+
+  assertEquals(collection.items[0].route, "/blog/newer");
+  assertEquals(collection.items[1].route, "/blog/older");
+});
+
 // ---------------------------------------------------------------------------
 // Tests — pagination
 // ---------------------------------------------------------------------------
@@ -1126,6 +1222,74 @@ Deno.test("collection.order: re-sorts items by title asc", async () => {
 
   assertEquals(sorted.items[0].route, "/blog/a");
   assertEquals(sorted.items[1].route, "/blog/z");
+});
+
+Deno.test("collection.order: by title with dir omitted defaults to ascending (regression: used to silently reverse-sort)", async () => {
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const z = makePage({
+    sourcePath: "02.blog/01.z/default.md",
+    route: "/blog/z",
+    title: "Zebra",
+    parentPath: "/blog",
+  });
+  const a = makePage({
+    sourcePath: "02.blog/02.a/default.md",
+    route: "/blog/a",
+    title: "Aardvark",
+    parentPath: "/blog",
+  });
+
+  const allPages = [parent, z, a];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const base = await engine.resolve(
+    { items: { "@self.children": true } },
+    parent,
+  );
+
+  const sorted = base.order("title");
+  await sorted.load();
+
+  assertEquals(sorted.items[0].route, "/blog/a");
+  assertEquals(sorted.items[1].route, "/blog/z");
+});
+
+Deno.test("collection.order: by date with dir omitted still defaults to descending (newest-first, unchanged)", async () => {
+  const parent = makePage({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const older = makePage({
+    sourcePath: "02.blog/01.older/default.md",
+    route: "/blog/older",
+    date: "2026-01-01",
+    parentPath: "/blog",
+  });
+  const newer = makePage({
+    sourcePath: "02.blog/02.newer/default.md",
+    route: "/blog/newer",
+    date: "2026-06-01",
+    parentPath: "/blog",
+  });
+
+  const allPages = [parent, older, newer];
+  const engine = createCollectionEngine({
+    pages: allPages,
+    taxonomyMap: {},
+    loadPage: makeLoadPage(allPages),
+  });
+
+  const base = await engine.resolve(
+    { items: { "@self.children": true } },
+    parent,
+  );
+
+  const sorted = base.order("date");
+  await sorted.load();
+
+  assertEquals(sorted.items[0].route, "/blog/newer");
+  assertEquals(sorted.items[1].route, "/blog/older");
 });
 
 // ---------------------------------------------------------------------------
