@@ -328,3 +328,15 @@ dune blueprint:show blog-post --json  # machine-readable
 **Language code must be configured to be detected.** `post.de.md` is not treated as a German variant unless `de` is listed in `site.yaml` under `i18n.languages`. Without that config, the filename is treated as a slug containing a literal dot — producing an unexpected route.
 
 **`draft: true` behaves differently in dev vs production.** Draft pages are excluded from the content index in production but visible in development. Don't rely on draft status as a security gate — use `roles:` frontmatter for access control.
+
+**Two adjacent lists with the same marker merge into one.** This is standard CommonMark behavior (shared by every compliant Markdown/MDX parser, not a Dune quirk): a blank line alone does not end a list, so
+```
+1. Apple
+2. Banana
+
+1. Cherry
+2. Date
+```
+renders as a single four-item list (`1. Apple / 2. Banana / 3. Cherry / 4. Date`), not two separate two-item lists. To force a real break, put a thematic break (`---`) between them — that's the standard, portable technique, not a Dune-specific workaround.
+
+**GFM tables/strikethrough/task lists work in both Markdown and MDX (v0.31.7+).** `.md` pages get GFM via `marked`'s defaults. `.mdx` pages get it via `remarkGfm` passed to the MDX compiler — before v0.31.7, MDX pages had no GFM support and `| a | b |` table syntax rendered as literal text instead of an actual table. If you hit this on an older core version, either upgrade or write the equivalent structure as nested Markdown lists instead.
