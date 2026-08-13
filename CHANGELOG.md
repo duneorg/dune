@@ -44,6 +44,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   default is now conditional on `by`: `date` still defaults to `desc`
   (newest-first, the universal blog convention every doc example already
   uses), everything else now defaults to `asc`.
+- **`dune build` reported success on pages with a broken MDX body.**
+  `MdxHandler.renderToHtml()` never throws — a compile/render failure
+  becomes a normal 200 response with the error embedded as
+  `<div class="mdx-error">` (see `MDX_ERROR_CLASS`), so the SSG builder's
+  existing try/catch around each route never saw it: the page was written
+  to `dist/` and counted as rendered, and the build reported success while
+  shipping the error div to production. `buildStatic()` now inspects each
+  HTML response for that marker and records it in `result.errors`, exactly
+  like a thrown render error already was.
+
+### Added
+
+- **`dune content:check --render`** — opt-in pass that actually compiles
+  every `.md`/`.mdx` page body and reports failures, not just frontmatter
+  issues. `content:list`/`content:check` only ever parsed frontmatter
+  during indexing — "N pages indexed" was never proof any of them compile.
+  Off by default (it renders the whole site, so it's slower than a plain
+  check).
 
 ### Docs
 
@@ -51,6 +69,9 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   the same marker merge into one list under a blank line alone — standard
   CommonMark behavior shared by every compliant parser, not a Dune quirk —
   and the `---` thematic-break technique to force a real break between them.
+- **`skills/dune-content.md`** and the CLI reference now note that
+  `content:list`/`content:check` are frontmatter-only and don't prove a
+  page compiles — pointing at the new `content:check --render`.
 
 ---
 
