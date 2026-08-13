@@ -1,35 +1,51 @@
 # Skill: Dune Email
 
-Transactional email through a single `email.send()` call. Dune owns the interface and template rendering; the delivery provider is swappable via config. In development, emails are never sent — they're written to disk and visible in the admin panel.
+Transactional email via `EmailClient.send()`. There is no ambient, pre-configured `email` singleton anywhere in Dune — every consumer constructs its own client from config, except background jobs, which get one for free on `ctx.email`.
 
 ---
 
 ## Call surface
 
+**There is no `import { email } from "@dune/core"` (or `@dune/core/email`).** No such export exists — `@dune/core/email` only exports `createEmailClient`, `createEmailProvider`, provider classes, and types. You build the client yourself:
+
 ```ts
-import { email } from "@dune/core";
+import { createEmailClient, createEmailProvider } from "@dune/core/email";
+
+const provider = createEmailProvider({
+  provider: "resend",
+  from: "hello@example.com",
+  resend: { apiKey: Deno.env.get("RESEND_API_KEY")! },
+});
+
+const email = createEmailClient({
+  provider,
+  from: "hello@example.com",
+  // storage is required if you'll use `template:` — see "Email templates" below
+});
 
 await email.send({
   to: "user@example.com",
   subject: "Your magic link",
-  template: "magic-link",      // resolves emails/magic-link.email.{tsx,mdx,md}
+  template: "magic-link",
   data: { link, expiresIn: "15 minutes" },
 });
 ```
 
-`to` accepts a string or `string[]`. `template` is the base filename without the `.email.{ext}` suffix. Dune resolves by searching for `emails/<name>.email.tsx`, then `.mdx`, then `.md` — use only one format per template name.
+`to` accepts a string or `string[]`. `send()` requires either `template` or (`html` + `subject`) — it throws otherwise. If `template` is given, `subject` becomes optional (the template can supply its own — see below) and `html` is ignored if also present.
 
-Plain-text fallback is auto-generated from the rendered HTML. You do not need a separate text template.
+Plain-text fallback is auto-generated from the rendered HTML by stripping tags. You do not need a separate text template.
+
+**The one place you get a pre-built client for free is background jobs**: `JobContext.email` (`src/jobs/types.ts`) is a real, already-configured `EmailClient`, constructed from `site.yaml`'s `email:` config with `storage` wired in — `template:` works there without extra setup. Hooks (`HookContext`) and TSX content pages (`ContentPageProps`) get neither `email` nor `content` nor `db` — see the `dune-plugin-authoring` skill's "Hook context" section for the full story on hooks.
 
 ---
 
 ## Provider config
 
 ```yaml
-# site.yaml
+# site.yaml — top level, not nested under a "site:" key
 email:
   from: "My Site <hello@example.com>"
-  provider: resend               # or: smtp, postmark, sendgrid
+  provider: resend               # console (default) | smtp | resend | postmark | sendgrid
   resend:
     apiKey: "${RESEND_API_KEY}"
 ```
@@ -42,19 +58,20 @@ email:
   smtp:
     host: smtp.example.com
     port: 587
+    secure: false                # true = implicit TLS on 465, false = STARTTLS on 587
     user: "${SMTP_USER}"
-    password: "${SMTP_PASS}"
+    pass: "${SMTP_PASS}"         # field is `pass`, not `password`
 ```
 
-No provider config is needed in development — dev-mode interception is automatic.
+When `email:` is omitted, or the selected provider's required credentials are missing, `createEmailProvider()` (`src/email/providers/mod.ts`) silently falls back to `ConsoleEmailProvider` — it logs the message to stdout and does not send. This fallback is config-driven, not environment-driven — see the dev-mode section below for why that distinction matters.
 
 ---
 
-## Template formats
+## Email templates
 
-Templates live in `emails/` at the project root, one file per email type.
+Templates live in `emails/` at the project root. `loadTemplate()` (`src/email/templates.ts`) tries extensions in this exact order: **`.email.tsx`, then `.email.md`, then `.email.mdx`** — not tsx/mdx/md.
 
-### TSX (`.email.tsx`) — structural, fully typed
+### TSX (`.email.tsx`)
 
 ```tsx
 // emails/magic-link.email.tsx
@@ -65,62 +82,51 @@ export default ({ link, expiresIn }: Data) => (
     Click <a href={link}>here</a> to log in. Link expires in {expiresIn}.
   </p>
 );
+
+// Optional — subject shown in the sent email. Falls back to the
+// template's filename stem if omitted. Can also be a function of `data`.
+export const subject = "Your login link";
 ```
 
-`export type Data` types the `data:` field in `email.send()` — TypeScript catches mismatches at the call site. Dune wraps a fragment root in an HTML shell automatically. If the root element is `<html>`, it is used as-is.
+`export type Data` gives you compile-time checking on `data:` at the `send()` call site — real TypeScript, nothing Dune-specific enforces it at runtime. The component's props ARE `data` directly (`renderToString(h(Component, data))`) — there's no wrapping `{ data, site }` object passed in. **There is no automatic HTML-shell wrapping** — whatever your component returns is rendered as-is; if you need `<html><body>...` structure, write it yourself in the component.
 
-```tsx
-// Full HTML control when needed
-export type Data = { name: string; items: string[] };
+Template resolution for `.tsx` needs an absolute filesystem path and currently derives it from `Deno.cwd()` (`templates.ts`'s `loadTemplate()`) rather than the `StorageAdapter`'s actual root — this only reliably works when the process's cwd is the site root (true for `dune dev`/`dune serve`, not guaranteed in every test harness).
 
-export default ({ name, items }: Data) => (
-  <html>
-    <body style="font-family: sans-serif;">
-      <p>Hi {name},</p>
-      <ul>{items.map(i => <li>{i}</li>)}</ul>
-    </body>
-  </html>
-);
-```
-
-### MDX (`.email.mdx`) — prose-heavy, non-developer editable
-
-```mdx
-Hi {name},
-
-Here are this week's top posts:
-
-{posts.map(p => `- [${p.title}](${siteUrl}${p.route})`).join('\n')}
-
-[Unsubscribe]({unsubscribeUrl})
-```
-
-`@mdx-js/mdx` compiles MDX to JSX — same rendering pipeline as TSX. Good for emails where copy is the main thing and non-developers need to edit it. No `export type Data` — `data:` is untyped.
-
-### Markdown (`.email.md`) — simplest, no JSX
+### Markdown (`.email.md`)
 
 ```md
+<!-- emails/welcome.email.md -->
+# Welcome to {{site}}
+
 Hi {{name}},
 
-Click [here]({{link}}) to log in. Link expires in {{expiresIn}}.
+Thanks for signing up! Your account is ready.
 ```
 
-Dune does `{{key}}` substitution from `data:`, then renders Markdown to HTML. No JSX toolchain. No type safety. Best for simple transactional emails with no conditional logic.
+`{{key}}` substitution pulls from `data:` and HTML-escapes the value first. Unknown keys are left as the literal `{{key}}` text. **The subject comes from the first `# Heading` line in the body** (extracted then stripped from the rendered output) — **not** from YAML frontmatter. There is no frontmatter parsing in the email-markdown path at all; a `---\nsubject: ...\n---` block at the top would just render as garbled Markdown, not set the subject.
+
+### MDX (`.email.mdx`)
+
+**`.mdx` email templates are rendered as plain Markdown, not compiled MDX/JSX.** `templates.ts` treats `.email.mdx` through the exact same `marked.parse()` path as `.email.md` — same `{{key}}` substitution, same heading-derived subject, no JSX support, no component imports. This is a known, explicit limitation in the source (`templates.ts`'s own comment: "treated as Markdown (noted limitation)"), not a difference from how `.mdx` content pages work. If you need real JSX in an email, use `.email.tsx`.
 
 ---
 
-## Dev-mode interception
+## Dev-mode interception — read this before assuming you're safe
 
-In development, `email.send()` writes to `{runtimeDir}/dev-email/` as rendered `.html` files instead of sending. No provider credentials are needed.
+**Provider selection does not check `DUNE_ENV` at all.** If `email:` in `site.yaml` names a real provider (`resend`, `smtp`, `postmark`, `sendgrid`) with valid credentials, `createEmailProvider()` returns that real provider and `send()` actually delivers — in development exactly as in production. Nothing in `createEmailProvider()`'s selection logic is dev-aware.
 
-View intercepted emails at `/admin/email-preview` — shows subject, recipient, timestamp, and rendered HTML. **Clears on restart.** This is a dev tool, not a sent-mail log.
+The only thing that's dev-aware is inside `ConsoleEmailProvider` itself — the provider you get when `email:` is omitted, or when the configured provider's credentials are missing. Only *that* provider, and only when `DUNE_ENV=dev`, additionally writes each message to `{runtimeDir}/dev-email/{id}.json` (default `.dune/admin/dev-email/`) so the admin panel can show it. `ConsoleEmailProvider` always logs to stdout regardless of `DUNE_ENV`; the file-write is the dev-only part.
 
-To verify template rendering without a browser, inspect the files directly:
+In short: **"dev mode" does not intercept a properly-configured real provider.** If you have live Resend/SMTP/etc. credentials in `site.yaml` and run locally, real email goes to real recipients. To be safe locally, either don't configure real provider credentials in your local `site.yaml`, or explicitly point `email.provider: console` there.
+
+Inspect intercepted emails (console-provider-with-`DUNE_ENV=dev` case only):
 
 ```sh
-ls .dune/dev-email/
-open .dune/dev-email/magic-link-2026-05-13T09-00-00.html
+ls .dune/admin/dev-email/
+cat .dune/admin/dev-email/1715598000000-ab12cd.json   # JSON, not HTML
 ```
+
+Or via the admin panel at `/admin/email-preview` (requires `config.read`; both `/admin/api/email-preview` and `/admin/api/email-preview/{id}` 404 outside `DUNE_ENV=dev`).
 
 ---
 
@@ -130,53 +136,45 @@ open .dune/dev-email/magic-link-2026-05-13T09-00-00.html
 
 ```ts
 // Called internally by Dune's auth system — you don't wire this manually.
-// If implementing a custom flow:
-await email.send({
-  to: user.email,
-  subject: "Your login link",
-  template: "magic-link",
-  data: { link: magicLinkUrl, expiresIn: "15 minutes" },
-});
-```
-
-### Welcome email on first OAuth login
-
-```ts
-// In a plugin hook:
-hooks: {
-  onUserCreate: async (ctx, user) => {
-    await ctx.email.send({
-      to: user.email,
-      subject: `Welcome to ${ctx.config.site.name}`,
-      template: "welcome",
-      data: { name: user.name ?? user.email },
-    });
-  },
-}
+// POST /auth/magic/send has its own rate limiter; if you build a custom
+// magic-link flow that calls send() directly, you own your own rate limiting.
 ```
 
 ### Digest from a background job
 
 ```ts
 // jobs/weekly-digest.ts
+import type { JobContext } from "@dune/core/jobs";
+
 export const schedule = "0 9 * * MON";
 
 export default async function handler(ctx: JobContext) {
-  const posts = await ctx.content.find({ type: "post", limit: 5 });
+  // ctx.content is a full DuneEngine, not a query API — there's no
+  // ctx.content.find(). Filter/sort ctx.content.pages directly.
+  const posts = ctx.content.pages
+    .filter((p) => p.sourcePath.startsWith("02.blog/") && p.published)
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, 5);
+
   await ctx.email.send({
     to: "subscribers@example.com",
-    subject: "Weekly digest",
     template: "digest",
     data: { posts, siteUrl: ctx.config.site.url },
   });
 }
 ```
 
+`ctx.email` on `JobContext` is a real, pre-configured `EmailClient` (see `src/jobs/types.ts`) — this is the one context that gets one for free.
+
+### Sending from a plugin hook or setup()
+
+There is no ambient `email` on `HookContext` or `PluginApi`. Construct your own client in `setup()` and close over it — see the `dune-plugin-authoring` skill's "Send email on a content event" example. **There is no hook that fires on new-user creation** (no `onUserCreate`, no `onSiteUserCreated`, nothing in the real `HookEvent` union relates to user signup) — "send a welcome email when someone signs up" is not currently wireable through Dune's hook system at all. If you need this, you'd have to build it into your own auth flow / OAuth callback route directly, not via a hook.
+
 ---
 
 ## Attachments
 
-Not supported in v1. Escape hatch: access the provider SDK directly.
+Not supported — `EmailMessage`/`SendOptions` (`src/email/types.ts`, `src/email/client.ts`) have no `attachments` field at all, at any layer. Escape hatch: access the provider SDK directly.
 
 ```ts
 import { Resend } from "npm:resend";
@@ -195,16 +193,18 @@ await resend.emails.send({
 
 ## Gotchas
 
-**`template` is the base name only.** `template: "magic-link"` — not `"magic-link.email.tsx"`, not `"emails/magic-link"`. Dune appends the extension and directory.
+**There is no `import { email } from "@dune/core"`.** Build a client with `createEmailClient()` + `createEmailProvider()`, or use `JobContext.email` inside a background job — the only place a pre-built client is handed to you.
 
-**`export type Data` is only meaningful in TSX templates.** MDX and MD templates have no type-checked `data:`. If type safety on `data:` matters, use `.email.tsx`.
+**Template lookup order is `.tsx`, `.md`, `.mdx` — not tsx/mdx/md.** And `.mdx` templates don't actually get MDX/JSX treatment; they're rendered as plain Markdown, same as `.md`.
 
-**Fragment root gets an HTML shell; `<html>` root does not.** If your TSX template returns `<p>...</p>`, Dune wraps it in a full HTML document. If it returns `<html>...</html>`, Dune uses it as-is. Don't return a bare fragment if you need full HTML control — return `<html>`.
+**Markdown template subject comes from the first `# Heading`, not frontmatter.** There's no YAML frontmatter parsing in the email-template path.
 
-**MD uses `{{key}}`, not `{key}`.** Curly braces without doubling are not interpolated in Markdown templates. `{link}` renders literally; `{{link}}` is substituted.
+**TSX templates get no automatic HTML shell.** Whatever your component renders is the output — wrap in `<html><body>` yourself if you need a full document.
 
-**Dev mode never sends.** `email.send()` in development always writes to disk regardless of provider config. If you need to test real delivery, set `DUNE_ENV=production` locally — but be aware this sends real emails to real addresses.
+**`export type Data` is compile-time only.** Nothing at runtime enforces it — Dune doesn't validate `data:` against it.
 
-**Bounce and complaint handling is the provider's responsibility.** Dune has no webhook receiver for bounce/complaint events. If you need to handle them, add a `POST /webhooks/email` route in your project and wire it to your provider's webhook config.
+**Dev mode does not block real sends.** `createEmailProvider()` never checks `DUNE_ENV` — only `ConsoleEmailProvider` (the fallback when no/invalid provider is configured) is dev-aware, and only for its file-logging behavior. A validly configured real provider sends for real regardless of `DUNE_ENV`. Don't rely on "I'm in dev mode" as a safety net if real credentials are present in config.
 
-**Rate limiting on magic link send.** `POST /auth/magic/send` has a fixed-window rate limit owned by Dune. If you're building a custom magic link flow that calls `email.send()` directly, you are responsible for your own rate limiting.
+**Bounce and complaint handling is the provider's responsibility.** Dune has no webhook receiver for bounce/complaint events. If you need to handle them, add your own route and wire it to your provider's webhook config.
+
+**Rate limiting on magic link send.** `POST /auth/magic/send` has a fixed-window rate limit owned by Dune (`src/auth/routes.ts`). If you're building a custom magic-link flow that calls `send()` directly, you are responsible for your own rate limiting.
