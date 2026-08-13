@@ -92,6 +92,53 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   file (it previously wasn't strict enough to catch the hook-context/
   admin-route fabrications, only the hook-event-name and permission-string
   ones).
+- **`dune-docs`' plugins page (`06.extending/03.plugins`) had three real
+  bugs**, found while cross-checking it as ground truth for the skill-doc
+  fix above: its `adminPages` example wrote `path: "/admin/my-plugin"`,
+  which double-prefixes to `/admin/admin/my-plugin` given how the mount
+  code builds `adminPrefix + page.path` — the correct value is the
+  relative `"/my-plugin"`. Plugin static assets are served at
+  `/plugins/{name}/`, not `/__plugins/{name}/` as documented.
+  `PublicRouteRegistration.method`'s wildcard value is `"ALL"`
+  (uppercase), not `"all"`.
+- **`skills/dune-email.md` and `dune-docs`' email page were both
+  fabricated in the same way as the plugin-authoring skill**, and in one
+  case actively unsafe advice. Neither `import { email } from "@dune/core"`
+  nor `"@dune/core/email"` exists — every consumer must build a client via
+  `createEmailClient()`/`createEmailProvider()`, except background jobs,
+  where `JobContext.email` is a real pre-built client. Template lookup
+  order is `.tsx`, `.md`, `.mdx` (docs said md/mdx/tsx or tsx/mdx/md,
+  inconsistently); `.email.mdx` is rendered as plain Markdown, not
+  compiled JSX (`templates.ts`'s own comment: "treated as Markdown (noted
+  limitation)"); Markdown template subjects come from the first
+  `# Heading` line, not YAML frontmatter, which isn't parsed anywhere in
+  this path; TSX templates get no automatic HTML-shell wrapping and
+  receive `data` directly as props, not `{ data, site }`; SMTP config's
+  field is `pass`, not `password`. **Most seriously**: both docs claimed
+  "dev mode never sends" — false. `createEmailProvider()` never checks
+  `DUNE_ENV`; only the console-fallback provider (used when no provider,
+  or an invalid one, is configured) is dev-aware, and only for writing
+  intercepted `.json` files to `.dune/admin/dev-email/` (not `.html` as
+  documented) — a validly configured real provider sends for real in dev
+  exactly as in production. Also removed a fabricated
+  `onUserCreate`/`onSiteUserCreated` hook (no hook fires on user creation
+  at all) and a `setup(hooks)` signature that doesn't match the real
+  `setup(api: PluginApi)`. `dune validate --skills` now reports zero
+  findings for `dune-email.md` (previously flagged the fake hook name).
+- **13 of the 24 events in `HookEvent` are declared but never actually
+  fired** anywhere in `@dune/core` or `@dune/plugin-admin` — verified via
+  `grep -rn '"eventName"' src/ plugin-admin/src/` per event. A handler
+  registered for one of them (`onRouteResolved`, `onPageLoaded`,
+  `onCollectionResolved`, `onBeforeRender`, `onAfterRender`, `onResponse`,
+  `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`,
+  `onCacheHit`, `onCacheMiss`, `onApiRequest`, `onApiResponse`) is simply
+  never invoked, with no error or warning. Not fixed here — flagged as a
+  pre-1.0 decision item (implement the fire() calls, or remove them from
+  the frozen hook surface) in the roadmap backlog, since `HookEvent` is
+  part of the public API the 1.0 milestone freezes. `skills/dune-plugin-
+  authoring.md` was patched with a live/dead hook list and a verification
+  grep as a stopgap; `dune-docs`' hooks page still overclaims and was
+  intentionally left alone pending that decision.
 
 ---
 
