@@ -73,7 +73,7 @@ There is **no** `content`, `email`, `db`, or `logger` field on this context — 
 - **Content queries** — hooks don't get a queryable content API at all. `onContentIndexReady`'s `data` is the raw `PageIndex[]` already built by the index — filter/map that array directly. If you need `engine.find()`-style queries, that's only reachable from `mount()`'s `bootstrap.engine` (see "Admin routes" above), not from a regular hook.
 - **`db`** — there is no `ctx.db`, period, regardless of configuration. A plugin that needs the data layer imports `@dune/core/db` directly and builds its own repos from `schemas/*.yaml`, same as any other module.
 
-`data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`); `onAfterRender` → `{ req: Request, html: string }`. Check `src/hooks/types.ts`'s `HookEvent` union and the `dune-docs` hooks reference page (`docs/content/06.extending/01.hooks/`) for the full table — don't guess a shape, look it up.
+`data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onRequest` → `Request` directly (not wrapped); `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`). Check `src/hooks/types.ts`'s `HookEvent` union and the actual `hooks.fire()` call site for a given event (not just the docs) for its real shape — see the note below on hooks that are declared but never fired.
 
 ---
 
@@ -139,20 +139,22 @@ export default {
 } satisfies DunePlugin;
 ```
 
-### Rewrite markdown before it's processed
+### Intercept a request before routing
 
 ```ts
 hooks: {
-  onMarkdownProcess: async ({ data, setData }) => {
-    // data is { raw: string, page: PageIndex }
-    const modified = data.raw.replace(
-      /\{\{youtube\s+(\w+)\}\}/g,
-      '<iframe src="https://youtube.com/embed/$1"></iframe>',
-    );
-    setData({ ...data, raw: modified });
+  onRequest: ({ data: req, setData, stopPropagation }) => {
+    // data is the raw Request itself — not wrapped in { req }
+    const url = new URL(req.url);
+    if (url.pathname === "/api/status") {
+      setData(Response.json({ ok: true, ts: Date.now() }));
+      stopPropagation(); // short-circuits Dune's normal routing
+    }
   },
 }
 ```
+
+**Not every hook name declared in the `HookEvent` union is actually fired.** As of this writing, `onRouteResolved`, `onPageLoaded`, `onCollectionResolved`, `onBeforeRender`, `onAfterRender`, `onResponse`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onApiRequest`, and `onApiResponse` are declared as valid `HookEvent` values and pass `dune validate`'s hook-name check, but no code anywhere in `@dune/core` or `@dune/plugin-admin` ever calls `hooks.fire()` for them — a handler registered for one of these is simply never invoked. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live as of this writing: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
 
 ---
 
