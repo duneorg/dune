@@ -24,12 +24,12 @@ Dune does not scan `plugins/` automatically — plugins must be registered (see 
 ```yaml
 # site.yaml
 plugins:
-  - src: plugins/my-plugin/mod.ts      # local plugin
-  - spec: jsr:@dune/blog@^1.2.0        # JSR plugin — pin the major version
-  - spec: npm:dune-comments@^2.0.0     # npm plugin
+  - src: ./plugins/my-plugin/mod.ts    # local plugin — relative to site root
+  - src: jsr:@dune/blog@^1.2.0         # JSR plugin — pin the version
+  - src: npm:dune-comments@^2.0.0      # npm plugin — pin the version
 ```
 
-Local plugins use `src:`. Remote plugins use `spec:` with a pinned version. Unpinned plugin specs fail `dune validate`.
+Everything uses `src:` — there is no separate `spec:` key. `PluginEntry` (`src/config/dune-config.ts`) has one field; whether it's local or remote is inferred entirely from the value's prefix (`jsr:`, `npm:`, `https:`, or a bare/`./`-relative path). A plugin entry written with `spec:` instead of `src:` won't load — the loader only ever reads `entry.src`, so it resolves to `undefined` and fails. `dune validate` requires remote (`jsr:`/`npm:`/`https:`) specs to include a version pin.
 
 ---
 
@@ -52,41 +52,57 @@ export default {
 
 ## Hook context
 
-Every hook receives `ctx` as its first argument:
+Every hook handler takes **one** argument — a `HookContext<T>` — not `(ctx, page)`:
 
 ```ts
-interface PluginContext {
-  content: ContentAPI;     // query the content index
-  email: EmailAPI;         // send transactional email
-  db: DbAPI;               // query app data (requires db-schema-layer)
-  config: SiteConfig;      // read site.yaml values
-  logger: Logger;          // structured logging
+interface HookContext<T> {
+  event: HookEvent;
+  data: T;                    // event-specific payload — shape depends on which hook fired
+  config: DuneConfig;
+  storage: StorageAdapter;
+  stopPropagation: () => void; // stop later hooks for this event from running
+  setData: (data: T) => void;  // replace the payload the next hook in the chain sees
+  jobs?: { run(name: string): Promise<void> }; // only set while the job scheduler is running
 }
 ```
+
+There is **no** `content`, `email`, `db`, or `logger` field on this context — nothing is injected for you beyond `config`/`storage`. If your hook needs one of those:
+
+- **Logging** — import the shared logger directly: `import { logger } from "@dune/core/logger";` then `logger.info("my_plugin.event", { ... })`. It isn't handed to you via `ctx`.
+- **Email** — construct your own client in `setup()` and close over it in your hooks: `createEmailClient()`/`createEmailProvider()` from `@dune/core/email`.
+- **Content queries** — hooks don't get a queryable content API at all. `onContentIndexReady`'s `data` is the raw `PageIndex[]` already built by the index — filter/map that array directly. If you need `engine.find()`-style queries, that's only reachable from `mount()`'s `bootstrap.engine` (see "Admin routes" above), not from a regular hook.
+- **`db`** — there is no `ctx.db`, period, regardless of configuration. A plugin that needs the data layer imports `@dune/core/db` directly and builds its own repos from `schemas/*.yaml`, same as any other module.
+
+`data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`); `onAfterRender` → `{ req: Request, html: string }`. Check `src/hooks/types.ts`'s `HookEvent` union and the `dune-docs` hooks reference page (`docs/content/06.extending/01.hooks/`) for the full table — don't guess a shape, look it up.
 
 ---
 
 ## Common hook patterns
 
-### React to content changes
+### React to the content index
 
 ```ts
+import { logger } from "@dune/core/logger";
+
+// ...
+
 hooks: {
-  onContentLoad: async (ctx) => {
-    // fires after the content index is built or rebuilt
-    const posts = await ctx.content.find({ type: "post" });
-    ctx.logger.info("plugin.content_loaded", { postCount: posts.length });
+  onContentIndexReady: async (ctx) => {
+    // ctx.data is the raw PageIndex[] — no query API, just filter/map it
+    const posts = ctx.data.filter((p) => p.sourcePath.startsWith("02.blog/"));
+    logger.info("my_plugin.content_indexed", { postCount: posts.length });
   },
 }
 ```
 
-### Cascade delete when a page is removed
+### React when a page is deleted
 
 ```ts
 hooks: {
-  onPageDelete: async (ctx, page) => {
-    await ctx.db.comments.delete({ where: { pageRoute: page.route } });
-    await ctx.db.reactions.delete({ where: { pageRoute: page.route } });
+  onPageDelete: async (ctx) => {
+    // ctx.data is { sourcePath: string } — not a full Page object
+    const { sourcePath } = ctx.data;
+    await myDb.comments.delete({ where: { pageSourcePath: sourcePath } });
   },
 }
 ```
@@ -94,31 +110,46 @@ hooks: {
 ### Send email on a content event
 
 ```ts
-hooks: {
-  onPagePublish: async (ctx, page) => {
-    if (page.frontmatter.notifySubscribers) {
-      await ctx.email.send({
-        to: "list@example.com",
-        subject: `New post: ${page.title}`,
-        template: "new-post",
-        data: { title: page.title, route: page.route },
-      });
-    }
+// plugins/my-plugin/mod.ts
+import type { DunePlugin, PluginApi } from "@dune/core";
+import { createEmailClient, createEmailProvider } from "@dune/core/email";
+
+let email: ReturnType<typeof createEmailClient>;
+
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+  setup(api: PluginApi) {
+    const provider = createEmailProvider({
+      provider: "resend",
+      from: "hello@example.com",
+      resend: { apiKey: Deno.env.get("RESEND_API_KEY")! },
+    });
+    email = createEmailClient({ provider, from: "hello@example.com" });
   },
-}
+  hooks: {
+    onPageCreate: async (ctx) => {
+      await email.send({
+        to: "list@example.com",
+        subject: `New page: ${ctx.data.title}`,
+        html: `<p>${ctx.data.sourcePath} was just created.</p>`,
+      });
+    },
+  },
+} satisfies DunePlugin;
 ```
 
-### Modify page data before render
+### Rewrite markdown before it's processed
 
 ```ts
 hooks: {
-  onPageRender: async (ctx, page) => {
-    // augment page.data — available in the template as additional props
-    page.data.relatedPosts = await ctx.content.find({
-      type: "post",
-      taxonomy: { category: page.frontmatter.category },
-      limit: 3,
-    });
+  onMarkdownProcess: async ({ data, setData }) => {
+    // data is { raw: string, page: PageIndex }
+    const modified = data.raw.replace(
+      /\{\{youtube\s+(\w+)\}\}/g,
+      '<iframe src="https://youtube.com/embed/$1"></iframe>',
+    );
+    setData({ ...data, raw: modified });
   },
 }
 ```
@@ -127,110 +158,117 @@ hooks: {
 
 ## Admin routes
 
-**All admin routes require security guards. Omitting them is a HIGH severity vulnerability.**
+There is no `onAdminRoutes` hook, and `@dune/core` does not export `requirePermission`/`csrfCheck` — plugin authors sometimes assume these exist because plugin-admin's own internal admin routes use functions with those names, but those live in `@dune/plugin-admin`'s private `src/admin/routes/api/_utils.ts` and are not part of any published, importable API. Attempting `import { requirePermission } from "@dune/core"` fails — the specifier doesn't resolve.
 
-### GET route (read-only)
+There are two real, supported ways for a plugin to add admin routes:
+
+### `adminPages` — authenticated GET pages (the normal case)
+
+Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the optional `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin, FreshContext } from "@dune/core";
-import { requirePermission } from "@dune/core";
-
-async function listHandler(req: Request, ctx: FreshContext) {
-  // handler logic
-  return Response.json({ items: [] });
-}
+import type { DunePlugin } from "@dune/core";
 
 export default {
   name: "my-plugin",
   version: "1.0.0",
-  hooks: {
-    onAdminRoutes: (router) => {
-      router.get(
-        "/admin/my-plugin",
-        requirePermission("pages.view"),   // ← required
-        listHandler,
-      );
+  hooks: {},
+  adminPages: [
+    {
+      path: "/my-plugin",              // relative to the admin prefix → /admin/my-plugin
+      label: "My Plugin",
+      icon: "🧩",
+      permission: "pages.read",        // optional — omit to allow any authenticated admin
+      handler: async (ctx) => {
+        return ctx.render(
+          <div>
+            <h1>My Plugin</h1>
+          </div>,
+        );
+      },
     },
+  ],
+} satisfies DunePlugin;
+```
+
+`path` is relative to the admin prefix (mount code does `adminPrefix + page.path`) — do not include `/admin` yourself, or you'll register `/admin/admin/my-plugin`. GET only; there's no declarative way to register a mutation route this way.
+
+### `mount()` — anything else (mutation routes, custom middleware)
+
+For a `POST`/`PUT`/`DELETE` route, or anything `adminPages` doesn't cover, register directly on the real Fresh `app` via `mount()`:
+
+```ts
+// plugins/my-plugin/mod.ts
+import type { DunePlugin, MountApi } from "@dune/core/plugins";
+
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+  hooks: {},
+  async mount({ app }: MountApi) {
+    app.post("/admin/api/my-plugin/action", async (fc) => {
+      // No shared requirePermission()/csrfCheck() helper is exported for
+      // plugin-registered routes — those exist only inside
+      // @dune/plugin-admin's own private route tree. A route registered
+      // here via mount() is NOT automatically authenticated, unlike
+      // adminPages. You are responsible for your own auth/permission/CSRF
+      // checks, or for keeping mutations behind an existing guarded admin
+      // API endpoint instead of writing a new raw route.
+      return Response.json({ ok: true });
+    });
   },
 } satisfies DunePlugin;
 ```
 
-### POST route (mutation)
-
-```ts
-onAdminRoutes: (router) => {
-  router.post(
-    "/admin/api/my-plugin/action",
-    requirePermission("pages.update"),   // ← required
-    csrfCheck,                           // ← required on all mutations
-    actionHandler,
-  );
-},
-```
-
-```ts
-import { requirePermission, csrfCheck } from "@dune/core";
-```
-
-**Both `requirePermission` and `csrfCheck` are required on every mutation route.** `requirePermission` validates the admin session and role; `csrfCheck` prevents cross-site request forgery. Missing either is a security bug.
+**This is a real gap, not an oversight to work around with an import that doesn't exist.** If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` — you get auth and permission enforcement for free. Reach for `mount()`-registered mutation routes only when you actually need them, and treat the missing guard as your plugin's responsibility to implement, not Dune's to hand you.
 
 ### Permission reference
 
-| Action | Permission string |
-|--------|-----------------|
-| View any admin page | `"pages.view"` |
-| Create / update pages | `"pages.update"` |
-| Delete pages | `"pages.delete"` |
-| Manage users | `"users.manage"` |
-| Upload media | `"media.upload"` |
-| Manage plugins | `"plugins.manage"` |
+Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these are meaningful against the built-in role table:
+
+| Permission string | Grants |
+|--------------------|--------|
+| `"pages.create"` / `"pages.read"` / `"pages.update"` / `"pages.delete"` | Content page CRUD |
+| `"media.upload"` / `"media.read"` / `"media.delete"` | Media library |
+| `"users.create"` / `"users.read"` / `"users.update"` / `"users.delete"` | User management |
+| `"config.read"` / `"config.update"` | Site config |
+| `"submissions.read"` / `"submissions.delete"` | Form submissions |
+| `"admin.access"` | Any authenticated admin (no finer check) |
+
+There is no `"pages.view"`, `"users.manage"`, or `"plugins.manage"` — use the split create/read/update/delete permissions above.
 
 Use the most restrictive permission that still allows the action.
 
 ---
 
-## Admin UI (TSX)
-
-Admin route handlers return TSX for full-page views. Use the admin layout component:
-
-```tsx
-// plugins/my-plugin/admin.ts
-import { AdminLayout } from "@dune/core/admin";
-import type { FreshContext } from "@dune/core";
-
-export async function listHandler(_req: Request, ctx: FreshContext) {
-  const items = await ctx.state.db.myItems.find({});
-  return ctx.render(
-    <AdminLayout title="My Plugin" ctx={ctx}>
-      <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>
-    </AdminLayout>
-  );
-}
-```
-
----
-
 ## Testing a plugin
 
-Use the plugin integration harness:
+Use the plugin integration harness. It boots a real in-memory Dune instance and gives you `fetch()`/`render()` against the read-only content API (`/api/*`) — not arbitrary page routes or the admin API:
 
 ```ts
 import { createTestHarness } from "@dune/testing";
+import { assertEquals } from "@std/assert";
 import myPlugin from "./plugins/my-plugin/mod.ts";
 
-const harness = await createTestHarness({
-  content: {
-    "01.home/default.md": "---\ntitle: Home\n---\nHello",
-  },
-  plugins: [myPlugin],
+Deno.test("my plugin", async () => {
+  const h = await createTestHarness({
+    content: {
+      "01.home/default.md": "---\ntitle: Home\n---\nHello",
+    },
+    plugins: [myPlugin],
+  });
+
+  try {
+    const res = await h.fetch("/api/pages");
+    assertEquals(res.status, 200);
+  } finally {
+    await h.dispose();
+  }
 });
-
-const page = await harness.render("/home");
-assertEquals(page.html.includes("Hello"), true);
-
-await harness.dispose();
 ```
+
+`h.render(path)` is shorthand for `(await h.fetch(path)).text()` — both only reach the content API, since the harness runs without the admin plugin by default (`disableAdmin: true`). For a full page route (`/home`) or an admin/mount()-registered route, use the Playwright E2E suite against a real server instead — the harness can't reach either.
 
 ---
 
@@ -238,14 +276,14 @@ await harness.dispose();
 
 **Wrong file location.** Plugin files must be in `plugins/`. Placing them in `src/`, `routes/`, or the project root means they won't be found by `dune validate` and the plugin spec won't resolve correctly.
 
-**Forgetting `csrfCheck` on mutations.** Every `POST`, `PUT`, `PATCH`, `DELETE` admin route needs `csrfCheck`. GET routes do not. If in doubt, add it — it's a no-op on safe methods.
+**There is no `requirePermission`/`csrfCheck` import for plugin authors.** Those names exist only inside `@dune/plugin-admin`'s private route tree, not in any public export. A `mount()`-registered mutation route is unauthenticated by default — you must implement your own checks, or use `adminPages` (GET-only, auto-guarded) instead.
 
-**`requirePermission` does not replace `csrfCheck`.** They guard different things. Use both on every mutation route.
+**`adminPages` paths are relative to the admin prefix.** `path: "/my-plugin"` → `/admin/my-plugin`. Writing `path: "/admin/my-plugin"` double-prefixes to `/admin/admin/my-plugin`.
 
-**Hook context `db` requires db-schema-layer.** `ctx.db` is only available if `db-schema-layer` is configured. If your plugin uses `ctx.db` and the site has no DB configured, it throws at runtime. Check `ctx.config.db?.enabled` if your plugin needs to be db-optional.
+**There is no `ctx.db` on any hook, ever.** `HookContext` only has `event`, `data`, `config`, `storage`, `stopPropagation`, `setData`, and an optional `jobs`. If your plugin needs the data layer, import `@dune/core/db` directly — it's never injected, regardless of config.
 
-**`onAdminRoutes` fires before the server starts.** Do not perform async operations (DB queries, file reads) inside `onAdminRoutes` itself — only register routes. Async work belongs in the route handlers.
+**`mount()` runs once at startup, after the Fresh `App` is ready.** Register routes and middleware there; don't rely on it for per-request async work — that belongs in the route handlers themselves.
 
-**Hook errors do not crash the server.** An unhandled error in a hook is logged and skipped. If your hook has a side effect that must succeed (e.g., sending a confirmation email), handle errors explicitly and log them — don't rely on the error propagating to the user.
+**Hook error handling is not uniform — check the caller before assuming.** `HookRegistry.fire()` itself (`src/hooks/registry.ts`) has no try/catch around handler calls. Whether a throwing hook is contained depends entirely on who calls `fire()`: the admin panel's page CRUD routes (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`) call it as `hooks.fire(...).catch(() => {})` — errors are silently swallowed, not even logged. Startup and engine-lifecycle hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRebuild`, `onThemeSwitch`) are `await`ed directly with no catch — a throwing handler there propagates and can fail bootstrap or a rebuild. Don't assume either behavior; if a hook has a side effect that must succeed or must not silently vanish, handle its own errors explicitly and log them yourself.
 
-**Pin JSR/npm plugin versions.** `spec: jsr:@dune/blog` without a version pinned fails validation. Use `^major.minor.patch` at minimum.
+**Pin JSR/npm plugin versions.** `src: jsr:@dune/blog` without a version pinned fails validation. Use `^major.minor.patch` at minimum.
