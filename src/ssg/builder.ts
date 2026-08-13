@@ -26,6 +26,7 @@ import type { FlexEngine } from "../flex/engine.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
+import { MDX_ERROR_CLASS } from "../content/formats/mdx.ts";
 import type { SSGOptions, SSGResult } from "./types.ts";
 import {
   newManifest,
@@ -141,7 +142,22 @@ export async function buildStatic(
 
         // Non-2xx pages still get written (e.g. a custom 404 page at /404).
         const outputPath = routeToOutputPath(route);
-        await writeResponseToFile(outDir, outputPath, res);
+        const bodyBuffer = await res.arrayBuffer();
+
+        // MDX render failures never throw (see MDX_ERROR_CLASS) — the
+        // handler returns a normal 200 with the error embedded in the
+        // body, so the try/catch below never sees them. Without this check
+        // a broken MDX page builds "successfully" and ships the error div
+        // to production.
+        const contentType = res.headers.get("content-type") ?? "";
+        if (contentType.includes("html")) {
+          const bodyText = new TextDecoder().decode(bodyBuffer);
+          if (bodyText.includes(`class="${MDX_ERROR_CLASS}"`)) {
+            errors.push({ route, error: "MDX render error embedded in output (see mdx-error div in page body)" });
+          }
+        }
+
+        await writeBufferToFile(outDir, outputPath, bodyBuffer);
         pagesRendered++;
         if (opts.verbose) console.log(`  ✓ ${route}`);
       } catch (err) {
@@ -244,14 +260,13 @@ export function routeToOutputPath(route: string): string {
 
 // ─── Writing helpers ──────────────────────────────────────────────────────────
 
-async function writeResponseToFile(
+async function writeBufferToFile(
   outDir: string,
   outputPath: string,
-  res: Response,
+  body: ArrayBuffer,
 ): Promise<void> {
   const fullPath = join(outDir, outputPath);
   await ensureDir(dirname(fullPath));
-  const body = await res.arrayBuffer();
   await Deno.writeFile(fullPath, new Uint8Array(body));
 }
 

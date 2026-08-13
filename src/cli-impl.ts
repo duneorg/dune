@@ -146,6 +146,9 @@ Commands:
 
   content:list        List all pages with routes and templates
   content:check       Check content for broken links, missing templates
+                      (frontmatter-only by default — pass --render to also
+                      compile every md/mdx body and catch MDX errors that
+                      indexing can't see)
   content:i18n-status Report translation coverage across languages
   content:create      Scaffold a new content page at a given route
   content:delete      Delete a content page by route (requires --confirm or --dry-run)
@@ -225,6 +228,9 @@ Options:
                       set in the environment always take precedence.
   --debug             Enable debug output
   --json              Output machine-parseable JSON (build, content:*, config:*)
+  --render            (content:check) Compile every md/mdx page body and
+                      report pages that fail to render, not just frontmatter
+                      issues
   --version, -V       Show version and install source
   --help, -h          Show this help message
 
@@ -334,6 +340,8 @@ export async function main(args: string[] = Deno.args) {
       options.verbose = true;
     } else if (args[i] === "--json") {
       options.json = true;
+    } else if (args[i] === "--render") {
+      options.render = true;
     } else if (args[i] === "--dry-run") {
       options.dryRun = true;
     } else if (args[i] === "--trust-source") {
@@ -556,6 +564,7 @@ export async function main(args: string[] = Deno.args) {
         await contentCommands.check(root, {
           debug: options.debug === true,
           json: options.json === true,
+          render: options.render === true,
         });
         break;
 

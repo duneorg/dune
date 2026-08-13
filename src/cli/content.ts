@@ -3,11 +3,22 @@
  */
 
 import { bootstrap } from "../runtime/bootstrap.ts";
+import { MDX_ERROR_CLASS } from "../content/formats/mdx.ts";
 
 export interface ContentOptions {
   debug?: boolean;
   /** Output machine-parseable JSON instead of human-readable text. */
   json?: boolean;
+  /**
+   * content:check only — actually compile/render every md/mdx page body and
+   * report failures. Off by default because indexing (what content:check
+   * normally uses) only parses frontmatter; a page can index cleanly and
+   * still fail to compile (a bad MDX expression, a JSX syntax error) — that
+   * failure is otherwise invisible until something requests the page, and
+   * even a full `dune build` doesn't catch MDX errors that don't throw (see
+   * MDX_ERROR_CLASS). Slower than a plain check since it renders everything.
+   */
+  render?: boolean;
 }
 
 export const contentCommands = {
@@ -123,6 +134,29 @@ export const contentCommands = {
       }
     }
 
+    let pagesRendered = 0;
+    if (options.render) {
+      for (const pageIndex of engine.pages) {
+        if (pageIndex.format !== "md" && pageIndex.format !== "mdx") continue;
+        pagesRendered++;
+        try {
+          const page = await engine.loadPage(pageIndex.sourcePath);
+          const html = await page.html();
+          // MDX render failures never throw — see MDX_ERROR_CLASS — so a
+          // clean try/catch alone would miss them.
+          if (html.includes(`class="${MDX_ERROR_CLASS}"`)) {
+            issues.push({
+              sourcePath: pageIndex.sourcePath,
+              message: "Failed to render: MDX compile/render error (see server log for details)",
+            });
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          issues.push({ sourcePath: pageIndex.sourcePath, message: `Failed to render: ${message}` });
+        }
+      }
+    }
+
     // Deduplicate by stringifying
     const seen = new Set<string>();
     const unique = issues.filter((issue) => {
@@ -136,6 +170,8 @@ export const contentCommands = {
       const output = {
         valid: unique.length === 0,
         pagesChecked: engine.pages.length,
+        rendered: options.render === true,
+        pagesRendered: options.render ? pagesRendered : undefined,
         issues: unique,
       };
       console.log(JSON.stringify(output, null, 2));
@@ -155,5 +191,10 @@ export const contentCommands = {
     }
 
     console.log(`\n  📄 ${engine.pages.length} pages checked`);
+    if (options.render) {
+      console.log(`  🖨️  ${pagesRendered} page bodies rendered`);
+    } else {
+      console.log(`  ℹ️  Page bodies not rendered — pass --render to also catch MDX compile errors`);
+    }
   },
 };

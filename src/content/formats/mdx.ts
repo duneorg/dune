@@ -34,6 +34,16 @@ import type {
 import type { MdxComponentRegistry, MdxSanitizeExtension } from "./mdx-components.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
 
+/**
+ * CSS class on the placeholder `<div>` renderToHtml() returns when MDX
+ * compilation/evaluation/render fails. renderToHtml() never rejects — a
+ * compile error becomes a normal 200 response with this marker embedded in
+ * the body, so anything that wants to detect the failure (the SSG builder,
+ * `content:check --render`) has to look for it rather than catching a
+ * thrown error.
+ */
+export const MDX_ERROR_CLASS = "mdx-error";
+
 /** Options for {@link MdxHandler}. */
 export interface MdxHandlerOptions {
   /** Component registry for MDX content (optional — defaults to empty) */
@@ -191,7 +201,7 @@ export class MdxHandler implements ContentFormatHandler {
       const isProd = !Deno.env.get("DUNE_DEV");
       const safeMessage = isProd ? sanitizeMdxError(message) : message;
       console.error(`  ✗ MDX render error in ${page.sourcePath}: ${safeMessage}`);
-      return `<div class="mdx-error"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
+      return `<div class="${MDX_ERROR_CLASS}"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
     }
   }
 
