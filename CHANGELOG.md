@@ -72,6 +72,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 - **`skills/dune-content.md`** and the CLI reference now note that
   `content:list`/`content:check` are frontmatter-only and don't prove a
   page compiles — pointing at the new `content:check --render`.
+- **`skills/dune-plugin-authoring.md` described a fictional plugin API.**
+  The "Admin routes" section referenced a nonexistent `onAdminRoutes` hook
+  and `requirePermission`/`csrfCheck` imports from `@dune/core` that don't
+  resolve (those names exist only inside `@dune/plugin-admin`'s private
+  route tree). The "Hook context" section invented a `PluginContext` with
+  `content`/`email`/`db`/`logger` fields that don't exist on the real
+  `HookContext`, and every "Common hook patterns" example used hook names
+  (`onContentLoad`, `onPagePublish`, `onPageRender`) that aren't in the
+  `HookEvent` union, plus a two-argument handler signature that doesn't
+  match the real one-argument `(ctx) => ...`. The "Admin UI" and "Testing a
+  plugin" sections were also wrong (`@dune/core/admin`/`AdminLayout` don't
+  exist; `TestHarness.render()` returns a string, not `{ html }`, and only
+  reaches `/api/*`, not arbitrary page routes). Rewrote all of it against
+  `src/hooks/types.ts`, `src/plugins/mod.ts`, and the real
+  `adminPages`/`mount()`/`publicRoutes` API, and fixed the `plugins:`
+  registration example (`site.yaml` has no `spec:` key — everything is
+  `src:`). `dune validate --skills` now reports zero findings against this
+  file (it previously wasn't strict enough to catch the hook-context/
+  admin-route fabrications, only the hook-event-name and permission-string
+  ones).
 
 ---
 
