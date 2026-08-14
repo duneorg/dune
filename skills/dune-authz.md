@@ -1,40 +1,48 @@
 # Skill: Dune Authorization (Polizy)
 
-Authorization in Dune uses [polizy](https://github.com/bratsos/polizy) — a Zanzibar-inspired relationship-based model. One `authz.check()` call covers everything: admin panel access, inline editing, content gating, route middleware, and resource-level permissions.
+Authorization in Dune uses [polizy](https://github.com/bratsos/polizy) — a Zanzibar-inspired relationship-based model. **The schema is fixed and internal to `@dune/core`** — there is no site-authored `defineSchema()` step. `authzStore` just picks where tuples are persisted (flat files or a DB); it does not let you redefine what actions/relations exist.
 
-For polizy's core concepts (`defineSchema()`, tuple model, check algorithm, `listAccessibleObjects`), see the polizy skills installed alongside this one. This skill covers Dune-specific wiring and patterns.
+**Read `dune-auth` first.** Everything here about admin-panel checks, route middleware, and resource grants going through a live `authz` instance depends on `mountDuneAuth()` being called — and as documented in that skill, `mountDuneAuth()` currently has no public export from `@dune/core` and is never auto-called. Content gating (`roles:` frontmatter) still works without it, via a documented fallback — see "Content gating" below — but the wired-`authz.check()` path for everything else is presently unreachable the same way public auth is.
 
 ---
 
-## The single authz file
+## The real schema (fixed, not yours to define)
 
-`src/auth/authz.ts` is scaffolded by `dune add polizy`. Do not create it manually. It has two sections:
+`src/auth/authz-schema.ts` (internal to `@dune/core`) defines everything:
 
-```ts
-// src/auth/authz.ts
+- **Relations**: `member` (group membership, used for content gating), `admin`/`editor`/`author` (direct admin-tier roles), `owner` (per-resource grant).
+- **Actions → relations**: `access` (satisfied by `member`/`admin`/`editor`/`author` — deliberately excludes `owner`, so owning one page doesn't grant general gated-content access), `edit` (satisfied by `owner`/`admin`/`editor`), and the full `AdminPermission` set mirrored 1:1 — `pages.create/read/update/delete`, `media.upload/read/delete`, `users.create/read/update/delete`, `config.read/update`, `submissions.read/delete`, plus a legacy `users.manage` action kept for backward compatibility (broader than `users.update`, covers create/delete too).
+- **Subject type**: `user` only. **Object types**: `group`, `app`, `resource`.
 
-import { AuthSystem, defineSchema } from "polizy";
-import { AuthzLocalAdapter } from "@dune/core";  // or AuthzDbAdapter
+There is no `"pages.view"` — real is `"pages.read"`.
 
-// Section 1: schema — store-agnostic, defines relations/actions/hierarchy
-const schema = defineSchema({
-  // ... see polizy skill for defineSchema() syntax
-  // Dune's default schema covers: admin, editor, author, member, owner
-  // Actions: access, pages.update, users.manage, media.upload, edit, ...
-});
+---
 
-// Section 2: AuthSystem — wires the adapter from authzStore config
-export const authz = new AuthSystem({
-  schema,
-  storage: new AuthzLocalAdapter(),  // swapped to AuthzDbAdapter when authzStore: db
-});
-```
+## Project-local `src/auth/authz.ts` (scaffolded by `dune add polizy`)
 
-Import `authz` from this file everywhere permission checks are needed:
+The scaffold is a lazy singleton wrapper, **not** a bare exported `authz` constant:
 
 ```ts
-import { authz } from "@/auth/authz.ts";
+// src/auth/authz.ts — as actually scaffolded by `dune add polizy`
+import { createDuneAuthSystem } from "@dune/core/auth/authz";
+import type { StorageAdapter } from "@dune/core";
+
+let _authz: ReturnType<typeof createDuneAuthSystem> | null = null;
+
+export function initAuthz(storage: StorageAdapter, dataDir = "data") {
+  _authz = createDuneAuthSystem({ authzStore: "local", dataDir }, storage);
+  return _authz;
+}
+
+export function getAuthz() {
+  if (!_authz) throw new Error("authz not initialised — call initAuthz() first");
+  return _authz;
+}
 ```
+
+`initAuthz(storage)` must be called once, yourself, before `getAuthz()` works anywhere — there's no automatic initialization of this specific file. Its own generated header comment says as much: "In most cases you don't need this file — Dune wires authz automatically when `authzStore: local` is set" — referring to the *separate* internal instance `mountDuneAuth()` creates for the admin panel and content gating, not this file. This file exists for reaching authz from your own custom code (e.g. a hand-written API route) outside anything Dune already wires. As long as `authzStore`/`dataDir` match, both instances read and write the same underlying flat files in `data/permissions/` — so grants are consistent in practice, but they are two separate `AuthSystem` objects, not one shared singleton.
+
+There is no `import { authz } from "@/auth/authz.ts";` bare-constant pattern — use `getAuthz()` (after `initAuthz()` has run).
 
 ---
 
@@ -43,56 +51,47 @@ import { authz } from "@/auth/authz.ts";
 ```yaml
 # site.yaml
 auth:
-  mode: dune
   authzStore: local    # default — data/permissions/*.json + Deno KV index
-  # authzStore: db     # opt-in — requires db-schema-layer
+  # authzStore: db     # opt-in — requires a real database adapter (DUNE_DB_URL/DUNE_DB_PATH), not a separate "schema layer" feature
 ```
 
-`authzStore` is independent of `userStore`. You can have `userStore: session` and `authzStore: local`.
+`authzStore` is independent of `userStore` (from `dune-auth`) — you can have `userStore: session` and `authzStore: local`.
 
 ---
 
 ## Common check patterns
 
-All checks are async. Always `await`.
+All checks are async. Always `await`. **Mind which user type you're checking** — admin-panel actions use the admin user's id (from plugin-admin's own `AdminState.auth`, a completely separate identity from public site users); group membership / content gating / resource grants use the public `ctx.state.siteUser.id` (not `ctx.state.user` — see `dune-auth`).
 
 ### Admin panel access
 
 ```ts
-const canAdmin = await authz.check({
-  who: { type: "user", id: ctx.state.user.id },
+const canAdmin = await getAuthz().check({
+  who: { type: "user", id: adminUserId },  // the ADMIN user's id, not ctx.state.siteUser
   canThey: "access",
   onWhat: { type: "app", id: "admin" },
 });
 ```
 
+In practice, `plugin-admin`'s own route guards don't call this directly for you — `requirePermission(ctx, perm)` (internal to `@dune/plugin-admin`) already does: it calls `authz.check()` when polizy is wired (`auth.mode: dune`, `authzStore: local`), and falls back to a simpler `ROLE_PERMISSIONS` table lookup when it isn't. You don't need to duplicate this in an admin route.
+
 ### Group membership (content gating, membership sites)
 
 ```ts
-const isMember = await authz.check({
-  who: { type: "user", id: ctx.state.user.id },
+const isMember = await getAuthz().check({
+  who: { type: "user", id: siteUserId },   // ctx.state.siteUser.id
   canThey: "access",
   onWhat: { type: "group", id: "member" },
 });
 ```
 
-### Inline editing / resource-level permission
+### Resource ownership / inline editing
 
 ```ts
-const canEdit = await authz.check({
-  who: { type: "user", id: ctx.state.user.id },
+const canEdit = await getAuthz().check({
+  who: { type: "user", id: siteUserId },
   canThey: "edit",
   onWhat: { type: "resource", id: pageRoute },
-});
-```
-
-### Specific admin action
-
-```ts
-const canManageUsers = await authz.check({
-  who: { type: "user", id: ctx.state.user.id },
-  canThey: "users.manage",
-  onWhat: { type: "app", id: "admin" },
 });
 ```
 
@@ -100,34 +99,36 @@ const canManageUsers = await authz.check({
 
 ## Granting permissions
 
-### Add user to a group
+### Add a site user to a group
 
 ```ts
-await authz.addMember({
-  member: { type: "user", id: userId },
+await getAuthz().addMember({
+  member: { type: "user", id: siteUserId },
   group: { type: "group", id: "member" },
 });
 ```
 
 Call this on successful OAuth login or payment to grant group access.
 
-### Grant a direct resource permission
+### Grant a direct permission — `allow()` takes `toBe`, not `canThey`
 
 ```ts
-await authz.allow({
-  who: { type: "user", id: userId },
-  canThey: "edit",
+await getAuthz().allow({
+  who: { type: "user", id: siteUserId },
+  toBe: "owner",                              // the relation being granted — not canThey
   onWhat: { type: "resource", id: pageRoute },
 });
 ```
 
-Use for per-resource grants (e.g., an OAuth user who is the owner of a specific page).
+`allow()`'s field is `toBe` (the relation you're granting), unlike `check()`'s `canThey` (the action being asked about) — don't copy-paste a `check()` call into an `allow()` call without swapping the field name.
+
+### Revoke
+
+Dune's own code (`src/auth/webhook.ts`, on IdP user-deletion events) uses `authz.disallowAllMatching({ who: {...} })` to wipe all tuples for a user. That's the one revocation method confirmed in source — verify the exact polizy API for narrower revocations (single tuple vs. all-matching) against the installed `polizy` package version rather than assuming a name.
 
 ---
 
 ## Content gating via frontmatter
-
-For pages with `roles:` frontmatter, the check runs automatically in Dune's page middleware — **do not wire this manually**.
 
 ```yaml
 # content/members/welcome.md
@@ -140,73 +141,53 @@ roles: member
 roles: [member, admin]        # OR — any of these is sufficient
 roles:
   all: [member, verified]     # AND — user must belong to every group
+roles: []                     # authenticated-only — any logged-in site user
+# roles absent                # public — no check performed
 ```
+
+When a polizy `AuthSystem` has been wired into the gating layer via `setGatingAuthz()` (called from inside `mountDuneAuth()` — see the top of this file for why that's currently unreachable), checks go through `authz.check()` for full group-hierarchy support. **Without one wired — the current default state of every site — gating falls back to a direct `siteUser.roles[]` array check, same semantics, no polizy dependency.** This fallback is a deliberate, documented feature (`src/auth/gating.ts`), not a degraded mode to route around — but it means the hierarchy/inheritance behavior polizy would add isn't active until `mountDuneAuth()` is reachable and called.
 
 Unauthenticated users are redirected to `/auth/login`. Authenticated users without the required role get a 403.
 
----
-
-## Route middleware pattern
-
-For programmatic route protection (not frontmatter-based):
-
-```ts
-// routes/dashboard/_middleware.ts
-import { FreshContext } from "fresh";
-import { authz } from "@/auth/authz.ts";
-
-export async function handler(req: Request, ctx: FreshContext) {
-  if (!ctx.state.user) {
-    return Response.redirect(new URL("/auth/login", req.url));
-  }
-  const allowed = await authz.check({
-    who: { type: "user", id: ctx.state.user.id },
-    canThey: "access",
-    onWhat: { type: "group", id: "member" },
-  });
-  if (!allowed) return new Response(null, { status: 403 });
-  return ctx.next();
-}
-```
+**Do not add a manual `authz.check()`/roles check in `_middleware.ts` for a page that already has `roles:` frontmatter.** The page middleware handles it. Doubling up risks inconsistent behavior between the two checks.
 
 ---
 
-## Bootstrap path (existing admin users)
+## Bootstrap path (existing users → tuples)
 
-On first startup after polizy is introduced, Dune derives initial tuples from the `role` field on existing user files (`admin | editor | author`). No manual migration step.
+Two separate, real bootstrap functions (`src/auth/authz.ts`) — don't conflate them:
 
-```json
-// data/users/alice.json
-{ "id": "alice", "email": "alice@example.com", "role": "editor" }
-```
+- **`bootstrapAdminTuples(authz, adapter, adminUsers)`** — for admin users (`data/users/*.json`, single `role: "admin" | "editor" | "author"` field). Grants a direct tuple: `authz.allow({ who: user, toBe: user.role, onWhat: { type: "app", id: "admin" } })`. Idempotent, called automatically by `bootstrap()` at startup — this one genuinely runs without you wiring anything, since it's part of admin auth (already fully wired, unlike public auth).
+- **`bootstrapRoleTuples(authz, adapter, siteUsers)`** — for public site users (`SiteUser.roles: string[]`, plural array, not a single field). Grants group memberships via `authz.addMember()` for each role in the array. This one is only reachable through `mountDuneAuth()`, same caveat as everything else public-auth-related in this file.
 
-→ Dune creates tuples equivalent to `authz.allow({ who: user:alice, canThey: "access", onWhat: app:admin })` and the editor-level action grants on first run.
-
-From then on, **tuples are the authority**. The `role` field becomes a legacy hint. Use `authz.allow()` and `authz.addMember()` to manage permissions going forward.
+From then on, tuples are the authority for whichever system was bootstrapped — admin `role`/site `roles[]` become legacy hints once tuples exist. Use `authz.allow()`/`addMember()` to manage permissions going forward, not by editing the role fields directly.
 
 ---
 
 ## Permission tuple storage
 
-`authzStore: local` stores tuples as JSON files:
+`authzStore: local` stores tuples one-per-file under `data/permissions/`:
 
 ```
-data/permissions/
-  {id}.json   →  { id, subject, relation, object, condition? }
+data/permissions/{uuid}.json  →  { id, subject: {type, id}, relation, object: {type, id}, condition?, hmac? }
 ```
 
-The Deno KV index covers hot lookup paths. If KV is lost, it rebuilds from files on startup (mtime comparison). Do not edit these files directly — use `authz.allow()`, `authz.addMember()`, `authz.revoke()` etc.
+Rebuilt into an **in-memory `Map`** on startup (`AuthzLocalAdapter` — no Deno KV involved, despite the pattern elsewhere in Dune of using KV for hot-path indexes). `hmac` is only present when tuple signing is enabled — see the next Gotcha. Do not edit these files directly — use the `authz` API.
 
 ---
 
 ## Gotchas
 
-**`authz.check()` is async — always await it.** It makes multiple storage calls. Dropping the `await` returns a Promise, not a boolean, and your condition will always be truthy.
+**`authz.check()` is async — always await it.** Dropping the `await` returns a Promise, not a boolean, and your condition will always be truthy.
 
-**Do not manually check `ctx.state.user.roles` for group membership.** In `userStore: local` or `db` mode, `roles` reflects current group membership but going through `authz.check()` is the correct path — it handles hierarchy and inheritance. Direct `roles` array inspection bypasses that.
+**`allow()` uses `toBe`, not `canThey`.** See "Grant a direct permission" above — this is a real, easy copy-paste mistake.
 
-**Content-gated pages: do not add manual `authz.check()` in `_middleware.ts`.** The page middleware reads `roles:` frontmatter and calls `authz.check()` automatically. Doubling up results in two checks and potentially inconsistent behavior.
+**Admin-panel checks use the admin user's id, not `ctx.state.siteUser.id`.** These are two completely separate identity systems (see `dune-auth`) — don't mix them into one "the current user" concept when calling `authz.check()`.
 
-**`external-jwt` mode: authz tuples are irrelevant for roles.** In `external-jwt` mode, `ctx.state.user.roles` comes from JWT claims. `authz.addMember()` writes to the local/db tuple store, which is never consulted in this mode. Don't mix the two.
+**There is no site-authored `defineSchema()` step.** The schema is fixed inside `@dune/core` (`src/auth/authz-schema.ts`). You cannot add new relations/actions to this system the way the polizy package's own generic docs might suggest for a from-scratch integration.
 
-**`src/auth/authz.ts` schema is yours to maintain.** `dune add polizy` scaffolds it; after that it's application code. When you add a new relation or action, update `defineSchema()` here. The adapter doesn't need to change.
+**Content gating's fallback is not a bug to work around.** Without `mountDuneAuth()` wired (the current default), `roles:` frontmatter gating still works via a direct array check — it just doesn't get polizy's hierarchy/inheritance behavior. This is documented, deliberate behavior in `src/auth/gating.ts`, not something broken that needs a manual `authz.check()` bolted on.
+
+**`external-jwt` mode's relationship to authz tuples depends on `authzStore`.** With `authzStore` omitted (the default in this mode), roles come purely from the JWT's `roles` claim on every request — no local tuple store involved. Setting `authzStore: local` explicitly opts into a hybrid: Dune seeds group-membership tuples from the JWT on first appearance, then re-seeds whenever a per-request fingerprint of the JWT's roles changes (wiping and rebuilding via `disallowAllMatching`) — this lets you layer `authz.addMember()`/`allow()` grants (e.g. after a payment) on top of JWT-derived roles, since only the fingerprinted portion gets wiped on rotation. See `dune-docs`' authorization page for the full mechanism.
+
+**HMAC signing of tuple files is opt-in, not automatic.** Set `DUNE_AUTHZ_HMAC_SECRET` (read via `loadHmacKeyFromEnv()`) to enable it. Without it, `dune serve` logs `authz.hmac.disabled` and tuple files are written unsigned — anyone with filesystem access could hand-edit or drop in a tuple file undetected. Decide deliberately, don't assume it's on by default.
