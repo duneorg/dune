@@ -18,8 +18,15 @@ export interface UpdateSkillsOptions {
   debug?: boolean;
 }
 
-/** Known skill file names — used when running from a remote JSR URL. */
+/**
+ * Known skill file names — used when running from a remote JSR URL, since a
+ * directory listing isn't available over HTTP. Must be kept in sync with
+ * the actual contents of skills/ (including README.md) — a file missing
+ * from this list is silently never installed for JSR/remote installs, even
+ * though the local-source path (a plain directory scan) picks it up fine.
+ */
 export const KNOWN_SKILL_FILES = [
+  "README.md",
   "dune-content.md",
   "dune-themes.md",
   "dune-mcp.md",
