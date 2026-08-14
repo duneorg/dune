@@ -219,6 +219,27 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   asynchronously and returns `200 {triggered: true, name}`
   immediately, it does not wait for completion or return `500` on
   failure as documented.
+- **`skills/dune-schemas.md`'s entire premise was backwards.** The old
+  doc described a unified `schemas/*.yaml` format with `store: local |
+  db`, and dismissed `flex-objects/` as "legacy, not for new models."
+  Confirmed against `src/db/schema-parser.ts`: `store:` doesn't exist
+  anywhere in the real schema format — `schemas/*.yaml` is exclusively
+  for database-backed application data. Editor-managed, file-backed
+  custom content types are Flex Objects, a separate, current,
+  first-class system — confirmed by grepping `@dune/plugin-admin`'s
+  admin routes for schema references (zero hits; only Flex Object
+  routes generate admin CRUD UI). The Repository API was also
+  fabricated as Prisma-style (`update({where, data})`) — the real one
+  (`src/db/repository.ts`) takes positional arguments
+  (`update(id, data)`, `delete(id)`, `upsert(where, data)`), where
+  operators are all `$`-prefixed with no `$eq`/`$ne`, `orderBy` is
+  single-field only, and there's no `nullable` field option. Also
+  fixed three real bugs in `dune-docs`' data-layer pages found while
+  cross-checking: `src/db/index.ts` generates one `db` object keyed by
+  table name, not a capitalized named export per model as every
+  example there showed; migrations write to `data/migrations/`, not
+  bare `migrations/` (wrong in three places); and the generated CRUD
+  API's update method is `PUT`, not `PATCH`.
 
 ---
 
