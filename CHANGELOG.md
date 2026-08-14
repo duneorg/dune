@@ -65,6 +65,15 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Docs
 
+- **`dune-docs`' MCP server page had two more inaccuracies**, found while
+  cross-checking `skills/dune-mcp.md` (which needed no changes itself — it
+  already matched source) for the same third-pass audit: a claim that write
+  tools are disabled against "a remote or read-only mount" — no such concept
+  exists anywhere in Dune, write tools are registered unconditionally — and
+  a claim that scaffold tools capture `console.log` output, when generators
+  actually take a scoped `log` callback specifically so the MCP server
+  doesn't have to touch global `console.log` (concurrent scaffold calls
+  would otherwise interleave).
 - **`dune-docs`' data-layer page showed capitalized codegen output
   filenames** (`src/db/types/Comment.ts`, `Post.ts`) — `dune codegen`
   actually lowercases the first character of the model name
