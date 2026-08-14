@@ -190,6 +190,35 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   largely accurate; only two real errors there (`sig` vs `hmac` field
   name, and HMAC signing framed as automatic when it's opt-in via
   `DUNE_AUTHZ_HMAC_SECRET`) needed fixing rather than a full rewrite.
+- **`skills/dune-jobs.md` and `dune-docs`' jobs page both presented
+  deprecated, code-execution-risk behavior as the normal default, and
+  `dune-docs`' only job-file example was completely non-functional.**
+  Auto-discovery (any file dropped into `jobs/` gets loaded and
+  executed) is deprecated specifically because it's equivalent to
+  remote code execution for anyone who can write to that directory —
+  the skill doc never mentioned the explicit `jobs:` allowlist in
+  `site.yaml` at all, presenting the risky default as the only way
+  jobs work. Separately, `dune-docs`' primary "Defining a job" example
+  showed a single default-exported `JobDefinition` object
+  (`export default {name, schedule, handler} satisfies JobDefinition`)
+  — the real loader (`src/jobs/scanner.ts`) reads `mod.schedule` and
+  `mod.default` as two independent exports and requires `mod.default`
+  to be a function; an object fails that check and the job is silently
+  skipped with a `jobs.load.missing_handler` warning. Since that was
+  the page's only example, following it literally produced a job that
+  never runs. Also fixed: `JobContext.content` is a full `DuneEngine`
+  (no `.find()`, use `.pages`/`.loadPage()`), not a `ContentAPI`; there
+  is no `db` field on `JobContext` at all (same fabricated
+  "db-schema-layer" term found and removed twice already this pass);
+  job state persists as JSON files via `StorageAdapter`, not Deno KV
+  (traced to the original v0.13 plan, which shipped differently);
+  self-hosted scheduling uses Dune's own minimal cron parser in a
+  minute-tick loop, not an external `cron` library; and
+  `dune-docs`' manual-trigger docs had the wrong response shape and
+  timing — `POST /admin/api/jobs/:name/run` fires the job
+  asynchronously and returns `200 {triggered: true, name}`
+  immediately, it does not wait for completion or return `500` on
+  failure as documented.
 
 ---
 
