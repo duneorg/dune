@@ -2,7 +2,20 @@
 
 Public (non-admin) user authentication. Two modes — pick one in `site.yaml`. Both populate `ctx.state.siteUser` (**not** `ctx.state.user`) with the same shape; middleware works identically regardless of mode.
 
-**As of this writing, this entire system is unreachable from outside `@dune/core`.** `mountDuneAuth()` (`src/auth/mount.ts`) is fully implemented but has **no public export path** — it isn't listed under any `@dune/core/*` subpath in `deno.json`, and the root `@dune/core` doesn't re-export it either (`grep -n "mountDuneAuth" deno.json src/mod.ts` turns up nothing). `dune serve` and the generated `main.ts` entrypoint template never call it automatically. So `auth:` config in `site.yaml` currently has **no effect at all** — `ctx.state.siteUser` stays `null` forever and none of the `/auth/*` routes below exist, no matter how it's configured. Everything below documents the real implementation; none of it is currently wireable into a site without editing `@dune/core` itself or waiting for the export to be added.
+**`mountDuneAuth()` is importable from `@dune/core/auth/mount`** (fixed in 0.31.7 — it previously had no public export path at all, see the roadmap history below if you're on an older version). It is still **not auto-wired**: `dune serve` and the generated `main.ts` entrypoint template never call it for you, so `auth:` config in `site.yaml` alone does nothing — `ctx.state.siteUser` stays `null` and none of the `/auth/*` routes below exist until a site's own entrypoint explicitly calls `mountDuneAuth(app, ctx)`, the same way headless-mode sites already call `mountDuneAdmin()`:
+
+```ts
+// main.ts
+import { App } from "fresh";
+import { bootstrap } from "@dune/core/bootstrap";
+import { mountDuneAuth } from "@dune/core/auth/mount";
+
+const ctx = await bootstrap("./");
+const app = new App();
+await mountDuneAuth(app, ctx); // populates ctx.state.siteUser on every request from here on
+```
+
+On a version before 0.31.7, this whole system was unreachable outside `@dune/core` — no export existed under any subpath, and the only way in was a relative `src/` import into core's own source. Confirm your installed `@dune/core` version before assuming the export is there.
 
 ---
 
@@ -180,7 +193,7 @@ For content gating via frontmatter `roles:`, this check runs automatically in th
 
 **`ctx.state.siteUser` is `null`, not `undefined`.**
 
-**`auth:` config does nothing by itself, and there's currently no supported way to make it do anything.** `mountDuneAuth()` has no public export from `@dune/core` today — see the top of this file. Don't waste time debugging a broken OAuth flow before confirming this system is even reachable in your installed version.
+**`auth:` config does nothing by itself — it needs `mountDuneAuth(app, ctx)` called explicitly from the site's own entrypoint.** There's no automatic wiring from `dune serve` or the generated `main.ts` template. On `@dune/core` versions before 0.31.7, the export didn't exist at all under any public subpath — confirm your installed version before assuming `@dune/core/auth/mount` resolves.
 
 **There is no session-signing secret to configure.** No `SESSION_SECRET`, no `session.secret` YAML key — sessions are opaque IDs looked up server-side, not self-contained signed cookies.
 

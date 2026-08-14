@@ -16,6 +16,7 @@
     "./mcp": "./src/mcp/mod.ts",
     "./db": "./src/db/mod.ts",
     "./auth/api-guard": "./src/auth/api-guard.ts",
+    "./auth/mount": "./src/auth/mount.ts",
     "./auth/authz": "./src/auth/authz.ts",
     "./auth/authz-adapter-local": "./src/auth/authz-adapter-local.ts",
     "./auth/authz-adapter-db": "./src/auth/authz-adapter-db.ts",
