@@ -1,8 +1,15 @@
 # Skill: Dune Background Jobs
 
-Background jobs are cron-scheduled tasks defined as TypeScript files in `jobs/`. Dune scans `jobs/*.ts` on startup and auto-registers all files that export a `schedule` and a default handler. No registration step required.
+Background jobs are cron-scheduled tasks defined as TypeScript files in `jobs/`. **Default auto-discovery (any `jobs/*.ts` file gets loaded and executed) is deprecated as a real code-execution risk** — write access to `jobs/` under auto-discovery is equivalent to remote code execution, since any file dropped there runs within one scheduler tick. Declare an explicit allowlist instead:
 
-Queue-triggered jobs (enqueue / dequeue) are out of scope — see the escape hatch section if you need them.
+```yaml
+# site.yaml — top level, not nested under a "site:" key
+jobs:
+  - ./jobs/weekly-digest.ts
+  - ./jobs/nightly-cleanup.ts
+```
+
+Set `jobs: []` to disable all background jobs with no warning. Omitting `jobs:` entirely falls back to auto-discovery of everything under `jobs/*.ts` and logs a deprecation warning (`jobs.autodiscovery.deprecated`) on every startup where the directory exists — treat that warning as something to fix, not background noise. (`src/jobs/scanner.ts`.)
 
 ---
 
@@ -10,12 +17,18 @@ Queue-triggered jobs (enqueue / dequeue) are out of scope — see the escape hat
 
 ```ts
 // jobs/weekly-digest.ts
-import type { JobContext } from "@dune/core";
+import type { JobContext } from "@dune/core/jobs";
 
 export const schedule = "0 9 * * MON";   // cron expression — required
 
 export default async function handler(ctx: JobContext) {
-  const posts = await ctx.content.find({ type: "post", limit: 5 });
+  // ctx.content is a full DuneEngine, not a query API — there's no
+  // ctx.content.find(). Filter/sort ctx.content.pages directly.
+  const posts = ctx.content.pages
+    .filter((p) => p.sourcePath.startsWith("02.blog/") && p.published)
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, 5);
+
   await ctx.email.send({
     to: "subscribers@example.com",
     subject: "Weekly digest",
@@ -25,7 +38,7 @@ export default async function handler(ctx: JobContext) {
 }
 ```
 
-The job name is the filename stem (`weekly-digest`). One job per file.
+The job name is the filename stem (`weekly-digest`). One job per file — a file without a `schedule` export or a default-export handler function is silently skipped, whether or not it's on the allowlist.
 
 ### Cron expression format
 
@@ -36,23 +49,25 @@ The job name is the filename stem (`weekly-digest`). One job per file.
 "0 2 1 * *"       1st of every month at 02:00
 ```
 
-Standard five-field cron: `minute hour day-of-month month day-of-week`.
+Standard five-field cron: `minute hour day-of-month month day-of-week`. Dune's own minimal parser (`src/jobs/cron.ts`) handles `*`, `*/n` steps, `n-m` ranges, `n,m` lists, and named days (`MON`–`SUN`). **It does not support `@` macros (`@daily`, `@hourly`), a seconds field, or `L`/`W`/`#` extensions** — those are silently either rejected or parsed incorrectly, so stick to the five plain fields above.
 
 ---
 
 ## Job context
 
-`JobContext` is the same surface as plugin hook context:
+`JobContext` is richer than plugin hook context (`HookContext`) — it's the one place in Dune that hands you a pre-built `EmailClient` and the full engine, not just `config`/`storage`:
 
 ```ts
 interface JobContext {
-  content: ContentAPI;   // query the content index
-  email: EmailAPI;       // send transactional email
-  db: DbAPI;             // query app data
-  config: SiteConfig;    // read site.yaml values
-  logger: Logger;        // structured logging
+  content: DuneEngine;   // full engine — content.pages (array), content.loadPage(sourcePath); no .find()
+  config: DuneConfig;    // config.site.* for what other docs call "SiteConfig" fields
+  storage: StorageAdapter;
+  logger: JobLogger;     // info(event, data?) / warn(event, data?) / error(event, data?)
+  email: EmailClient;    // real, pre-configured — see dune-email skill
 }
 ```
+
+(`src/jobs/types.ts`.) **There is no `db` field on `JobContext`, at any configuration.** If your job needs the data layer, import `@dune/core/db` directly and build your own repos from `schemas/*.yaml` — it's never injected, same as hooks (see `dune-plugin-authoring`'s note on the same fabricated "db-schema-layer" claim).
 
 ---
 
@@ -65,18 +80,21 @@ jobs/
   reindex-search.ts      → name: "reindex-search",  schedule: "*/30 * * * *"
 ```
 
+Every file you want to actually run must also be listed in `site.yaml`'s `jobs:` array (see the top of this file) — being present in `jobs/` is not sufficient once you've moved off the deprecated auto-discovery default.
+
 ---
 
 ## Admin panel
 
-`/admin/jobs` lists all registered jobs with:
-- `lastRun` — timestamp of most recent execution
-- `nextRun` — next scheduled execution time
+`/admin/jobs` (UI) and `GET /admin/api/jobs` (API, requires `config.read`) list all registered jobs with:
+- `lastRun` — timestamp of most recent execution, or `null` if never run
+- `nextRun` — best-estimate next scheduled execution time, or `null`
 - `status` — `idle` | `running` | `errored`
-- `lastError` — error message from most recent failed run
-- **Manual trigger button** — runs the job immediately regardless of schedule
+- `lastError` — error message from most recent failed run, or `null`
 
-Job state is persisted in Deno KV and survives restarts.
+`POST /admin/api/jobs/{name}/run` triggers a job immediately regardless of schedule.
+
+**Job state is persisted as JSON files via the site's `StorageAdapter`, to `{stateDir}/{name}.json` — not Deno KV.** It survives restarts because it's on disk/storage, not because of any KV involvement.
 
 ---
 
@@ -93,9 +111,9 @@ dune jobs:run weekly-digest # trigger a job immediately (dev/ops use only)
 
 ## Error handling
 
-When a handler throws, Dune:
+When a handler throws, Dune (`src/jobs/scheduler.ts`):
 1. Logs the error with structured output
-2. Records `status: errored` and `lastError` message in Deno KV
+2. Records `status: "errored"` and `lastError` in the persisted state file
 3. Continues scheduling future runs — **no retry**
 
 The next scheduled run is the natural retry for transient failures. For jobs that must not miss an execution or must retry on failure, use the escape hatch.
@@ -117,12 +135,12 @@ export default async function handler(ctx: JobContext) {
 
 ## Multi-process warning
 
-If `workers > 1` in your deploy config and background jobs are defined, Dune emits a startup warning:
+If `workers > 1` in your deploy config and background jobs are defined, Dune emits a startup warning (`jobs.multiprocess`):
 
 ```
 ⚠ Background jobs are defined but workers > 1. Every worker process will
   run every job — this causes duplicate execution. Use a single worker
-  process or move to a queue-backed job runner (see docs/deployment/jobs).
+  process or move to a queue-backed job runner.
 ```
 
 **The warning does not prevent startup.** It is your signal to either reduce to a single worker or use the escape hatch.
@@ -133,30 +151,36 @@ If `workers > 1` in your deploy config and background jobs are defined, Dune emi
 
 | Environment | Scheduler |
 |------------|-----------|
-| Deno Deploy | `Deno.cron()` — native, zero infra |
-| Self-hosted | `cron` library — same job format, no config change |
+| Deno Deploy (or anywhere `Deno.cron` exists) | `Deno.cron()` — native, platform-managed |
+| Self-hosted | A minute-tick `setTimeout` loop inside `JobScheduler`, matching each job's cron expression against Dune's own parser (`src/jobs/cron.ts`) — **not an external `cron` npm/JSR library** |
 
-The job definition format is identical in both environments. Dune handles detection.
+The job definition format is identical in both environments; `JobScheduler.start()` detects `typeof Deno.cron === "function"` and picks the path automatically. Self-hosted resolution is whole-minute — a job scheduled for a specific minute fires within that minute's tick, not sub-minute precision.
 
 ---
 
 ## Escape hatch — queue-backed jobs
 
-When you need guaranteed delivery, retry semantics, or queue-triggered execution, replace the Dune scheduler with BullMQ + Redis:
+When you need guaranteed delivery, retry semantics, or queue-triggered execution, Dune doesn't have a built-in answer — the pattern is to replace/supplement the scheduler with BullMQ + Redis yourself:
 
-- Use a Dune plugin hook (e.g. `onPagePublish`) to **enqueue** jobs into a BullMQ queue
+- Use a Dune plugin hook (a real, fired one — e.g. `onPageCreate`/`onPageUpdate`, not an invented one; check `dune-plugin-authoring`'s live/dead hook list) to **enqueue** jobs into a BullMQ queue
 - Run a **separate worker process** that pulls from the queue and executes handlers
-- Dune's `jobs/` directory and `email.send()` / `db.*` remain available in the worker via direct import
+- `@dune/core/email` and `@dune/core/db` remain available in that worker via direct import — construct your own `EmailClient`/db adapter there, same as anywhere outside a job/hook context
 
-Dune does not own the queue — it documents the pattern. See `docs/deployment/jobs` for the full setup.
+This is a DIY pattern, not something Dune ships or documents end-to-end — nothing here is verified against source because there's no source to verify; use your own judgment on the BullMQ/Redis side.
 
 ---
 
 ## Gotchas
 
-**`schedule` is required.** A file in `jobs/` without an exported `schedule` constant is silently ignored — it won't be registered and won't appear in `dune jobs:list`.
+**Auto-discovery is deprecated and a real security risk, not just legacy convenience.** Declare `jobs:` explicitly in `site.yaml`. Anyone who can write to `jobs/` on an auto-discovery site can get arbitrary code executed within a minute.
+
+**`schedule` is required, and files not on the `jobs:` allowlist don't run even if present in `jobs/`.** Two separate reasons a file might not fire — check both.
 
 **One job per file.** The job name comes from the filename stem. Exporting multiple schedules from one file is not supported — create separate files.
+
+**`ctx.content` has no `.find()`.** It's the full `DuneEngine` — use `ctx.content.pages` (array) directly, or `ctx.content.loadPage(sourcePath)` for a single full `Page`.
+
+**There is no `ctx.db`, ever, on any job.** Same fabricated-elsewhere claim as plugin hooks — import `@dune/core/db` yourself if you need it.
 
 **No timeout enforcement.** If a handler hangs indefinitely, Dune doesn't kill it. Add your own timeout logic for jobs that call external services:
 
@@ -169,6 +193,6 @@ const result = await Promise.race([
 
 **No retry on error.** Errors are logged and the job waits for its next scheduled run. If your job sends an email or charges a card and fails halfway through, you need idempotency logic in the handler — not retry configuration.
 
-**`db` in job context requires db-schema-layer.** Same constraint as plugin hooks — `ctx.db` throws if no DB is configured. Guard with `ctx.config.db?.enabled` if your job is db-optional.
+**No `@` macros, seconds field, or `L`/`W`/`#` cron extensions.** Dune's parser only supports the five plain fields shown above.
 
-**Multi-process duplicates are silent.** The startup warning fires once. After that, each worker runs each job independently with no coordination. Do not rely on the warning alone — verify your worker count before deploying jobs to production.
+**Multi-process duplicates are silent after the one startup warning.** Each worker runs each job independently with no coordination. Verify your worker count before deploying jobs to production — don't rely on remembering the warning.
