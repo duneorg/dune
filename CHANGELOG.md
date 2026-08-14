@@ -25,14 +25,29 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   existing `./auth/api-guard`/`./auth/authz`/`./auth/authz-adapter-*`
   entries. Added `tests/auth/mount_test.ts`, which imports `mountDuneAuth`
   via the real public specifier and boots it against a real `bootstrap()`'d
-  app to prove both the export and the mount work end-to-end. **Still not
-  auto-wired** — `dune serve`/the generated `main.ts` template don't call
-  it for you; a site's entrypoint must call `mountDuneAuth(app, ctx)`
-  explicitly, same as `mountDuneAdmin()` in headless mode. Whether it
-  should be auto-wired remains open in `later-roadmap`, now narrowed to
-  just that question. Updated `skills/dune-auth.md` and `dune-docs`'
-  public-auth page, which both previously (and correctly, at the time)
-  documented this system as entirely unreachable.
+  app to prove both the export and the mount work end-to-end.
+  **Also auto-wired it**: `createDuneApp()` (the code path both `dune
+  serve`/`dune dev` and the generated `main.ts` entrypoint go through) now
+  calls `mountDuneAuth(app, ctx)` automatically whenever `site.auth` is
+  configured — right after `mountPlugins()`, so it reuses the authz bundle
+  `bootstrap()`/the admin plugin already built. Gated strictly on presence
+  of the `auth:` block: a site that never configures it gets zero behavior
+  change (no new `data/site-users/`/session-store directories, no
+  `/auth/*` routes, no added per-request middleware). New
+  `DuneAppOptions.mountAuth` (default `true`) lets callers opt out; the SSG
+  builder (`dune build --static`) now passes `mountAuth: false`, since a
+  static build has no live request flow to serve `/auth/*` from and
+  shouldn't create session-store directories or risk failing on auth
+  misconfiguration as a side effect of generating HTML. Headless-mode
+  sites are unaffected — they don't go through `createDuneApp()` and
+  continue to call `mountDuneAuth()` themselves, same as `mountDuneAdmin()`.
+  Added `tests/cli/fresh-app_auth_test.ts` covering all three cases (auto
+  wired when configured, unchanged when not, explicit opt-out). Updated
+  `skills/dune-auth.md` and `dune-docs`' public-auth page throughout,
+  including the "require a specific role" guidance, which previously
+  assumed every site calls `mountDuneAuth()` itself and can stash the
+  return value — only true for headless mode now; default-mode sites
+  reach authz via the `dune-authz` skill's `getAuthz()` pattern instead.
 - **`skills/README.md` was missing from the skill-file install allowlist
   used for JSR/remote sites.** `copySkillFiles()` has two code paths: a
   local-source directory scan (used in this repo, picks up every `.md` file
