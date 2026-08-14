@@ -18,6 +18,8 @@ import {
   generateSchema,
   generateTheme,
 } from "../../src/cli/generate.ts";
+import { createStorage } from "../../src/storage/mod.ts";
+import { loadForm } from "../../src/forms/loader.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -224,11 +226,11 @@ Deno.test("generate:route: collision with --force overwrites", async () => {
 // generate:form
 // ---------------------------------------------------------------------------
 
-Deno.test("generate:form creates schemas/{name}.yaml with example fields", async () => {
+Deno.test("generate:form creates forms/{name}.yaml with example fields", async () => {
   await withTempSite(async (root) => {
     await generateForm(root, "contact");
 
-    const outPath = join(root, "schemas", "contact.yaml");
+    const outPath = join(root, "forms", "contact.yaml");
     const content = await readFile(outPath);
 
     assertStringIncludes(content, "title: Contact");
@@ -239,11 +241,29 @@ Deno.test("generate:form creates schemas/{name}.yaml with example fields", async
   });
 });
 
+// Regression: generate:form/scaffold_form used to write into schemas/, but
+// the runtime that actually serves forms (src/forms/loader.ts's loadForm(),
+// called from plugin-admin's GET/POST /api/forms/:name) only ever reads
+// from forms/ — so every generated form was silently unusable. This proves
+// the real consumer can find what the generator writes, not just that a
+// file lands somewhere named "forms".
+Deno.test("generate:form: the file it writes is actually loadable by loadForm() (the real runtime consumer)", async () => {
+  await withTempSite(async (root) => {
+    await generateForm(root, "contact");
+
+    const storage = createStorage({ rootDir: root });
+    const form = await loadForm(storage, "forms", "contact");
+
+    assertEquals(form?.title, "Contact");
+    assertEquals(Object.keys(form?.fields ?? {}).sort(), ["email", "message", "name"]);
+  });
+});
+
 Deno.test("generate:form slugifies name", async () => {
   await withTempSite(async (root) => {
     await generateForm(root, "Customer Inquiry");
 
-    const outPath = join(root, "schemas", "customer-inquiry.yaml");
+    const outPath = join(root, "forms", "customer-inquiry.yaml");
     assertEquals(await fileExists(outPath), true);
   });
 });
@@ -277,7 +297,7 @@ Deno.test("generate:form: collision with --force overwrites", async () => {
   await withTempSite(async (root) => {
     await generateForm(root, "myform");
 
-    const outPath = join(root, "schemas", "myform.yaml");
+    const outPath = join(root, "forms", "myform.yaml");
     await Deno.writeTextFile(outPath, "old: true");
 
     await generateForm(root, "myform", { force: true });

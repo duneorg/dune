@@ -4,7 +4,7 @@
  * Usage:
  *   dune generate:plugin <name>    Create a plugin scaffold in plugins/{name}/index.ts
  *   dune generate:route <name>     Create a content page at content/{name}.md
- *   dune generate:form <name>      Create a blueprint schema at schemas/{name}.yaml
+ *   dune generate:form <name>      Create a form definition at forms/{name}.yaml
  *   dune generate:theme <name>     Create a theme scaffold at themes/{name}/
  *   dune generate:schema <name>    Create a Flex Object schema at flex-objects/{name}.yaml
  *   dune generate --list           List all available generators
@@ -195,7 +195,9 @@ Content goes here.
 
 /**
  * generate:form <name>
- * Creates schemas/{name}.yaml — a blueprint YAML with example fields.
+ * Creates forms/{name}.yaml — a form definition YAML with example fields,
+ * consumed by src/forms/loader.ts at forms/{name}.yaml (not schemas/ — that
+ * directory is exclusively the DB data-layer's own, incompatible format).
  */
 export async function generateForm(
   root: string,
@@ -210,7 +212,7 @@ export async function generateForm(
   }
 
   const title = titleFromSlug(slug);
-  const outPath = join(root, "schemas", `${slug}.yaml`);
+  const outPath = join(root, "forms", `${slug}.yaml`);
 
   await guardCollision(outPath, root, opts.force ?? false);
 
@@ -229,10 +231,10 @@ fields:
     label: Message
 `;
 
-  await Deno.mkdir(join(root, "schemas"), { recursive: true });
+  await Deno.mkdir(join(root, "forms"), { recursive: true });
   await Deno.writeTextFile(outPath, content);
 
-  const rel = `schemas/${slug}.yaml`;
+  const rel = `forms/${slug}.yaml`;
   log(`🏜️  Dune — generate:form\n`);
   log(`  ✅ ${rel}`);
 }
@@ -422,7 +424,7 @@ fields:
 const GENERATORS: Record<string, string> = {
   "generate:plugin": "Scaffold a plugin in plugins/{name}/index.ts",
   "generate:route": "Create a content page at content/{name}.md",
-  "generate:form": "Create a blueprint schema at schemas/{name}.yaml",
+  "generate:form": "Create a form definition at forms/{name}.yaml",
   "generate:theme": "Scaffold a theme at themes/{name}/",
   "generate:schema": "Create a Flex Object schema at flex-objects/{name}.yaml",
   "generate:admin-route":

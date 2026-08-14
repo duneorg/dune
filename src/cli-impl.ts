@@ -199,7 +199,7 @@ Commands:
   generate --list               List all available generators
   generate:plugin <name>        Scaffold a plugin in plugins/{name}/index.ts
   generate:route <name>         Create a content page at content/{name}.md
-  generate:form <name>          Create a blueprint schema at schemas/{name}.yaml
+  generate:form <name>          Create a form definition at forms/{name}.yaml
   generate:theme <name>         Scaffold a theme at themes/{name}/
   generate:schema <name>        Create a Flex Object schema at flex-objects/{name}.yaml
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts

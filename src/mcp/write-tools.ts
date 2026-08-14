@@ -18,7 +18,7 @@
  *   install_plugin    — add a plugin specifier to site.yaml
  *   scaffold_plugin   — generate plugins/{name}/index.ts
  *   scaffold_route    — generate content/{name}.md
- *   scaffold_form     — generate schemas/{name}.yaml
+ *   scaffold_form     — generate forms/{name}.yaml
  *   scaffold_theme    — generate themes/{name}/ scaffold
  */
 
@@ -386,7 +386,7 @@ const SCAFFOLD_ROUTE_META: McpTool = {
 
 const SCAFFOLD_FORM_META: McpTool = {
   name: "scaffold_form",
-  description: "Generate a form/blueprint schema at schemas/{name}.yaml with example fields.",
+  description: "Generate a form definition at forms/{name}.yaml with example fields.",
   inputSchema: {
     type: "object",
     properties: {

@@ -178,15 +178,16 @@ function makeBlueprintsHandler(engine: DuneEngine): ResourceHandler {
   };
 }
 
-// ── Resource: forms (flex-objects schemas) ────────────────────────────────────
+// ── Resource: forms ─────────────────────────────────────────────────────────
 
 const FORMS_RESOURCE: McpResource = {
   uri: "dune://content/forms",
   name: "Form Schemas",
   description:
-    "All form/flex-object schema definitions from the schemas/ directory. " +
-    "Each entry describes the schema name, title, fields, and storage tier. " +
-    "Use this before scaffold_form to see what already exists.",
+    "All form definitions from the forms/ directory (not schemas/ — that's " +
+    "the DB data-layer's own, incompatible format). Each entry describes " +
+    "the form name, title, and fields. Use this before scaffold_form to " +
+    "see what already exists.",
   mimeType: "application/json",
 };
 
@@ -199,11 +200,11 @@ export interface ResourceDeps {
 
 function makeFormsHandler(storage: StorageAdapter, _root: string): ResourceHandler {
   return async () => {
-    const schemasDir = "schemas";
+    const formsDir = "forms";
     const forms: Record<string, unknown>[] = [];
 
     try {
-      const entries = await storage.list(schemasDir);
+      const entries = await storage.list(formsDir);
       for (const entry of entries) {
         if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
         try {
@@ -213,7 +214,7 @@ function makeFormsHandler(storage: StorageAdapter, _root: string): ResourceHandl
           forms.push({ name: entry.name.slice(0, -5), ...schema });
         } catch { /* skip malformed */ }
       }
-    } catch { /* schemas/ dir doesn't exist */ }
+    } catch { /* forms/ dir doesn't exist */ }
 
     return {
       uri: FORMS_RESOURCE.uri,

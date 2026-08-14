@@ -174,7 +174,7 @@ Generate a plugin at `plugins/{name}/index.ts`, a content page at `content/{name
 ```
 
 ### `scaffold_form`
-Generates a schema at `schemas/{name}.yaml` — but **check this against what you already know about `schemas/`**: the DB data-layer (`dune-schemas` skill) also uses `schemas/*.yaml`, with a completely different, incompatible format (`model:`/`fields` with `string`/`text`/`integer`/etc. types, no `title:`). `scaffold_form`'s actual output (`dune generate:form` under the hood) writes `title:` + `fields` with types like `email`/`textarea` — a form/blueprint-flavored schema, not a DB model. Both live in the same `schemas/` directory under different filenames. Read the existing file with `dune://content/forms` (see Resources) before scaffolding to avoid confusing the two systems or colliding names.
+Generates a form definition at `forms/{name}.yaml` (`dune generate:form` under the hood) — `title:` + `fields` with types like `email`/`textarea`, consumed by `src/forms/loader.ts` at runtime for `GET`/`POST /api/forms/:name`. **Not the same directory as the DB data-layer's `schemas/*.yaml`** (`dune-schemas` skill — `model:`/`fields` with `string`/`text`/`integer`/etc. types, no `title:`) — before 0.31.7, `scaffold_form`/`generate:form` actually wrote into `schemas/` by mistake, meaning every form it generated was silently unusable (the runtime only ever reads `forms/`). Fixed in 0.31.7; if you're on an older version, move any previously-generated form files from `schemas/` to `forms/` by hand. Read the existing directory with `dune://content/forms` (see Resources) before scaffolding to avoid name collisions.
 
 None of the 9 write/scaffold tools are exported from `@dune/core/mcp`'s public module (`buildWriteTools` isn't in `mod.ts`) — they're wired up internally by the `dune mcp:serve` CLI command only. A programmatic embedding (see "Programmatic Use" below) gets read tools and resources via the public API, not write tools, unless you import `write-tools.ts` by its internal path (unsupported).
 
@@ -187,7 +187,7 @@ None of the 9 write/scaffold tools are exported from `@dune/core/mcp`'s public m
 | `dune://content/pages` | Complete page index as JSON |
 | `dune://content/taxonomy` | All taxonomy values with counts |
 | `dune://content/blueprints` | All frontmatter blueprint definitions, inheritance resolved |
-| `dune://content/forms` | All schema/form definitions under `schemas/` — read this before `scaffold_form` |
+| `dune://content/forms` | All form definitions under `forms/` — read this before `scaffold_form` |
 | `dune://site/audit` | Last 50 admin audit-log entries (empty array if audit logging isn't enabled) |
 
 The last three aren't in the original version of this doc. `dune mcp:serve` registers all 7. A programmatic embedding only gets `forms`/`audit` if it passes `storage` and `root` to `buildResources()` (both optional — omit either and you get 5 resources, not 7, with no error).
