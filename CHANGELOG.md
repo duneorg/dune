@@ -340,10 +340,55 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   Also clarified subject precedence when both an explicit `subject:`
   and a template's own subject are given (the explicit one always
   wins) — previously unstated in either direction. Fixed both in
-  `dune-docs` too. This closes out the full pass through all 9 skill
+  `dune-docs` too. This closed out a full pass through all 9 skill
   files plus the two already-fixed ones revisited with the sharper
-  method built up over the rest — every file in `skills/` has now been
-  checked against source at least once, most twice.
+  method built up over the rest — every file in `skills/` had by this
+  point been checked against source at least once, most twice.
+- **A third pass, on request, started with `skills/dune-content.md` —
+  which had never received a from-scratch audit at all (every prior
+  fix to it was a targeted patch), and it showed.** Comparable
+  fabrication to the worst files fixed earlier this series: every code
+  example imported from `@dune/content/types`, a package that doesn't
+  exist (`@dune/core/content/types`); the TSX content-page example
+  destructured a `page` prop that isn't on the real
+  `ContentPageProps`; the theme-template example read `page.title`,
+  which doesn't exist either (only `page.frontmatter.title`, and
+  there's no `PageMeta` type — it's `Page`); the entire "Querying
+  content" section invented a `ctx.content.find()`/`findOne()` API
+  with a `type:` filter, none of which exist — the real `ContentApi`
+  (`.pages()`/`.page()`/`.search()`/`.taxonomy()`) is reachable only
+  via `bootstrap.contentApi`, not uniformly as `ctx.content` anywhere;
+  two `site.yaml` config keys were nested wrong (`taxonomies:` is
+  top-level, not under `content:`; language config lives in a
+  *different file*, `config/system.yaml`'s `languages:`, not `i18n:`
+  in `site.yaml`); and the "Agent tooling" HTTP examples used
+  `Authorization: Bearer $TOKEN` against an API that has no
+  Bearer-token support at all — auth is 100% session-cookie based.
+  Rewrote the HTTP flow around the real `POST /admin/login`, and
+  pointed agents at the MCP write tools first, which need no HTTP auth.
+  Cross-checking a `dune-docs` page along the way surfaced two more
+  bugs there (`ContentApi.search()`'s real signature takes an options
+  object and returns a `Promise` — the doc showed a bare number
+  argument and claimed it was synchronous) — fixed upstream too.
+- **Found and fixed a real bug in `dune generate:theme`'s own scaffold
+  while cross-referencing `TemplateProps` against a `dune-docs` example
+  for the item above.** The generated `default.tsx` imported a
+  `PageProps` type from `@dune/core` that isn't exported there at all,
+  and read `page.title`/`page.html`, the exact same fabricated shape
+  found throughout the skill file — meaning every freshly-scaffolded
+  theme via this command had a permanently blank title and a body that
+  never rendered, on top of failing `deno check`. This one was a real
+  code bug, not a docs error, so it's fixed in `src/cli/generate.ts`
+  directly rather than just documented — the existing test had been
+  asserting the broken output verbatim, updated to assert the fix.
+- **Flagged, not fixed: the content-query inconsistency across hooks,
+  jobs, and TSX props has no unified shape** (nothing / raw
+  `DuneEngine` / no access / `bootstrap.contentApi`-only, depending on
+  where you are) — a real design gap surfaced by the `dune-content.md`
+  rewrite above, but one that touches at least three public interfaces
+  and risks a breaking change to existing job code, so it went to the
+  roadmap backlog for a real decision rather than being resolved
+  unilaterally mid-audit.
 
 ---
 
