@@ -92,7 +92,7 @@ Every file you want to actually run must also be listed in `site.yaml`'s `jobs:`
 - `status` — `idle` | `running` | `errored`
 - `lastError` — error message from most recent failed run, or `null`
 
-`POST /admin/api/jobs/{name}/run` triggers a job immediately regardless of schedule.
+`POST /admin/api/jobs/{name}/run` (requires `config.update` + CSRF token) triggers a job immediately regardless of schedule. It fires the job asynchronously and returns `200 { triggered: true, name }` as soon as the run starts — not once it completes. A handler that throws afterward is only logged server-side (`[dune/jobs] Manual run of {name} failed: …`), not reflected in the HTTP response. Poll `GET /admin/api/jobs` afterward to see whether it actually succeeded.
 
 **Job state is persisted as JSON files via the site's `StorageAdapter`, to `{stateDir}/{name}.json` — not Deno KV.** It survives restarts because it's on disk/storage, not because of any KV involvement.
 
@@ -155,6 +155,8 @@ If `workers > 1` in your deploy config and background jobs are defined, Dune emi
 | Self-hosted | A minute-tick `setTimeout` loop inside `JobScheduler`, matching each job's cron expression against Dune's own parser (`src/jobs/cron.ts`) — **not an external `cron` npm/JSR library** |
 
 The job definition format is identical in both environments; `JobScheduler.start()` detects `typeof Deno.cron === "function"` and picks the path automatically. Self-hosted resolution is whole-minute — a job scheduled for a specific minute fires within that minute's tick, not sub-minute precision.
+
+**The cron string is parsed by two different engines depending on environment.** On Deno Deploy, `schedule` is handed straight to `Deno.cron()` — Deno's own runtime parses it, not `src/jobs/cron.ts`. Self-hosted uses Dune's minimal parser exclusively. Both accept the same plain five-field syntax shown above, but if you're relying on something exotic working because it happened to parse in one environment, verify it in the other before deploying.
 
 ---
 
