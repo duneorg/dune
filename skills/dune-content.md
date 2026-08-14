@@ -215,7 +215,7 @@ taxonomies:
   - category
 ```
 
-Access taxonomy values via `ctx.content.taxonomy(name)` and `ctx.content.pages({ taxonomy: { name, value } })` — see "Querying content" below for the real method names and shapes; there is no `getTaxonomyValues()` or `find()`.
+Access taxonomy values via `bootstrap.contentApi.taxonomy(name)` and filter pages with `bootstrap.contentApi.pages({ taxonomy: { name, value } })` — see "Querying content" below for where `contentApi` is actually reachable from (it is not a uniform `ctx.content`) and the real method names/shapes; there is no `getTaxonomyValues()` or `find()`.
 
 ---
 
@@ -332,13 +332,11 @@ dune blueprint:show blog-post --json  # machine-readable
 
 **Underscore folders are non-routable.** `_components/` and `_drafts/` produce no routes. Do not put content that should be publicly accessible in a folder with an underscore prefix.
 
-**`type` in content queries is the stripped folder name.** Posts in `02.blog/` are `type: "blog"`. Posts in `posts/` are `type: "posts"`. Never include the numeric prefix in a `type` query.
-
 **`template:` in frontmatter must match an actual file in the active theme.** `template: fancy` requires `themes/<active>/templates/fancy.tsx` to exist. `dune validate` catches this before the server starts.
 
 **TSX content pages require trusted authors.** They run with full Deno permissions — no sandbox. Do not allow untrusted users to create `.tsx` content files. Use Markdown or MDX for user-generated content.
 
-**Language code must be configured to be detected.** `post.de.md` is not treated as a German variant unless `de` is listed in `site.yaml` under `i18n.languages`. Without that config, the filename is treated as a slug containing a literal dot — producing an unexpected route.
+**Language code must be configured to be detected.** `post.de.md` is not treated as a German variant unless `de` is listed in `config/system.yaml` under `languages.supported` — a different file and key than you might expect (not `site.yaml`, not `i18n:`; see "Language variants" above). Without that config, the filename is treated as a slug containing a literal dot — producing an unexpected route.
 
 **`draft: true` behaves differently in dev vs production.** Draft pages are excluded from the content index in production but visible in development. Don't rely on draft status as a security gate — use `roles:` frontmatter for access control.
 
