@@ -31,9 +31,9 @@ await email.send({
 });
 ```
 
-`to` accepts a string or `string[]`. `send()` requires either `template` or (`html` + `subject`) — it throws otherwise. If `template` is given, `subject` becomes optional (the template can supply its own — see below) and `html` is ignored if also present.
+`to` accepts a string or `string[]`. `send()` requires either `template` or (`html` + `subject`) — it throws otherwise. If `template` is given, `subject` becomes optional (the template can supply its own — see below) and `html` is ignored if also present. **Precedence when both are present**: an explicit `subject:` passed to `send()` always wins over the template's own subject (`sendOpts.subject ?? rendered.subject` in `client.ts`) — the template's subject is only a fallback for when you don't pass one, not an override.
 
-Plain-text fallback is auto-generated from the rendered HTML by stripping tags. You do not need a separate text template.
+**Plain-text auto-generation only happens on the `template:` path, not the raw-`html` path.** A template's renderer (`templates.ts`) strips tags from its own rendered HTML into `rendered.text`, and `client.ts` uses that as the fallback (`sendOpts.text ?? rendered.text`) — so a template-based send does get a text part for free. But `send({ html, subject })` without a `template` sets `text` from `sendOpts.text` only — if you don't pass `text` yourself, none of `client.ts` or any provider (`resend.ts`, `smtp.ts`, etc. — checked all of them) generates one; the message just goes out with no text part. If you're not using a template, pass `text:` explicitly when you care about it.
 
 **The one place you get a pre-built client for free is background jobs**: `JobContext.email` (`src/jobs/types.ts`) is a real, already-configured `EmailClient`, constructed from `site.yaml`'s `email:` config with `storage` wired in — `template:` works there without extra setup. Hooks (`HookContext`) and TSX content pages (`ContentPageProps`) get neither `email` nor `content` nor `db` — see the `dune-plugin-authoring` skill's "Hook context" section for the full story on hooks.
 
