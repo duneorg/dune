@@ -65,6 +65,13 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Docs
 
+- **`dune-docs`' data-layer page showed capitalized codegen output
+  filenames** (`src/db/types/Comment.ts`, `Post.ts`) — `dune codegen`
+  actually lowercases the first character of the model name
+  (`camelCase()` in `src/db/codegen.ts`), so real output is
+  `comment.ts`/`post.ts`. Found while cross-checking `skills/dune-schemas.md`
+  (which needed no changes itself — it already matched source) against the
+  docs page for the same third-pass audit.
 - **`skills/dune-authz.md` had a leftover self-contradiction from an earlier
   pass** — the `site.yaml` config comment for `authzStore: local` still said
   "+ Deno KV index," contradicting the file's own corrected prose that
