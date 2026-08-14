@@ -9,6 +9,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`dune generate:form`/the MCP `scaffold_form` tool wrote into the wrong
+  directory entirely — every generated form was silently unusable.** Both
+  wrote to `schemas/{name}.yaml`, but the runtime that actually serves
+  forms (`loadForm()` in `src/forms/loader.ts`, called from
+  `GET`/`POST /api/forms/:name`) only ever reads from `forms/{name}.yaml`
+  — confirmed by that type file's own docstring/example. Not a
+  same-directory collision risk with the DB data-layer's `schemas/*.yaml`
+  format, as previously described — a plain wrong-path bug with no
+  overlap at all; the public form API 404'd "Form not found" for every
+  generated form, forever. Fixed the write path (`generateForm()` in
+  `src/cli/generate.ts`) and the matching read side (the MCP
+  `dune://content/forms` resource, which listed `schemas/` as "what forms
+  already exist" instead of `forms/`). Added a real end-to-end regression
+  test that calls `loadForm()` — the actual runtime consumer — against
+  `generateForm()`'s output, not just checking a file lands somewhere
+  named "forms". If you generated a form on an older version, move it
+  from `schemas/{name}.yaml` to `forms/{name}.yaml` by hand.
 - **`mountDuneAuth()` — the entire public-auth system (OAuth, magic link,
   external-JWT, sessions, `SiteUser` storage) — had no public export.**
   `src/auth/mount.ts` was fully implemented but wasn't listed under any
