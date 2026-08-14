@@ -314,8 +314,19 @@ Deno.test("generate:theme creates all three scaffold files", async () => {
     assertStringIncludes(yamlContent, 'version: "0.1.0"');
 
     const tsxContent = await readFile(template);
-    assertStringIncludes(tsxContent, "page.html");
-    assertStringIncludes(tsxContent, "PageProps");
+    // Regression: the scaffold previously imported a nonexistent PageProps
+    // type from @dune/core (only Fresh exports that name; @dune/core does
+    // not) and referenced page.title / page.html, neither of which exist on
+    // the real TemplateProps.page (Page has no top-level title, and .html
+    // is an async method, not a string — the rendered body is the separate
+    // `children` prop). Both bugs meant a freshly-scaffolded theme's title
+    // was always empty and its body never rendered.
+    assertStringIncludes(tsxContent, "TemplateProps");
+    assertStringIncludes(tsxContent, "page.frontmatter.title");
+    assertStringIncludes(tsxContent, "{children}");
+    assertEquals(tsxContent.includes("PageProps"), false);
+    assertEquals(tsxContent.includes("page.title"), false);
+    assertEquals(tsxContent.includes("page.html"), false);
   });
 });
 

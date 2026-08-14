@@ -269,18 +269,18 @@ export async function generateTheme(
 version: "0.1.0"
 `;
 
-  const templateTsx = `import type { PageProps } from "@dune/core";
+  const templateTsx = `import type { TemplateProps } from "@dune/core";
 
-export default function DefaultTemplate({ page }: PageProps) {
+export default function DefaultTemplate({ page, children }: TemplateProps) {
   return (
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>{page.title}</title>
+        <title>{page.frontmatter.title}</title>
         <link rel="stylesheet" href="/assets/style.css" />
       </head>
       <body>
-        <main dangerouslySetInnerHTML={{ __html: page.html }} />
+        <main>{children}</main>
       </body>
     </html>
   );
