@@ -51,7 +51,7 @@ There is no `import { authz } from "@/auth/authz.ts";` bare-constant pattern —
 ```yaml
 # site.yaml
 auth:
-  authzStore: local    # default — data/permissions/*.json + Deno KV index
+  authzStore: local    # default — data/permissions/*.json, rebuilt into an in-memory Map on startup (no Deno KV involved)
   # authzStore: db     # opt-in — requires a real database adapter (DUNE_DB_URL/DUNE_DB_PATH), not a separate "schema layer" feature
 ```
 
