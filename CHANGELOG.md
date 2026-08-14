@@ -240,6 +240,36 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   example there showed; migrations write to `data/migrations/`, not
   bare `migrations/` (wrong in three places); and the generated CRUD
   API's update method is `PUT`, not `PATCH`.
+- **`skills/dune-mcp.md` claimed "All MCP tools are read-only" — false,
+  and the single biggest gap found in this whole audit series.**
+  `src/mcp/write-tools.ts` defines 9 real write/scaffold tools
+  (`write_page`, `delete_page`, `update_frontmatter`, `update_config`,
+  `install_plugin`, `scaffold_plugin`, `scaffold_route`,
+  `scaffold_form`, `scaffold_theme`), registered unconditionally by
+  `dune mcp:serve` — confirmed via `src/cli/mcp.ts`, which always
+  imports and wires `buildWriteTools()` in alongside the read tools,
+  no opt-in flag. The doc actively told readers this capability didn't
+  exist. Also added two undocumented read tools (`list_blueprints`,
+  `get_page_source`) and three undocumented resources
+  (`dune://content/blueprints`, `dune://content/forms`,
+  `dune://site/audit`) — real tool/resource counts are 9 and 7, not
+  the 7 and 4 previously documented — and a security-model section
+  this doc never had (the server has no authentication of its own;
+  anything that can write to its stdin gets full write-tool access).
+  Fixed three smaller bugs in `dune-docs`' MCP page found while
+  cross-checking: it was also missing the `forms`/`audit` resources,
+  mislabeled `scaffold_route`'s output as "TSX" (it's plain Markdown),
+  and claimed `write_page` validates YAML frontmatter before writing
+  when the real handler writes the given bytes as-is with no parsing
+  step at all. Flagged a real, unrelated-to-docs design issue found
+  along the way: `scaffold_form`/`dune generate:form` writes into
+  `schemas/{name}.yaml` using a form/blueprint-flavored format
+  entirely incompatible with the DB data-layer's own `schemas/*.yaml`
+  format (`dune-schemas` skill) — same directory, two unrelated
+  schema shapes, no collision detection either way. Filed to the
+  roadmap backlog rather than fixed here, since resolving it is a
+  product decision (separate directories vs. a discriminator field),
+  not a doc correction.
 
 ---
 
