@@ -308,6 +308,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   no-authentication security model, both of which it previously didn't
   point at even though the dedicated MCP page (fixed earlier this
   pass) already covers them in full.
+- **Revisited `skills/dune-plugin-authoring.md` (the first file fixed
+  in this series) with the sharper method built up since — found four
+  more real gaps, none contradicting the earlier rewrite.** `setup()`'s
+  returned Promise is fire-and-forget (`src/hooks/registry.ts` never
+  awaits it) — an async `setup()` that does real work before
+  registering its hooks can race with real events firing; added as a
+  gotcha. `PluginEntry.config` — a real, previously-undocumented
+  per-plugin static config block in `site.yaml`, read back via
+  `ctx.config.plugins[name]`. Opt-in plugin auto-discovery
+  (`auto_discover_plugins: true`, off by default, same
+  code-execution-risk shape as job auto-discovery) — the file's
+  opening claim didn't acknowledge this exception. `HookRegistry.on()`/
+  `.off()` — dynamic hook registration from `setup()`, a real
+  alternative to the static `hooks: {}` object that wasn't mentioned
+  anywhere. Caught a bug of my own while adding that last one: the
+  `dune-docs` example it's based on has `onCacheInvalidate`'s handler
+  reading `data.key`, but every real `fire()` call site for that event
+  passes `{}` — no `key` field exists. Fixed before landing, and fixed
+  upstream in `dune-docs` too, along with that page's own "setup() runs
+  before any hook fires" overclaim (same fire-and-forget issue).
 
 ---
 
