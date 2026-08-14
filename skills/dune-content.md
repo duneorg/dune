@@ -161,8 +161,24 @@ export default async function PostTemplate({ page, children, site }: TemplatePro
 | `page` | `Page` (not `PageMeta` — that type doesn't exist) | `page.frontmatter` for YAML fields (**not** `page.title` — `Page` has no top-level `title`), `page.route`, `page.template`, `page.language`, `page.sourcePath` |
 | `children` | `unknown` | Pre-rendered content — a Preact vnode already wrapping the rendered HTML of the md/mdx body |
 | `site` | `SiteConfig` | Values from `site.yaml` |
+| `content` | `ContentApi \| undefined` (0.31.7+) | `.pages()`/`.page()`/`.search()`/`.taxonomy()` — same instance as `bootstrap.contentApi`. Populated on every normal render; see "Querying content" below for the rare fallback paths that omit it. |
 
-`children` is already a rendered vnode, not a raw HTML string — render it directly (`<div>{children}</div>`), don't pass it to `dangerouslySetInnerHTML`. For TSX content pages, the content file IS the component — no template is involved.
+`children` is already a rendered vnode, not a raw HTML string — render it directly (`<div>{children}</div>`), don't pass it to `dangerouslySetInnerHTML`. For TSX content pages, the content file IS the component — no template is involved, but `ContentPageProps` gets the same `content` field.
+
+```tsx
+// themes/default/templates/related.tsx — using content instead of a direct db call
+import type { TemplateProps } from "@dune/core/content/types";
+
+export default async function RelatedTemplate({ page, children, content }: TemplateProps) {
+  const related = await content?.search(page.frontmatter.title, { limit: 5 });
+  return (
+    <article>
+      <div>{children}</div>
+      <ul>{related?.map(r => <li key={r.route}><a href={r.route}>{r.title}</a></li>)}</ul>
+    </article>
+  );
+}
+```
 
 Referencing a template that doesn't exist in the active theme is a validation error caught by `dune validate`.
 
@@ -170,12 +186,12 @@ Referencing a template that doesn't exist in the active theme is a validation er
 
 ## Querying content
 
-**There is no `ctx.content.find()`/`findOne()`, and no `type:` filter — and `ctx.content` doesn't mean the same thing in every context.** As of 0.31.7, hooks and jobs both get a real query-capable field, but the field name and reliability differ by context. What you actually get depends entirely on where you are:
+**There is no `ctx.content.find()`/`findOne()`, and no `type:` filter — and `ctx.content`/`props.content` doesn't mean quite the same thing in every context, even though all four now carry it as of 0.31.7.** What you actually get, and how reliably, depends on where you are:
 
 - **Hooks (`HookContext`)** — `ctx.content` is the real `ContentApi` (see below) **once `bootstrap()` has finished building it** — `undefined` before that. Five hooks fire too early to have it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. It's populated for every other live hook. It's also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (`--fire-hooks`) build outside a full `bootstrap()` — `content:delete` is not in that group, since it runs through a real `bootstrap()`. Always guard with `ctx.content?.`. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest hooks — see `dune-plugin-authoring`.
-- **Background jobs (`JobContext`)** — two separate fields now: `ctx.content` is still the full `DuneEngine` (`.pages` a plain array property, `.loadPage(sourcePath)` for one full `Page`), kept exactly as-is so existing jobs don't break; `ctx.contentApi` (new in 0.31.7) is the same `ContentApi` described below, and — unlike hooks' `ctx.content` — is **always present**, since jobs only ever run after bootstrap has fully completed. See `dune-jobs`.
-- **TSX content pages / theme templates** — neither `ContentPageProps` nor `TemplateProps` has a `content` field of any kind, still. This half of the inconsistency is a real, larger plumbing change (`content-handler.ts` doesn't currently receive `search`/`taxonomy` at all, both of which `ContentApi` needs) — tracked separately in the roadmap, not yet done.
-- **The real `ContentApi`** (`src/content/api.ts` — `.pages()`, `.page()`, `.search()`, `.taxonomy()`) is exposed as `bootstrap.contentApi` — reachable from a plugin's `mount({ bootstrap })`, or anywhere else holding a `BootstrapResult`. As of 0.31.7 it's the same instance injected as `ctx.content` in hooks and `ctx.contentApi` in jobs — not a separate, unrelated object.
+- **Background jobs (`JobContext`)** — two separate fields: `ctx.content` is still the full `DuneEngine` (`.pages` a plain array property, `.loadPage(sourcePath)` for one full `Page`), kept exactly as-is so existing jobs don't break; `ctx.contentApi` is the same `ContentApi` described below, and — unlike hooks' `ctx.content` — is **always present**, since jobs only ever run after bootstrap has fully completed. See `dune-jobs`.
+- **TSX content pages / theme templates** (`ContentPageProps.content`, `TemplateProps.content`) — the same `ContentApi`, threaded through `duneRoutes()` → `content-handler.ts`/`tsx-handler.ts`/`error-page.ts` at request time. Optional on the type (a couple of edge-case fallback paths — e.g. the bare-HTML fallback when no theme resolves at all, which doesn't use `TemplateProps`/JSX rendering in the first place — don't populate it), but every normal template/TSX-page render call site does, since rendering only ever happens after a full `bootstrap()`.
+- **The real `ContentApi`** (`src/content/api.ts` — `.pages()`, `.page()`, `.search()`, `.taxonomy()`) is exposed as `bootstrap.contentApi` — reachable from a plugin's `mount({ bootstrap })`, or anywhere else holding a `BootstrapResult`. It's the same instance injected as `ctx.content` in hooks, `ctx.contentApi` in jobs, and `content` in template/TSX-page props — not a separate, unrelated object in any of them.
 
 `ContentApi`'s real shape, once you're somewhere it's actually reachable:
 
@@ -356,7 +372,7 @@ renders as a single four-item list (`1. Apple / 2. Banana / 3. Cherry / 4. Date`
 
 **The content query API is not `@dune/content` — it's `@dune/core/content`.** There is no `@dune/content` package at all; every import in this file that references content/template types uses the `@dune/core` subpath.
 
-**There is no `ctx.content.find()`/`findOne()` anywhere, and `ctx.content` isn't reliably present or consistently-shaped across hooks, jobs, and TSX templates.** See "Querying content" above — hooks' `ctx.content` can be `undefined` depending on timing, jobs get a guaranteed-present `ctx.contentApi` alongside the unrelated `ctx.content` (the raw engine), and TSX pages/templates have no content field at all yet. The real method names (`pages()`/`page()`/`search()`/`taxonomy()`) don't match what you'd guess from other CMSes either way.
+**There is no `ctx.content.find()`/`findOne()` anywhere, and `ctx.content`/`props.content` isn't reliably present or consistently-shaped across hooks, jobs, and TSX templates.** See "Querying content" above — hooks' `ctx.content` can be `undefined` depending on timing, jobs get a guaranteed-present `ctx.contentApi` alongside the unrelated `ctx.content` (the raw engine), and templates/TSX pages get `content` populated on every normal render but it's still optional on the type (a couple of edge-case fallback paths omit it). The real method names (`pages()`/`page()`/`search()`/`taxonomy()`) don't match what you'd guess from other CMSes either way.
 
 **`TemplateProps.page` has no `.title`.** Use `page.frontmatter.title`. `Page` has no top-level `title` field at all — and there is no `PageMeta` type in the real source; it's just `Page`.
 

@@ -2,6 +2,7 @@
 import type { ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
+import type { ContentApi } from "../content/api.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { createTranslator } from "../i18n/translate.ts";
@@ -20,6 +21,7 @@ export async function handleTsxPage(
   url: URL,
   page: Page,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
+  contentApi?: ContentApi,
 ): Promise<Response> {
   // Dispatch through Fresh-style `export const handler` if present.
   const pageHandlers = await page.handlers();
@@ -34,7 +36,7 @@ export async function handleTsxPage(
         params: {},
         render: async (data: unknown) => {
           if (!Component) {
-            return renderErrorPage(engine, url, render, 500, "TSX component not found");
+            return renderErrorPage(engine, url, render, 500, "TSX component not found", contentApi);
           }
           return render(await resolveTemplateVNode(Component as ComponentType<any>, {
             data,
@@ -45,6 +47,7 @@ export async function handleTsxPage(
             translations: engine.router.getTranslations(page.route),
             route: page.route,
             params: {},
+            content: contentApi,
           }));
         },
         /**
@@ -79,7 +82,7 @@ export async function handleTsxPage(
 
   const Component = await page.component();
   if (!Component) {
-    return renderErrorPage(engine, url, render, 500, "TSX component not found");
+    return renderErrorPage(engine, url, render, 500, "TSX component not found", contentApi);
   }
 
   const layoutName = page.frontmatter.layout;
@@ -91,6 +94,7 @@ export async function handleTsxPage(
         route: page.route,
         media: createMediaHelper(page.media),
         params: {},
+        content: contentApi,
       }),
     );
   }
@@ -105,6 +109,7 @@ export async function handleTsxPage(
     route: page.route,
     media: createMediaHelper(page.media),
     params: {},
+    content: contentApi,
   });
 
   if (layout) {
@@ -126,6 +131,7 @@ export async function handleTsxPage(
         t,
         dir: directionOf(pageLangForDir, engine.config?.system?.languages?.rtl_override),
         children: content,
+        content: contentApi,
       }),
     );
   }

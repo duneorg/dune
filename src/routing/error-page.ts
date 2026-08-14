@@ -13,6 +13,7 @@
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page, TemplateProps } from "../content/types.ts";
+import type { ContentApi } from "../content/api.ts";
 import { directionOf } from "../i18n/rtl.ts";
 import { createTranslator } from "../i18n/translate.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
@@ -33,6 +34,7 @@ export async function renderErrorPage(
   renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>,
   statusCode: number,
   message: string,
+  contentApi?: ContentApi,
 ): Promise<Response> {
   const title = STATUS_TITLES[statusCode] ?? `${statusCode} — Error`;
   const { lang } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
@@ -69,6 +71,7 @@ export async function renderErrorPage(
         themeConfig: engine.themeConfig,
         t,
         dir,
+        content: contentApi,
       }),
       statusCode,
     );
@@ -84,6 +87,7 @@ export async function renderErrorPage(
         config: engine.config,
         dir,
         t: createTranslator(await engine.themes.loadLocale(lang)),
+        content: contentApi,
       },
         h("div", { class: "content-page" },
           h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },

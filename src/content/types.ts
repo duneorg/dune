@@ -6,6 +6,7 @@
  */
 
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
+import type { ContentApi } from "./api.ts";
 
 // === Content Format ===
 
@@ -477,6 +478,18 @@ export interface TemplateProps {
    */
   searchResults?: Array<{ route: string; title: string; excerpt: string; score: number }>;
   children?: unknown;
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — the same instance `bootstrap.contentApi` exposes, and that hooks get
+   * as `ctx.content` and jobs get as `ctx.contentApi`. Optional on the
+   * type (some render paths — e.g. the built-in bare-HTML error fallback
+   * with no theme available at all — construct a minimal props object by
+   * hand and may omit it), but every normal render call site populates it,
+   * since templates only ever render after a full `bootstrap()`.
+   *
+   * @since 0.31.7
+   */
+  content?: ContentApi;
 }
 
 /** Props passed to .tsx content pages (the component IS the content) */
@@ -491,6 +504,16 @@ export interface ContentPageProps {
   collection?: Collection;
   /** URL parameters — always empty for content pages (no parameterized routes) */
   params: Record<string, string>;
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — the same instance `bootstrap.contentApi` exposes, and that hooks get
+   * as `ctx.content` and jobs get as `ctx.contentApi`. Every normal render
+   * call site populates it, since TSX content pages only ever render after
+   * a full `bootstrap()`.
+   *
+   * @since 0.31.7
+   */
+  content?: ContentApi;
 }
 
 // === Format Handler ===

@@ -18,6 +18,7 @@ import { directionOf } from "../i18n/rtl.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
+import type { ContentApi } from "../content/api.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
@@ -60,6 +61,7 @@ export function duneRoutes(
   collections?: CollectionEngine,
   flex?: FlexEngine,
   search?: SearchEngine,
+  contentApi?: ContentApi,
 ): DuneRoutes {
   return {
     /**
@@ -219,6 +221,7 @@ export function duneRoutes(
               searchOffset: offset,
               searchLimit,
               dir: directionOf(lang, engine.config?.system?.languages?.rtl_override),
+              content: contentApi,
             }),
           ));
         }
@@ -269,7 +272,7 @@ export function duneRoutes(
 
       // Not found — render 404 through theme (error template → layout → bare)
       if (result.type === "not-found" || !result.page) {
-        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found"));
+        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found", contentApi));
       }
 
       const page = result.page;
@@ -285,10 +288,10 @@ export function duneRoutes(
       // ───────────────────────────────────────────────────────────────────────
 
       if (page.format === "tsx") {
-        return respond(handleTsxPage(engine, req, url, page, renderJsx));
+        return respond(handleTsxPage(engine, req, url, page, renderJsx, contentApi));
       }
 
-      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage));
+      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage, contentApi));
     },
   };
 }

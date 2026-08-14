@@ -117,14 +117,14 @@ export async function createDuneApp(
   options: DuneAppOptions,
 ): Promise<DuneAppResult> {
   const { root, port, debug = false, dev = false, mountAuth = true } = options;
-  const { engine, collections, taxonomy, search, flexEngine, hooks, config, metrics } = ctx;
+  const { engine, collections, taxonomy, search, flexEngine, hooks, config, metrics, contentApi } = ctx;
 
   const startTime = Date.now();
   const feedEnabled = config.site.feed?.enabled !== false;
   const siteName = engine.site.title;
   const adminPrefix = config.admin?.path ?? "/admin";
 
-  const routes = duneRoutes(engine, collections, flexEngine, search);
+  const routes = duneRoutes(engine, collections, flexEngine, search, contentApi);
   const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
 
   // HTTP caching config

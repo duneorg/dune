@@ -414,6 +414,111 @@ Deno.test("contentHandler: rewrites internal links for non-default language page
   assertEquals(rewritten, '<a href="/de/contact">Kontakt</a> <a href="/de/already">ok</a>');
 });
 
+// ---------------------------------------------------------------------------
+// content: contentApi threading (0.31.7) — proves duneRoutes()'s 5th
+// argument actually reaches TemplateProps.content and ContentPageProps.content,
+// not just that the parameter type-checks.
+// ---------------------------------------------------------------------------
+
+Deno.test("duneRoutes: contentApi param reaches TemplateProps.content for a Markdown page", async () => {
+  const homePage = makeFullPage({ format: "md" });
+  const engine = makeEngine([], async (_route: string) => ({
+    type: "page" as const,
+    page: homePage,
+  }));
+
+  let capturedContent: unknown = "not-captured";
+  engine.themes = {
+    ...engine.themes,
+    resolveTemplateName: (_page: Page) => "default",
+    loadTemplate: (_name: string) =>
+      Promise.resolve({
+        name: "default",
+        // Must be `async` — resolveTemplateVNode only invokes the
+        // component itself for async functions; a sync component is
+        // wrapped in h() and never actually called without a real Preact
+        // render pass, which this test's renderJsx mock doesn't do.
+        component: async (props: { content?: unknown }) => {
+          capturedContent = props.content;
+          return await Promise.resolve(null);
+        },
+        fromTheme: "default",
+      }),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  await contentHandler(new Request("http://localhost/"), renderJsx);
+
+  assertEquals(capturedContent, sentinelContentApi);
+});
+
+Deno.test("duneRoutes: contentApi param reaches ContentPageProps.content for a TSX content page", async () => {
+  let capturedContent: unknown = "not-captured";
+  const tsxPage = makeFullPage({
+    format: "tsx",
+    component: () =>
+      Promise.resolve(
+        // Must be `async` — see the note in the Markdown-page test above.
+        (async (props: { content?: unknown }) => {
+          capturedContent = props.content;
+          return await Promise.resolve(null);
+          // deno-lint-ignore no-explicit-any
+        }) as any,
+      ),
+  });
+  const engine = makeEngine([], async (_route: string) => ({
+    type: "page" as const,
+    page: tsxPage,
+  }));
+
+  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  await contentHandler(new Request("http://localhost/"), renderJsx);
+
+  assertEquals(capturedContent, sentinelContentApi);
+});
+
+Deno.test("duneRoutes: contentApi param reaches the themed 404 error page's TemplateProps.content", async () => {
+  const engine = makeEngine([], async (_route: string) => ({ type: "not-found" as const }));
+
+  let capturedContent: unknown = "not-captured";
+  engine.themes = {
+    ...engine.themes,
+    loadTemplate: (name: string) =>
+      name === "error"
+        ? Promise.resolve({
+          name: "error",
+          // Must be `async` — see the note in the Markdown-page test above.
+          component: async (props: { content?: unknown }) => {
+            capturedContent = props.content;
+            return await Promise.resolve(null);
+          },
+          fromTheme: "default",
+        })
+        : Promise.resolve(null),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  await contentHandler(new Request("http://localhost/does-not-exist"), renderJsx);
+
+  assertEquals(capturedContent, sentinelContentApi);
+});
+
 Deno.test("rewriteInternalLinks: does NOT rewrite links for default language", () => {
   const html = '<a href="/contact">Contact</a>';
   // When lang === defaultLang and includeDefaultInUrl === false, no rewrite

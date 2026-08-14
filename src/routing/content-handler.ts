@@ -2,6 +2,7 @@
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
+import type { ContentApi } from "../content/api.ts";
 import { buildPageTitle } from "../content/types.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import { renderSections } from "../sections/mod.ts";
@@ -33,6 +34,7 @@ export async function handleMarkdownPage(
   collections: CollectionEngine | undefined,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
   requestedPage = 1,
+  contentApi?: ContentApi,
 ): Promise<Response> {
   const templateName = engine.themes.resolveTemplateName(page) ?? "default";
   const template = await engine.themes.loadTemplate(templateName);
@@ -131,6 +133,7 @@ export async function handleMarkdownPage(
       t,
       dir: directionOf(pageLang, engine.config?.system?.languages?.rtl_override),
       children: htmlContent,
+      content: contentApi,
     }),
   );
 }
