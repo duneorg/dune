@@ -20,7 +20,9 @@ Each skill covers one domain: the pattern, minimal working examples, and the got
 
 ## Installation
 
-`dune new` installs all skills into `.claude/skills/` automatically — every `.md` file under this package's own `skills/` directory is copied (including this README), no per-file allowlist to keep in sync.
+`dune new` installs all skills into `.claude/skills/` automatically. **How it discovers files depends on where the `@dune/core` package is running from**, and the two paths behave differently:
+- **Local source** (this repo, a workspace-linked dev checkout): a plain directory scan of `skills/` — every `.md` file is copied, including this README, no allowlist involved.
+- **JSR/remote install** (the normal case for a real site, running `jsr:@dune/core`): no directory listing is possible over HTTP, so `copySkillFiles()` (`src/cli/update-skills.ts`) fetches a hardcoded `KNOWN_SKILL_FILES` array instead. A file added to `skills/` without also being added to that array is silently never installed for real sites — a regression test (`tests/cli/update_skills_test.ts`) diffs the array against the directory to catch drift, but it only runs in this repo's own CI, not at install time on someone else's site.
 
 To reinstall after upgrading:
 ```sh
