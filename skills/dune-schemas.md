@@ -1,14 +1,18 @@
-# Skill: Dune Schema Layer
+# Skill: Dune Data Layer (`schemas/`)
 
-All data models — whether file-backed or database-backed — are defined in `schemas/` using a unified YAML format. The `store:` field determines the runtime interface and backend. **`store:` is required; omitting it is an error.**
+`schemas/*.yaml` defines **database-backed application data** — SQLite, Deno KV, or PostgreSQL, auto-selected. **There is no `store:` field, and no file-backed mode within this system at all.** `schemas/` is exclusively for data your code creates and queries; there's no `store: local`/`store: db` split.
+
+File-backed, CMS-editable custom content types (products, team members, events, FAQs — anything an editor manages through the admin UI) are a **separate, current, first-class system: Flex Objects** (`flex-objects/{type}.yaml` schema + `flex-objects/{type}/{id}.yaml` records). It is not "legacy" or deprecated — it has its own admin UI generation that `schemas/*.yaml` models never get (see "No admin UI" below). If you need editor-managed content, use Flex Objects, not this system.
 
 ```
 schemas/
-  posts.yaml       # store: local — YAML files, slug-as-id, local.* interface
-  comments.yaml    # store: db    — SQLite/KV/Postgres, UUID id, db.* interface
-```
+  comments.yaml    # DB-backed application data — SQLite/KV/Postgres
+  subscribers.yaml
 
-`flex-objects/` is the legacy directory (backwards-compatible, not for new models).
+flex-objects/
+  products.yaml           # Flex Object schema — editor-managed via admin UI
+  products/apple.yaml      # a Flex Object record
+```
 
 ---
 
@@ -17,7 +21,6 @@ schemas/
 ```yaml
 # schemas/comments.yaml
 model: Comment
-store: db
 table: comments     # optional — defaults to snake_case plural of model name
 
 fields:
@@ -33,7 +36,7 @@ fields:
     maxLength: 256
 
   body:
-    type: text        # no maxLength — textarea in admin UI
+    type: text        # no maxLength — long text
     required: true
 
   status:
@@ -48,254 +51,199 @@ fields:
 
   updatedAt:
     type: datetime
-    default: now
     onUpdate: now
 ```
 
+There is no `store:` field to set — omit it, don't add one.
+
 ### Field types
 
-| Type | Notes |
-|------|-------|
-| `string` | Short text, maxLength applies |
-| `text` | Long text, no maxLength, textarea in admin UI |
-| `integer` | Whole numbers |
-| `number` | Floating point |
-| `boolean` | true / false |
-| `datetime` | ISO timestamp. `default: now`, `onUpdate: now` supported |
-| `json` | Arbitrary JSON blob |
+| Type | TypeScript | SQL |
+|------|-----------|-----|
+| `string` | `string` | `TEXT` — `maxLength` enforced at the application layer |
+| `text` | `string` | `TEXT` — no length limit |
+| `integer` | `number` | `INTEGER` |
+| `number` | `number` | `REAL` |
+| `boolean` | `boolean` | `INTEGER 0/1` |
+| `datetime` | `Date` | `TEXT (ISO 8601)` — `default: now`, `onUpdate: now` |
+| `json` | `unknown` | `TEXT (JSON string)` |
 
-`id` is always auto-generated — never declare it in the schema. For `store: db` it is a UUID string. For `store: local` it is the content slug (filename stem).
+(`src/db/schema-parser.ts`'s `VALID_TYPES` — exactly these seven, nothing else.)
 
 ### Field options
 
 | Option | Applies to | Notes |
 |--------|-----------|-------|
-| `required` | all | Field must be present on create |
-| `nullable` | all | Allows null values explicitly |
-| `default` | all | Value used when field is omitted on create |
-| `enum` | string | Restricts to listed values |
-| `index` | string, integer, datetime | Adds DB index; improves query performance |
-| `maxLength` | string | Enforced at the application layer |
-| `onUpdate` | datetime | Auto-set on every update (`now` is the only value) |
+| `required` | all | Field must be present on create. **There is no `nullable` option** — presence/optionality is governed by `required` alone; don't write `nullable: true`, it isn't a recognized field and is silently ignored by the parser. |
+| `default` | all | Value used when field is omitted on create. `"now"` for `datetime` auto-timestamps. |
+| `enum` | string | Restricts to listed values. |
+| `index` | any | Adds a secondary index (SQLite/Postgres). |
+| `maxLength` | string | Enforced at the application layer, not the DB. |
+| `onUpdate` | datetime | Auto-set on every update — `"now"` is the only supported value. |
+
+`id` is always auto-generated (`crypto.randomUUID()`) — never declare it in the schema.
 
 ---
 
-## `store: local` — file-backed models
+## Codegen
 
-```yaml
-model: Post
-store: local
-fields:
-  title:
-    type: string
-    required: true
-  body:
-    type: text
-  publishedAt:
-    type: datetime
-    nullable: true
+```sh
+dune codegen             # generates src/db/types/{model}.ts + src/db/index.ts
+dune migrate:generate    # diffs schemas against existing migrations, emits SQL into data/migrations/
+dune migrate:run         # applies pending migrations (NOT `dune migrate` — that's not a command)
+dune migrate:status      # shows applied vs pending
 ```
 
-Records live as YAML files in `content/<type>/`. The id is the filename stem (slug). Interface is `local.*`:
+`dune codegen` generates one file per model (`src/db/types/{model}.ts`, exporting `{Model}`, `{Model}Create`, `{Model}Update` interfaces) plus `src/db/index.ts`:
 
 ```ts
-import { local } from "@/db";
+// src/db/index.ts — GENERATED, do not edit
+import { createDbAdapter, createRepository } from "@dune/core/db";
+import type { Comment, CommentCreate, CommentUpdate } from "./types/comment.ts";
+// ... one import per model
 
-const posts = await local.posts.find({ where: { publishedAt: { isNull: false } } });
-const post  = await local.posts.findOne({ where: { id: "hello-world" } });
-const draft = await local.posts.create({ data: { title: "Draft", body: "..." } });
-await local.posts.update({ where: { id: "hello-world" }, data: { title: "Updated" } });
-await local.posts.delete({ where: { id: "old-post" } });
+const adapter = await createDbAdapter();
+
+export const db = {
+  comments: createRepository<Comment, CommentCreate, CommentUpdate>("comments", adapter),
+  // ... one entry per model, keyed by table name (lowercase)
+};
+
+export type { Comment, CommentCreate, CommentUpdate /* ... */ };
 ```
 
-Use `store: local` when:
-- Content is git-tracked and human-editable
-- IDs are meaningful slugs (not UUIDs)
-- The dataset is small (hundreds of records)
-- No transactions are needed
+**`dune codegen` does not write any import-map alias to `deno.json`.** `@/db` only resolves if the site's own `deno.json` already has a generic `@/` → `./src/` mapping (`dune new` does not set this up either) — check for it before assuming it works, or just import the relative path:
+
+```ts
+import { db } from "../../src/db/index.ts"; // or "@/db" if your project's deno.json maps it
+```
+
+Migrations live in `data/migrations/` (not bare `migrations/`), tracked by a `_dune_migrations` table in the database. Not auto-applied on startup — run `dune migrate:run` as part of deploy.
 
 ---
 
-## `store: db` — database-backed models
+## Repository API
 
-```yaml
-model: Comment
-store: db
-fields:
-  pageRoute:
-    type: string
-    required: true
-    index: true
-  body:
-    type: text
-    required: true
-  status:
-    type: string
-    enum: [pending, approved, rejected]
-    default: pending
-```
-
-Records live in the configured DB backend. The id is a UUID string. Interface is `db.*`:
+Every model gets a repository at `db.{table}` with this exact shape — **not** a Prisma-style `{where, data}`-wrapped API:
 
 ```ts
-import { db } from "@/db";
+import { db } from "@/db"; // or the relative path — see above
 
+// find — where/orderBy/limit/offset
 const comments = await db.comments.find({
   where: { pageRoute: "/blog/hello", status: "approved" },
-  orderBy: { field: "createdAt", dir: "desc" },
-  limit: 20,
+  orderBy: ["createdAt", "desc"],   // a tuple — [field, "asc"|"desc"] — or bare "createdAt" for ascending.
+  limit: 20,                        // NOTE: no multi-field orderBy array exists — one field only.
   offset: 0,
 });
 
 const comment = await db.comments.findOne({ where: { id } });
-// throws if where matches more than one row
+// returns null when zero rows match; THROWS when more than one row matches
+// ("where clause must match at most one row") — this is intentional, it
+// surfaces schema/query design mistakes early rather than silently
+// returning an arbitrary row
 
-const created = await db.comments.create({
-  data: { pageRoute, author, body },
-});
+const created = await db.comments.create({ pageRoute, author, body }); // flat data, no {data: ...} wrapper
 
-await db.comments.update({
-  where: { id },
-  data: { status: "approved" },
-});
+// update/delete take a positional id — NOT { where: { id }, data }
+const { count } = await db.comments.update(comment.id, { status: "approved" });
+const { count: deleted } = await db.comments.delete(comment.id); // single id only — no bulk where-based delete
 
-await db.comments.delete({ where: { id } });
+// upsert — positional (where, data), not a { where, create, update } object
+const sub = await db.subscribers.upsert({ email }, { email, name });
 
-const { count } = await db.comments.delete({
-  where: { pageRoute: "/blog/deleted-post" },
-});
-
-// upsert — use this instead of find-then-create to avoid race conditions
-await db.subscribers.upsert({
-  where: { email },
-  create: { email, name },
-  update: { name },
-});
+const total = await db.comments.count({ where: { status: "pending" } });
 ```
 
-### `where` clause operators
+(`src/db/repository.ts`, `src/db/types.ts`.)
+
+### `where` clause operators — all `$`-prefixed
 
 ```ts
-// Equality (shorthand)
-where: { status: "approved" }
-
-// Comparison
-where: { createdAt: { gt: new Date("2026-01-01") } }
-where: { status: { in: ["pending", "approved"] } }
-where: { email: { contains: "@example.com" } }
-where: { deletedAt: { isNull: true } }
-
-// Multiple fields — implicit AND
-where: { status: "approved", pageRoute: "/blog/hello" }
-
-// Explicit OR
-where: { OR: [{ status: "pending" }, { status: "approved" }] }
+where: { status: "approved" }                              // equality — bare value, no operator
+where: { createdAt: { $gt: new Date("2026-01-01") } }
+where: { status: { $in: ["pending", "approved"] } }
+where: { status: { $notIn: ["rejected"] } }
+where: { email: { $contains: "@example.com" } }
+where: { email: { $startsWith: "alice" } }
+where: { updatedAt: { $isNull: true } }
+where: { $or: [{ status: "pending" }, { status: "approved" }] }
 ```
 
-Full operator list: `eq`, `ne`, `in`, `notIn`, `lt`, `lte`, `gt`, `gte`, `contains`, `startsWith`, `isNull`.
-
-### `orderBy`
-
-```ts
-orderBy: "createdAt"                              // ascending
-orderBy: { field: "createdAt", dir: "desc" }
-orderBy: [{ field: "status" }, { field: "createdAt", dir: "desc" }]
-```
+Full operator set (`FieldOperators<V>`): `$gt`, `$lt`, `$gte`, `$lte`, `$in`, `$notIn`, `$contains`, `$startsWith`, `$isNull`. **There is no `$eq`/`$ne` operator at all** — equality is the bare value; there is no explicit "not equal" operator, work around it with `$notIn: [value]`.
 
 ### Escape hatches
 
+`getAdapter()` is a method on a specific repository, not a standalone import:
+
 ```ts
-import { getAdapter } from "@/db";
-import type { SqliteAdapter } from "@dune/core";
-
-// Transactions
-await (getAdapter() as SqliteAdapter).transaction(async (tx) => {
-  await tx.execute("INSERT INTO orders ...", [...]);
-  await tx.execute("INSERT INTO audit_log ...", [...]);
-});
-
-// Aggregate queries
-const rows = await getAdapter().query(
+// Transactions / raw SQL
+const rows = await db.comments.getAdapter().query<{ total: number }>(
   "SELECT page_route, COUNT(*) as total FROM comments GROUP BY page_route ORDER BY total DESC LIMIT 10"
 );
 ```
 
-Use escape hatches for: transactions, GROUP BY / aggregate queries, field-to-field comparisons, joins. They are expected paths for these cases, not workarounds.
+Use for: transactions, `GROUP BY`/aggregates, joins, field-to-field comparisons — expected paths for these, not workarounds.
 
-### DB backends
+### DB backend auto-detection
 
-Auto-detected at runtime — no config needed for the common cases:
+Exact precedence (`src/db/adapters/mod.ts`'s `createDbAdapter()`):
 
-| Environment | Backend | Notes |
-|------------|---------|-------|
-| Deno Deploy | Deno KV | Detected via `DENO_DEPLOYMENT_ID`. Non-ID `where` clauses are full scans — document this for users |
-| Self-hosted / Fly | SQLite | Path from `DUNE_DB_PATH` (default: `./data/app.db`) |
-| Multi-machine | Postgres | `PostgresAdapter` via `npm:postgres`. Set `DUNE_DB_URL` |
+1. `DUNE_DB_URL` starts with `postgres://` or `postgresql://` → **PostgreSQL**
+2. Else `DENO_DEPLOYMENT_ID` is set → **Deno KV**
+3. Else → **SQLite** at `DUNE_DB_PATH` (default `data/dune.db`)
 
----
-
-## Codegen and migrations
-
-After creating or modifying a schema file, run:
-
-```sh
-deno task codegen       # generates TypeScript types + src/db/index.ts + @/db alias
-dune migrate:generate   # generates SQL migration files in data/migrations/
-dune migrate            # applies pending migrations
-```
-
-`dune codegen` writes the `@/db` import alias to `deno.json`. Always import from `@/db`, never from a relative path — nested routes become `../../../../db/index.ts` without the alias.
+Non-ID `where` clauses on the KV adapter are full scans — fine for small datasets, switch to Postgres for larger ones.
 
 ---
 
-## Admin UI
+## No admin UI for `schemas/*.yaml` models
 
-Admin list and edit views are generated from `schemas/*.yaml` regardless of `store`. The same pipeline that generates Flex Object admin views applies to `store: db` models. No extra config needed.
+**There is no generated admin panel UI for DB-backed schema models, at all.** Grep `@dune/plugin-admin`'s routes for `schemas/`/`DbSchema` and you get zero hits — only Flex Object routes (`admin/routes/flex/`) exist for admin CRUD UI. If you need editors to manage records through `/admin`, use Flex Objects instead, or build your own admin UI page (`adminPages` — see `dune-plugin-authoring`) against the generated repository.
 
 ---
 
 ## CRUD API generation
 
-Add an `api:` block to expose REST endpoints:
-
 ```yaml
 # schemas/comments.yaml
 model: Comment
-store: db
+fields: { /* ... */ }
 api:
-  enabled: true          # generates /api/comments endpoints
-  auth: required         # all endpoints require auth; omit for public
-  methods: [get, list]   # restrict to read-only; omit for full CRUD
+  enabled: true          # optional, default true
+  auth: required          # REQUIRED field — "none" | "required" | "owner" — no default, parser throws if omitted
+  ownerField: authorId    # required when auth: "owner"
+  methods: [get, list]    # optional — restrict from the default five (get, list, create, update, delete)
 ```
 
-Full CRUD generates: `GET /api/comments`, `GET /api/comments/:id`, `POST /api/comments`, `PUT /api/comments/:id`, `DELETE /api/comments/:id`.
+`dune codegen` generates route handlers at `src/routes/api/{table}/index.ts` (list + create) and `src/routes/api/{table}/[id].ts` (get, update, delete). Update is `PUT`, not `PATCH`:
 
----
-
-## Migrating from Flex Objects to DB
-
-```sh
-dune migrate:from-flex <type>
+```
+GET    /api/comments        list
+POST   /api/comments        create
+GET    /api/comments/:id    get
+PUT    /api/comments/:id    update   (not PATCH)
+DELETE /api/comments/:id    delete
 ```
 
-Reads `flex-objects/<type>.yaml`, rewrites to `schemas/<type>.yaml` with `store: db`, generates a DB migration, imports existing records, and outputs the code diff (`local.<type>.*` → `db.<type>.*`). The interface change is explicit — callers must be updated.
+`auth: owner` filters list results to the current user's own records (matched via `ownerField`) and rejects updates/deletes on records owned by someone else.
 
 ---
 
 ## Gotchas
 
-**`store:` is required.** Omitting it in `schemas/` is an error with a clear message. Files in `flex-objects/` default to `local` silently (backwards compat only).
+**There is no `store:` field, and no file-backed mode in this system.** Don't write `store: local`/`store: db` — the parser doesn't recognize a `store` key at all. Need file-backed, editor-managed content instead? That's Flex Objects, a different system with its own schema location (`flex-objects/`).
 
-**`store: local` id is a slug, not a UUID.** `local.posts.findOne({ where: { id: "hello-world" } })` — the id is the filename stem. Do not generate UUIDs for local store records.
+**There is no `nullable` field option.** Only `required` controls presence.
 
-**`store: db` on Deno Deploy uses KV.** Non-ID `where` clauses (anything other than `{ id }`) require a full scan. This is fine for small datasets; for larger ones, switch to Postgres.
+**`update`/`delete` take a positional `id`, not a `{ where, data }` object.** `db.comments.update(id, data)` / `db.comments.delete(id)`. Both return `{ count: number }` — check `count === 0` to detect a missing record. There's no bulk `where`-based delete on the standard Repository API.
 
-**`findOne` throws when more than one row matches.** This is intentional — it surfaces schema design mistakes early. If you expect multiple rows, use `find` with `limit: 1`.
+**`where` operators are `$`-prefixed and there's no `$eq`/`$ne`.** Equality is the bare value; use `$notIn: [x]` if you need "not equal to x".
 
-**`update` and `delete` return `{ count: number }`.** Check `count === 0` to detect a missing record.
+**`orderBy` is single-field only.** Bare `"createdAt"` (ascending) or `["createdAt", "desc"]` (tuple) — there's no multi-field sort array.
 
-**Use `upsert` instead of find-then-create.** A `find` followed by a conditional `create` is a TOCTOU race under concurrent requests. `upsert` handles this atomically.
+**`dune codegen` never touches `deno.json`.** No import-map alias is written automatically. Verify `@/db` (or whatever alias you use) actually resolves before assuming it does.
 
-**Always import from `@/db`, never relative paths.** If `@/db` isn't resolving, run `deno task codegen` — it writes the alias to `deno.json`.
+**Migrations live in `data/migrations/`, and the apply command is `dune migrate:run`.** Not `migrations/` (no `data/` prefix) and not bare `dune migrate` — both are easy typos from adjacent, similarly-named commands.
 
-**No relations in the query interface.** Do two queries. For cascade operations, use a plugin hook (`onPageDelete`) or the `getAdapter().transaction()` escape hatch.
+**Use `upsert` instead of find-then-create.** A `find` followed by a conditional `create` is a TOCTOU race under concurrent requests; `upsert(where, data)` is atomic.
