@@ -290,6 +290,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   discovery, theme inheritance, package themes, the `data-dune-*`
   inline-edit marker system — was verified accurate, so this was a
   targeted fix, not a full rewrite.
+- **`skills/README.md` was missing two real skill files from its own
+  index, and misdescribed how the set gets installed.** The table
+  never listed `dune-mcp.md`/`dune-themes.md` (both real; already
+  auto-installed regardless, since `copySkillFiles()` copies every
+  `.md` under `skills/` rather than a hardcoded list — this was a docs
+  gap, not a functional one). "Installed by `dune new` and `dune add`"
+  was wrong — `dune add` only installs package-bundled skills (e.g.
+  `dune add polizy` copies polizy's own skill files), never this core
+  set; the real second installer is `dune update:skills`. Also fixed
+  the `store: local`/`store: db` description already found and
+  removed from `dune-schemas.md` itself, and added `dune-content.md`
+  to the reading order (previously omitted despite being one of the
+  most fundamental skills). Fixed the same two errors on `dune-docs`'
+  agent-integration overview page (`store:`, `ctx.state.user`), and
+  expanded its MCP section to mention the write/scaffold tools and the
+  no-authentication security model, both of which it previously didn't
+  point at even though the dedicated MCP page (fixed earlier this
+  pass) already covers them in full.
 
 ---
 
