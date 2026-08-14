@@ -80,6 +80,28 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Docs
 
+- **Fourth-pass audit found three leftover self-contradictions in
+  `skills/dune-content.md`** surviving an earlier partial rewrite: a Gotcha
+  claiming content queries support a folder-derived `type:` filter,
+  directly contradicted two sections earlier by "there is no folder-`type`
+  concept anywhere in this system"; a Gotcha placing language config in
+  `site.yaml` under `i18n.languages`, contradicting the correct
+  `config/system.yaml` / `languages.supported` location established
+  earlier in the same file; and a Taxonomy-section example calling
+  `ctx.content.taxonomy()`, contradicting the file's own "Querying content"
+  section that there is no uniform `ctx.content` — fixed all three.
+- **`DunePlugin.publicRoutes`/`.adminPages` are core-defined types that
+  core itself never reads** — the actual registration loop lives in
+  `@dune/plugin-admin`'s own `mount()`. Same for `bootstrapAdminTuples()`,
+  called from `plugin-admin/mod.ts`'s `mount()`, not core's `bootstrap()`
+  as `skills/dune-authz.md` previously said. Both are invisible in the
+  normal `dune serve`/`dune dev` path (plugin-admin auto-registers and
+  runs), but silently inert under `admin.enabled: false`, in headless mode
+  without an explicit `mountDuneAdmin()` call, or in any `bootstrap()`-only
+  context like `dune mcp:serve`. Documented in both
+  `skills/dune-plugin-authoring.md` and `skills/dune-authz.md`, and flagged
+  to the roadmap as a real design question (should core enforce this
+  directly, or formalize it as an admin-package-owned contract).
 - **`skills/dune-themes.md` overstated an async-template failure mode.** It
   claimed a nested (non-top-level) async template component silently
   renders as literal `[object Promise]` text. `resolve-template.ts`'s own
