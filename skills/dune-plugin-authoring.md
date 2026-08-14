@@ -15,7 +15,9 @@ plugins/
   simple-plugin.ts  ← single-file plugins can live here directly
 ```
 
-Dune does not scan `plugins/` automatically — plugins must be registered (see below). Do not place plugin files anywhere else in the project.
+Dune does not scan `plugins/` automatically by default — plugins must be registered (see below). Do not place plugin files anywhere else in the project.
+
+There *is* an opt-in auto-discovery mode (`src/plugins/loader.ts`): set `auto_discover_plugins: true` at the top level of `site.yaml` and every file directly under `plugins/` loads without a `plugins:` entry. It's off by default deliberately — the loader's own comment notes that loading an arbitrary `.ts` file out of that directory executes its module code at startup, so this is a real code-execution surface once enabled, same category of risk as the (also opt-in, also off-by-default) job auto-discovery covered in `dune-jobs`. Explicitly-declared plugins in `plugins:` always take priority over auto-discovered ones with the same effect.
 
 ---
 
@@ -29,7 +31,18 @@ plugins:
   - src: npm:dune-comments@^2.0.0      # npm plugin — pin the version
 ```
 
-Everything uses `src:` — there is no separate `spec:` key. `PluginEntry` (`src/config/dune-config.ts`) has one field; whether it's local or remote is inferred entirely from the value's prefix (`jsr:`, `npm:`, `https:`, or a bare/`./`-relative path). A plugin entry written with `spec:` instead of `src:` won't load — the loader only ever reads `entry.src`, so it resolves to `undefined` and fails. `dune validate` requires remote (`jsr:`/`npm:`/`https:`) specs to include a version pin.
+Everything uses `src:` — there is no separate `spec:` key. `PluginEntry` (`src/config/dune-config.ts`) has one required field; whether it's local or remote is inferred entirely from the value's prefix (`jsr:`, `npm:`, `https:`, or a bare/`./`-relative path). A plugin entry written with `spec:` instead of `src:` won't load — the loader only ever reads `entry.src`, so it resolves to `undefined` and fails. `dune validate` requires remote (`jsr:`/`npm:`/`https:`) specs to include a version pin.
+
+A plugin entry also accepts an optional sibling `config:` block for static, per-plugin settings:
+
+```yaml
+plugins:
+  - src: "jsr:@dune/plugin-seo"
+    config:
+      defaultDescription: "My site"
+```
+
+Read it back inside any hook via `ctx.config.plugins["my-plugin"]` (keyed by the plugin's own `name`, not the `src:` specifier) — it's merged into `DuneConfig.plugins` at load time. There's no `ctx.config.plugins` shortcut scoped to just "your own" plugin; you look yourself up by name like anyone else would.
 
 ---
 
@@ -120,6 +133,8 @@ export default {
   name: "my-plugin",
   version: "1.0.0",
   setup(api: PluginApi) {
+    // Deliberately synchronous — see the gotcha below on why setup()
+    // must not be the thing your hooks are waiting on to finish.
     const provider = createEmailProvider({
       provider: "resend",
       from: "hello@example.com",
@@ -153,6 +168,32 @@ hooks: {
   },
 }
 ```
+
+### Register hooks conditionally from `setup()`
+
+The static `hooks: {}` object on `DunePlugin` isn't the only way to register a handler. `PluginApi.hooks` (the registry passed into `setup()`) has real `on(event, handler)`/`off(event, handler)` methods for registering — or later removing — a handler dynamically, e.g. only when a plugin's own config enables a feature:
+
+```ts
+export default {
+  name: "edge-cache",
+  version: "1.0.0",
+  hooks: {}, // still required, even when everything is registered dynamically
+  setup({ hooks, config }) {
+    const purgeUrl = (config.plugins["edge-cache"]?.purgeUrl) as string | undefined;
+    if (!purgeUrl) return; // feature not configured — register nothing
+
+    hooks.on("onCacheInvalidate", async () => {
+      // Real payload is {} — no per-key data. Every fire() call site for
+      // this event (src/core/engine.ts's onRebuild-adjacent invalidation,
+      // plugin-admin's theme-config save route) passes an empty object;
+      // it's a "the whole page cache is stale" signal, not scoped to one key.
+      await fetch(purgeUrl, { method: "POST" });
+    });
+  },
+} satisfies DunePlugin;
+```
+
+`hooks: {}` on the plugin object is still required (`DunePlugin.hooks` isn't optional) even if you register everything dynamically through `setup()` instead.
 
 **Not every hook name declared in the `HookEvent` union is actually fired.** As of this writing, `onRouteResolved`, `onPageLoaded`, `onCollectionResolved`, `onBeforeRender`, `onAfterRender`, `onResponse`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onApiRequest`, and `onApiResponse` are declared as valid `HookEvent` values and pass `dune validate`'s hook-name check, but no code anywhere in `@dune/core` or `@dune/plugin-admin` ever calls `hooks.fire()` for them — a handler registered for one of these is simply never invoked. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live as of this writing: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
 
@@ -289,3 +330,5 @@ Deno.test("my plugin", async () => {
 **Hook error handling is not uniform — check the caller before assuming.** `HookRegistry.fire()` itself (`src/hooks/registry.ts`) has no try/catch around handler calls. Whether a throwing hook is contained depends entirely on who calls `fire()`: the admin panel's page CRUD routes (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`) call it as `hooks.fire(...).catch(() => {})` — errors are silently swallowed, not even logged. Startup and engine-lifecycle hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRebuild`, `onThemeSwitch`) are `await`ed directly with no catch — a throwing handler there propagates and can fail bootstrap or a rebuild. Don't assume either behavior; if a hook has a side effect that must succeed or must not silently vanish, handle its own errors explicitly and log them yourself.
 
 **Pin JSR/npm plugin versions.** `src: jsr:@dune/blog` without a version pinned fails validation. Use `^major.minor.patch` at minimum.
+
+**`setup()`'s returned Promise is fire-and-forget — the registry does not await it before hooks can fire.** `registerPlugin()` (`src/hooks/registry.ts`) calls `plugin.setup(api)` synchronously and, if it returns a Promise, only attaches a `.catch()` for error logging — it does not block registration or hook dispatch on it resolving. If your `setup()` needs to `await` something (a network call, a file read) before your plugin is actually ready, a hook can fire in that window and see whatever state `setup()` hadn't gotten around to initializing yet. Keep `setup()` synchronous when you can (as in the email example above — `createEmailClient`/`createEmailProvider` are both sync); if you genuinely need async initialization, the registry's own doc comment says to subscribe to `onContentIndexReady` instead of relying on `setup()` completing first.
