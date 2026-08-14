@@ -66,18 +66,23 @@ Import from the relative `../islands/` path. Fresh detects the import and wires 
 /** @jsxImportSource preact */
 import NavToggle from "../islands/NavToggle.tsx";  // ← Fresh sees this, bundles + hydrates it
 
-export default function DefaultTemplate({ page, site }: TemplateProps) {
+export default function DefaultTemplate({ page, site, children }: TemplateProps) {
   return (
     <html>
       <body>
         {/* Renders on server first, then hydrates in the browser */}
         <NavToggle links={[{ label: "Home", href: "/" }, { label: "Blog", href: "/blog" }]} />
-        <main dangerouslySetInnerHTML={{ __html: page.html }} />
+        {/* children is a pre-rendered vnode, not an HTML string — no dangerouslySetInnerHTML */}
+        <main>{children}</main>
       </body>
     </html>
   );
 }
 ```
+
+**`page.html` is never a bare string — it's an async method.** `Page.html` on the real `page` object is `() => Promise<string>`. There are two correct ways to get the rendered body, and `{ __html: page.html }` (no call, no await) is neither of them:
+- **`children`** (the common case) — `content-handler.ts` already calls and awaits `page.html()` for you and hands the result down as a separate, pre-rendered top-level `children` prop (a Preact vnode, not a string). Render it directly: `<div>{children}</div>`. No `async`, no `dangerouslySetInnerHTML`.
+- **`await page.html()`** directly, if you need the raw string — but then the template component itself must be declared `async function` (`src/themes/resolve-template.ts` specifically supports this: it detects an async top-level template component and awaits it before rendering). In that case: `<div dangerouslySetInnerHTML={{ __html: await page.html() }} />` is correct.
 
 ### How it works under the hood
 
@@ -128,19 +133,19 @@ Templates live in `themes/{name}/templates/*.tsx`. They receive the fully render
 import type { TemplateProps } from "@dune/core";
 import Layout from "../components/layout.tsx";
 
-export default function PostTemplate({ page, site, nav }: TemplateProps) {
+export default function PostTemplate({ page, site, nav, children }: TemplateProps) {
   return (
     <Layout site={site} nav={nav}>
       <article>
         <h1>{page.frontmatter.title}</h1>
-        <div data-dune-body dangerouslySetInnerHTML={{ __html: page.html }} />
+        <div data-dune-body>{children}</div>
       </article>
     </Layout>
   );
 }
 ```
 
-**Always put `data-dune-body` on the element that wraps the rendered markdown body** (`page.html` / `{children}`) — and only on that element. It marks the body region for inline editing (the `@dune/plugin-inline-edit` plugin); there is no auto-detection. Listing/landing templates that render cards or collections instead of a markdown body must NOT carry the attribute. This also applies when converting templates from other systems (Grav/Twig, Hugo, WordPress): place `data-dune-body` on the converted equivalent of `{{ page.content }}` / `.Content` / `the_content()`.
+**Always put `data-dune-body` on the element that wraps the rendered markdown body** (`{children}`, not `page.html` — see the note above) — and only on that element. It marks the body region for inline editing (the `@dune/plugin-inline-edit` plugin); there is no auto-detection. Listing/landing templates that render cards or collections instead of a markdown body must NOT carry the attribute. This also applies when converting templates from other systems (Grav/Twig, Hugo, WordPress): place `data-dune-body` on the converted equivalent of `{{ page.content }}` / `.Content` / `the_content()`.
 
 For typed markers, `@dune/core/ui/editable` provides server-only components that render exactly these attributes — `<EditableMarkdown sourcePath={page.sourcePath}>…</EditableMarkdown>` is identical to a hand-written `data-dune-body` wrapper, and `<EditableText field="title" sourcePath={…}>` marks individual frontmatter fields. They ship no JS and imply no editor; editor plugins consume the rendered markers.
 
@@ -149,7 +154,7 @@ Markers never reach anonymous visitors: the response pipeline scrubs all `data-d
 | Prop | Contents |
 |------|----------|
 | `page.frontmatter` | All YAML frontmatter fields |
-| `page.html` | Rendered HTML body (from `.md`/`.mdx` source) |
+| `children` | Pre-rendered content — a Preact vnode already wrapping the rendered HTML of the md/mdx body. **Not** `page.html` (that's an async method on `page`, not a usable string). |
 | `page.route` | URL path, e.g. `/blog/hello-world` |
 | `page.language` | Language code, e.g. `"en"` |
 | `site` | Values from `site.yaml` |
@@ -224,7 +229,7 @@ Install: `dune theme:install jsr:@dune/theme-paper@1.0.0`
 
 ## Static assets
 
-Files in `themes/{name}/static/` are copied to the site root at build time. A file at `themes/my-theme/static/styles.css` is served at `/styles.css`.
+Files in `themes/{name}/static/` are served at `/themes/{name}/static/{path}` — **not** copied to the site root. A file at `themes/my-theme/static/styles.css` is served at `/themes/my-theme/static/styles.css`, not `/styles.css`. This holds for both `dune serve`/`dune dev` (`src/runtime/register-static.ts`'s `/themes/*` route) and `dune build --static` (the SSG builder copies theme static files into `{outDir}/themes/{name}/static/` in the output, same URL shape).
 
 ---
 
@@ -239,3 +244,9 @@ Files in `themes/{name}/static/` are copied to the site root at build time. A fi
 **Islands need explicit preact subpath imports in deno.json.** The `preact/` prefix catch-all is not enough for esbuild. Add `preact/hooks`, `preact/jsx-runtime`, and `preact/jsx-dev-runtime` explicitly (see above).
 
 **The `islands/` directory is optional.** If no theme in the active chain has one, no JS bundle is generated — no boot script, no client JS at all. This is intentional: zero JS by default.
+
+**`page.html` is a `Promise<string>`-returning method, not a string.** Use `children` (sync, the common case) or `await page.html()` inside an `async function` template — see the Templates section above. This is the single most common mistake when writing a template from scratch or porting one from another system.
+
+**Only the *top-level* template component may be `async`.** `resolveTemplateVNode` awaits the template component itself if it's async, but nested components (a `Layout`, a card component, etc.) are rendered synchronously — an async nested component silently renders as `[object Promise]`, not its resolved output. If a nested component needs `await page.html()`, resolve it in the top-level async template and pass the string/vnode down as a prop instead.
+
+**Theme `static/` files are not copied to the site root.** They're served at `/themes/{name}/static/{path}`, in both dev and static-build output. Reference them from templates/CSS with that full path, not a root-relative one.
