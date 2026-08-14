@@ -35,12 +35,11 @@ content/
 ### Homepage
 
 ```yaml
-# site.yaml
-site:
-  homepage: 01.home     # folder whose default.md serves as /
+# site.yaml — top level, no "site:" wrapper key in the file itself
+homepage: 01.home     # folder whose default.md serves as /
 ```
 
-Without `homepage:` config, `content/default.md` is `/`.
+`site.yaml`'s own top-level fields (`homepage`, `taxonomies`, `title`, etc.) map into `config.site.*` at load time — you never write a literal `site:` key inside `site.yaml`. Without `homepage:` config, `content/default.md` is `/`.
 
 ---
 
@@ -103,18 +102,18 @@ Co-located imports (`./Chart.tsx`) are confined to the page's directory — impo
 
 ```tsx
 // content/blog/dashboard.tsx
-import type { ContentPageProps } from "@dune/content/types";
+import type { ContentPageProps } from "@dune/core/content/types"; // not "@dune/content/types" — no such package
 import { db } from "@/db";
 
-export default async function Dashboard({ route, page }: ContentPageProps) {
+export default async function Dashboard({ route, site }: ContentPageProps) {
   const comments = await db.comments.find({
     where: { pageRoute: route },
-    orderBy: { field: "createdAt", dir: "desc" },
+    orderBy: ["createdAt", "desc"], // a tuple — see dune-schemas; not { field, dir }
   });
 
   return (
     <article>
-      <h1>{page.title}</h1>
+      <h1>{site.title} — dashboard</h1>
       {comments.map(c => (
         <div key={c.id}>
           <strong>{c.author}</strong>
@@ -126,6 +125,8 @@ export default async function Dashboard({ route, page }: ContentPageProps) {
 }
 ```
 
+**`ContentPageProps` has no `page`/`frontmatter` field at all** (`src/content/types.ts`) — only `site`, `config`, `route`, `media`, `params`, and an optional `collection`. A TSX content page can't read its own frontmatter through props the way a template can through `TemplateProps.page` — there's no `content`/`ctx` on these props either (see "Querying content" below), so the only way to get it yourself is via whatever's reachable from `import { db } from "@/db"`-style module-level access outside the props, or by just building the page's content directly in the component, which is the more common case — TSX content pages exist for pages that are mostly-code (dashboards, dynamic listings), not frontmatter-driven ones.
+
 **TSX content pages run with full Deno permissions.** They can read files, make network requests, and access environment variables. Gate TSX format to trusted authors only — equivalent trust level to admin. See [[testing/tsx-content-sandbox]].
 
 ---
@@ -136,18 +137,18 @@ Theme templates live in `themes/<name>/templates/*.tsx`. They receive rendered c
 
 ```tsx
 // themes/default/templates/post.tsx
-import type { TemplateProps } from "@dune/content/types";
+import type { TemplateProps } from "@dune/core/content/types"; // not "@dune/content/types" — no such package
 import { db } from "@/db";
 
 export default async function PostTemplate({ page, children, site }: TemplateProps) {
   const comments = await db.comments.find({
     where: { pageRoute: page.route },
-    orderBy: "createdAt",
+    orderBy: "createdAt", // bare key = ascending; ["createdAt", "desc"] for descending
   });
 
   return (
     <article>
-      <h1>{page.title}</h1>
+      <h1>{page.frontmatter.title}</h1>
       <div>{children}</div>
       {comments.map(c => <div key={c.id}>{c.body}</div>)}
     </article>
@@ -157,7 +158,7 @@ export default async function PostTemplate({ page, children, site }: TemplatePro
 
 | Prop | Type | Contents |
 |------|------|----------|
-| `page` | `PageMeta` | Frontmatter, route, template name, language |
+| `page` | `Page` (not `PageMeta` — that type doesn't exist) | `page.frontmatter` for YAML fields (**not** `page.title` — `Page` has no top-level `title`), `page.route`, `page.template`, `page.language`, `page.sourcePath` |
 | `children` | `unknown` | Pre-rendered content — a Preact vnode already wrapping the rendered HTML of the md/mdx body |
 | `site` | `SiteConfig` | Values from `site.yaml` |
 
@@ -169,51 +170,52 @@ Referencing a template that doesn't exist in the active theme is a validation er
 
 ## Querying content
 
-In plugin hooks, background jobs, and TSX templates:
+**There is no `ctx.content.find()`/`findOne()`, and no `type:` filter — and there is no single `ctx.content` available uniformly in hooks, jobs, and TSX templates.** What you actually get depends entirely on where you are:
+
+- **Hooks (`HookContext`)** — nothing. No `content` field at all. Filter the raw `PageIndex[]` handed to you by specific events instead (`onContentIndexReady`'s `data` *is* that array) — see `dune-plugin-authoring`.
+- **Background jobs (`JobContext`)** — `ctx.content` is the full `DuneEngine`, not the query API below. `ctx.content.pages` is a plain **array property** (not a method call), and `ctx.content.loadPage(sourcePath)` loads one full `Page`. See `dune-jobs`.
+- **TSX content pages / theme templates** — neither `ContentPageProps` nor `TemplateProps` has a `content` field of any kind.
+- **The real `ContentApi`** (`src/content/api.ts` — `.pages()`, `.page()`, `.search()`, `.taxonomy()`) is exposed as `bootstrap.contentApi` — reachable from a plugin's `mount({ bootstrap })`, or anywhere else holding a `BootstrapResult`. It is not injected as `ctx.content` anywhere.
+
+`ContentApi`'s real shape, once you're somewhere it's actually reachable:
 
 ```ts
-// Find all posts, newest first
-const posts = await ctx.content.find({
-  type: "post",                    // folder name (without numeric prefix)
-  where: { draft: false },
-  orderBy: "publishedAt",
+// pages() is SYNCHRONOUS — returns lightweight PageIndex[], not full Page
+// objects (no rendered HTML). No "type" filter exists at all.
+const recent = bootstrap.contentApi.pages({
+  taxonomy: { name: "category", value: "technical" }, // one name+value pair, not a map
+  language: "en",
+  orderBy: "date",      // "date" | "title" | "order" — not an arbitrary frontmatter field
+  orderDir: "desc",     // separate field from orderBy — default "asc"
   limit: 10,
 });
 
-// Find by taxonomy
-const techPosts = await ctx.content.find({
-  type: "post",
-  taxonomy: { category: "technical" },
-});
+// page(route) is ASYNC — resolves ONE page with rendered HTML, unlike pages()
+const page = await bootstrap.contentApi.page("/blog/hello-world"); // ResolvedPage | null, not "findOne"
 
-// Find a single page by route
-const page = await ctx.content.findOne({ route: "/blog/hello-world" });
+// Full-text search (requires the search index to have been built)
+const results = await bootstrap.contentApi.search("deno fresh routing", { limit: 10 });
+
+// List taxonomy terms
+const categories = bootstrap.contentApi.taxonomy("category"); // not getTaxonomyValues()
 ```
 
-`type` maps to the folder name with the numeric prefix stripped. Posts in `02.blog/` have `type: "blog"` — not `"02.blog"`, not `"post"`.
+There is no folder-`type` concept anywhere in this system — if you want "all posts in `02.blog/`", filter by `sourcePath.startsWith("02.blog/")` yourself against whichever `PageIndex[]` you have access to, same pattern used in the `dune-jobs` and `dune-email` skills' digest examples.
 
 ---
 
 ## Taxonomy
 
-Taxonomy values are aggregated across all pages automatically. No schema definition required — any frontmatter field used as a taxonomy just needs to be listed in `site.yaml`:
+Taxonomy values are aggregated across all pages automatically. No schema definition required — any frontmatter field used as a taxonomy just needs to be listed in `site.yaml`, as a bare top-level key (`SiteConfig.taxonomies`) — **not** nested under a `content:` block:
 
 ```yaml
 # site.yaml
-content:
-  taxonomies:
-    - tags
-    - category
+taxonomies:
+  - tags
+  - category
 ```
 
-Access taxonomy values in templates or plugins:
-
-```ts
-const allCategories = await ctx.content.getTaxonomyValues("category");
-const tagged = await ctx.content.find({
-  taxonomy: { tags: "deno" },     // pages where tags includes "deno"
-});
-```
+Access taxonomy values via `ctx.content.taxonomy(name)` and `ctx.content.pages({ taxonomy: { name, value } })` — see "Querying content" below for the real method names and shapes; there is no `getTaxonomyValues()` or `find()`.
 
 ---
 
@@ -226,13 +228,13 @@ content/02.blog/
   hello-world.fr.md      → /fr/blog/hello-world
 ```
 
-Language must be listed in `site.yaml` to be detected:
+Language must be listed to be detected — but in a **different config file** than `site.yaml`: `config/system.yaml`, under `languages:` (not `i18n:`), with fields `supported`/`default` (not `languages`/`defaultLanguage`):
 
 ```yaml
-# site.yaml
-i18n:
-  defaultLanguage: en
-  languages: [en, de, fr]
+# config/system.yaml
+languages:
+  supported: [en, de, fr]
+  default: en
 ```
 
 An unlisted language code in a filename is treated as part of the slug, not a language variant.
@@ -258,6 +260,8 @@ Relative media references in Markdown resolve relative to the content file's dir
 
 ## Agent tooling
 
+**If you're an agent with the Dune MCP server connected, prefer that over any of the HTTP curl workflows below.** `dune mcp:serve` registers `get_page_source`, `write_page`, `update_frontmatter`, and `list_blueprints` as direct MCP tools — no HTTP server, no auth token, no session cookie required. See the `dune-mcp` skill for the full tool list. Everything below is the fallback for when you're scripting against a running server instead.
+
 ### Scaffold a new page
 Use `dune content:create` to create a correctly-structured page without guessing the numeric-prefix convention:
 
@@ -272,13 +276,23 @@ dune content:create /blog/my-post --json                  # prints { created, ro
 
 The command detects existing numeric-prefix folders (e.g. `02.blog/`) and places new content inside, incrementing the inner counter automatically.
 
-### Read a page's current source
-Use the HTTP API to read current content before editing:
+### The HTTP admin API uses session cookies, not Bearer tokens
+
+**There is no `Authorization: Bearer` support anywhere in the admin API.** `plugin-admin`'s auth middleware (`src/admin/auth/middleware.ts`) reads a session ID from the `Cookie` header only — it never looks at `Authorization` at all. A curl request with a Bearer token gets exactly the same response as one with no auth header: `401 { error: "No session cookie" }`. Log in first and reuse the cookie:
 
 ```sh
-# Requires admin auth
-curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:3000/admin/api/page-source?route=/blog/my-post"
+# 1. Log in — POST /admin/login, form-encoded (not JSON), save the session cookie
+curl -c cookies.txt -X POST "http://localhost:3000/admin/login" \
+  --data-urlencode "username=admin" --data-urlencode "password=$ADMIN_PASSWORD"
+
+# 2. Reuse that cookie on every subsequent request
+curl -b cookies.txt "http://localhost:3000/admin/api/page-source?route=/blog/my-post"
+```
+
+### Read a page's current source
+
+```sh
+curl -b cookies.txt "http://localhost:3000/admin/api/page-source?route=/blog/my-post"
 # Returns: { route, sourcePath, format, content, frontmatter, body, mtime }
 ```
 
@@ -286,8 +300,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 Validate how content will render before writing it:
 
 ```sh
-curl -X POST -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -b cookies.txt -X POST -H "Content-Type: application/json" \
   "http://localhost:3000/admin/api/render-markdown" \
   -d '{"content": "---\ntitle: Test\n---\n\n# Hello"}'
 # Returns: { html, frontmatter, warnings }
@@ -342,3 +355,13 @@ renders as a single four-item list (`1. Apple / 2. Banana / 3. Cherry / 4. Date`
 **GFM tables/strikethrough/task lists work in both Markdown and MDX (v0.31.7+).** `.md` pages get GFM via `marked`'s defaults. `.mdx` pages get it via `remarkGfm` passed to the MDX compiler — before v0.31.7, MDX pages had no GFM support and `| a | b |` table syntax rendered as literal text instead of an actual table. If you hit this on an older core version, either upgrade or write the equivalent structure as nested Markdown lists instead.
 
 **`dune content:list`/`content:check` only parse frontmatter — they never catch a page that fails to compile.** Indexing succeeding ("125 pages indexed") only means 125 files had valid YAML frontmatter; it says nothing about whether the body compiles. Run `dune content:check --render` (or `dune build`, which now detects and reports the same failures) to actually compile every `.md`/`.mdx` body and catch MDX errors before they reach production.
+
+**The content query API is not `@dune/content` — it's `@dune/core/content`.** There is no `@dune/content` package at all; every import in this file that references content/template types uses the `@dune/core` subpath.
+
+**There is no `ctx.content.find()`/`findOne()` anywhere, and no single "content API" available uniformly across hooks, jobs, and TSX templates.** See "Querying content" above — what you get (nothing, the raw engine, or the `ContentApi` wrapper) depends entirely on which of those three contexts you're in, and the real method names (`pages()`/`page()`/`search()`/`taxonomy()`) don't match what you'd guess from other CMSes.
+
+**`TemplateProps.page` has no `.title`.** Use `page.frontmatter.title`. `Page` has no top-level `title` field at all — and there is no `PageMeta` type in the real source; it's just `Page`.
+
+**`ContentPageProps` (TSX content pages) has no `page` or `frontmatter` field.** Only `site`, `config`, `route`, `media`, `params`, and an optional `collection`. If you need the page's own frontmatter inside a TSX content page, query for it yourself — it isn't handed to you.
+
+**The admin HTTP API (`page-source`, `render-markdown`, `dev/apply`) authenticates via session cookie, never a Bearer token.** `Authorization: Bearer ...` is silently ignored — `POST /admin/login` (form-encoded username/password) is the real way in, then reuse the `Set-Cookie` value on subsequent requests. If you're an MCP-connected agent, skip this whole HTTP path — `get_page_source`/`write_page`/`update_frontmatter` need no auth at all (see `dune-mcp`).
