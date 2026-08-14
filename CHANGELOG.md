@@ -172,6 +172,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   the email dev-mode safety gap from the previous entry was elevated to
   a roadmap item too, since "dev mode never sends" is worth actually
   making true rather than just correcting the claim.
+- **`skills/dune-authz.md` was fabricated in the same pattern as the
+  other skill files, one level deeper.** The premise that site authors
+  write their own `defineSchema()` call is wrong — the polizy schema
+  is fixed inside `@dune/core`; `createDuneAuthSystem()` takes no
+  schema parameter. `dune add polizy`'s real scaffold is an
+  `initAuthz()`/`getAuthz()` lazy wrapper, not a bare exported `authz`
+  constant. Every example used `ctx.state.user` (same bug as
+  `dune-auth.md`) and conflated public site-user checks with
+  admin-panel checks, which use a separate identity entirely.
+  `allow()` takes `toBe`, not `canThey` — confirmed from source, not
+  just asserted. Fixed a self-introduced error caught during the same
+  pass: an earlier draft of the rewrite claimed a "Deno KV index" for
+  tuple storage that doesn't exist (`AuthzLocalAdapter` uses a plain
+  in-memory `Map`). Cross-checked against `dune-docs`' authorization
+  page, which — unlike every other page checked this pass — turned out
+  largely accurate; only two real errors there (`sig` vs `hmac` field
+  name, and HMAC signing framed as automatic when it's opt-in via
+  `DUNE_AUTHZ_HMAC_SECRET`) needed fixing rather than a full rewrite.
 
 ---
 
