@@ -133,13 +133,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   during indexing — "N pages indexed" was never proof any of them compile.
   Off by default (it renders the whole site, so it's slower than a plain
   check).
-- **`HookContext.content` and `JobContext.contentApi`** — partial
-  resolution of the "content-querying access has no unified shape"
-  inconsistency tracked in `later-roadmap` (hooks got nothing at all,
-  jobs only got the raw engine, TSX pages/templates got neither). Hooks
-  and jobs were the tractable half; TSX pages/templates need a bigger
-  plumbing change (`content-handler.ts` doesn't currently receive
-  `search`/`taxonomy` at all) and stay tracked separately.
+- **`HookContext.content`, `JobContext.contentApi`, and
+  `TemplateProps.content`/`ContentPageProps.content`** — full resolution
+  of the "content-querying access has no unified shape" inconsistency
+  tracked in `later-roadmap` (hooks got nothing at all, jobs only got
+  the raw engine, TSX pages/templates got neither). Landed in two
+  passes: hooks and jobs first (the tractable half — a straightforward
+  field addition), then TSX pages/templates (the larger plumbing change
+  — `content-handler.ts`/`tsx-handler.ts` didn't receive `search`/
+  `taxonomy` at all, so `ContentApi` had to be threaded through as a new
+  parameter across `duneRoutes()` → `handleMarkdownPage()`/
+  `handleTsxPage()`/`renderErrorPage()`, using the single `ContentApi`
+  instance `bootstrap()` already builds rather than reconstructing a
+  second one). All four contexts now expose the same `ContentApi`
+  instance, just under context-appropriate names/optionality.
   `HookContext.content` is the same `ContentApi` (`.pages()`, `.page()`,
   `.search()`, `.taxonomy()`) `bootstrap.contentApi` already exposed —
   injected via a new `HookRegistry.setContentApi()`, mirroring the
@@ -157,6 +164,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   post-bootstrap, so there's no ordering window where it could be
   missing, unlike hooks. `content` is left exactly as it was so existing
   jobs relying on its plain-array-property shape don't break.
+  `TemplateProps.content`/`ContentPageProps.content` are optional on the
+  type (a handful of fallback paths — the bare-HTML page rendered when
+  no theme resolves at all, which skips `TemplateProps`/JSX rendering
+  entirely — can't populate it), but every normal template/TSX-page
+  render call site does, since rendering only ever happens after a full
+  `bootstrap()`. Verified end-to-end (not just type-checked) with three
+  new tests in `tests/routing/routes_test.ts` covering the Markdown
+  template, TSX content page, and themed 404 error page render paths,
+  each asserting a sentinel `ContentApi` instance actually reaches
+  `props.content`.
 
 ### Docs
 
@@ -171,6 +188,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   `HookContext`/`JobContext` property listings had ever included `jobs`
   either, a pre-existing gap unrelated to this change, fixed while
   already in these files for the same reason.
+- **Updated `skills/dune-content.md`'s "Querying content" and "Theme
+  templates" sections again** once the TSX/template half of the
+  content-API work landed — the third and final row of that
+  three-context comparison table no longer says "no content field of
+  any kind." Added a usage example. Also updated `dune-docs`' templates
+  reference page (`04.themes/01.templates`, `TemplateProps`'s prop
+  table) and the TSX-pages live example page
+  (`02.content/02.tsx-pages`).
 - **Fourth-pass audit found three leftover self-contradictions in
   `skills/dune-content.md`** surviving an earlier partial rewrite: a Gotcha
   claiming content queries support a folder-derived `type:` filter,
