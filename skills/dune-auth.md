@@ -2,10 +2,12 @@
 
 Public (non-admin) user authentication. Two modes — pick one in `site.yaml`. Both populate `ctx.state.siteUser` (**not** `ctx.state.user`) with the same shape; middleware works identically regardless of mode.
 
-**`mountDuneAuth()` is importable from `@dune/core/auth/mount`** (fixed in 0.31.7 — it previously had no public export path at all, see the roadmap history below if you're on an older version). It is still **not auto-wired**: `dune serve` and the generated `main.ts` entrypoint template never call it for you, so `auth:` config in `site.yaml` alone does nothing — `ctx.state.siteUser` stays `null` and none of the `/auth/*` routes below exist until a site's own entrypoint explicitly calls `mountDuneAuth(app, ctx)`, the same way headless-mode sites already call `mountDuneAdmin()`:
+**As of 0.31.7, just writing `auth:` in `site.yaml` is enough — no manual wiring needed** in the normal `dune serve`/`dune dev` path (the `createDuneApp()` code both go through). `createDuneApp()` calls `mountDuneAuth(app, ctx)` automatically whenever `config.site.auth` is present at all — gated on presence alone, so a site that never writes an `auth:` block gets zero behavior change (no new directories, no `/auth/*` routes, no added per-request middleware). This landed alongside the export fix itself; on a version before 0.31.7, `mountDuneAuth()` had no public export under any subpath at all, and even a manual call was impossible.
+
+**Headless-mode sites still call it themselves** — headless mode doesn't go through `createDuneApp()`, so the auto-wiring above doesn't apply there. Call `mountDuneAuth(app, ctx)` explicitly from `main.ts`, the same way headless sites already call `mountDuneAdmin()`:
 
 ```ts
-// main.ts
+// main.ts — headless mode only; full/default mode wires this automatically
 import { App } from "fresh";
 import { bootstrap } from "@dune/core/bootstrap";
 import { mountDuneAuth } from "@dune/core/auth/mount";
@@ -15,7 +17,7 @@ const app = new App();
 await mountDuneAuth(app, ctx); // populates ctx.state.siteUser on every request from here on
 ```
 
-On a version before 0.31.7, this whole system was unreachable outside `@dune/core` — no export existed under any subpath, and the only way in was a relative `src/` import into core's own source. Confirm your installed `@dune/core` version before assuming the export is there.
+**The SSG builder (`dune build --static`) explicitly opts out** (`mountAuth: false` on its own `createDuneApp()` call) — a static build has no live request flow for `/auth/*` to serve, and shouldn't create session/user-store directories or risk failing on auth misconfiguration as a side effect of generating HTML.
 
 ---
 
@@ -138,14 +140,18 @@ export async function handler(req: Request, ctx: FreshContext) {
 }
 ```
 
-`ctx.state.siteUser` is populated globally on every request by `mountDuneAuth()`'s middleware (once you've actually called it — see the top of this file) — no opt-in required to get the value. The middleware above only adds the redirect gate.
+`ctx.state.siteUser` is populated globally on every request by `mountDuneAuth()`'s middleware — automatically in the default/`dune serve` path as of 0.31.7 (see the top of this file), or once a headless site's own entrypoint calls it. No opt-in required to get the value. The middleware above only adds the redirect gate.
 
 ### Require a specific role
 
-**There is no `ctx.state.authz` and no conventional `@/auth/authz.ts` export.** `mountDuneAuth(app, ctx)` returns `{ resolveUser, authz }` at the call site — Dune doesn't inject `authz` into request state, so a route's `_middleware.ts` has no built-in way to reach it. If you need it there, stash it yourself when you call `mountDuneAuth()`:
+**There is no `ctx.state.authz`.** `mountDuneAuth(app, ctx)` returns `{ resolveUser, authz }`, but Dune doesn't inject `authz` into request state — how you reach it differs by mode:
+
+**Default/full mode** (the normal `dune serve` path — `createDuneApp()` calls `mountDuneAuth()` for you and discards the return value): you never call `mountDuneAuth()` yourself, so there's no `authCtx` to stash. Use the project-local `getAuthz()` pattern from the **dune-authz** skill instead (`dune add polizy` scaffolds `src/auth/authz.ts`) — it's a separate `AuthSystem` instance, but reads/writes the same underlying tuple files in `data/permissions/`, so checks stay consistent with what `mountDuneAuth()`'s own instance sees.
+
+**Headless mode** (site calls `mountDuneAuth()` itself): stash the returned context when you call it:
 
 ```ts
-// main.ts (or wherever mountDuneAuth() is called)
+// main.ts
 export const authCtx = await mountDuneAuth(app, ctx); // authCtx.authz, authCtx.resolveUser
 ```
 
@@ -193,7 +199,7 @@ For content gating via frontmatter `roles:`, this check runs automatically in th
 
 **`ctx.state.siteUser` is `null`, not `undefined`.**
 
-**`auth:` config does nothing by itself — it needs `mountDuneAuth(app, ctx)` called explicitly from the site's own entrypoint.** There's no automatic wiring from `dune serve` or the generated `main.ts` template. On `@dune/core` versions before 0.31.7, the export didn't exist at all under any public subpath — confirm your installed version before assuming `@dune/core/auth/mount` resolves.
+**`auth:` config is enough by itself in the default `dune serve` path as of 0.31.7** — `createDuneApp()` calls `mountDuneAuth()` automatically when it's present. Headless-mode sites still need to call `mountDuneAuth(app, ctx)` explicitly, since they don't go through `createDuneApp()`. On `@dune/core` versions before 0.31.7, the export didn't exist at all under any public subpath, and no amount of config or manual wiring could reach it — confirm your installed version before assuming any of this applies.
 
 **There is no session-signing secret to configure.** No `SESSION_SECRET`, no `session.secret` YAML key — sessions are opaque IDs looked up server-side, not self-contained signed cookies.
 

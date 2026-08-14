@@ -77,7 +77,11 @@ export async function buildStatic(
   // SSG builder also writes them directly via writeSpecialFiles(). The handler
   // is only called for content page routes; the special-file routes are never
   // hit during SSG enumeration, so the duplicate work is harmless.
-  const { app } = await createDuneApp(ctx, { root, port: 8000, debug: false, dev: false });
+  // mountAuth: false — a static build has no live session/request flow to
+  // serve /auth/* from, and shouldn't create site-user/session-store
+  // directories or risk failing on auth misconfiguration as a side effect
+  // of generating static HTML.
+  const { app } = await createDuneApp(ctx, { root, port: 8000, debug: false, dev: false, mountAuth: false });
   const handler = app.handler();
 
   // ── Enumerate routes ──────────────────────────────────────────────────────

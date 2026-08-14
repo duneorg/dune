@@ -14,6 +14,7 @@
 import { App, staticFiles } from "fresh";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { mountPlugins } from "../plugins/loader.ts";
+import { mountDuneAuth } from "../auth/mount.ts";
 import {
   withSecurityHeaders,
   isAdminPath,
@@ -39,6 +40,14 @@ export interface DuneAppOptions {
   debug?: boolean;
   /** true in dune dev — enables SSE live reload, disables page cache + compression */
   dev?: boolean;
+  /**
+   * Mount the public-auth subsystem (mountDuneAuth()) when `site.auth` is
+   * configured. Default true. Set false for non-serving contexts that
+   * shouldn't create session/user-store directories or register /auth/*
+   * routes — e.g. the SSG builder, which calls createDuneApp() purely to
+   * get an in-process handler for rendering static pages.
+   */
+  mountAuth?: boolean;
 }
 
 /** Handles and utilities returned by {@link createDuneApp}. */
@@ -107,7 +116,7 @@ export async function createDuneApp(
   ctx: BootstrapResult,
   options: DuneAppOptions,
 ): Promise<DuneAppResult> {
-  const { root, port, debug = false, dev = false } = options;
+  const { root, port, debug = false, dev = false, mountAuth = true } = options;
   const { engine, collections, taxonomy, search, flexEngine, hooks, config, metrics } = ctx;
 
   const startTime = Date.now();
@@ -201,6 +210,15 @@ export async function createDuneApp(
 
   // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
   await mountPlugins(app, ctx);
+
+  // 5b. Public auth — only when the site has an `auth:` block at all, so
+  // sites that never opted in get zero behavior change (no new directories,
+  // no /auth/* routes, no per-request middleware). mountDuneAuth() must run
+  // after mountPlugins() so it can reuse the authz bundle bootstrap()/the
+  // admin plugin already built (see mount.ts's own comment on this).
+  if (mountAuth && config.site.auth) {
+    await mountDuneAuth(app, ctx);
+  }
 
   // 6. Inline-edit WebSocket — in core so it works without @dune/plugin-admin.
   //    Auth via the admin session (same cookie as /admin/*).
