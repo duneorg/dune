@@ -270,6 +270,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   roadmap backlog rather than fixed here, since resolving it is a
   product decision (separate directories vs. a discriminator field),
   not a doc correction.
+- **`skills/dune-themes.md` — two real bugs, despite being written
+  later and more carefully than the rest of this set.** Every
+  template/layout example used
+  `dangerouslySetInnerHTML={{ __html: page.html }}` — `Page.html` is
+  `() => Promise<string>`, not a string; this is the same bug class
+  already fixed in `skills/dune-content.md` earlier this session, just
+  reintroduced here independently. Fixed to use the `children` prop
+  (the common case) and documented the legitimate alternative —
+  `await page.html()` inside an `async` top-level template component,
+  which `src/themes/resolve-template.ts` explicitly supports and
+  `dune-docs`' `01.templates` page already had right. Also fixed:
+  "theme static assets are copied to the site root at build time" —
+  wrong; they're served at `/themes/{name}/static/{path}` in both dev
+  and static-build output, never stripped to root (`dune-docs`'
+  `03.creating-a-theme` page already had this correct too — no
+  `dune-docs` fixes needed this round, the first file in this series
+  where that's true). Everything else in this skill — islands
+  discovery, theme inheritance, package themes, the `data-dune-*`
+  inline-edit marker system — was verified accurate, so this was a
+  targeted fix, not a full rewrite.
 
 ---
 
