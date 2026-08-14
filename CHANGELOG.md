@@ -9,6 +9,30 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`mountDuneAuth()` — the entire public-auth system (OAuth, magic link,
+  external-JWT, sessions, `SiteUser` storage) — had no public export.**
+  `src/auth/mount.ts` was fully implemented but wasn't listed under any
+  `@dune/core/*` subpath in `deno.json`, and the root `@dune/core` didn't
+  re-export it either — the only way in was a relative `src/` import into
+  core's own source. Every site that set `auth:` in `site.yaml` got no
+  error and no effect: `ctx.state.siteUser` stayed `null` forever, no
+  `/auth/*` routes existed, with nothing to signal why. Found and flagged
+  during the skill-doc audit series (`skills/dune-auth.md`'s top-of-file
+  warning); resolved here rather than left as a roadmap item, since the fix
+  is exactly the small, contained, low-blast-radius kind this session's
+  established principle says to fix directly — add
+  `"./auth/mount": "./src/auth/mount.ts"` to the exports map, mirroring the
+  existing `./auth/api-guard`/`./auth/authz`/`./auth/authz-adapter-*`
+  entries. Added `tests/auth/mount_test.ts`, which imports `mountDuneAuth`
+  via the real public specifier and boots it against a real `bootstrap()`'d
+  app to prove both the export and the mount work end-to-end. **Still not
+  auto-wired** — `dune serve`/the generated `main.ts` template don't call
+  it for you; a site's entrypoint must call `mountDuneAuth(app, ctx)`
+  explicitly, same as `mountDuneAdmin()` in headless mode. Whether it
+  should be auto-wired remains open in `later-roadmap`, now narrowed to
+  just that question. Updated `skills/dune-auth.md` and `dune-docs`'
+  public-auth page, which both previously (and correctly, at the time)
+  documented this system as entirely unreachable.
 - **`skills/README.md` was missing from the skill-file install allowlist
   used for JSR/remote sites.** `copySkillFiles()` has two code paths: a
   local-source directory scan (used in this repo, picks up every `.md` file
