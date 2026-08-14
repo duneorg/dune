@@ -139,6 +139,39 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   authoring.md` was patched with a live/dead hook list and a verification
   grep as a stopgap; `dune-docs`' hooks page still overclaims and was
   intentionally left alone pending that decision.
+- **`skills/dune-auth.md` and `dune-docs`' public-auth page were both
+  fabricated, in some cases worse than the plugin/email docs.** Every
+  code example used `ctx.state.user` — the real field is
+  `ctx.state.siteUser`. A `session.secret`/`SESSION_SECRET` config and
+  env var were invented outright; sessions are opaque server-tracked
+  IDs, not signed cookies, and nothing reads any such secret.
+  `providers.localUsers` (admin pre-creates an account, activated via
+  magic link) doesn't exist anywhere in source. `jwt.userClaims` as a
+  nested claims map doesn't exist; the real fields are flat
+  `userIdClaim`/`emailClaim`/`rolesClaim`. `/auth/logout` is `GET`, not
+  `POST`; magic-link routes are `/auth/magic/send` and `/auth/magic`,
+  not `/auth/magic-link/*`; the session cookie is `dune_auth`, not
+  `dune-site-session`; `dune-docs` also claimed `page.siteUser` is
+  auto-populated on `TemplateProps` for TSX pages — it isn't, there's
+  no such field. `userStore: db`'s "Requires db-schema-layer" repeats
+  the same fabricated term already found and removed from
+  `dune-plugin-authoring.md` and `dune-jobs.md`; the real requirement is
+  a configured database adapter (`DUNE_DB_URL`/`DUNE_DB_PATH`).
+  **Most significant finding**: `mountDuneAuth()` has no public export
+  path from `@dune/core` at all — not under any subpath in `deno.json`,
+  not re-exported from root — and `dune serve`/the generated `main.ts`
+  never call it automatically. The entire public-auth system, while
+  fully implemented, is currently unreachable by any site; this wasn't
+  mentioned by either doc and is now the first thing `dune-auth.md`
+  says. Flagged in the roadmap backlog as the priority item, ahead of
+  the dead-hooks finding above — this blocks an entire advertised
+  feature outright rather than failing silently for opt-in usage.
+  Two more roadmap items were opened for cases where the fabricated
+  docs described a reasonable feature that just doesn't exist yet
+  (admin-provisioned local users; auto-populated `page.siteUser`), and
+  the email dev-mode safety gap from the previous entry was elevated to
+  a roadmap item too, since "dev mode never sends" is worth actually
+  making true rather than just correcting the claim.
 
 ---
 
