@@ -65,6 +65,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Docs
 
+- **`skills/dune-authz.md` had a leftover self-contradiction from an earlier
+  pass** — the `site.yaml` config comment for `authzStore: local` still said
+  "+ Deno KV index," contradicting the file's own corrected prose that
+  `AuthzLocalAdapter` is a plain in-memory `Map`. Fixed the comment to match.
+- **`skills/dune-jobs.md` third-pass additions**: noted that the cron string
+  is parsed by two different engines depending on environment — `Deno.cron()`
+  itself on Deno Deploy, Dune's own `src/jobs/cron.ts` only when self-hosted
+  — both accept the same plain five-field syntax, but anything exotic should
+  be verified in both. Also filled in the manual-trigger endpoint's actual
+  permission (`config.update` + CSRF), its fire-and-forget response
+  semantics, and that post-response handler errors are only logged
+  server-side, matching what `dune-docs`' jobs page already documented more
+  precisely.
 - **`skills/dune-content.md`** now documents that two adjacent lists with
   the same marker merge into one list under a blank line alone — standard
   CommonMark behavior shared by every compliant parser, not a Dune quirk —
