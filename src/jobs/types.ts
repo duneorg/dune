@@ -5,6 +5,7 @@
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneEngine } from "../core/engine.ts";
+import type { ContentApi } from "../content/api.ts";
 
 /** Structured logger available inside job handlers. */
 export interface JobLogger {
@@ -15,8 +16,22 @@ export interface JobLogger {
 
 /** Context injected into every job handler. Same surface as plugin hook context. */
 export interface JobContext {
-  /** Query the content index. */
+  /**
+   * The raw content engine. `.pages` is a plain array property (not a
+   * method), `.loadPage(sourcePath)` loads one full page. Kept as-is
+   * (rather than replaced with `ContentApi`) so existing jobs relying on
+   * this exact shape don't break — see `contentApi` below for the
+   * friendlier `.pages()`/`.page()`/`.search()`/`.taxonomy()` surface.
+   */
   content: DuneEngine;
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — the same instance `bootstrap()` returns as `contentApi`. Always
+   * present; jobs only run after bootstrap has fully completed.
+   *
+   * @since 0.31.7
+   */
+  contentApi: ContentApi;
   /** Read site.yaml config values. */
   config: DuneConfig;
   /** Raw storage adapter for plugin-specific reads/writes. */

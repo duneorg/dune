@@ -335,3 +335,56 @@ Deno.test(
     });
   },
 );
+
+// Regression: ctx.content (added 0.31.7) must be a real, working ContentApi
+// inside onPageDelete — content:delete goes through a full bootstrap(), so
+// unlike content:create's lightweight standalone registry, setContentApi()
+// has already run by the time this hook fires.
+Deno.test(
+  "content:delete: ctx.content is a working ContentApi inside onPageDelete",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await createFolderPage(root, "01.blog");
+      await createFolderPage(root, "02.about");
+
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "plugins:\n  - src: ./plugins/probe-plugin.ts\n",
+      );
+      await Deno.mkdir(join(root, "plugins"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "plugins", "probe-plugin.ts"),
+        `export default {
+          name: "probe-plugin",
+          version: "1.0.0",
+          hooks: {
+            async onPageDelete(ctx) {
+              const probe = {
+                hasContent: typeof ctx.content !== "undefined",
+                routes: ctx.content?.pages().map((p) => p.route).sort(),
+              };
+              await Deno.writeTextFile(
+                new URL("../.content-probe.json", import.meta.url).pathname,
+                JSON.stringify(probe),
+              );
+            },
+          },
+        };\n`,
+      );
+
+      await contentDeleteCommand(root, "/blog", { confirm: true });
+
+      const probe = JSON.parse(await Deno.readTextFile(join(root, ".content-probe.json")));
+      assertEquals(probe.hasContent, true);
+      // The file is deleted from disk before the hook fires, but the
+      // in-memory ContentApi snapshot isn't re-synced first — ctx.content
+      // still reflects both original pages at fire time. Not asserting
+      // that as ideal behavior, just documenting it: the point of this
+      // test is that ctx.content is real and queryable, not that its
+      // index reflects the delete instantaneously.
+      assertEquals(probe.routes, ["/about/", "/blog/"]);
+    });
+  },
+);

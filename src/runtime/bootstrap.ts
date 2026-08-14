@@ -585,6 +585,7 @@ export async function bootstrap(
   }
 
   const contentApi = createContentApi({ engine, search, collections, taxonomy });
+  hooks.setContentApi(contentApi);
 
   return {
     engine,

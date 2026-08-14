@@ -46,6 +46,7 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   const noopEmail = { send: async () => {} };
   const jobContext = {
     content: null as never,
+    contentApi: null as never,
     config,
     storage,
     logger: { info: noop, warn: noop, error: noop },
@@ -131,6 +132,7 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
 
   const jobContext = {
     content: ctx.engine,
+    contentApi: ctx.contentApi,
     config: ctx.config,
     storage: ctx.storage,
     logger: jobLogger,

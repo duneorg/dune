@@ -10,6 +10,7 @@ import type { BlueprintField } from "../blueprints/types.ts";
 import type { FreshContext } from "fresh";
 import type { InlineEditManager } from "../inline-edit/types.ts";
 import type { HistoryEngine } from "../history/engine.ts";
+import type { ContentApi } from "../content/api.ts";
 
 /**
  * All lifecycle events a plugin can subscribe to.
@@ -85,6 +86,30 @@ export interface HookContext<T = unknown> {
     /** Trigger a registered job by name immediately, regardless of its schedule. */
     run(name: string): Promise<void>;
   };
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — only present once whoever created this `HookRegistry` has called
+   * `setContentApi()` on it. `bootstrap()`'s own registry gets this called
+   * right after it builds the `ContentApi`, so it's `undefined` only for
+   * the handful of hooks that fire earlier in the bootstrap sequence, before
+   * there's a content index to query yet: `onConfigLoaded`,
+   * `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, and
+   * `onSearchEngineCreate`. Present for every other live hook
+   * (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`,
+   * `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`), all of
+   * which fire after bootstrap completes — **except** on the lightweight,
+   * standalone `HookRegistry` some CLI commands build without a full
+   * `bootstrap()` (`content:create`'s `onPageCreate`, `migrate:*`'s
+   * `onPageCreate` with `--fire-hooks`), which never call `setContentApi()`
+   * at all, so `ctx.content` is `undefined` there regardless of which event
+   * fired. `content:delete`'s `onPageDelete` is not in that group — it runs
+   * through a real `bootstrap()`, so `ctx.content` is populated there like
+   * any other post-bootstrap hook. Guard with `ctx.content?.` unless you've
+   * confirmed your handler only ever runs through the full bootstrap path.
+   *
+   * @since 0.31.7
+   */
+  content?: ContentApi;
 }
 
 /**
@@ -606,4 +631,11 @@ export interface HookRegistry {
    * Called by serve.ts after the job scheduler is started.
    */
   setJobContext(jobs: Required<HookContext>["jobs"]): void;
+  /**
+   * Inject the content query API into the hook context so handlers can read
+   * ctx.content. Called once by bootstrap.ts right after it builds the
+   * ContentApi — before that point, ctx.content is undefined for any hook
+   * that fires earlier in the bootstrap sequence.
+   */
+  setContentApi(api: ContentApi): void;
 }

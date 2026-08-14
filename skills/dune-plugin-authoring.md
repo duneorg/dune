@@ -76,15 +76,17 @@ interface HookContext<T> {
   stopPropagation: () => void; // stop later hooks for this event from running
   setData: (data: T) => void;  // replace the payload the next hook in the chain sees
   jobs?: { run(name: string): Promise<void> }; // only set while the job scheduler is running
+  content?: ContentApi;        // only set once bootstrap() has built it — see below (0.31.7+)
 }
 ```
 
-There is **no** `content`, `email`, `db`, or `logger` field on this context — nothing is injected for you beyond `config`/`storage`. If your hook needs one of those:
+There is **no** `email` or `db` field on this context — nothing is injected for you beyond `config`/`storage`/`content`/`jobs`. If your hook needs one of those:
 
 - **Logging** — import the shared logger directly: `import { logger } from "@dune/core/logger";` then `logger.info("my_plugin.event", { ... })`. It isn't handed to you via `ctx`.
 - **Email** — construct your own client in `setup()` and close over it in your hooks: `createEmailClient()`/`createEmailProvider()` from `@dune/core/email`.
-- **Content queries** — hooks don't get a queryable content API at all. `onContentIndexReady`'s `data` is the raw `PageIndex[]` already built by the index — filter/map that array directly. If you need `engine.find()`-style queries, that's only reachable from `mount()`'s `bootstrap.engine` (see "Admin routes" above), not from a regular hook.
 - **`db`** — there is no `ctx.db`, period, regardless of configuration. A plugin that needs the data layer imports `@dune/core/db` directly and builds its own repos from `schemas/*.yaml`, same as any other module.
+
+**`ctx.content` (0.31.7+) is the same `ContentApi` — `.pages()`, `.page()`, `.search()`, `.taxonomy()` — that `bootstrap.contentApi` exposes**, injected via `hooks.setContentApi()`. It's `undefined`, not a query-capable stub, for the handful of hooks that fire before `bootstrap()` finishes building it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. Present for every other live hook (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`). **Also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (with `--fire-hooks`) build outside a full `bootstrap()`** — those never call `setContentApi()` at all. `content:delete` is not in that group; it runs through a real `bootstrap()`, so its `onPageDelete` gets a working `ctx.content`. Always guard with `ctx.content?.` unless you've confirmed your specific hook only ever fires post-bootstrap. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest bootstrap hooks — filter/map that array directly there instead.
 
 `data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onRequest` → `Request` directly (not wrapped); `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`). Check `src/hooks/types.ts`'s `HookEvent` union and the actual `hooks.fire()` call site for a given event (not just the docs) for its real shape — see the note below on hooks that are declared but never fired.
 
@@ -116,6 +118,22 @@ hooks: {
     // ctx.data is { sourcePath: string } — not a full Page object
     const { sourcePath } = ctx.data;
     await myDb.comments.delete({ where: { pageSourcePath: sourcePath } });
+  },
+}
+```
+
+### Query the content index from a hook (0.31.7+)
+
+```ts
+hooks: {
+  onPageCreate: async (ctx) => {
+    // ctx.content is undefined on content:create's standalone registry —
+    // this pattern only works for hooks that fire through a full
+    // bootstrap() (see the note above ctx.content's field, and the
+    // dune-content skill for the full per-context breakdown).
+    const related = await ctx.content?.search(ctx.data.title, { limit: 5 });
+    // search() resolves the results array directly, not { results: [...] }
+    logger.info("my_plugin.related_found", { count: related?.length ?? 0 });
   },
 }
 ```

@@ -17,6 +17,7 @@ import type {
   HookRegistry,
   PluginApi,
 } from "./types.ts";
+import type { ContentApi } from "../content/api.ts";
 
 /** Options for {@link createHookRegistry}. */
 export interface HookRegistryOptions {
@@ -34,6 +35,7 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
   const handlers = new Map<HookEvent, HookHandler[]>();
   const registeredPlugins: DunePlugin[] = [];
   let jobContext: HookContext["jobs"] | undefined;
+  let contentApi: ContentApi | undefined;
 
   function getHandlers(event: HookEvent): HookHandler[] {
     if (!handlers.has(event)) {
@@ -105,6 +107,7 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
           config,
           storage,
           jobs: jobContext,
+          content: contentApi,
           stopPropagation: () => {
             stopped = true;
           },
@@ -125,6 +128,10 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
 
     setJobContext(jobs: HookContext["jobs"]): void {
       jobContext = jobs;
+    },
+
+    setContentApi(api: ContentApi): void {
+      contentApi = api;
     },
   };
 

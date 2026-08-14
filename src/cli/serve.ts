@@ -212,7 +212,14 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const emailFrom = (emailCfg as { from?: string }).from ?? `noreply@${new URL(config.site.url).hostname}`;
   const emailClient = createEmailClient({ provider: emailProvider, from: emailFrom, storage });
 
-  const jobContext = { content: engine, config, storage, logger: jobLogger, email: emailClient };
+  const jobContext = {
+    content: engine,
+    contentApi: ctx.contentApi,
+    config,
+    storage,
+    logger: jobLogger,
+    email: emailClient,
+  };
   const jobScheduler = new JobScheduler({
     definitions: jobDefs,
     context: jobContext,

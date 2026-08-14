@@ -154,3 +154,47 @@ Deno.test("hooks.fire: stopPropagation + setData — stopped data is still retur
   const result = await registry.fire("onConfigLoaded", {} as DuneConfig) as unknown as { stopped: boolean };
   assertEquals(result.stopped, true);
 });
+
+// ---------------------------------------------------------------------------
+// ctx.content / setContentApi() — mirrors the existing ctx.jobs / setJobContext()
+// pattern: undefined until explicitly set, then present on every subsequent
+// fire() call (including on registries built outside a full bootstrap()).
+// ---------------------------------------------------------------------------
+
+Deno.test("hooks.ctx: ctx.content is undefined before setContentApi() is called", async () => {
+  const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
+  let seen: unknown;
+  registry.on("onConfigLoaded", (ctx) => { seen = ctx.content; });
+  await registry.fire("onConfigLoaded", {} as DuneConfig);
+  assertEquals(seen, undefined);
+});
+
+Deno.test("hooks.ctx: ctx.content is the injected ContentApi after setContentApi()", async () => {
+  const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
+  // deno-lint-ignore no-explicit-any
+  const fakeContentApi = { pages: () => [], page: async () => null } as any;
+  registry.setContentApi(fakeContentApi);
+
+  let seen: unknown;
+  registry.on("onPageCreate", (ctx) => { seen = ctx.content; });
+  await registry.fire("onPageCreate", { sourcePath: "x.md", title: "X" });
+  assertEquals(seen, fakeContentApi);
+});
+
+Deno.test("hooks.ctx: setContentApi() affects hooks that fire after it, not ones already in flight", async () => {
+  const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
+  // deno-lint-ignore no-explicit-any
+  const fakeContentApi = { pages: () => [] } as any;
+
+  let beforeSet: unknown = "not-run";
+  registry.on("onConfigLoaded", (ctx) => { beforeSet = ctx.content; });
+  await registry.fire("onConfigLoaded", {} as DuneConfig);
+  assertEquals(beforeSet, undefined);
+
+  registry.setContentApi(fakeContentApi);
+
+  let afterSet: unknown = "not-run";
+  registry.on("onStorageReady", (ctx) => { afterSet = ctx.content; });
+  await registry.fire("onStorageReady", {} as StorageAdapter);
+  assertEquals(afterSet, fakeContentApi);
+});
