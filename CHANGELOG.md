@@ -9,6 +9,21 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`skills/README.md` was missing from the skill-file install allowlist
+  used for JSR/remote sites.** `copySkillFiles()` has two code paths: a
+  local-source directory scan (used in this repo, picks up every `.md` file
+  automatically) and a hardcoded `KNOWN_SKILL_FILES` array used when
+  fetching over HTTP from a published `jsr:@dune/core` (no directory
+  listing possible there). `README.md` was never added to that array, so
+  every real site running `dune new`/`dune update:skills` against the
+  published package got the 9 topic skill files but never
+  `.claude/skills/README.md` itself. Found while auditing `skills/README.md`
+  in the third skill-doc pass — its own text claimed "no per-file allowlist
+  to keep in sync," which was true for local-source installs but not this
+  one. Added the missing entry plus a regression test
+  (`tests/cli/update_skills_test.ts`) that diffs the array against the real
+  `skills/` directory, and corrected the README's own overclaim about there
+  being no allowlist at all.
 - **`dune new` never wrote a `theme:` block into `config/site.yaml`**, even
   though it creates `themes/starter/` right alongside it. With `theme:`
   absent, config fell back to a hardcoded `theme.name: "default"` — a theme
@@ -65,6 +80,13 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Docs
 
+- **`skills/dune-themes.md` overstated an async-template failure mode.** It
+  claimed a nested (non-top-level) async template component silently
+  renders as literal `[object Promise]` text. `resolve-template.ts`'s own
+  comment says a Promise-returning component under Preact's synchronous
+  renderer produces nothing — empty output, not stringified — corrected to
+  match. Rest of the file (islands, inheritance, static assets, marker
+  scrubbing) held up against source with no further changes needed.
 - **`dune-docs`' MCP server page had two more inaccuracies**, found while
   cross-checking `skills/dune-mcp.md` (which needed no changes itself — it
   already matched source) for the same third-pass audit: a claim that write
