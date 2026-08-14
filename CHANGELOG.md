@@ -328,6 +328,22 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   passes `{}` — no `key` field exists. Fixed before landing, and fixed
   upstream in `dune-docs` too, along with that page's own "setup() runs
   before any hook fires" overclaim (same fire-and-forget issue).
+- **Revisited `skills/dune-email.md`, the second file fixed in this
+  series — one real finding.** "Plain-text fallback is auto-generated
+  from the rendered HTML" was stated as universal; checked
+  `src/email/client.ts` and all five providers (console, smtp, resend,
+  postmark, sendgrid) and confirmed the auto-generation only happens
+  on the `template:` path — a template's own renderer strips its
+  rendered HTML into a text fallback, which `client.ts` then uses.
+  `send({ html, subject })` without a template gets no text part
+  unless you pass one yourself; no provider generates one either.
+  Also clarified subject precedence when both an explicit `subject:`
+  and a template's own subject are given (the explicit one always
+  wins) — previously unstated in either direction. Fixed both in
+  `dune-docs` too. This closes out the full pass through all 9 skill
+  files plus the two already-fixed ones revisited with the sharper
+  method built up over the rest — every file in `skills/` has now been
+  checked against source at least once, most twice.
 
 ---
 
