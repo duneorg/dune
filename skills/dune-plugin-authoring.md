@@ -291,6 +291,8 @@ export default {
 
 Registered before Dune's content catch-all, so a `publicRoutes` entry takes priority over a content page at the same path. Handlers get a full Fresh context (`ctx.render()`, islands, middleware) — unlike `mount()`, you don't need the raw `app` reference. These routes are **not** admin-guarded (no permission check, no auth) — that's the tradeoff for being public in the first place; add your own check inside the handler if the route needs one.
 
+**Both `publicRoutes` and `adminPages` are wired up by `@dune/plugin-admin`'s own `mount()`** (`plugin-admin/src/admin/mount.ts`), not by anything in `@dune/core`'s routing directly — `DunePlugin.publicRoutes`/`.adminPages` are core types, but nothing in core reads them. In the normal `dune serve`/`dune dev` path this is transparent: `bootstrap()` auto-registers `@dune/plugin-admin` as a plugin whenever `admin.enabled !== false` (the default), and its `mount()` runs like any other plugin's, wiring both features up before you'd notice. It stops being transparent if `admin.enabled: false` (no admin plugin registered → your `publicRoutes`/`adminPages` are silently never wired) or in headless mode, where wiring only happens if the site's own `main.ts` calls `mountDuneAdmin(app, ctx)` (see `dune-content`'s Agent-tooling section / the Headless Mode doc) — skip that call and both features go dark with no error.
+
 ### Permission reference
 
 Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these are meaningful against the built-in role table:
