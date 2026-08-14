@@ -266,6 +266,31 @@ export default {
 
 **This is a real gap, not an oversight to work around with an import that doesn't exist.** If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` — you get auth and permission enforcement for free. Reach for `mount()`-registered mutation routes only when you actually need them, and treat the missing guard as your plugin's responsibility to implement, not Dune's to hand you.
 
+### `publicRoutes` — declarative public-facing routes
+
+For routes on the *public* site (not under the admin prefix), `publicRoutes` is a simpler declarative alternative to registering them yourself via `mount()`:
+
+```ts
+export default {
+  name: "my-plugin",
+  version: "1.0.0",
+  hooks: {},
+  publicRoutes: [
+    {
+      path: "/newsletter/confirm",
+      method: "GET",              // "GET" | "POST" | "PUT" | "DELETE" | "ALL" — default "GET"
+      handler: async (ctx) => {
+        const token = ctx.url.searchParams.get("token");
+        return ctx.render(<ConfirmPage token={token} />);
+      },
+      island: new URL("./islands/ConfirmPage.tsx", import.meta.url).pathname, // optional
+    },
+  ],
+} satisfies DunePlugin;
+```
+
+Registered before Dune's content catch-all, so a `publicRoutes` entry takes priority over a content page at the same path. Handlers get a full Fresh context (`ctx.render()`, islands, middleware) — unlike `mount()`, you don't need the raw `app` reference. These routes are **not** admin-guarded (no permission check, no auth) — that's the tradeoff for being public in the first place; add your own check inside the handler if the route needs one.
+
 ### Permission reference
 
 Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these are meaningful against the built-in role table:
