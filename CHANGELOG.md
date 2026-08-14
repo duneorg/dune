@@ -133,9 +133,44 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   during indexing — "N pages indexed" was never proof any of them compile.
   Off by default (it renders the whole site, so it's slower than a plain
   check).
+- **`HookContext.content` and `JobContext.contentApi`** — partial
+  resolution of the "content-querying access has no unified shape"
+  inconsistency tracked in `later-roadmap` (hooks got nothing at all,
+  jobs only got the raw engine, TSX pages/templates got neither). Hooks
+  and jobs were the tractable half; TSX pages/templates need a bigger
+  plumbing change (`content-handler.ts` doesn't currently receive
+  `search`/`taxonomy` at all) and stay tracked separately.
+  `HookContext.content` is the same `ContentApi` (`.pages()`, `.page()`,
+  `.search()`, `.taxonomy()`) `bootstrap.contentApi` already exposed —
+  injected via a new `HookRegistry.setContentApi()`, mirroring the
+  existing `setJobContext()`/`ctx.jobs` pattern exactly (a mutable slot,
+  `undefined` until set, read fresh on every `fire()`). `undefined` for
+  the five hooks that fire before `bootstrap()` finishes building it
+  (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`,
+  `onSearchRecordsCollect`, `onSearchEngineCreate`) and for the
+  lightweight, standalone `HookRegistry` instances `content:create` and
+  `migrate:*` (`--fire-hooks`) build outside a full `bootstrap()` —
+  `content:delete` is not in that group, since it runs through a real
+  `bootstrap()`. Populated for every other live hook.
+  `JobContext.contentApi` is a required (not optional) field alongside
+  the existing, unchanged `content: DuneEngine` — jobs only ever run
+  post-bootstrap, so there's no ordering window where it could be
+  missing, unlike hooks. `content` is left exactly as it was so existing
+  jobs relying on its plain-array-property shape don't break.
 
 ### Docs
 
+- **Updated `skills/dune-plugin-authoring.md`, `skills/dune-jobs.md`, and
+  `skills/dune-content.md`'s "Querying content" section** (three separate
+  spots that previously said hooks get "nothing" and jobs only get the
+  raw engine) to describe `HookContext.content`/`JobContext.contentApi`
+  and their exact availability rules. Also updated `dune-docs`' hooks
+  reference page (`06.extending/01.hooks`), the plugins page's
+  `onRequest`-specific property table (`06.extending/03.plugins`), and
+  the jobs page (`16.for-developers/06.jobs`) — none of their
+  `HookContext`/`JobContext` property listings had ever included `jobs`
+  either, a pre-existing gap unrelated to this change, fixed while
+  already in these files for the same reason.
 - **Fourth-pass audit found three leftover self-contradictions in
   `skills/dune-content.md`** surviving an earlier partial rewrite: a Gotcha
   claiming content queries support a folder-derived `type:` filter,
