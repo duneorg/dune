@@ -113,8 +113,13 @@ export class MdxHandler implements ContentFormatHandler {
     page: Page,
     ctx: RenderContext,
   ): Promise<string> {
-    const raw = page.rawContent;
+    let raw = page.rawContent;
     if (!raw) return "";
+
+    if (ctx.hooks) {
+      const processed = await ctx.hooks.fire("onMarkdownProcess", { raw, page });
+      raw = processed.raw;
+    }
 
     // Resolve relative image/link references to absolute /content-media/ URLs
     const resolved = resolveMediaRefs(raw, ctx);
@@ -186,6 +191,11 @@ export class MdxHandler implements ContentFormatHandler {
           extraTags: this.sanitize?.tags,
           extraAttrs: this.sanitize?.attributes,
         });
+      }
+
+      if (ctx.hooks) {
+        const processed = await ctx.hooks.fire("onMarkdownProcessed", { html, page });
+        html = processed.html;
       }
 
       return html;

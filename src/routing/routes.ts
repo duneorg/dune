@@ -19,6 +19,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import type { ContentApi } from "../content/api.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
@@ -62,6 +63,7 @@ export function duneRoutes(
   flex?: FlexEngine,
   search?: SearchEngine,
   contentApi?: ContentApi,
+  hooks?: HookRegistry,
 ): DuneRoutes {
   return {
     /**
@@ -291,7 +293,7 @@ export function duneRoutes(
         return respond(handleTsxPage(engine, req, url, page, renderJsx, contentApi));
       }
 
-      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage, contentApi));
+      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage, contentApi, req, hooks));
     },
   };
 }

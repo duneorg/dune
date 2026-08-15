@@ -7,6 +7,7 @@
 
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
 import type { ContentApi } from "./api.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 
 // === Content Format ===
 
@@ -553,6 +554,16 @@ export interface RenderContext {
    * relative hrefs via URL arithmetic when a media lookup misses.
    */
   pageRoute?: string;
+  /**
+   * Hook registry — format handlers use this to fire `onMarkdownProcess`/
+   * `onMarkdownProcessed` around their compile step. Optional: absent when
+   * no registry was threaded into `loadPage()` (e.g. some test/tooling
+   * call sites), in which case handlers must skip firing entirely rather
+   * than construct their own registry.
+   *
+   * @since 0.31.7
+   */
+  hooks?: HookRegistry;
 }
 
 /**

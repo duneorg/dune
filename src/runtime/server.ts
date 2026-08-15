@@ -124,8 +124,8 @@ export async function createDuneApp(
   const siteName = engine.site.title;
   const adminPrefix = config.admin?.path ?? "/admin";
 
-  const routes = duneRoutes(engine, collections, flexEngine, search, contentApi);
-  const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine });
+  const routes = duneRoutes(engine, collections, flexEngine, search, contentApi, hooks);
+  const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine, hooks });
 
   // HTTP caching config
   const httpCacheConfig = config.site.http_cache ?? {};

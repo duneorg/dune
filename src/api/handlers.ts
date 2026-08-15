@@ -22,6 +22,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
@@ -78,15 +79,17 @@ export interface ApiHandlerOptions {
   search: SearchEngine;
   /** Optional Flex Object engine for public GET /api/flex/:type endpoints. */
   flex?: FlexEngine;
+  /** Optional hook registry — fires onApiRequest/onApiResponse when present. */
+  hooks?: HookRegistry;
 }
 
 /**
  * Create the full API request handler.
  */
 export function createApiHandler(options: ApiHandlerOptions): (req: Request) => Promise<Response | null> {
-  const { engine, collections, taxonomy, search, flex } = options;
+  const { engine, collections, taxonomy, search, flex, hooks } = options;
 
-  return async function handleApiRequest(req: Request): Promise<Response | null> {
+  const handleApiRequestInner = async function handleApiRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
     const path = url.pathname;
 
@@ -202,6 +205,16 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
       });
       return jsonResponse({ error: "Internal server error" }, 500, corsHeaders);
     }
+  };
+
+  return async function handleApiRequest(req: Request): Promise<Response | null> {
+    if (hooks) await hooks.fire("onApiRequest", { req });
+    const response = await handleApiRequestInner(req);
+    if (hooks && response) {
+      const result = await hooks.fire("onApiResponse", { req, response });
+      return result.response as Response;
+    }
+    return response;
   };
 }
 

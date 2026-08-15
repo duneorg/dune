@@ -3,6 +3,7 @@ import {
   assertExists,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { duneRoutes } from "../../src/routing/routes.ts";
+import { createHookRegistry } from "../../src/hooks/registry.ts";
 import type { DuneEngine, ResolveResult } from "../../src/core/engine.ts";
 import type { Page, PageIndex } from "../../src/content/types.ts";
 import type { DuneConfig, SiteConfig } from "../../src/config/types.ts";
@@ -517,6 +518,129 @@ Deno.test("duneRoutes: contentApi param reaches the themed 404 error page's Temp
   await contentHandler(new Request("http://localhost/does-not-exist"), renderJsx);
 
   assertEquals(capturedContent, sentinelContentApi);
+});
+
+// ---------------------------------------------------------------------------
+// onCollectionResolved / onBeforeRender (0.31.7)
+// ---------------------------------------------------------------------------
+
+Deno.test("duneRoutes: fires onCollectionResolved with req + collection, honors setData", async () => {
+  const parentIndex = makePageIndex({ sourcePath: "02.blog/default.md", route: "/blog" });
+  const childIndex = makePageIndex({
+    sourcePath: "02.blog/01.post/default.md",
+    route: "/blog/post-1",
+    parentPath: "/blog",
+    order: 1,
+  });
+  const allPageIndexes = [parentIndex, childIndex];
+
+  const blogPage = makeFullPage({
+    sourcePath: "02.blog/default.md",
+    route: "/blog",
+    frontmatter: {
+      title: "Blog",
+      collection: { items: { "@self.children": true }, order: { by: "order", dir: "asc" } },
+    },
+  });
+
+  const engine = makeEngine(allPageIndexes, async (_route: string) => ({
+    type: "page" as const,
+    page: blogPage,
+  }));
+
+  const { createCollectionEngine } = await import("../../src/collections/engine.ts");
+  const collections = createCollectionEngine({
+    pages: allPageIndexes,
+    taxonomyMap: {},
+    loadPage: (sourcePath: string) => {
+      const found = allPageIndexes.find((p) => p.sourcePath === sourcePath);
+      return Promise.resolve(makeFullPage({ sourcePath, route: found?.route ?? sourcePath }));
+    },
+  });
+
+  let capturedFinalCollection: unknown;
+  engine.themes = {
+    ...engine.themes,
+    resolveTemplateName: (_page: Page) => "default",
+    loadTemplate: (_name: string) =>
+      Promise.resolve({
+        name: "default",
+        component: async (props: { collection?: unknown }) => {
+          capturedFinalCollection = props.collection;
+          return await Promise.resolve(null);
+        },
+        fromTheme: "default",
+      }),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const hooks = createHookRegistry({ config: stubConfig, storage: {} as never });
+  let seenReq: Request | undefined;
+  let seenCollection: { items: unknown[] } | undefined;
+  hooks.on("onCollectionResolved", (ctx) => {
+    const data = ctx.data as { req: Request; collection: { items: unknown[] } };
+    seenReq = data.req;
+    seenCollection = data.collection;
+    ctx.setData({ ...data, collection: { ...data.collection, injectedByHook: true } });
+  });
+
+  const { contentHandler } = duneRoutes(engine, collections, undefined, undefined, undefined, hooks);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  const req = new Request("http://localhost/blog/");
+  await contentHandler(req, renderJsx);
+
+  assertEquals(seenReq, req);
+  assertExists(seenCollection);
+  assertEquals((capturedFinalCollection as { injectedByHook?: boolean })?.injectedByHook, true);
+});
+
+Deno.test("duneRoutes: fires onBeforeRender with req + page + props, honors setData to modify props", async () => {
+  const homePage = makeFullPage({ format: "md" });
+  const engine = makeEngine([], async (_route: string) => ({
+    type: "page" as const,
+    page: homePage,
+  }));
+
+  let capturedProps: Record<string, unknown> | undefined;
+  engine.themes = {
+    ...engine.themes,
+    resolveTemplateName: (_page: Page) => "default",
+    loadTemplate: (_name: string) =>
+      Promise.resolve({
+        name: "default",
+        component: async (props: Record<string, unknown>) => {
+          capturedProps = props;
+          return await Promise.resolve(null);
+        },
+        fromTheme: "default",
+      }),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const hooks = createHookRegistry({ config: stubConfig, storage: {} as never });
+  let seenReq: Request | undefined;
+  let seenPage: unknown;
+  hooks.on("onBeforeRender", (ctx) => {
+    const data = ctx.data as { req: Request; page: unknown; props: Record<string, unknown> };
+    seenReq = data.req;
+    seenPage = data.page;
+    ctx.setData({ ...data, props: { ...data.props, injectedByHook: true } });
+  });
+
+  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, undefined, hooks);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  const req = new Request("http://localhost/");
+  await contentHandler(req, renderJsx);
+
+  assertEquals(seenReq, req);
+  assertEquals(seenPage, homePage);
+  assertEquals(capturedProps?.injectedByHook, true);
 });
 
 Deno.test("rewriteInternalLinks: does NOT rewrite links for default language", () => {

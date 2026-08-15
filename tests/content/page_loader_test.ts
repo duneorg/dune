@@ -1,7 +1,9 @@
 import { assertEquals, assertExists, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { loadPage, getMimeType } from "../../src/content/page-loader.ts";
 import { FormatRegistry } from "../../src/content/formats/registry.ts";
+import { createHookRegistry } from "../../src/hooks/registry.ts";
 import type { StorageAdapter, StorageEntry } from "../../src/storage/types.ts";
+import type { DuneConfig } from "../../src/config/types.ts";
 import type { PageIndex, Page, PageFrontmatter } from "../../src/content/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -523,4 +525,54 @@ Deno.test("html(): is cached — renderToHtml called only once", async () => {
   await page.html();
   await page.html();
   assertEquals(callCount, 1); // lazyOnce — only called once
+});
+
+// ---------------------------------------------------------------------------
+// onMediaDiscovered (0.31.7)
+// ---------------------------------------------------------------------------
+
+Deno.test("loadPage: fires onMediaDiscovered with the discovered media and page index", async () => {
+  const index = makeIndex({ sourcePath: "01.home/default.md", route: "/" });
+  const storage = makeStorage({ "content/01.home/default.md": "---\ntitle: Home\n---\n" });
+  storage.list = ((_dir: string) =>
+    Promise.resolve([
+      { name: "cover.jpg", path: "content/01.home/cover.jpg", isFile: true, isDirectory: false },
+    ])) as StorageAdapter["list"];
+
+  const hooks = createHookRegistry({ config: {} as DuneConfig, storage });
+  let captured: { media?: unknown[]; page?: PageIndex } | undefined;
+  hooks.on("onMediaDiscovered", (ctx) => {
+    captured = ctx.data as { media?: unknown[]; page?: PageIndex };
+  });
+
+  await loadPage(index, {
+    storage,
+    contentDir: "content",
+    formats: makeFormats({ title: "Home" }),
+    pages: [index],
+    loadPage: makeLoadPage([]),
+    orphanProtection: false,
+    hooks,
+  });
+
+  assertExists(captured);
+  assertEquals(captured!.page?.sourcePath, "01.home/default.md");
+  assertEquals((captured!.media as { name: string }[]).map((m) => m.name), ["cover.jpg"]);
+});
+
+Deno.test("loadPage: does not throw when no hooks registry is provided (backward compatible)", async () => {
+  const index = makeIndex({ sourcePath: "01.home/default.md" });
+  const storage = makeStorage({ "content/01.home/default.md": "---\ntitle: Home\n---\n" });
+
+  const page = await loadPage(index, {
+    storage,
+    contentDir: "content",
+    formats: makeFormats({ title: "Home" }),
+    pages: [index],
+    loadPage: makeLoadPage([]),
+    orphanProtection: false,
+    // no hooks field
+  });
+
+  assertEquals(page.frontmatter.title, "Home");
 });

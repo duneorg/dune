@@ -43,6 +43,9 @@ export interface PageLoaderOptions {
   /** Site configuration — passed into the render context so format handlers
    *  (e.g. the markdown renderer) can read site-level flags like trusted_html. */
   site?: import("../config/types.ts").SiteConfig;
+  /** Hook registry — fires onMediaDiscovered here, and threaded into the
+   *  RenderContext so format handlers can fire onMarkdownProcess/onMarkdownProcessed. */
+  hooks?: import("../hooks/types.ts").HookRegistry;
 }
 
 /**
@@ -85,6 +88,9 @@ export async function loadPage(
     index.sourcePath,
     (options.site?.basePath ?? "") + contentDirRoute,
   );
+  if (options.hooks) {
+    await options.hooks.fire("onMediaDiscovered", { media, page: index });
+  }
 
   // Build the page with lazy accessors
   const page: Page = {
@@ -105,7 +111,7 @@ export async function loadPage(
     html: lazyOnce(async () => {
       if (index.format !== "md" && index.format !== "mdx") return "";
       const trustedHtml = options.site?.trusted_html === true || frontmatter.trusted_html === true;
-      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml, index.route);
+      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml, index.route, options.hooks);
       let html = await handler.renderToHtml(page, ctx);
       if (options.orphanProtection !== false) {
         html = applyOrphanProtection(html);
@@ -323,12 +329,14 @@ function buildMinimalRenderContext(
   site?: import("../config/types.ts").SiteConfig,
   trustedHtml?: boolean,
   pageRoute?: string,
+  hooks?: import("../hooks/types.ts").HookRegistry,
 ): RenderContext {
   return {
     site,
     contentDir,
     trustedHtml,
     pageRoute,
+    hooks,
     media: {
       url: (filename: string) => {
         const file = media.find((m) => m.name === filename);

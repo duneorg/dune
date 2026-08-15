@@ -135,6 +135,7 @@ export function registerContentCatchAll(
         if (pageCache && etag && !skipSharedCache) {
           const cached = pageCache.get(url.pathname);
           if (cached?.etag === etag) {
+            await hooks.fire("onCacheHit", { key: url.pathname, value: cached });
             if (etagMatches(req.headers.get("If-None-Match"), etag)) {
               response = new Response(null, {
                 status: 304,
@@ -156,6 +157,7 @@ export function registerContentCatchAll(
             metrics?.recordRequest(url.pathname, performance.now() - startMs, false);
             return response;
           }
+          await hooks.fire("onCacheMiss", { key: url.pathname });
         }
 
         // Browser ETag revalidation (skipped for admin-session requests).

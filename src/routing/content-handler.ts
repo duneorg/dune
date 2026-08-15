@@ -3,6 +3,7 @@ import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
 import type { ContentApi } from "../content/api.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import { buildPageTitle } from "../content/types.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import { renderSections } from "../sections/mod.ts";
@@ -35,6 +36,8 @@ export async function handleMarkdownPage(
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
   requestedPage = 1,
   contentApi?: ContentApi,
+  req?: Request,
+  hooks?: HookRegistry,
 ): Promise<Response> {
   const templateName = engine.themes.resolveTemplateName(page) ?? "default";
   const template = await engine.themes.loadTemplate(templateName);
@@ -103,37 +106,48 @@ export async function handleMarkdownPage(
   }
   const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
 
-  const collection = collections
+  let collection = collections
     ? await resolveCollectionForPage(page, collections, engine, requestedPage)
     : undefined;
   const collectionsMap = collections
     ? await resolveCollectionsForPage(page, collections, engine, requestedPage)
     : undefined;
+  if (hooks && req && collection) {
+    const resolved = await hooks.fire("onCollectionResolved", { req, collection });
+    collection = resolved.collection;
+  }
   const themeConfig = await resolveThemeConfig(page, engine);
 
   const layout = await engine.themes.loadLayout("layout");
   const strings = await engine.themes.loadLocale(page.language ?? "en");
   const t = createTranslator(strings);
 
+  let props: Record<string, unknown> = {
+    page,
+    pageTitle: buildPageTitle(page, engine.site.title),
+    site: engine.site,
+    config: engine.config,
+    nav: engine.router.getTopNavigation(page.language),
+    navAll: engine.router.getNavigation(page.language),
+    translations: engine.router.getTranslations(page.route),
+    pathname: url.pathname,
+    search: url.search,
+    collection,
+    collections: collectionsMap,
+    Layout: layout ?? undefined,
+    themeConfig,
+    t,
+    dir: directionOf(pageLang, engine.config?.system?.languages?.rtl_override),
+    children: htmlContent,
+    content: contentApi,
+  };
+
+  if (hooks && req) {
+    const resolved = await hooks.fire("onBeforeRender", { req, page, props });
+    props = resolved.props;
+  }
+
   return render(
-    await resolveTemplateVNode(template.component as ComponentType<any>, {
-      page,
-      pageTitle: buildPageTitle(page, engine.site.title),
-      site: engine.site,
-      config: engine.config,
-      nav: engine.router.getTopNavigation(page.language),
-      navAll: engine.router.getNavigation(page.language),
-      translations: engine.router.getTranslations(page.route),
-      pathname: url.pathname,
-      search: url.search,
-      collection,
-      collections: collectionsMap,
-      Layout: layout ?? undefined,
-      themeConfig,
-      t,
-      dir: directionOf(pageLang, engine.config?.system?.languages?.rtl_override),
-      children: htmlContent,
-      content: contentApi,
-    }),
+    await resolveTemplateVNode(template.component as ComponentType<any>, props),
   );
 }

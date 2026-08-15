@@ -387,6 +387,7 @@ export async function createDuneEngine(
         storageRoot: contentStorageRoot,
         orphanProtection: config.system.typography?.orphan_protection !== false,
         site: config.site,
+        hooks,
       },
     );
 

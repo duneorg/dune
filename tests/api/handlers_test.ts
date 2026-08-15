@@ -393,3 +393,51 @@ Deno.test("createApiHandler: non-/api/ path returns null (not handled)", async (
   const res = await handler(new Request("http://localhost/not-api"));
   assertEquals(res, null);
 });
+
+// ── onApiRequest / onApiResponse (0.31.7) ───────────────────────────────────
+
+Deno.test("createApiHandler: fires onApiRequest with the incoming request", async () => {
+  const { createHookRegistry } = await import("../../src/hooks/registry.ts");
+  const hooks = createHookRegistry({ config: {} as DuneConfig, storage: {} as never });
+  let seenUrl: string | undefined;
+  hooks.on("onApiRequest", (ctx) => {
+    seenUrl = (ctx.data as { req: Request }).req.url;
+  });
+
+  const engine = makeEngine([], {});
+  const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
+  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const handler = createApiHandler({ engine, collections, taxonomy, search: stubSearch, hooks });
+
+  await handler(new Request("http://localhost/api/nav"));
+  assertEquals(seenUrl, "http://localhost/api/nav");
+});
+
+Deno.test("createApiHandler: fires onApiResponse and honors setData to replace the response", async () => {
+  const { createHookRegistry } = await import("../../src/hooks/registry.ts");
+  const hooks = createHookRegistry({ config: {} as DuneConfig, storage: {} as never });
+  hooks.on("onApiResponse", (ctx) => {
+    const data = ctx.data as { req: Request; response: Response };
+    ctx.setData({
+      ...data,
+      response: new Response(data.response.body, {
+        status: data.response.status,
+        headers: { ...Object.fromEntries(data.response.headers), "X-Hook-Fired": "1" },
+      }),
+    });
+  });
+
+  const engine = makeEngine([], {});
+  const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
+  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const handler = createApiHandler({ engine, collections, taxonomy, search: stubSearch, hooks });
+
+  const res = await handler(new Request("http://localhost/api/nav"));
+  assertEquals(res!.headers.get("X-Hook-Fired"), "1");
+});
+
+Deno.test("createApiHandler: no hooks option — behaves exactly as before (backward compatible)", async () => {
+  const handler = makeHandler([]);
+  const res = await handler(new Request("http://localhost/api/nav"));
+  assertEquals(res!.status, 200);
+});
