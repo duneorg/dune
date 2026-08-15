@@ -133,6 +133,55 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   during indexing — "N pages indexed" was never proof any of them compile.
   Off by default (it renders the whole site, so it's slower than a plain
   check).
+- **9 of 13 previously-dead `HookEvent` names now actually fire**:
+  `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`,
+  `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`,
+  `onApiRequest`, `onApiResponse`. Resolves the tractable half of
+  `later-roadmap`'s "13 of 24 declared hook events are never fired"
+  finding — each new call site mirrors an existing pattern rather than
+  introducing new architecture (the cache pair sits alongside
+  `onCacheInvalidate`'s home in cache-adjacent code; the hooks-registry-
+  in-scope pattern already used for `onRebuild`/`onThemeSwitch` extends
+  naturally to `onMarkdownProcess`/`onMediaDiscovered` via a new
+  `RenderContext.hooks` field). `onCollectionResolved` and
+  `onMarkdownProcess`/`onMarkdownProcessed` honor `setData()` — a plugin
+  can replace the resolved collection, rewrite raw Markdown before
+  compilation, or rewrite the compiled HTML afterward. `onBeforeRender`
+  fires with the fully-assembled template props right before rendering
+  and also honors `setData()`, letting a plugin inject or modify what a
+  template receives. `onApiResponse` honors `setData()` to replace the
+  `Response` outright.
+
+  **Left declared but intentionally not implemented**: `onRouteResolved`,
+  `onPageLoaded`, `onAfterRender`, `onResponse` — genuine design
+  questions, not missing wiring, now documented directly on the
+  `HookEvent` union in `src/hooks/types.ts`. `onRouteResolved`/
+  `onPageLoaded` describe a two-phase resolution (route matched to a
+  `PageIndex`, then the full `Page` loaded) that doesn't exist —
+  `engine.resolve()` does both in one step and returns the full `Page`
+  directly; firing both as documented would mean fabricating a second
+  event from data already in hand. `onAfterRender`/`onResponse` need the
+  actual rendered HTML string, but Fresh's `render()` returns a
+  `Response` directly — getting `{ html: string }` would mean
+  intercepting and buffering every response body into memory, killing
+  streaming, as a blanket per-request cost whether or not anyone's
+  listening. Both stay on `later-roadmap`, narrowed from "13 dead hooks"
+  to just these four, for a deliberate decision before any 1.0
+  hook-surface freeze.
+
+  Real end-to-end tests for all nine, not just type-checks:
+  `tests/content/formats/markdown_hooks_test.ts` (the two Markdown
+  hooks against the real `MarkdownHandler`), `tests/content/
+  page_loader_test.ts` (`onMediaDiscovered` via real `loadPage()`),
+  `tests/api/handlers_test.ts` (the two API hooks via real
+  `createApiHandler()`), `tests/runtime/
+  register_middleware_cache_hooks_test.ts` (the two cache hooks via a
+  real `bootstrap()`'d app hit twice — miss then hit — through an
+  actual plugin registered in `site.yaml`), and two new tests in
+  `tests/routing/routes_test.ts` for `onCollectionResolved`/
+  `onBeforeRender`. Every test verifies a handler's `setData()` call
+  actually reaches the eventual output, not just that the hook fired.
+
 - **`HookContext.content`, `JobContext.contentApi`, and
   `TemplateProps.content`/`ContentPageProps.content`** — full resolution
   of the "content-querying access has no unified shape" inconsistency
