@@ -5,628 +5,93 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
-## [0.31.7] — 2026-08-04
+## [0.31.7] — 2026-08-13
 
 ### Fixed
 
-- **`dune generate:form`/the MCP `scaffold_form` tool wrote into the wrong
-  directory entirely — every generated form was silently unusable.** Both
-  wrote to `schemas/{name}.yaml`, but the runtime that actually serves
-  forms (`loadForm()` in `src/forms/loader.ts`, called from
-  `GET`/`POST /api/forms/:name`) only ever reads from `forms/{name}.yaml`
-  — confirmed by that type file's own docstring/example. Not a
-  same-directory collision risk with the DB data-layer's `schemas/*.yaml`
-  format, as previously described — a plain wrong-path bug with no
-  overlap at all; the public form API 404'd "Form not found" for every
-  generated form, forever. Fixed the write path (`generateForm()` in
-  `src/cli/generate.ts`) and the matching read side (the MCP
-  `dune://content/forms` resource, which listed `schemas/` as "what forms
-  already exist" instead of `forms/`). Added a real end-to-end regression
-  test that calls `loadForm()` — the actual runtime consumer — against
-  `generateForm()`'s output, not just checking a file lands somewhere
-  named "forms". If you generated a form on an older version, move it
-  from `schemas/{name}.yaml` to `forms/{name}.yaml` by hand.
-- **`mountDuneAuth()` — the entire public-auth system (OAuth, magic link,
-  external-JWT, sessions, `SiteUser` storage) — had no public export.**
-  `src/auth/mount.ts` was fully implemented but wasn't listed under any
-  `@dune/core/*` subpath in `deno.json`, and the root `@dune/core` didn't
-  re-export it either — the only way in was a relative `src/` import into
-  core's own source. Every site that set `auth:` in `site.yaml` got no
-  error and no effect: `ctx.state.siteUser` stayed `null` forever, no
-  `/auth/*` routes existed, with nothing to signal why. Found and flagged
-  during the skill-doc audit series (`skills/dune-auth.md`'s top-of-file
-  warning); resolved here rather than left as a roadmap item, since the fix
-  is exactly the small, contained, low-blast-radius kind this session's
-  established principle says to fix directly — add
-  `"./auth/mount": "./src/auth/mount.ts"` to the exports map, mirroring the
-  existing `./auth/api-guard`/`./auth/authz`/`./auth/authz-adapter-*`
-  entries. Added `tests/auth/mount_test.ts`, which imports `mountDuneAuth`
-  via the real public specifier and boots it against a real `bootstrap()`'d
-  app to prove both the export and the mount work end-to-end.
-  **Also auto-wired it**: `createDuneApp()` (the code path both `dune
-  serve`/`dune dev` and the generated `main.ts` entrypoint go through) now
-  calls `mountDuneAuth(app, ctx)` automatically whenever `site.auth` is
-  configured — right after `mountPlugins()`, so it reuses the authz bundle
-  `bootstrap()`/the admin plugin already built. Gated strictly on presence
-  of the `auth:` block: a site that never configures it gets zero behavior
-  change (no new `data/site-users/`/session-store directories, no
-  `/auth/*` routes, no added per-request middleware). New
-  `DuneAppOptions.mountAuth` (default `true`) lets callers opt out; the SSG
-  builder (`dune build --static`) now passes `mountAuth: false`, since a
-  static build has no live request flow to serve `/auth/*` from and
-  shouldn't create session-store directories or risk failing on auth
-  misconfiguration as a side effect of generating HTML. Headless-mode
-  sites are unaffected — they don't go through `createDuneApp()` and
-  continue to call `mountDuneAuth()` themselves, same as `mountDuneAdmin()`.
-  Added `tests/cli/fresh-app_auth_test.ts` covering all three cases (auto
-  wired when configured, unchanged when not, explicit opt-out). Updated
-  `skills/dune-auth.md` and `dune-docs`' public-auth page throughout,
-  including the "require a specific role" guidance, which previously
-  assumed every site calls `mountDuneAuth()` itself and can stash the
-  return value — only true for headless mode now; default-mode sites
-  reach authz via the `dune-authz` skill's `getAuthz()` pattern instead.
-- **`skills/README.md` was missing from the skill-file install allowlist
-  used for JSR/remote sites.** `copySkillFiles()` has two code paths: a
-  local-source directory scan (used in this repo, picks up every `.md` file
-  automatically) and a hardcoded `KNOWN_SKILL_FILES` array used when
-  fetching over HTTP from a published `jsr:@dune/core` (no directory
-  listing possible there). `README.md` was never added to that array, so
-  every real site running `dune new`/`dune update:skills` against the
-  published package got the 9 topic skill files but never
-  `.claude/skills/README.md` itself. Found while auditing `skills/README.md`
-  in the third skill-doc pass — its own text claimed "no per-file allowlist
-  to keep in sync," which was true for local-source installs but not this
-  one. Added the missing entry plus a regression test
-  (`tests/cli/update_skills_test.ts`) that diffs the array against the real
-  `skills/` directory, and corrected the README's own overclaim about there
-  being no allowlist at all.
-- **`dune new` never wrote a `theme:` block into `config/site.yaml`**, even
-  though it creates `themes/starter/` right alongside it. With `theme:`
-  absent, config fell back to a hardcoded `theme.name: "default"` — a theme
-  that doesn't exist in a fresh scaffold — so every newly-scaffolded site
-  silently rendered through a bare unstyled built-in fallback instead of its
-  own theme, with no warning anywhere. Confirmed live: a fresh `dune new`
-  site returned 200 but never used its own `layout.tsx` (no nav links, no
-  `NavToggle` island, generic fallback CSS). Also added a warning (deduped
-  by template name) when this fallback fires at all, for any site whose
-  `theme.name` doesn't resolve, hand-configured or scaffolded — this bug was
-  invisible for as long as it was specifically because the fallback never
-  said anything.
-- **`skills/dune-content.md` documented a `content: string` template prop
-  that doesn't exist.** The real prop is `children` (a pre-rendered vnode,
-  threaded through from `content-handler.ts`'s `children: htmlContent`) — a
-  template written from the doc would destructure `content` as `undefined`
-  and render nothing. The shipped scaffold's own `DefaultTemplate` already
-  used `children` correctly; this was a stale doc, not a second runtime bug.
-- **MDX pages had no GFM support — tables rendered as literal text.**
-  `mdx.ts`'s compile step passed no `remarkPlugins`, so `@mdx-js/mdx`'s
-  remark parser only supported plain CommonMark: `| a | b |` table syntax,
-  `~~strikethrough~~`, task lists, and autolinks all rendered as literal
-  text instead of being parsed. Plain `.md` pages were unaffected (`marked`
-  supports GFM tables by default) — MDX was the one format silently missing
-  it. Added `remark-gfm` and wired it into the compile call.
-- **Collections silently reverse-sorted unless `dir: asc` was spelled out.**
-  `collection:` blocks and the programmatic `Collection.order()` both
-  defaulted to `dir: "desc"` for every `by` value, not just `date` — so
-  `order: { by: title }` and `order: { by: order }` (folder numeric prefix)
-  quietly sorted Z→A / highest-to-lowest instead of the expected A→Z /
-  natural-prefix order, inconsistent with `content.pages()`'s own `asc`
-  default and with the ascending nav/sibling sort in `page-loader.ts`. The
-  default is now conditional on `by`: `date` still defaults to `desc`
-  (newest-first, the universal blog convention every doc example already
-  uses), everything else now defaults to `asc`.
-- **`dune build` reported success on pages with a broken MDX body.**
-  `MdxHandler.renderToHtml()` never throws — a compile/render failure
-  becomes a normal 200 response with the error embedded as
-  `<div class="mdx-error">` (see `MDX_ERROR_CLASS`), so the SSG builder's
-  existing try/catch around each route never saw it: the page was written
-  to `dist/` and counted as rendered, and the build reported success while
-  shipping the error div to production. `buildStatic()` now inspects each
-  HTML response for that marker and records it in `result.errors`, exactly
-  like a thrown render error already was.
+- **`@self.children` collections returned nothing on folder-index pages**
+  (e.g. `/arbeitswelt/`). The route's own trailing slash plus the code
+  that appends one for the child-route prefix produced a double slash
+  that never matched a real route.
+- **`dune generate:theme` produced a theme that failed `deno check` and
+  never rendered a title or body.** The generated `default.tsx` imported
+  a `PageProps` type `@dune/core` doesn't export, and read `page.title`/
+  `page.html` — neither exists on the real `TemplateProps.page` (title is
+  under `page.frontmatter.title`; the rendered body is the separate
+  `children` prop, not a page field).
+- **`dune generate:form`/the MCP `scaffold_form` tool write to
+  `forms/{name}.yaml`**, matching what the form-serving runtime
+  (`loadForm()`, backing `GET`/`POST /api/forms/:name`) actually reads.
+  Previously wrote to `schemas/{name}.yaml`, which that runtime never
+  read — every generated form 404'd. If you generated a form on an older
+  version, move it from `schemas/{name}.yaml` to `forms/{name}.yaml` by
+  hand.
+- **`mountDuneAuth()` is exported from `@dune/core/auth/mount`** and
+  auto-wired into `createDuneApp()` whenever `site.yaml` configures
+  `auth:`. Previously it had no public export path at all, so a
+  configured `auth:` block silently had no effect — `ctx.state.siteUser`
+  stayed `null`, no `/auth/*` routes existed. Gated strictly on `auth:`
+  being present: an unconfigured site sees no behavior change. New
+  `DuneAppOptions.mountAuth` (default `true`) opts out; `dune build
+  --static` passes `mountAuth: false` automatically, since a static build
+  has no request flow to serve `/auth/*` from. Headless-mode sites
+  continue to call `mountDuneAuth()` themselves.
+- **`dune new`/`dune update:skills` install `.claude/skills/README.md`**
+  alongside the topic skill files when run against a published
+  `jsr:@dune/core` — it was missing from the remote-install allowlist.
+- **`dune new` writes a `theme:` block into `config/site.yaml`.**
+  Previously a fresh scaffold had no `theme:` config, so it silently fell
+  back to a nonexistent `"default"` theme and rendered through a bare
+  unstyled fallback. That fallback path now also logs a warning (deduped
+  by template name) whenever a site's `theme.name` doesn't resolve.
+- **MDX pages support GFM** (tables, strikethrough, task lists,
+  autolinks) via `remark-gfm`. Plain `.md` pages already supported it
+  through `marked`; MDX was the one format that didn't.
+- **`collection:` blocks and `Collection.order()` default to ascending
+  order for every `by` value except `date`.** `date` still defaults to
+  newest-first; other fields (`title`, folder-prefix `order`, etc.)
+  previously defaulted to descending too.
+- **`dune build --static` reports a page with a broken MDX body as a
+  build error**, instead of writing the rendered error placeholder to
+  `dist/` and counting it as a success.
 
 ### Added
 
-- **`dune content:check --render`** — opt-in pass that actually compiles
-  every `.md`/`.mdx` page body and reports failures, not just frontmatter
-  issues. `content:list`/`content:check` only ever parsed frontmatter
-  during indexing — "N pages indexed" was never proof any of them compile.
-  Off by default (it renders the whole site, so it's slower than a plain
-  check).
-- **9 of 13 previously-dead `HookEvent` names now actually fire**:
-  `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`,
+- **`dune content:check --render`** — opt-in pass that compiles every
+  `.md`/`.mdx` page body and reports render failures, not just
+  frontmatter issues. Off by default (renders the whole site, slower than
+  a plain check).
+- **`onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`,
   `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`,
-  `onApiRequest`, `onApiResponse`. Resolves the tractable half of
-  `later-roadmap`'s "13 of 24 declared hook events are never fired"
-  finding — each new call site mirrors an existing pattern rather than
-  introducing new architecture (the cache pair sits alongside
-  `onCacheInvalidate`'s home in cache-adjacent code; the hooks-registry-
-  in-scope pattern already used for `onRebuild`/`onThemeSwitch` extends
-  naturally to `onMarkdownProcess`/`onMediaDiscovered` via a new
-  `RenderContext.hooks` field). `onCollectionResolved` and
-  `onMarkdownProcess`/`onMarkdownProcessed` honor `setData()` — a plugin
-  can replace the resolved collection, rewrite raw Markdown before
-  compilation, or rewrite the compiled HTML afterward. `onBeforeRender`
-  fires with the fully-assembled template props right before rendering
-  and also honors `setData()`, letting a plugin inject or modify what a
-  template receives. `onApiResponse` honors `setData()` to replace the
-  `Response` outright.
-
-  **Left declared but intentionally not implemented**: `onRouteResolved`,
-  `onPageLoaded`, `onAfterRender`, `onResponse` — genuine design
-  questions, not missing wiring, now documented directly on the
-  `HookEvent` union in `src/hooks/types.ts`. `onRouteResolved`/
-  `onPageLoaded` describe a two-phase resolution (route matched to a
-  `PageIndex`, then the full `Page` loaded) that doesn't exist —
-  `engine.resolve()` does both in one step and returns the full `Page`
-  directly; firing both as documented would mean fabricating a second
-  event from data already in hand. `onAfterRender`/`onResponse` need the
-  actual rendered HTML string, but Fresh's `render()` returns a
-  `Response` directly — getting `{ html: string }` would mean
-  intercepting and buffering every response body into memory, killing
-  streaming, as a blanket per-request cost whether or not anyone's
-  listening. Both stay on `later-roadmap`, narrowed from "13 dead hooks"
-  to just these four, for a deliberate decision before any 1.0
-  hook-surface freeze.
-
-  Real end-to-end tests for all nine, not just type-checks:
-  `tests/content/formats/markdown_hooks_test.ts` (the two Markdown
-  hooks against the real `MarkdownHandler`), `tests/content/
-  page_loader_test.ts` (`onMediaDiscovered` via real `loadPage()`),
-  `tests/api/handlers_test.ts` (the two API hooks via real
-  `createApiHandler()`), `tests/runtime/
-  register_middleware_cache_hooks_test.ts` (the two cache hooks via a
-  real `bootstrap()`'d app hit twice — miss then hit — through an
-  actual plugin registered in `site.yaml`), and two new tests in
-  `tests/routing/routes_test.ts` for `onCollectionResolved`/
-  `onBeforeRender`. Every test verifies a handler's `setData()` call
-  actually reaches the eventual output, not just that the hook fired.
-
+  `onApiRequest`, `onApiResponse` now fire.** `onCollectionResolved`,
+  `onMarkdownProcess`/`onMarkdownProcessed`, and `onApiResponse` honor
+  `setData()` to replace the resolved collection, rewrite Markdown
+  before/after compilation, or replace the API `Response` outright.
+  `onBeforeRender` fires with the fully-assembled template props right
+  before rendering and also honors `setData()`.
+  `onRouteResolved`, `onPageLoaded`, `onAfterRender`, `onResponse` remain
+  declared but intentionally unfired, documented as such directly on the
+  `HookEvent` union in `src/hooks/types.ts`: route/page resolution
+  happens in one step with no intermediate data to fire from, and
+  after-render/response hooks would need buffering every response body
+  into memory — a cost paid on every request whether or not anything's
+  listening — since Fresh's `render()` returns a `Response` directly, not
+  an HTML string.
 - **`HookContext.content`, `JobContext.contentApi`, and
-  `TemplateProps.content`/`ContentPageProps.content`** — full resolution
-  of the "content-querying access has no unified shape" inconsistency
-  tracked in `later-roadmap` (hooks got nothing at all, jobs only got
-  the raw engine, TSX pages/templates got neither). Landed in two
-  passes: hooks and jobs first (the tractable half — a straightforward
-  field addition), then TSX pages/templates (the larger plumbing change
-  — `content-handler.ts`/`tsx-handler.ts` didn't receive `search`/
-  `taxonomy` at all, so `ContentApi` had to be threaded through as a new
-  parameter across `duneRoutes()` → `handleMarkdownPage()`/
-  `handleTsxPage()`/`renderErrorPage()`, using the single `ContentApi`
-  instance `bootstrap()` already builds rather than reconstructing a
-  second one). All four contexts now expose the same `ContentApi`
-  instance, just under context-appropriate names/optionality.
-  `HookContext.content` is the same `ContentApi` (`.pages()`, `.page()`,
-  `.search()`, `.taxonomy()`) `bootstrap.contentApi` already exposed —
-  injected via a new `HookRegistry.setContentApi()`, mirroring the
-  existing `setJobContext()`/`ctx.jobs` pattern exactly (a mutable slot,
-  `undefined` until set, read fresh on every `fire()`). `undefined` for
-  the five hooks that fire before `bootstrap()` finishes building it
+  `TemplateProps.content`/`ContentPageProps.content`** expose the same
+  `ContentApi` (`.pages()`, `.page()`, `.search()`, `.taxonomy()`) across
+  hooks, jobs, and templates/TSX pages. `HookContext.content` is
+  `undefined` for the hooks that fire before `bootstrap()` finishes
   (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`,
   `onSearchRecordsCollect`, `onSearchEngineCreate`) and for the
-  lightweight, standalone `HookRegistry` instances `content:create` and
-  `migrate:*` (`--fire-hooks`) build outside a full `bootstrap()` —
-  `content:delete` is not in that group, since it runs through a real
-  `bootstrap()`. Populated for every other live hook.
-  `JobContext.contentApi` is a required (not optional) field alongside
-  the existing, unchanged `content: DuneEngine` — jobs only ever run
-  post-bootstrap, so there's no ordering window where it could be
-  missing, unlike hooks. `content` is left exactly as it was so existing
-  jobs relying on its plain-array-property shape don't break.
-  `TemplateProps.content`/`ContentPageProps.content` are optional on the
-  type (a handful of fallback paths — the bare-HTML page rendered when
-  no theme resolves at all, which skips `TemplateProps`/JSX rendering
-  entirely — can't populate it), but every normal template/TSX-page
-  render call site does, since rendering only ever happens after a full
-  `bootstrap()`. Verified end-to-end (not just type-checked) with three
-  new tests in `tests/routing/routes_test.ts` covering the Markdown
-  template, TSX content page, and themed 404 error page render paths,
-  each asserting a sentinel `ContentApi` instance actually reaches
-  `props.content`.
-
-### Docs
-
-- **Updated `skills/dune-plugin-authoring.md`, `skills/dune-jobs.md`, and
-  `skills/dune-content.md`'s "Querying content" section** (three separate
-  spots that previously said hooks get "nothing" and jobs only get the
-  raw engine) to describe `HookContext.content`/`JobContext.contentApi`
-  and their exact availability rules. Also updated `dune-docs`' hooks
-  reference page (`06.extending/01.hooks`), the plugins page's
-  `onRequest`-specific property table (`06.extending/03.plugins`), and
-  the jobs page (`16.for-developers/06.jobs`) — none of their
-  `HookContext`/`JobContext` property listings had ever included `jobs`
-  either, a pre-existing gap unrelated to this change, fixed while
-  already in these files for the same reason.
-- **Updated `skills/dune-content.md`'s "Querying content" and "Theme
-  templates" sections again** once the TSX/template half of the
-  content-API work landed — the third and final row of that
-  three-context comparison table no longer says "no content field of
-  any kind." Added a usage example. Also updated `dune-docs`' templates
-  reference page (`04.themes/01.templates`, `TemplateProps`'s prop
-  table) and the TSX-pages live example page
-  (`02.content/02.tsx-pages`).
-- **Fourth-pass audit found three leftover self-contradictions in
-  `skills/dune-content.md`** surviving an earlier partial rewrite: a Gotcha
-  claiming content queries support a folder-derived `type:` filter,
-  directly contradicted two sections earlier by "there is no folder-`type`
-  concept anywhere in this system"; a Gotcha placing language config in
-  `site.yaml` under `i18n.languages`, contradicting the correct
-  `config/system.yaml` / `languages.supported` location established
-  earlier in the same file; and a Taxonomy-section example calling
-  `ctx.content.taxonomy()`, contradicting the file's own "Querying content"
-  section that there is no uniform `ctx.content` — fixed all three.
-- **`DunePlugin.publicRoutes`/`.adminPages` are core-defined types that
-  core itself never reads** — the actual registration loop lives in
-  `@dune/plugin-admin`'s own `mount()`. Same for `bootstrapAdminTuples()`,
-  called from `plugin-admin/mod.ts`'s `mount()`, not core's `bootstrap()`
-  as `skills/dune-authz.md` previously said. Both are invisible in the
-  normal `dune serve`/`dune dev` path (plugin-admin auto-registers and
-  runs), but silently inert under `admin.enabled: false`, in headless mode
-  without an explicit `mountDuneAdmin()` call, or in any `bootstrap()`-only
-  context like `dune mcp:serve`. Documented in both
-  `skills/dune-plugin-authoring.md` and `skills/dune-authz.md`, and flagged
-  to the roadmap as a real design question (should core enforce this
-  directly, or formalize it as an admin-package-owned contract).
-- **`skills/dune-themes.md` overstated an async-template failure mode.** It
-  claimed a nested (non-top-level) async template component silently
-  renders as literal `[object Promise]` text. `resolve-template.ts`'s own
-  comment says a Promise-returning component under Preact's synchronous
-  renderer produces nothing — empty output, not stringified — corrected to
-  match. Rest of the file (islands, inheritance, static assets, marker
-  scrubbing) held up against source with no further changes needed.
-- **`dune-docs`' MCP server page had two more inaccuracies**, found while
-  cross-checking `skills/dune-mcp.md` (which needed no changes itself — it
-  already matched source) for the same third-pass audit: a claim that write
-  tools are disabled against "a remote or read-only mount" — no such concept
-  exists anywhere in Dune, write tools are registered unconditionally — and
-  a claim that scaffold tools capture `console.log` output, when generators
-  actually take a scoped `log` callback specifically so the MCP server
-  doesn't have to touch global `console.log` (concurrent scaffold calls
-  would otherwise interleave).
-- **`dune-docs`' data-layer page showed capitalized codegen output
-  filenames** (`src/db/types/Comment.ts`, `Post.ts`) — `dune codegen`
-  actually lowercases the first character of the model name
-  (`camelCase()` in `src/db/codegen.ts`), so real output is
-  `comment.ts`/`post.ts`. Found while cross-checking `skills/dune-schemas.md`
-  (which needed no changes itself — it already matched source) against the
-  docs page for the same third-pass audit.
-- **`skills/dune-authz.md` had a leftover self-contradiction from an earlier
-  pass** — the `site.yaml` config comment for `authzStore: local` still said
-  "+ Deno KV index," contradicting the file's own corrected prose that
-  `AuthzLocalAdapter` is a plain in-memory `Map`. Fixed the comment to match.
-- **`skills/dune-jobs.md` third-pass additions**: noted that the cron string
-  is parsed by two different engines depending on environment — `Deno.cron()`
-  itself on Deno Deploy, Dune's own `src/jobs/cron.ts` only when self-hosted
-  — both accept the same plain five-field syntax, but anything exotic should
-  be verified in both. Also filled in the manual-trigger endpoint's actual
-  permission (`config.update` + CSRF), its fire-and-forget response
-  semantics, and that post-response handler errors are only logged
-  server-side, matching what `dune-docs`' jobs page already documented more
-  precisely.
-- **`skills/dune-content.md`** now documents that two adjacent lists with
-  the same marker merge into one list under a blank line alone — standard
-  CommonMark behavior shared by every compliant parser, not a Dune quirk —
-  and the `---` thematic-break technique to force a real break between them.
-- **`skills/dune-content.md`** and the CLI reference now note that
-  `content:list`/`content:check` are frontmatter-only and don't prove a
-  page compiles — pointing at the new `content:check --render`.
-- **`skills/dune-plugin-authoring.md` described a fictional plugin API.**
-  The "Admin routes" section referenced a nonexistent `onAdminRoutes` hook
-  and `requirePermission`/`csrfCheck` imports from `@dune/core` that don't
-  resolve (those names exist only inside `@dune/plugin-admin`'s private
-  route tree). The "Hook context" section invented a `PluginContext` with
-  `content`/`email`/`db`/`logger` fields that don't exist on the real
-  `HookContext`, and every "Common hook patterns" example used hook names
-  (`onContentLoad`, `onPagePublish`, `onPageRender`) that aren't in the
-  `HookEvent` union, plus a two-argument handler signature that doesn't
-  match the real one-argument `(ctx) => ...`. The "Admin UI" and "Testing a
-  plugin" sections were also wrong (`@dune/core/admin`/`AdminLayout` don't
-  exist; `TestHarness.render()` returns a string, not `{ html }`, and only
-  reaches `/api/*`, not arbitrary page routes). Rewrote all of it against
-  `src/hooks/types.ts`, `src/plugins/mod.ts`, and the real
-  `adminPages`/`mount()`/`publicRoutes` API, and fixed the `plugins:`
-  registration example (`site.yaml` has no `spec:` key — everything is
-  `src:`). `dune validate --skills` now reports zero findings against this
-  file (it previously wasn't strict enough to catch the hook-context/
-  admin-route fabrications, only the hook-event-name and permission-string
-  ones).
-- **`dune-docs`' plugins page (`06.extending/03.plugins`) had three real
-  bugs**, found while cross-checking it as ground truth for the skill-doc
-  fix above: its `adminPages` example wrote `path: "/admin/my-plugin"`,
-  which double-prefixes to `/admin/admin/my-plugin` given how the mount
-  code builds `adminPrefix + page.path` — the correct value is the
-  relative `"/my-plugin"`. Plugin static assets are served at
-  `/plugins/{name}/`, not `/__plugins/{name}/` as documented.
-  `PublicRouteRegistration.method`'s wildcard value is `"ALL"`
-  (uppercase), not `"all"`.
-- **`skills/dune-email.md` and `dune-docs`' email page were both
-  fabricated in the same way as the plugin-authoring skill**, and in one
-  case actively unsafe advice. Neither `import { email } from "@dune/core"`
-  nor `"@dune/core/email"` exists — every consumer must build a client via
-  `createEmailClient()`/`createEmailProvider()`, except background jobs,
-  where `JobContext.email` is a real pre-built client. Template lookup
-  order is `.tsx`, `.md`, `.mdx` (docs said md/mdx/tsx or tsx/mdx/md,
-  inconsistently); `.email.mdx` is rendered as plain Markdown, not
-  compiled JSX (`templates.ts`'s own comment: "treated as Markdown (noted
-  limitation)"); Markdown template subjects come from the first
-  `# Heading` line, not YAML frontmatter, which isn't parsed anywhere in
-  this path; TSX templates get no automatic HTML-shell wrapping and
-  receive `data` directly as props, not `{ data, site }`; SMTP config's
-  field is `pass`, not `password`. **Most seriously**: both docs claimed
-  "dev mode never sends" — false. `createEmailProvider()` never checks
-  `DUNE_ENV`; only the console-fallback provider (used when no provider,
-  or an invalid one, is configured) is dev-aware, and only for writing
-  intercepted `.json` files to `.dune/admin/dev-email/` (not `.html` as
-  documented) — a validly configured real provider sends for real in dev
-  exactly as in production. Also removed a fabricated
-  `onUserCreate`/`onSiteUserCreated` hook (no hook fires on user creation
-  at all) and a `setup(hooks)` signature that doesn't match the real
-  `setup(api: PluginApi)`. `dune validate --skills` now reports zero
-  findings for `dune-email.md` (previously flagged the fake hook name).
-- **13 of the 24 events in `HookEvent` are declared but never actually
-  fired** anywhere in `@dune/core` or `@dune/plugin-admin` — verified via
-  `grep -rn '"eventName"' src/ plugin-admin/src/` per event. A handler
-  registered for one of them (`onRouteResolved`, `onPageLoaded`,
-  `onCollectionResolved`, `onBeforeRender`, `onAfterRender`, `onResponse`,
-  `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`,
-  `onCacheHit`, `onCacheMiss`, `onApiRequest`, `onApiResponse`) is simply
-  never invoked, with no error or warning. Not fixed here — flagged as a
-  pre-1.0 decision item (implement the fire() calls, or remove them from
-  the frozen hook surface) in the roadmap backlog, since `HookEvent` is
-  part of the public API the 1.0 milestone freezes. `skills/dune-plugin-
-  authoring.md` was patched with a live/dead hook list and a verification
-  grep as a stopgap; `dune-docs`' hooks page still overclaims and was
-  intentionally left alone pending that decision.
-- **`skills/dune-auth.md` and `dune-docs`' public-auth page were both
-  fabricated, in some cases worse than the plugin/email docs.** Every
-  code example used `ctx.state.user` — the real field is
-  `ctx.state.siteUser`. A `session.secret`/`SESSION_SECRET` config and
-  env var were invented outright; sessions are opaque server-tracked
-  IDs, not signed cookies, and nothing reads any such secret.
-  `providers.localUsers` (admin pre-creates an account, activated via
-  magic link) doesn't exist anywhere in source. `jwt.userClaims` as a
-  nested claims map doesn't exist; the real fields are flat
-  `userIdClaim`/`emailClaim`/`rolesClaim`. `/auth/logout` is `GET`, not
-  `POST`; magic-link routes are `/auth/magic/send` and `/auth/magic`,
-  not `/auth/magic-link/*`; the session cookie is `dune_auth`, not
-  `dune-site-session`; `dune-docs` also claimed `page.siteUser` is
-  auto-populated on `TemplateProps` for TSX pages — it isn't, there's
-  no such field. `userStore: db`'s "Requires db-schema-layer" repeats
-  the same fabricated term already found and removed from
-  `dune-plugin-authoring.md` and `dune-jobs.md`; the real requirement is
-  a configured database adapter (`DUNE_DB_URL`/`DUNE_DB_PATH`).
-  **Most significant finding**: `mountDuneAuth()` has no public export
-  path from `@dune/core` at all — not under any subpath in `deno.json`,
-  not re-exported from root — and `dune serve`/the generated `main.ts`
-  never call it automatically. The entire public-auth system, while
-  fully implemented, is currently unreachable by any site; this wasn't
-  mentioned by either doc and is now the first thing `dune-auth.md`
-  says. Flagged in the roadmap backlog as the priority item, ahead of
-  the dead-hooks finding above — this blocks an entire advertised
-  feature outright rather than failing silently for opt-in usage.
-  Two more roadmap items were opened for cases where the fabricated
-  docs described a reasonable feature that just doesn't exist yet
-  (admin-provisioned local users; auto-populated `page.siteUser`), and
-  the email dev-mode safety gap from the previous entry was elevated to
-  a roadmap item too, since "dev mode never sends" is worth actually
-  making true rather than just correcting the claim.
-- **`skills/dune-authz.md` was fabricated in the same pattern as the
-  other skill files, one level deeper.** The premise that site authors
-  write their own `defineSchema()` call is wrong — the polizy schema
-  is fixed inside `@dune/core`; `createDuneAuthSystem()` takes no
-  schema parameter. `dune add polizy`'s real scaffold is an
-  `initAuthz()`/`getAuthz()` lazy wrapper, not a bare exported `authz`
-  constant. Every example used `ctx.state.user` (same bug as
-  `dune-auth.md`) and conflated public site-user checks with
-  admin-panel checks, which use a separate identity entirely.
-  `allow()` takes `toBe`, not `canThey` — confirmed from source, not
-  just asserted. Fixed a self-introduced error caught during the same
-  pass: an earlier draft of the rewrite claimed a "Deno KV index" for
-  tuple storage that doesn't exist (`AuthzLocalAdapter` uses a plain
-  in-memory `Map`). Cross-checked against `dune-docs`' authorization
-  page, which — unlike every other page checked this pass — turned out
-  largely accurate; only two real errors there (`sig` vs `hmac` field
-  name, and HMAC signing framed as automatic when it's opt-in via
-  `DUNE_AUTHZ_HMAC_SECRET`) needed fixing rather than a full rewrite.
-- **`skills/dune-jobs.md` and `dune-docs`' jobs page both presented
-  deprecated, code-execution-risk behavior as the normal default, and
-  `dune-docs`' only job-file example was completely non-functional.**
-  Auto-discovery (any file dropped into `jobs/` gets loaded and
-  executed) is deprecated specifically because it's equivalent to
-  remote code execution for anyone who can write to that directory —
-  the skill doc never mentioned the explicit `jobs:` allowlist in
-  `site.yaml` at all, presenting the risky default as the only way
-  jobs work. Separately, `dune-docs`' primary "Defining a job" example
-  showed a single default-exported `JobDefinition` object
-  (`export default {name, schedule, handler} satisfies JobDefinition`)
-  — the real loader (`src/jobs/scanner.ts`) reads `mod.schedule` and
-  `mod.default` as two independent exports and requires `mod.default`
-  to be a function; an object fails that check and the job is silently
-  skipped with a `jobs.load.missing_handler` warning. Since that was
-  the page's only example, following it literally produced a job that
-  never runs. Also fixed: `JobContext.content` is a full `DuneEngine`
-  (no `.find()`, use `.pages`/`.loadPage()`), not a `ContentAPI`; there
-  is no `db` field on `JobContext` at all (same fabricated
-  "db-schema-layer" term found and removed twice already this pass);
-  job state persists as JSON files via `StorageAdapter`, not Deno KV
-  (traced to the original v0.13 plan, which shipped differently);
-  self-hosted scheduling uses Dune's own minimal cron parser in a
-  minute-tick loop, not an external `cron` library; and
-  `dune-docs`' manual-trigger docs had the wrong response shape and
-  timing — `POST /admin/api/jobs/:name/run` fires the job
-  asynchronously and returns `200 {triggered: true, name}`
-  immediately, it does not wait for completion or return `500` on
-  failure as documented.
-- **`skills/dune-schemas.md`'s entire premise was backwards.** The old
-  doc described a unified `schemas/*.yaml` format with `store: local |
-  db`, and dismissed `flex-objects/` as "legacy, not for new models."
-  Confirmed against `src/db/schema-parser.ts`: `store:` doesn't exist
-  anywhere in the real schema format — `schemas/*.yaml` is exclusively
-  for database-backed application data. Editor-managed, file-backed
-  custom content types are Flex Objects, a separate, current,
-  first-class system — confirmed by grepping `@dune/plugin-admin`'s
-  admin routes for schema references (zero hits; only Flex Object
-  routes generate admin CRUD UI). The Repository API was also
-  fabricated as Prisma-style (`update({where, data})`) — the real one
-  (`src/db/repository.ts`) takes positional arguments
-  (`update(id, data)`, `delete(id)`, `upsert(where, data)`), where
-  operators are all `$`-prefixed with no `$eq`/`$ne`, `orderBy` is
-  single-field only, and there's no `nullable` field option. Also
-  fixed three real bugs in `dune-docs`' data-layer pages found while
-  cross-checking: `src/db/index.ts` generates one `db` object keyed by
-  table name, not a capitalized named export per model as every
-  example there showed; migrations write to `data/migrations/`, not
-  bare `migrations/` (wrong in three places); and the generated CRUD
-  API's update method is `PUT`, not `PATCH`.
-- **`skills/dune-mcp.md` claimed "All MCP tools are read-only" — false,
-  and the single biggest gap found in this whole audit series.**
-  `src/mcp/write-tools.ts` defines 9 real write/scaffold tools
-  (`write_page`, `delete_page`, `update_frontmatter`, `update_config`,
-  `install_plugin`, `scaffold_plugin`, `scaffold_route`,
-  `scaffold_form`, `scaffold_theme`), registered unconditionally by
-  `dune mcp:serve` — confirmed via `src/cli/mcp.ts`, which always
-  imports and wires `buildWriteTools()` in alongside the read tools,
-  no opt-in flag. The doc actively told readers this capability didn't
-  exist. Also added two undocumented read tools (`list_blueprints`,
-  `get_page_source`) and three undocumented resources
-  (`dune://content/blueprints`, `dune://content/forms`,
-  `dune://site/audit`) — real tool/resource counts are 9 and 7, not
-  the 7 and 4 previously documented — and a security-model section
-  this doc never had (the server has no authentication of its own;
-  anything that can write to its stdin gets full write-tool access).
-  Fixed three smaller bugs in `dune-docs`' MCP page found while
-  cross-checking: it was also missing the `forms`/`audit` resources,
-  mislabeled `scaffold_route`'s output as "TSX" (it's plain Markdown),
-  and claimed `write_page` validates YAML frontmatter before writing
-  when the real handler writes the given bytes as-is with no parsing
-  step at all. Flagged a real, unrelated-to-docs design issue found
-  along the way: `scaffold_form`/`dune generate:form` writes into
-  `schemas/{name}.yaml` using a form/blueprint-flavored format
-  entirely incompatible with the DB data-layer's own `schemas/*.yaml`
-  format (`dune-schemas` skill) — same directory, two unrelated
-  schema shapes, no collision detection either way. Filed to the
-  roadmap backlog rather than fixed here, since resolving it is a
-  product decision (separate directories vs. a discriminator field),
-  not a doc correction.
-- **`skills/dune-themes.md` — two real bugs, despite being written
-  later and more carefully than the rest of this set.** Every
-  template/layout example used
-  `dangerouslySetInnerHTML={{ __html: page.html }}` — `Page.html` is
-  `() => Promise<string>`, not a string; this is the same bug class
-  already fixed in `skills/dune-content.md` earlier this session, just
-  reintroduced here independently. Fixed to use the `children` prop
-  (the common case) and documented the legitimate alternative —
-  `await page.html()` inside an `async` top-level template component,
-  which `src/themes/resolve-template.ts` explicitly supports and
-  `dune-docs`' `01.templates` page already had right. Also fixed:
-  "theme static assets are copied to the site root at build time" —
-  wrong; they're served at `/themes/{name}/static/{path}` in both dev
-  and static-build output, never stripped to root (`dune-docs`'
-  `03.creating-a-theme` page already had this correct too — no
-  `dune-docs` fixes needed this round, the first file in this series
-  where that's true). Everything else in this skill — islands
-  discovery, theme inheritance, package themes, the `data-dune-*`
-  inline-edit marker system — was verified accurate, so this was a
-  targeted fix, not a full rewrite.
-- **`skills/README.md` was missing two real skill files from its own
-  index, and misdescribed how the set gets installed.** The table
-  never listed `dune-mcp.md`/`dune-themes.md` (both real; already
-  auto-installed regardless, since `copySkillFiles()` copies every
-  `.md` under `skills/` rather than a hardcoded list — this was a docs
-  gap, not a functional one). "Installed by `dune new` and `dune add`"
-  was wrong — `dune add` only installs package-bundled skills (e.g.
-  `dune add polizy` copies polizy's own skill files), never this core
-  set; the real second installer is `dune update:skills`. Also fixed
-  the `store: local`/`store: db` description already found and
-  removed from `dune-schemas.md` itself, and added `dune-content.md`
-  to the reading order (previously omitted despite being one of the
-  most fundamental skills). Fixed the same two errors on `dune-docs`'
-  agent-integration overview page (`store:`, `ctx.state.user`), and
-  expanded its MCP section to mention the write/scaffold tools and the
-  no-authentication security model, both of which it previously didn't
-  point at even though the dedicated MCP page (fixed earlier this
-  pass) already covers them in full.
-- **Revisited `skills/dune-plugin-authoring.md` (the first file fixed
-  in this series) with the sharper method built up since — found four
-  more real gaps, none contradicting the earlier rewrite.** `setup()`'s
-  returned Promise is fire-and-forget (`src/hooks/registry.ts` never
-  awaits it) — an async `setup()` that does real work before
-  registering its hooks can race with real events firing; added as a
-  gotcha. `PluginEntry.config` — a real, previously-undocumented
-  per-plugin static config block in `site.yaml`, read back via
-  `ctx.config.plugins[name]`. Opt-in plugin auto-discovery
-  (`auto_discover_plugins: true`, off by default, same
-  code-execution-risk shape as job auto-discovery) — the file's
-  opening claim didn't acknowledge this exception. `HookRegistry.on()`/
-  `.off()` — dynamic hook registration from `setup()`, a real
-  alternative to the static `hooks: {}` object that wasn't mentioned
-  anywhere. Caught a bug of my own while adding that last one: the
-  `dune-docs` example it's based on has `onCacheInvalidate`'s handler
-  reading `data.key`, but every real `fire()` call site for that event
-  passes `{}` — no `key` field exists. Fixed before landing, and fixed
-  upstream in `dune-docs` too, along with that page's own "setup() runs
-  before any hook fires" overclaim (same fire-and-forget issue).
-- **Revisited `skills/dune-email.md`, the second file fixed in this
-  series — one real finding.** "Plain-text fallback is auto-generated
-  from the rendered HTML" was stated as universal; checked
-  `src/email/client.ts` and all five providers (console, smtp, resend,
-  postmark, sendgrid) and confirmed the auto-generation only happens
-  on the `template:` path — a template's own renderer strips its
-  rendered HTML into a text fallback, which `client.ts` then uses.
-  `send({ html, subject })` without a template gets no text part
-  unless you pass one yourself; no provider generates one either.
-  Also clarified subject precedence when both an explicit `subject:`
-  and a template's own subject are given (the explicit one always
-  wins) — previously unstated in either direction. Fixed both in
-  `dune-docs` too. This closed out a full pass through all 9 skill
-  files plus the two already-fixed ones revisited with the sharper
-  method built up over the rest — every file in `skills/` had by this
-  point been checked against source at least once, most twice.
-- **A third pass, on request, started with `skills/dune-content.md` —
-  which had never received a from-scratch audit at all (every prior
-  fix to it was a targeted patch), and it showed.** Comparable
-  fabrication to the worst files fixed earlier this series: every code
-  example imported from `@dune/content/types`, a package that doesn't
-  exist (`@dune/core/content/types`); the TSX content-page example
-  destructured a `page` prop that isn't on the real
-  `ContentPageProps`; the theme-template example read `page.title`,
-  which doesn't exist either (only `page.frontmatter.title`, and
-  there's no `PageMeta` type — it's `Page`); the entire "Querying
-  content" section invented a `ctx.content.find()`/`findOne()` API
-  with a `type:` filter, none of which exist — the real `ContentApi`
-  (`.pages()`/`.page()`/`.search()`/`.taxonomy()`) is reachable only
-  via `bootstrap.contentApi`, not uniformly as `ctx.content` anywhere;
-  two `site.yaml` config keys were nested wrong (`taxonomies:` is
-  top-level, not under `content:`; language config lives in a
-  *different file*, `config/system.yaml`'s `languages:`, not `i18n:`
-  in `site.yaml`); and the "Agent tooling" HTTP examples used
-  `Authorization: Bearer $TOKEN` against an API that has no
-  Bearer-token support at all — auth is 100% session-cookie based.
-  Rewrote the HTTP flow around the real `POST /admin/login`, and
-  pointed agents at the MCP write tools first, which need no HTTP auth.
-  Cross-checking a `dune-docs` page along the way surfaced two more
-  bugs there (`ContentApi.search()`'s real signature takes an options
-  object and returns a `Promise` — the doc showed a bare number
-  argument and claimed it was synchronous) — fixed upstream too.
-- **Found and fixed a real bug in `dune generate:theme`'s own scaffold
-  while cross-referencing `TemplateProps` against a `dune-docs` example
-  for the item above.** The generated `default.tsx` imported a
-  `PageProps` type from `@dune/core` that isn't exported there at all,
-  and read `page.title`/`page.html`, the exact same fabricated shape
-  found throughout the skill file — meaning every freshly-scaffolded
-  theme via this command had a permanently blank title and a body that
-  never rendered, on top of failing `deno check`. This one was a real
-  code bug, not a docs error, so it's fixed in `src/cli/generate.ts`
-  directly rather than just documented — the existing test had been
-  asserting the broken output verbatim, updated to assert the fix.
-- **Flagged, not fixed: the content-query inconsistency across hooks,
-  jobs, and TSX props has no unified shape** (nothing / raw
-  `DuneEngine` / no access / `bootstrap.contentApi`-only, depending on
-  where you are) — a real design gap surfaced by the `dune-content.md`
-  rewrite above, but one that touches at least three public interfaces
-  and risks a breaking change to existing job code, so it went to the
-  roadmap backlog for a real decision rather than being resolved
-  unilaterally mid-audit.
+  lightweight `HookRegistry` instances `content:create`/`migrate:*
+  --fire-hooks` build outside a full `bootstrap()`; populated for every
+  other hook. `JobContext.contentApi` is always populated (jobs only run
+  post-bootstrap) alongside the existing, unchanged
+  `JobContext.content: DuneEngine`. `TemplateProps.content`/
+  `ContentPageProps.content` are optional on the type — a couple of
+  no-theme fallback paths skip templates entirely — but populated on
+  every normal render.
 
 ---
 
