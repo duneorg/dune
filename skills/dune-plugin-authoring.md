@@ -224,7 +224,7 @@ Both reasons are documented directly on the `HookEvent` type declaration in `src
 
 ## Admin routes
 
-There is no `onAdminRoutes` hook, and `@dune/core` does not export `requirePermission`/`csrfCheck` — plugin authors sometimes assume these exist because plugin-admin's own internal admin routes use functions with those names, but those live in `@dune/plugin-admin`'s private `src/admin/routes/api/_utils.ts` and are not part of any published, importable API. Attempting `import { requirePermission } from "@dune/core"` fails — the specifier doesn't resolve.
+There is no `onAdminRoutes` hook, and `@dune/core` itself does not export `requirePermission`/`csrfCheck` — plugin authors sometimes assume these exist because plugin-admin's own internal admin routes use functions with those names. Attempting `import { requirePermission } from "@dune/core"` fails — the specifier doesn't resolve. They do exist as a public, importable API — from `@dune/plugin-admin/admin/guards`, not `@dune/core` — see the `mount()` section below.
 
 There are two real, supported ways for a plugin to add admin routes:
 
@@ -267,27 +267,28 @@ For a `POST`/`PUT`/`DELETE` route, or anything `adminPages` doesn't cover, regis
 ```ts
 // plugins/my-plugin/mod.ts
 import type { DunePlugin, MountApi } from "@dune/core/plugins";
+import { withGuards } from "@dune/plugin-admin/admin/guards";
 
 export default {
   name: "my-plugin",
   version: "1.0.0",
   hooks: {},
   async mount({ app }: MountApi) {
-    app.post("/admin/api/my-plugin/action", async (fc) => {
-      // No shared requirePermission()/csrfCheck() helper is exported for
-      // plugin-registered routes — those exist only inside
-      // @dune/plugin-admin's own private route tree. A route registered
-      // here via mount() is NOT automatically authenticated, unlike
-      // adminPages. You are responsible for your own auth/permission/CSRF
-      // checks, or for keeping mutations behind an existing guarded admin
-      // API endpoint instead of writing a new raw route.
-      return Response.json({ ok: true });
-    });
+    app.post(
+      "/admin/api/my-plugin/action",
+      withGuards({ permission: "config.update" }, async (fc) => {
+        // csrfCheck() and requirePermission() have already run and passed —
+        // withGuards() rejects the request before your handler is called
+        // otherwise. Add `validatePath: "someParam"` too if the route takes
+        // a path-shaped URL param.
+        return Response.json({ ok: true });
+      }),
+    );
   },
 } satisfies DunePlugin;
 ```
 
-**This is a real gap, not an oversight to work around with an import that doesn't exist.** If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` — you get auth and permission enforcement for free. Reach for `mount()`-registered mutation routes only when you actually need them, and treat the missing guard as your plugin's responsibility to implement, not Dune's to hand you.
+A route registered via `mount()` is **not** automatically authenticated the way `adminPages` is — you must wrap it in `withGuards()` (or call `csrfCheck()`/`requirePermission()` from the same module directly) yourself. Reimplementing the guard sequence by hand instead of using `withGuards()` is exactly what caused three real security regressions in Dune's own admin routes (the module's own doc comment names them) — the CSRF check's Origin/Sec-Fetch-Site/Referer fallback chain in particular is not trivial to get right, and `requirePermission()` checks the polizy-backed `authz` system first when configured, falling back to the role table only when it's not — a detail that's easy to miss if you reach for `AdminContext.auth.hasPermission()` directly instead. If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` anyway — you get all of this for free, no `withGuards()` needed.
 
 ### `publicRoutes` — declarative public-facing routes
 
@@ -371,7 +372,7 @@ Deno.test("my plugin", async () => {
 
 **Wrong file location.** Plugin files must be in `plugins/`. Placing them in `src/`, `routes/`, or the project root means they won't be found by `dune validate` and the plugin spec won't resolve correctly.
 
-**There is no `requirePermission`/`csrfCheck` import for plugin authors.** Those names exist only inside `@dune/plugin-admin`'s private route tree, not in any public export. A `mount()`-registered mutation route is unauthenticated by default — you must implement your own checks, or use `adminPages` (GET-only, auto-guarded) instead.
+**A `mount()`-registered mutation route is unauthenticated by default — wrap it in `withGuards()`.** `import { withGuards } from "@dune/plugin-admin/admin/guards"` (also exports `csrfCheck`/`requirePermission`/`validatePagePath` individually). Skipping this isn't a missing-import problem anymore, just an easy-to-forget step — `adminPages` (GET-only) still gets you auth/permission enforcement with zero extra code, if that's enough for your route.
 
 **`adminPages` paths are relative to the admin prefix.** `path: "/my-plugin"` → `/admin/my-plugin`. Writing `path: "/admin/my-plugin"` double-prefixes to `/admin/admin/my-plugin`.
 
