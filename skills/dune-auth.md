@@ -2,7 +2,7 @@
 
 Public (non-admin) user authentication. Two modes — pick one in `site.yaml`. Both populate `ctx.state.siteUser` (**not** `ctx.state.user`) with the same shape; middleware works identically regardless of mode.
 
-**As of 0.31.7, just writing `auth:` in `site.yaml` is enough — no manual wiring needed** in the normal `dune serve`/`dune dev` path (the `createDuneApp()` code both go through). `createDuneApp()` calls `mountDuneAuth(app, ctx)` automatically whenever `config.site.auth` is present at all — gated on presence alone, so a site that never writes an `auth:` block gets zero behavior change (no new directories, no `/auth/*` routes, no added per-request middleware). This landed alongside the export fix itself; on a version before 0.31.7, `mountDuneAuth()` had no public export under any subpath at all, and even a manual call was impossible.
+**Just writing `auth:` in `site.yaml` is enough — no manual wiring needed** in the normal `dune serve`/`dune dev` path (the `createDuneApp()` code both go through). `createDuneApp()` calls `mountDuneAuth(app, ctx)` automatically whenever `config.site.auth` is present at all — gated on presence alone, so a site that never writes an `auth:` block gets zero behavior change (no new directories, no `/auth/*` routes, no added per-request middleware).
 
 **Headless-mode sites still call it themselves** — headless mode doesn't go through `createDuneApp()`, so the auto-wiring above doesn't apply there. Call `mountDuneAuth(app, ctx)` explicitly from `main.ts`, the same way headless sites already call `mountDuneAdmin()`:
 
@@ -140,7 +140,7 @@ export async function handler(req: Request, ctx: FreshContext) {
 }
 ```
 
-`ctx.state.siteUser` is populated globally on every request by `mountDuneAuth()`'s middleware — automatically in the default/`dune serve` path as of 0.31.7 (see the top of this file), or once a headless site's own entrypoint calls it. No opt-in required to get the value. The middleware above only adds the redirect gate.
+`ctx.state.siteUser` is populated globally on every request by `mountDuneAuth()`'s middleware — automatically in the default/`dune serve` path (see the top of this file), or once a headless site's own entrypoint calls it. No opt-in required to get the value. The middleware above only adds the redirect gate.
 
 ### Require a specific role
 
@@ -199,7 +199,7 @@ For content gating via frontmatter `roles:`, this check runs automatically in th
 
 **`ctx.state.siteUser` is `null`, not `undefined`.**
 
-**`auth:` config is enough by itself in the default `dune serve` path as of 0.31.7** — `createDuneApp()` calls `mountDuneAuth()` automatically when it's present. Headless-mode sites still need to call `mountDuneAuth(app, ctx)` explicitly, since they don't go through `createDuneApp()`. On `@dune/core` versions before 0.31.7, the export didn't exist at all under any public subpath, and no amount of config or manual wiring could reach it — confirm your installed version before assuming any of this applies.
+**`auth:` config is enough by itself in the default `dune serve` path** — `createDuneApp()` calls `mountDuneAuth()` automatically when it's present. Headless-mode sites still need to call `mountDuneAuth(app, ctx)` explicitly, since they don't go through `createDuneApp()`.
 
 **There is no session-signing secret to configure.** No `SESSION_SECRET`, no `session.secret` YAML key — sessions are opaque IDs looked up server-side, not self-contained signed cookies.
 

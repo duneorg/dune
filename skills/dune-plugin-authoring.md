@@ -76,7 +76,7 @@ interface HookContext<T> {
   stopPropagation: () => void; // stop later hooks for this event from running
   setData: (data: T) => void;  // replace the payload the next hook in the chain sees
   jobs?: { run(name: string): Promise<void> }; // only set while the job scheduler is running
-  content?: ContentApi;        // only set once bootstrap() has built it — see below (0.31.7+)
+  content?: ContentApi;        // only set once bootstrap() has built it — see below
 }
 ```
 
@@ -86,7 +86,7 @@ There is **no** `email` or `db` field on this context — nothing is injected fo
 - **Email** — construct your own client in `setup()` and close over it in your hooks: `createEmailClient()`/`createEmailProvider()` from `@dune/core/email`.
 - **`db`** — there is no `ctx.db`, period, regardless of configuration. A plugin that needs the data layer imports `@dune/core/db` directly and builds its own repos from `schemas/*.yaml`, same as any other module.
 
-**`ctx.content` (0.31.7+) is the same `ContentApi` — `.pages()`, `.page()`, `.search()`, `.taxonomy()` — that `bootstrap.contentApi` exposes**, injected via `hooks.setContentApi()`. It's `undefined`, not a query-capable stub, for the handful of hooks that fire before `bootstrap()` finishes building it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. Present for every other live hook (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`). **Also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (with `--fire-hooks`) build outside a full `bootstrap()`** — those never call `setContentApi()` at all. `content:delete` is not in that group; it runs through a real `bootstrap()`, so its `onPageDelete` gets a working `ctx.content`. Always guard with `ctx.content?.` unless you've confirmed your specific hook only ever fires post-bootstrap. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest bootstrap hooks — filter/map that array directly there instead.
+**`ctx.content` is the same `ContentApi` — `.pages()`, `.page()`, `.search()`, `.taxonomy()` — that `bootstrap.contentApi` exposes**, injected via `hooks.setContentApi()`. It's `undefined`, not a query-capable stub, for the handful of hooks that fire before `bootstrap()` finishes building it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. Present for every other live hook (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`). **Also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (with `--fire-hooks`) build outside a full `bootstrap()`** — those never call `setContentApi()` at all. `content:delete` is not in that group; it runs through a real `bootstrap()`, so its `onPageDelete` gets a working `ctx.content`. Always guard with `ctx.content?.` unless you've confirmed your specific hook only ever fires post-bootstrap. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest bootstrap hooks — filter/map that array directly there instead.
 
 `data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onRequest` → `Request` directly (not wrapped); `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`). Check `src/hooks/types.ts`'s `HookEvent` union and the actual `hooks.fire()` call site for a given event (not just the docs) for its real shape — see the note below on hooks that are declared but never fired.
 
@@ -122,7 +122,7 @@ hooks: {
 }
 ```
 
-### Query the content index from a hook (0.31.7+)
+### Query the content index from a hook
 
 ```ts
 hooks: {
@@ -213,12 +213,12 @@ export default {
 
 `hooks: {}` on the plugin object is still required (`DunePlugin.hooks` isn't optional) even if you register everything dynamically through `setup()` instead.
 
-**As of 0.31.7, 4 of 24 declared hook names in the `HookEvent` union are still never fired — down from 13.** `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onApiRequest`, and `onApiResponse` all got real `hooks.fire()` call sites in 0.31.7 and are now live. `onRouteResolved`, `onPageLoaded`, `onAfterRender`, and `onResponse` remain declared but intentionally unimplemented — not overlooked, but genuine design questions with no clean fix:
+**4 of 24 declared hook names in the `HookEvent` union are never fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender`, and `onResponse` remain declared but intentionally unimplemented — not overlooked, but genuine design questions with no clean fix:
 
 - `onRouteResolved`/`onPageLoaded` describe a two-phase resolution (route matched to a lightweight `PageIndex`, then the full `Page` loaded) that doesn't exist in the current engine — `engine.resolve()` does both in one step and returns the full `Page` directly. Firing both as documented would mean fabricating a second event from data already in hand, or restructuring `resolve()` into two real phases.
 - `onAfterRender`/`onResponse` need the actual rendered HTML string, but Fresh's `render()` returns a `Response` directly — core never sees the HTML itself. Getting it would mean intercepting and buffering every response body into memory via `response.text()`, killing streaming, as a blanket per-request cost whether or not any plugin is listening.
 
-Both reasons are documented directly on the `HookEvent` type declaration in `src/hooks/types.ts`. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live as of 0.31.7: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onCacheInvalidate`, `onApiRequest`, `onApiResponse`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
+Both reasons are documented directly on the `HookEvent` type declaration in `src/hooks/types.ts`. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onCacheInvalidate`, `onApiRequest`, `onApiResponse`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
 
 ---
 

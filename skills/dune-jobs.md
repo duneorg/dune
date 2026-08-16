@@ -60,7 +60,7 @@ Standard five-field cron: `minute hour day-of-month month day-of-week`. Dune's o
 ```ts
 interface JobContext {
   content: DuneEngine;    // full engine — content.pages (array), content.loadPage(sourcePath); no .find()
-  contentApi: ContentApi; // .pages()/.page()/.search()/.taxonomy() — the friendlier query API (0.31.7+)
+  contentApi: ContentApi; // .pages()/.page()/.search()/.taxonomy() — the friendlier query API
   config: DuneConfig;     // config.site.* for what other docs call "SiteConfig" fields
   storage: StorageAdapter;
   logger: JobLogger;      // info(event, data?) / warn(event, data?) / error(event, data?)
@@ -68,7 +68,7 @@ interface JobContext {
 }
 ```
 
-**`contentApi` (0.31.7+) is always present, unlike hooks' `ctx.content`.** Jobs only ever run after a full `bootstrap()` has completed — there's no early-bootstrap window where it could be missing, so it's a required field, not optional. Both fields point at query surfaces for the same content, kept deliberately separate rather than merged: `content` is the raw engine your job may already depend on (`.pages` as a plain array property, no method call), `contentApi` is the same `ContentApi` `bootstrap.contentApi` exposes elsewhere. Prefer `contentApi` for anything beyond "iterate every page" — `.search()`/`.taxonomy()`/`.page()` aren't available on the raw engine at all.
+**`contentApi` is always present, unlike hooks' `ctx.content`.** Jobs only ever run after a full `bootstrap()` has completed — there's no early-bootstrap window where it could be missing, so it's a required field, not optional. Both fields point at query surfaces for the same content, kept deliberately separate rather than merged: `content` is the raw engine your job may already depend on (`.pages` as a plain array property, no method call), `contentApi` is the same `ContentApi` `bootstrap.contentApi` exposes elsewhere. Prefer `contentApi` for anything beyond "iterate every page" — `.search()`/`.taxonomy()`/`.page()` aren't available on the raw engine at all.
 
 (`src/jobs/types.ts`.) **There is no `db` field on `JobContext`, at any configuration.** If your job needs the data layer, import `@dune/core/db` directly and build your own repos from `schemas/*.yaml` — it's never injected, same as hooks (see `dune-plugin-authoring`'s note on the same fabricated "db-schema-layer" claim).
 
@@ -183,7 +183,7 @@ This is a DIY pattern, not something Dune ships or documents end-to-end — noth
 
 **One job per file.** The job name comes from the filename stem. Exporting multiple schedules from one file is not supported — create separate files.
 
-**`ctx.content` has no `.find()`.** It's the full `DuneEngine` — use `ctx.content.pages` (array) directly, or `ctx.content.loadPage(sourcePath)` for a single full `Page`. If you want something closer to a query API — `.search()`, `.taxonomy()`, filtered/ordered `.pages({...})` — use `ctx.contentApi` (0.31.7+) instead, not a method that doesn't exist on the raw engine.
+**`ctx.content` has no `.find()`.** It's the full `DuneEngine` — use `ctx.content.pages` (array) directly, or `ctx.content.loadPage(sourcePath)` for a single full `Page`. If you want something closer to a query API — `.search()`, `.taxonomy()`, filtered/ordered `.pages({...})` — use `ctx.contentApi` instead, not a method that doesn't exist on the raw engine.
 
 **There is no `ctx.db`, ever, on any job.** Same fabricated-elsewhere claim as plugin hooks — import `@dune/core/db` yourself if you need it.
 

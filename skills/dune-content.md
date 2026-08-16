@@ -161,7 +161,7 @@ export default async function PostTemplate({ page, children, site }: TemplatePro
 | `page` | `Page` (not `PageMeta` — that type doesn't exist) | `page.frontmatter` for YAML fields (**not** `page.title` — `Page` has no top-level `title`), `page.route`, `page.template`, `page.language`, `page.sourcePath` |
 | `children` | `unknown` | Pre-rendered content — a Preact vnode already wrapping the rendered HTML of the md/mdx body |
 | `site` | `SiteConfig` | Values from `site.yaml` |
-| `content` | `ContentApi \| undefined` (0.31.7+) | `.pages()`/`.page()`/`.search()`/`.taxonomy()` — same instance as `bootstrap.contentApi`. Populated on every normal render; see "Querying content" below for the rare fallback paths that omit it. |
+| `content` | `ContentApi \| undefined` | `.pages()`/`.page()`/`.search()`/`.taxonomy()` — same instance as `bootstrap.contentApi`. Populated on every normal render; see "Querying content" below for the rare fallback paths that omit it. |
 
 `children` is already a rendered vnode, not a raw HTML string — render it directly (`<div>{children}</div>`), don't pass it to `dangerouslySetInnerHTML`. For TSX content pages, the content file IS the component — no template is involved, but `ContentPageProps` gets the same `content` field.
 
@@ -186,7 +186,7 @@ Referencing a template that doesn't exist in the active theme is a validation er
 
 ## Querying content
 
-**There is no `ctx.content.find()`/`findOne()`, and no `type:` filter — and `ctx.content`/`props.content` doesn't mean quite the same thing in every context, even though all four now carry it as of 0.31.7.** What you actually get, and how reliably, depends on where you are:
+**There is no `ctx.content.find()`/`findOne()`, and no `type:` filter — and `ctx.content`/`props.content` doesn't mean quite the same thing in every context, even though all four carry it.** What you actually get, and how reliably, depends on where you are:
 
 - **Hooks (`HookContext`)** — `ctx.content` is the real `ContentApi` (see below) **once `bootstrap()` has finished building it** — `undefined` before that. Five hooks fire too early to have it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. It's populated for every other live hook. It's also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (`--fire-hooks`) build outside a full `bootstrap()` — `content:delete` is not in that group, since it runs through a real `bootstrap()`. Always guard with `ctx.content?.`. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest hooks — see `dune-plugin-authoring`.
 - **Background jobs (`JobContext`)** — two separate fields: `ctx.content` is still the full `DuneEngine` (`.pages` a plain array property, `.loadPage(sourcePath)` for one full `Page`), kept exactly as-is so existing jobs don't break; `ctx.contentApi` is the same `ContentApi` described below, and — unlike hooks' `ctx.content` — is **always present**, since jobs only ever run after bootstrap has fully completed. See `dune-jobs`.
@@ -366,9 +366,9 @@ dune blueprint:show blog-post --json  # machine-readable
 ```
 renders as a single four-item list (`1. Apple / 2. Banana / 3. Cherry / 4. Date`), not two separate two-item lists. To force a real break, put a thematic break (`---`) between them — that's the standard, portable technique, not a Dune-specific workaround.
 
-**GFM tables/strikethrough/task lists work in both Markdown and MDX (v0.31.7+).** `.md` pages get GFM via `marked`'s defaults. `.mdx` pages get it via `remarkGfm` passed to the MDX compiler — before v0.31.7, MDX pages had no GFM support and `| a | b |` table syntax rendered as literal text instead of an actual table. If you hit this on an older core version, either upgrade or write the equivalent structure as nested Markdown lists instead.
+**GFM tables/strikethrough/task lists work in both Markdown and MDX.** `.md` pages get GFM via `marked`'s defaults. `.mdx` pages get it via `remarkGfm` passed to the MDX compiler.
 
-**`dune content:list`/`content:check` only parse frontmatter — they never catch a page that fails to compile.** Indexing succeeding ("125 pages indexed") only means 125 files had valid YAML frontmatter; it says nothing about whether the body compiles. Run `dune content:check --render` (or `dune build`, which now detects and reports the same failures) to actually compile every `.md`/`.mdx` body and catch MDX errors before they reach production.
+**`dune content:list`/`content:check` only parse frontmatter — they never catch a page that fails to compile.** Indexing succeeding ("125 pages indexed") only means 125 files had valid YAML frontmatter; it says nothing about whether the body compiles. Run `dune content:check --render` (or `dune build`, which detects and reports the same failures) to actually compile every `.md`/`.mdx` body and catch MDX errors before they reach production.
 
 **The content query API is not `@dune/content` — it's `@dune/core/content`.** There is no `@dune/content` package at all; every import in this file that references content/template types uses the `@dune/core` subpath.
 
