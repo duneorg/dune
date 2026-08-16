@@ -5,6 +5,47 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`DunePlugin.publicRoutes` was only ever wired up by `@dune/plugin-admin`'s
+  `mount()` — never by `@dune/core` itself, despite being a core-declared
+  type.** `bootstrap()` always collected every plugin's `publicRoutes` onto
+  `BootstrapResult.pluginPublicRoutes`, but nothing turned that list into
+  live `app.get()`/etc. registrations unless `@dune/plugin-admin`'s
+  `mountDuneAdmin()` happened to run — meaning `admin.enabled: false`,
+  headless mode without an explicit `mountDuneAdmin()` call, and any
+  `bootstrap()`-only tool (e.g. `dune mcp:serve`) silently dropped every
+  plugin's `publicRoutes`, no error. Moved the registration logic
+  (reserved-prefix shadowing validation included) into `@dune/core` itself
+  — new `registerPluginPublicRoutes()` in `src/runtime/register-plugin-routes.ts`,
+  called directly from `createDuneApp()`. `@dune/plugin-admin`'s
+  `mountDuneAdmin()` now delegates to the same core function instead of
+  re-implementing it, so the headless-mode path (calling `mountDuneAdmin()`
+  without `createDuneApp()`) still gets `publicRoutes` too. A `WeakSet`
+  keyed by the bootstrap's `ctx` makes calling it twice for the same
+  bootstrap (which happens in the normal `dune serve` path — once from
+  `createDuneApp()` directly, once via `mountPlugins()` → plugin-admin's own
+  `mount()` → `mountDuneAdmin()`) a safe no-op instead of a duplicate
+  registration.
+
+  `DunePlugin.adminPages` is **not** part of this fix and stays
+  `@dune/plugin-admin`-owned — its registration enforces each page's
+  declared `permission` via the admin panel's own auth system, which core
+  has no reason to depend on. Corrected the `AdminPageRegistration` type
+  docstring, which previously (and inaccurately) claimed "the bootstrap
+  process" wires it — it's `@dune/plugin-admin`'s `mountDuneAdmin()`, and
+  core's own `bootstrap()` doesn't even collect it.
+
+  Real end-to-end tests, not just type-checks:
+  `tests/runtime/register_plugin_routes_test.ts` — a plugin route resolving
+  through `createDuneApp()` alone with no admin package present at all, a
+  non-GET method, the reserved-prefix rejection, and the double-call/no-op
+  dedup behavior via a real `App.handler()`.
+
+---
+
 ## [0.31.7] — 2026-08-13
 
 ### Fixed

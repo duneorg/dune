@@ -174,10 +174,14 @@ export interface PluginApi {
 /**
  * A public-facing route contributed by a plugin.
  *
- * Plugins register these via `DunePlugin.publicRoutes`. The bootstrap process
- * collects them and wires them as programmatic Fresh routes before the content
- * catch-all handler. Unlike `onRequest`, these are proper Fresh routes with
- * access to `ctx.render()`, islands, and middleware.
+ * Plugins register these via `DunePlugin.publicRoutes`. `bootstrap()` collects
+ * them onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` wires
+ * them as programmatic Fresh routes before the content catch-all handler —
+ * this happens in `@dune/core` itself (`registerPluginPublicRoutes()`), so it
+ * works in every `createDuneApp()` context (headless, `admin.enabled: false`,
+ * etc.), not only when an admin package's `mount()` happens to run. Unlike
+ * `onRequest`, these are proper Fresh routes with access to `ctx.render()`,
+ * islands, and middleware.
  *
  * @since 1.1.0
  */
@@ -206,9 +210,17 @@ export interface PublicRouteRegistration {
 /**
  * A custom admin page contributed by a plugin.
  *
- * Plugins register these via `DunePlugin.adminPages`. The bootstrap process
- * collects them and wires them as programmatic Fresh routes after the core
- * admin file-system routes are mounted.
+ * Plugins register these via `DunePlugin.adminPages`. Unlike `publicRoutes`,
+ * this is **not** wired by `@dune/core` itself — `@dune/core`'s own
+ * `bootstrap()` doesn't even collect it. It's an opt-in contract that
+ * `@dune/plugin-admin`'s `mountDuneAdmin()` reads directly from
+ * `hooks.plugins()` and wires as programmatic Fresh routes (after the core
+ * admin file-system routes), enforcing each page's declared `permission` via
+ * the admin panel's own auth system along the way. A site running without
+ * `@dune/plugin-admin` (or any equivalent admin package calling this same
+ * contract) gets no `adminPages` registration at all — there is no core
+ * fallback. Deliberate: enforcing `permission` needs an admin-panel-specific
+ * auth/permission system that `@dune/core` has no reason to depend on.
  *
  * @since 0.7.0
  */

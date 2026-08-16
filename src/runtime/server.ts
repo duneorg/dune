@@ -30,6 +30,9 @@ import { registerHealthRoutes } from "./register-health.ts";
 import { registerFeeds } from "./register-feeds.ts";
 import { registerStaticRoutes } from "./register-static.ts";
 import { registerContentCatchAll } from "./register-middleware.ts";
+import { registerPluginPublicRoutes } from "./register-plugin-routes.ts";
+export { registerPluginPublicRoutes } from "./register-plugin-routes.ts";
+export type { RegisterPluginPublicRoutesOptions } from "./register-plugin-routes.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -207,6 +210,11 @@ export async function createDuneApp(
 
   // 4. Sitemap, feeds, staged preview, dev SSE
   const { notifyReload } = await registerFeeds(app, ctx, { port, dev });
+
+  // 4b. Plugin public routes (DunePlugin.publicRoutes) — core-owned, unlike
+  // adminPages, so this works in every createDuneApp() context regardless of
+  // whether @dune/plugin-admin (or any admin package) is present.
+  registerPluginPublicRoutes(app, ctx, { adminPrefix });
 
   // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
   await mountPlugins(app, ctx);
