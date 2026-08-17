@@ -9,6 +9,28 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`SiteUser.create()` had a TOCTOU race that could orphan an account.**
+  `create()`/`saveUser()` wrote the user record and the by-email index as
+  two separate, non-atomic `storage.write()` calls, with no existence check
+  before the final write. Callers in `src/auth/routes.ts` do check
+  `getByEmail()`/`getByProvider()` before calling `create()`, but that
+  check-then-act wasn't atomic: two near-simultaneous requests with the same
+  email (a double-clicked OAuth button, two magic-link redeems racing) could
+  both pass the check as `null`, both call `create()`, and the second write
+  would silently win — the first `SiteUser` record still exists on disk but
+  becomes permanently unreachable by email lookup, and any future login by
+  that email lands on the second account instead. Added an in-process async
+  lock (keyed by lowercased email) around `create()`, re-checking
+  `getByEmail()` inside the lock before writing — a losing concurrent
+  `create()` now throws a new `DuplicateEmailError` instead of silently
+  overwriting the index, and both callers in `routes.ts` catch it and
+  re-fetch the winner's record. The `db`-tier store already has a real
+  `UNIQUE` constraint on email and isn't affected — this was specific to the
+  flat-file `local` tier. Real regression test in
+  `tests/auth/user_store_test.ts`: fires two concurrent `create()` calls
+  with the same email and asserts exactly one account results, reachable by
+  email, with no orphan.
+
 - **`DunePlugin.publicRoutes` was only ever wired up by `@dune/plugin-admin`'s
   `mount()` — never by `@dune/core` itself, despite being a core-declared
   type.** `bootstrap()` always collected every plugin's `publicRoutes` onto
