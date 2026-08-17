@@ -26,6 +26,7 @@ import { setGatingAuthz } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 import { handleWebhook } from "./webhook.ts";
 import { logger } from "../core/logger.ts";
+import type { SiteConfig } from "../config/site-config.ts";
 
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
@@ -52,7 +53,7 @@ export async function mountDuneAuth(
   ctx: BootstrapResult,
 ): Promise<PublicAuthContext> {
   const { config, storage } = ctx;
-  const authConfig = (config.site as any).auth as SiteAuthConfig | undefined;
+  const authConfig: SiteConfig["auth"] = config.site.auth;
 
   const adminCfg = config.admin ?? { dataDir: "data", runtimeDir: ".dune/admin" };
   const dataDir = adminCfg.dataDir ?? "data";
@@ -357,7 +358,7 @@ export async function mountDuneAuth(
   // Only active in external-jwt + authzStore:local mode when webhook is configured.
   // Handles user.deleted → revoke authz tuples. Role changes are handled per-request
   // by fingerprint reconciliation and do not require a webhook.
-  const webhookCfg = (authConfig as SiteAuthConfig | undefined)?.webhook;
+  const webhookCfg = authConfig?.webhook;
   if (webhookCfg && mountAuthz && mode === "external-jwt") {
     const whSecret = expandEnv(webhookCfg.secret);
     if (whSecret.trim().length < 16) {
@@ -405,35 +406,12 @@ function expandEnv(value: string): string {
   return value;
 }
 
-// ── Config types (inline — avoid circular import with config/types.ts) ────────
-
-interface SiteAuthConfig {
-  mode?: "dune" | "external-jwt";
-  providers?: {
-    github?: { clientId: string; clientSecret: string };
-    google?: { clientId: string; clientSecret: string };
-    discord?: { clientId: string; clientSecret: string };
-    magicLink?: { enabled: boolean };
-  };
-  jwt?: {
-    secret?: string;
-    jwksUrl?: string;
-    userIdClaim?: string;
-    emailClaim?: string;
-    rolesClaim?: string;
-    issuer?: string;
-    audience?: string;
-    algorithm?: "HS256" | "RS256";
-  };
-  sessionLifetime?: number;
-  userStore?: "local" | "session" | "db";
-  /** Storage tier for permission tuples. Default: "local". */
-  authzStore?: "local" | "db";
-  /** IdP webhook configuration for external-jwt + authzStore:local mode. */
-  webhook?: {
-    provider: "clerk" | "auth0" | "generic";
-    secret: string;
-    /** Custom signature header for "generic" provider. Default: "x-dune-signature". */
-    signatureHeader?: string;
-  };
-}
+// ── Config types ────────────────────────────────────────────────────────────
+//
+// Previously duplicated SiteConfig["auth"]'s shape here by hand ("avoid
+// circular import with config/types.ts") — but importing the real type
+// directly (not through the config/types.ts barrel, which is what actually
+// had the cycle) works fine, per `deno check`, and removes a copy that had
+// already drifted once: this file's authzStore was correctly typed while
+// the canonical SiteConfig.auth didn't have the field at all until
+// decisions/dec-identity-unification.md's Phase 2. One type, not two.

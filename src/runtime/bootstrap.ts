@@ -472,18 +472,17 @@ export async function bootstrap(
 
   // 11. Authorization (Polizy) — created in core so that admin-user tuples
   // (@dune/plugin-admin) and site-user tuples (mountDuneAuth) share one index.
-  // Reading auth mode from site config (public auth, not the admin auth provider).
-  // deno-lint-ignore no-explicit-any
-  const _siteAuthCfg = ((config.site as any).auth) as
-    | Record<string, unknown>
-    | undefined;
-  const _siteAuthMode = (_siteAuthCfg?.mode as string | undefined) ?? "dune";
-  // In "dune" mode authzStore defaults to "local".
-  // In "external-jwt" mode authzStore must be explicitly opted into — no default,
-  // because an external JWT provider owns roles in that topology and we must not
-  // silently create a local tuple store that would never be consulted.
-  const _authzStoreCfg = (_siteAuthCfg?.authzStore as string | undefined) ??
-    (_siteAuthMode === "dune" ? "local" : undefined);
+  //
+  // Admin-side authz creation reads `admin.authzStore` — its own setting,
+  // independent of `site.auth`'s (public-auth) mode/authzStore. It used to
+  // read the public-auth config for this too, which meant a site running
+  // `site.auth.mode: "external-jwt"` (or `site.auth.authzStore: "db"`)
+  // silently lost real admin-panel permission checking as well, even though
+  // AdminUser tuples (bootstrapAdminTuples()) have nothing to do with how
+  // public site users authenticate. Default is "local", created whenever
+  // the admin panel itself is enabled — see AdminConfig.authzStore's doc
+  // comment (src/config/admin-config.ts) for the full reasoning.
+  const adminAuthzStoreCfg = adminConfig.authzStore ?? "local";
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
@@ -494,7 +493,7 @@ export async function bootstrap(
     return null;
   });
 
-  if (adminConfig.enabled !== false && _authzStoreCfg === "local") {
+  if (adminConfig.enabled !== false && adminAuthzStoreCfg === "local") {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",

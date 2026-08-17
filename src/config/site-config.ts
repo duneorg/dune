@@ -300,6 +300,29 @@ export interface SiteConfig {
      */
     userStore?: "local" | "session" | "db";
     /**
+     * Polizy authz tuple store for *public*-auth permission checks (content
+     * gating via `roles:` frontmatter, `authz.check()` calls against
+     * site users). Independent of `admin.authzStore`, which gates the
+     * admin panel's own permission checks.
+     *
+     *   "local" — flat-file tuples in `data/permissions/` (default in
+     *             `mode: "dune"`; must be set explicitly in
+     *             `mode: "external-jwt"` — see below)
+     *   "db"    — tuples in a database table
+     *
+     * In `mode: "dune"`, defaults to `"local"` — a site gets working authz
+     * with zero extra config. In `mode: "external-jwt"`, there is no
+     * default: an external JWT provider owns roles in that topology, and
+     * Dune must not silently create a local tuple store that would never
+     * be consulted unless a site explicitly opts in.
+     *
+     * This setting only ever affected public/site-user authz — it never
+     * gated whether the *admin panel's* own authz instance gets created,
+     * even though an earlier version of the runtime accidentally read it
+     * for that too. See `admin.authzStore`.
+     */
+    authzStore?: "local" | "db";
+    /**
      * IdP webhook configuration — enables POST /auth/webhook for receiving
      * user lifecycle events from the external identity provider.
      *

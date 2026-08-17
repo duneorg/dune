@@ -230,6 +230,26 @@ export interface AdminConfig {
    */
   auth_provider?: AuthProviderConfig;
   /**
+   * Polizy authz tuple store for the admin panel's own permission checks
+   * (`pages.update`, `users.manage`, etc.) — independent of
+   * `site.auth.authzStore`, which is a *public*-auth setting for site
+   * visitors. Default: `"local"`, created automatically whenever the admin
+   * panel is enabled, regardless of what (if anything) `site.auth` is
+   * configured to. Deliberately decoupled: an admin's tuples
+   * (`bootstrapAdminTuples()`) are a different identity concern from
+   * site-user tuples, and previously creation of this authz instance was
+   * accidentally gated on the public-auth config instead of its own
+   * setting — a site running `site.auth.mode: external-jwt` (or
+   * `authzStore: "db"`) would silently lose real admin-panel permission
+   * checking too, falling back to the flat `ROLE_PERMISSIONS` table with
+   * no warning.
+   *
+   * Only `"local"` is implemented today — a `"db"` tier (mirroring
+   * `site.auth.authzStore`'s db-backed option) isn't wired up for the
+   * admin side yet.
+   */
+  authzStore?: "local";
+  /**
    * Audit log configuration.
    * Records admin panel actions with actor, timestamp, IP, and outcome.
    */
