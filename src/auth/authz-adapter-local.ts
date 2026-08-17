@@ -8,6 +8,21 @@
  * On restart the index is rebuilt from disk — consistent with Dune's in-memory
  * rebuild pattern (search index, content index, etc.).
  *
+ * Beyond the flat `tuples` map (id → tuple), three composite-key indexes —
+ * by subject+relation, by object+relation, and by subject+object+relation —
+ * back `findObjects()`, `findSubjects()`, and `hasTuple()` respectively, per
+ * decisions/dec-auth-storage.md's original design. Each is a plain in-memory
+ * `Map<string, Set<string>>` of tuple ids, kept in sync by `indexTuple()`/
+ * `unindexTuple()` on every load/write/delete — not Deno KV despite the
+ * decision doc's literal `Deno.openKv()`-style key examples; a hand-rolled
+ * Map delivers the same O(1) hot-path lookup without an extra dependency,
+ * consistent with everything else in this adapter already being plain
+ * in-memory structures backed by flat files. `findTuples()` and `delete()`
+ * keep their full-scan behavior — their filters are genuinely partial
+ * (any of subject/relation/object may be omitted), which doesn't map onto
+ * any single fixed composite key the way the other three methods' full
+ * subject+relation / object+relation / subject+object+relation lookups do.
+ *
  * Write and delete operations update both the on-disk file and the in-memory
  * index atomically from the perspective of a single-process Deno server.
  * Multi-process deployments should use AuthzDbAdapter backed by a shared DB.
@@ -71,6 +86,23 @@ export class AuthzLocalAdapter {
   private readonly strictHmac: boolean;
   /** In-memory tuple index — rebuilt from disk on first access */
   private readonly tuples: Map<string, PolizyStoredTuple> = new Map();
+  /**
+   * Composite-key hot-path indexes, per decisions/dec-auth-storage.md:
+   *   subject  → ["subject", sType, sId, relation]        → tuple ids
+   *   object   → ["object",  oType, oId, relation]         → tuple ids
+   *   s-o      → ["s-o", sType, sId, oType, oId, relation]  → tuple ids
+   * Each value is a Set (not a single id) because write() never checked for
+   * an existing identical tuple before creating a new one — callers that
+   * skip hasTuple() first could in principle produce more than one tuple
+   * file for the same subject+object+relation, and the index has to stay
+   * correct if that ever happens rather than silently dropping one.
+   * Kept in sync by indexTuple()/unindexTuple() on every write()/delete()/
+   * initial load — never rebuilt by re-scanning `tuples`.
+   */
+  private readonly bySubjectRelation: Map<string, Set<string>> = new Map();
+  private readonly byObjectRelation: Map<string, Set<string>> = new Map();
+  private readonly bySubjectObjectRelation: Map<string, Set<string>> =
+    new Map();
   private loaded = false;
   /**
    * In-flight load promise — shared by all concurrent callers so they all await
@@ -99,6 +131,111 @@ export class AuthzLocalAdapter {
     this.strictHmac = config.strictHmac ?? authzStrictHmacFromEnv();
   }
 
+  // ── Composite-key index maintenance ─────────────────────────────────────────
+
+  // JSON.stringify() of a same-length string array is injective — two
+  // different (type, id, relation) triples can never produce the same key,
+  // without needing a delimiter character that itself risks colliding with
+  // application data. (An earlier version of this used a NUL-byte
+  // delimiter, which is collision-safe too but makes git/most tooling treat
+  // the whole file as binary — no line diffs, awkward in review. Plain
+  // JSON avoids that entirely and stays readable.)
+  private static subjectRelationKey(
+    subject: { type: string; id: string },
+    relation: string,
+  ): string {
+    return JSON.stringify([subject.type, subject.id, relation]);
+  }
+
+  private static objectRelationKey(
+    object: { type: string; id: string },
+    relation: string,
+  ): string {
+    return JSON.stringify([object.type, object.id, relation]);
+  }
+
+  private static subjectObjectRelationKey(
+    subject: { type: string; id: string },
+    object: { type: string; id: string },
+    relation: string,
+  ): string {
+    return JSON.stringify([
+      subject.type,
+      subject.id,
+      object.type,
+      object.id,
+      relation,
+    ]);
+  }
+
+  private static addToIndex(
+    index: Map<string, Set<string>>,
+    key: string,
+    tupleId: string,
+  ): void {
+    let set = index.get(key);
+    if (!set) {
+      set = new Set();
+      index.set(key, set);
+    }
+    set.add(tupleId);
+  }
+
+  private static removeFromIndex(
+    index: Map<string, Set<string>>,
+    key: string,
+    tupleId: string,
+  ): void {
+    const set = index.get(key);
+    if (!set) return;
+    set.delete(tupleId);
+    if (set.size === 0) index.delete(key);
+  }
+
+  private indexTuple(tuple: PolizyStoredTuple): void {
+    AuthzLocalAdapter.addToIndex(
+      this.bySubjectRelation,
+      AuthzLocalAdapter.subjectRelationKey(tuple.subject, tuple.relation),
+      tuple.id,
+    );
+    AuthzLocalAdapter.addToIndex(
+      this.byObjectRelation,
+      AuthzLocalAdapter.objectRelationKey(tuple.object, tuple.relation),
+      tuple.id,
+    );
+    AuthzLocalAdapter.addToIndex(
+      this.bySubjectObjectRelation,
+      AuthzLocalAdapter.subjectObjectRelationKey(
+        tuple.subject,
+        tuple.object,
+        tuple.relation,
+      ),
+      tuple.id,
+    );
+  }
+
+  private unindexTuple(tuple: PolizyStoredTuple): void {
+    AuthzLocalAdapter.removeFromIndex(
+      this.bySubjectRelation,
+      AuthzLocalAdapter.subjectRelationKey(tuple.subject, tuple.relation),
+      tuple.id,
+    );
+    AuthzLocalAdapter.removeFromIndex(
+      this.byObjectRelation,
+      AuthzLocalAdapter.objectRelationKey(tuple.object, tuple.relation),
+      tuple.id,
+    );
+    AuthzLocalAdapter.removeFromIndex(
+      this.bySubjectObjectRelation,
+      AuthzLocalAdapter.subjectObjectRelationKey(
+        tuple.subject,
+        tuple.object,
+        tuple.relation,
+      ),
+      tuple.id,
+    );
+  }
+
   // ── Lazy index load ─────────────────────────────────────────────────────────
 
   private ensureLoaded(): Promise<void> {
@@ -114,7 +251,9 @@ export class AuthzLocalAdapter {
             .map(async (e) => {
               try {
                 const raw = await this.storage.read(e.path);
-                const tuple = JSON.parse(new TextDecoder().decode(raw)) as SignedTuple;
+                const tuple = JSON.parse(
+                  new TextDecoder().decode(raw),
+                ) as SignedTuple;
                 if (!tuple.id) return;
 
                 // HMAC verification — only when a key is configured
@@ -143,7 +282,9 @@ export class AuthzLocalAdapter {
 
                 // Strip the hmac field before storing in the in-memory index
                 const { hmac: _hmac, ...stored } = tuple;
-                this.tuples.set(stored.id, stored as PolizyStoredTuple);
+                const storedTuple = stored as PolizyStoredTuple;
+                this.tuples.set(storedTuple.id, storedTuple);
+                this.indexTuple(storedTuple);
               } catch {
                 // Skip corrupt files
               }
@@ -181,6 +322,7 @@ export class AuthzLocalAdapter {
         new TextEncoder().encode(JSON.stringify(onDisk, null, 2)),
       );
       this.tuples.set(id, stored);
+      this.indexTuple(stored);
       results.push(stored);
     }
     return results;
@@ -199,6 +341,7 @@ export class AuthzLocalAdapter {
           // process restart the file will still be present and the tuple will be
           // reloaded — stale permissions are the safe-fail direction here.
           this.tuples.delete(id);
+          this.unindexTuple(tuple);
           count++;
         } catch (err) {
           // File already gone is fine — remove from in-memory index so the two
@@ -206,10 +349,11 @@ export class AuthzLocalAdapter {
           // in-memory entry is left intact so a restart can reload from disk.
           const isGone = err instanceof Error &&
             (err.message.includes("ENOENT") ||
-             err.message.includes("not found") ||
-             err.message.includes("No such file"));
+              err.message.includes("not found") ||
+              err.message.includes("No such file"));
           if (isGone) {
             this.tuples.delete(id);
+            this.unindexTuple(tuple);
             count++;
           } else {
             logger.warn("authz.tuple.delete_failed", {
@@ -223,17 +367,27 @@ export class AuthzLocalAdapter {
     return count;
   }
 
-  async findTuples(filter: Partial<PolizyInputTuple>): Promise<PolizyStoredTuple[]> {
+  async findTuples(
+    filter: Partial<PolizyInputTuple>,
+  ): Promise<PolizyStoredTuple[]> {
     await this.ensureLoaded();
     return [...this.tuples.values()].filter((t) => {
       if (filter.subject) {
-        if (t.subject.type !== filter.subject.type || t.subject.id !== filter.subject.id) {
+        if (
+          t.subject.type !== filter.subject.type ||
+          t.subject.id !== filter.subject.id
+        ) {
           return false;
         }
       }
-      if (filter.relation !== undefined && t.relation !== filter.relation) return false;
+      if (filter.relation !== undefined && t.relation !== filter.relation) {
+        return false;
+      }
       if (filter.object) {
-        if (t.object.type !== filter.object.type || t.object.id !== filter.object.id) {
+        if (
+          t.object.type !== filter.object.type ||
+          t.object.id !== filter.object.id
+        ) {
           return false;
         }
       }
@@ -247,16 +401,16 @@ export class AuthzLocalAdapter {
     options?: { subjectType?: string },
   ): Promise<{ type: string; id: string }[]> {
     await this.ensureLoaded();
+    const tupleIds = this.byObjectRelation.get(
+      AuthzLocalAdapter.objectRelationKey(object, relation),
+    );
+    if (!tupleIds) return [];
     const results: { type: string; id: string }[] = [];
-    for (const t of this.tuples.values()) {
-      if (
-        t.object.type === object.type &&
-        t.object.id === object.id &&
-        t.relation === relation
-      ) {
-        if (!options?.subjectType || t.subject.type === options.subjectType) {
-          results.push({ type: t.subject.type, id: t.subject.id });
-        }
+    for (const id of tupleIds) {
+      const t = this.tuples.get(id);
+      if (!t) continue; // index/store desync should be impossible, but don't crash on it
+      if (!options?.subjectType || t.subject.type === options.subjectType) {
+        results.push({ type: t.subject.type, id: t.subject.id });
       }
     }
     return results;
@@ -268,16 +422,16 @@ export class AuthzLocalAdapter {
     options?: { objectType?: string },
   ): Promise<{ type: string; id: string }[]> {
     await this.ensureLoaded();
+    const tupleIds = this.bySubjectRelation.get(
+      AuthzLocalAdapter.subjectRelationKey(subject, relation),
+    );
+    if (!tupleIds) return [];
     const results: { type: string; id: string }[] = [];
-    for (const t of this.tuples.values()) {
-      if (
-        t.subject.type === subject.type &&
-        t.subject.id === subject.id &&
-        t.relation === relation
-      ) {
-        if (!options?.objectType || t.object.type === options.objectType) {
-          results.push({ type: t.object.type, id: t.object.id });
-        }
+    for (const id of tupleIds) {
+      const t = this.tuples.get(id);
+      if (!t) continue; // index/store desync should be impossible, but don't crash on it
+      if (!options?.objectType || t.object.type === options.objectType) {
+        results.push({ type: t.object.type, id: t.object.id });
       }
     }
     return results;
@@ -285,15 +439,24 @@ export class AuthzLocalAdapter {
 
   // ── Internal ────────────────────────────────────────────────────────────────
 
-  private matchesFilter(tuple: PolizyStoredTuple, filter: PolizyDeleteFilter): boolean {
+  private matchesFilter(
+    tuple: PolizyStoredTuple,
+    filter: PolizyDeleteFilter,
+  ): boolean {
     if (filter.who) {
-      if (tuple.subject.type !== filter.who.type || tuple.subject.id !== filter.who.id) {
+      if (
+        tuple.subject.type !== filter.who.type ||
+        tuple.subject.id !== filter.who.id
+      ) {
         return false;
       }
     }
     if (filter.was !== undefined && tuple.relation !== filter.was) return false;
     if (filter.onWhat) {
-      if (tuple.object.type !== filter.onWhat.type || tuple.object.id !== filter.onWhat.id) {
+      if (
+        tuple.object.type !== filter.onWhat.type ||
+        tuple.object.id !== filter.onWhat.id
+      ) {
         return false;
       }
     }
@@ -321,17 +484,12 @@ export class AuthzLocalAdapter {
     object: { type: string; id: string },
   ): Promise<boolean> {
     await this.ensureLoaded();
-    for (const t of this.tuples.values()) {
-      if (
-        t.subject.type === subject.type &&
-        t.subject.id === subject.id &&
-        t.relation === relation &&
-        t.object.type === object.type &&
-        t.object.id === object.id
-      ) {
-        return true;
-      }
-    }
-    return false;
+    const key = AuthzLocalAdapter.subjectObjectRelationKey(
+      subject,
+      object,
+      relation,
+    );
+    const tupleIds = this.bySubjectObjectRelation.get(key);
+    return (tupleIds?.size ?? 0) > 0;
   }
 }
