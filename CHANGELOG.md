@@ -66,6 +66,29 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   non-GET method, the reserved-prefix rejection, and the double-call/no-op
   dedup behavior via a real `App.handler()`.
 
+- **The admin panel's own Polizy authz instance was created based on
+  `site.auth`'s (public-auth) mode/`authzStore`, not any admin-specific
+  setting.** A site running `site.auth.mode: "external-jwt"` with no
+  explicit `site.auth.authzStore` — a valid, common setup where an
+  external IdP owns public-user roles — silently ended up with no
+  admin-panel authz instance either, even though admin-user tuples
+  (`bootstrapAdminTuples()`) are an unrelated identity concern from
+  site-user tuples. `requirePermission()` would then silently fall back
+  to the flat `ROLE_PERMISSIONS` table with no warning. Added
+  `AdminConfig.authzStore?: "local"` (`src/config/admin-config.ts`) as
+  the admin panel's own, independent setting (default `"local"`, created
+  whenever `admin.enabled !== false`); `bootstrap.ts`'s admin-side authz
+  creation no longer reads `site.auth` at all. Also properly typed
+  `SiteConfig.auth.authzStore?: "local" | "db"` on the public-auth side
+  (`src/config/site-config.ts`) — previously only described in doc-comment
+  prose, read via `as any` casts everywhere — and removed a hand-duplicated
+  `SiteAuthConfig` interface in `src/auth/mount.ts` that had already
+  drifted from the (until now, incomplete) canonical type. Real regression
+  test in `tests/runtime/bootstrap_admin_authz_test.ts`, verified to fail
+  against the pre-fix code: boots a real site in `external-jwt` mode with
+  no `authzStore` set and asserts `ctx.authz`/`ctx.authzAdapter` are still
+  populated.
+
 ### Changed
 
 - **`AuthzLocalAdapter`'s `hasTuple()`/`findSubjects()`/`findObjects()` are
