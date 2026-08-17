@@ -110,6 +110,22 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   adapter instance reloads the same tuples from disk. Full existing
   26-test suite passes unchanged.
 
+- **Renamed `AdminRole` → `Role`, `SiteUserCreate` → `UserCreate`.**
+  `decisions/dec-identity-unification.md`'s Phase 3: `AdminRole` read as
+  admin-scoped on its face — a likely root cause of why the public-auth
+  `SiteUser` system forked into a wholly separate store from
+  `@dune/plugin-admin`'s user records instead of extending them, even
+  though the original project intent specced one unified user/role system
+  from the start. Bare `Role` (matching Django/Rails/Laravel/WordPress
+  convention) removes that false signal ahead of a later phase that
+  unifies the two stores. `@dune/plugin-admin`'s equivalent `AdminUser` →
+  `User` rename ships as a **breaking 2.0.0** change in that package (past
+  its 1.0 API-stability line); this side is non-breaking — `@dune/core` is
+  still pre-1.0, and `SiteUserCreate`/`SiteUser` aren't part of any
+  published subpath export in the first place. Full 1504-test suite and
+  `deno task check` pass unchanged — purely a rename, no behavioral
+  change.
+
 ---
 
 ## [0.31.7] — 2026-08-13
