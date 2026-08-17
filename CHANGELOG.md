@@ -66,6 +66,27 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   non-GET method, the reserved-prefix rejection, and the double-call/no-op
   dedup behavior via a real `App.handler()`.
 
+### Changed
+
+- **`AuthzLocalAdapter`'s `hasTuple()`/`findSubjects()`/`findObjects()` are
+  now indexed instead of doing a full linear scan over every permission
+  tuple on every call.** `decisions/dec-auth-storage.md` specified three
+  composite-key indexes (subject+relation, object+relation,
+  subject+object+relation) for exactly these hot paths — none of them
+  existed; every polizy permission check re-scanned the entire in-memory
+  tuple set regardless of how many tuples actually matched. Added three
+  `Map<string, Set<string>>` indexes, kept in sync on every `write()`,
+  `delete()`, and the initial disk-load path, with no change to any public
+  method's signature or semantics. `findTuples()`/`delete()` keep their
+  full-scan behavior deliberately — their filters can be genuinely partial
+  in a way that doesn't map onto a single fixed composite key, which was
+  the original spec's scope, not something missed here. Real tests in
+  `tests/auth/authz_test.ts`: correctness across ~45 tuples spanning
+  multiple relations/objects, `subjectType`/`objectType` option filtering,
+  index correctness after deletes, and index correctness when a second
+  adapter instance reloads the same tuples from disk. Full existing
+  26-test suite passes unchanged.
+
 ---
 
 ## [0.31.7] — 2026-08-13
