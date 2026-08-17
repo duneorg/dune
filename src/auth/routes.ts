@@ -17,7 +17,7 @@
 
 import { encodeHex } from "@std/encoding/hex";
 import type { SiteUser } from "./types.ts";
-import type { SiteUserStore } from "./user-store.ts";
+import { DuplicateEmailError, type SiteUserStore } from "./user-store.ts";
 import type { SiteAuthMiddleware } from "./middleware.ts";
 import { OAUTH_STATE_COOKIE } from "./middleware.ts";
 import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
@@ -222,14 +222,22 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
           user = (await userStore.getById(user.id))!;
         } else {
           // Create new user
-          user = await userStore.create({
-            email: profile.email,
-            name: profile.name,
-            avatarUrl: profile.avatarUrl,
-            provider: providerName,
-            providerId: profile.id,
-            roles: [],
-          });
+          try {
+            user = await userStore.create({
+              email: profile.email,
+              name: profile.name,
+              avatarUrl: profile.avatarUrl,
+              provider: providerName,
+              providerId: profile.id,
+              roles: [],
+            });
+          } catch (err) {
+            if (!(err instanceof DuplicateEmailError)) throw err;
+            // Lost a create() race against a concurrent request for the same
+            // email — the winner's record is now the source of truth.
+            user = await userStore.getByEmail(profile.email);
+            if (!user) throw err;
+          }
         }
 
         if (!user.enabled) {
@@ -360,11 +368,19 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       // userStoreType: "local" — upsert a persistent user record.
       let user = await userStore.getByEmail(email);
       if (!user) {
-        user = await userStore.create({
-          email,
-          provider: "magic",
-          roles: [],
-        });
+        try {
+          user = await userStore.create({
+            email,
+            provider: "magic",
+            roles: [],
+          });
+        } catch (err) {
+          if (!(err instanceof DuplicateEmailError)) throw err;
+          // Lost a create() race against a concurrent request for the same
+          // email — the winner's record is now the source of truth.
+          user = await userStore.getByEmail(email);
+          if (!user) throw err;
+        }
       } else {
         await userStore.update(user.id, { lastSeenAt: Date.now() });
       }

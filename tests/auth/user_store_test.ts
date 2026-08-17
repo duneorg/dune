@@ -2,8 +2,15 @@
  * Tests for LocalSiteUserStore — CRUD and index lookups.
  */
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createLocalSiteUserStore } from "../../src/auth/user-store.ts";
+import {
+  assertEquals,
+  assertInstanceOf,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  createLocalSiteUserStore,
+  DuplicateEmailError,
+} from "../../src/auth/user-store.ts";
 
 // Minimal in-memory StorageAdapter for tests
 function createMemoryStorage() {
@@ -20,14 +27,26 @@ function createMemoryStorage() {
       return new TextDecoder().decode(d);
     },
     async write(path: string, data: Uint8Array | string) {
-      files.set(path, typeof data === "string" ? new TextEncoder().encode(data) : data);
+      files.set(
+        path,
+        typeof data === "string" ? new TextEncoder().encode(data) : data,
+      );
     },
-    async exists(path: string) { return files.has(path); },
-    async delete(path: string) { files.delete(path); },
+    async exists(path: string) {
+      return files.has(path);
+    },
+    async delete(path: string) {
+      files.delete(path);
+    },
     async list(dir: string) {
       const prefix = dir.endsWith("/") ? dir : dir + "/";
       const seen = new Set<string>();
-      const result: { name: string; path: string; isFile: boolean; isDirectory: boolean }[] = [];
+      const result: {
+        name: string;
+        path: string;
+        isFile: boolean;
+        isDirectory: boolean;
+      }[] = [];
       for (const key of files.keys()) {
         if (!key.startsWith(prefix)) continue;
         const rest = key.slice(prefix.length);
@@ -36,26 +55,42 @@ function createMemoryStorage() {
         if (seen.has(segment)) continue;
         seen.add(segment);
         const isDir = rest.includes("/");
-        result.push({ name: segment, path: prefix + segment, isFile: !isDir, isDirectory: isDir });
+        result.push({
+          name: segment,
+          path: prefix + segment,
+          isFile: !isDir,
+          isDirectory: isDir,
+        });
       }
       return result;
     },
     // unused stubs
     async rename() {},
-    async listRecursive() { return []; },
-    async stat() { return { size: 0, mtime: 0, isFile: true, isDirectory: false }; },
-    async getJSON() { return null; },
+    async listRecursive() {
+      return [];
+    },
+    async stat() {
+      return { size: 0, mtime: 0, isFile: true, isDirectory: false };
+    },
+    async getJSON() {
+      return null;
+    },
     async setJSON() {},
     async deleteJSON() {},
-    watch() { return () => {}; },
+    watch() {
+      return () => {};
+    },
     _files: files,
-  // deno-lint-ignore no-explicit-any
+    // deno-lint-ignore no-explicit-any
   } as any;
 }
 
 Deno.test("LocalSiteUserStore: create and getById", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "alice@example.com",
@@ -78,7 +113,10 @@ Deno.test("LocalSiteUserStore: create and getById", async () => {
 
 Deno.test("LocalSiteUserStore: getByEmail uses index", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "bob@example.com",
@@ -92,7 +130,10 @@ Deno.test("LocalSiteUserStore: getByEmail uses index", async () => {
 
 Deno.test("LocalSiteUserStore: getByEmail returns null for missing", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const result = await store.getByEmail("nobody@example.com");
   assertEquals(result, null);
@@ -100,9 +141,16 @@ Deno.test("LocalSiteUserStore: getByEmail returns null for missing", async () =>
 
 Deno.test("LocalSiteUserStore: getByEmail is case-insensitive", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
-  await store.create({ email: "Charlie@Example.COM", provider: "google", roles: [] });
+  await store.create({
+    email: "Charlie@Example.COM",
+    provider: "google",
+    roles: [],
+  });
 
   // Index stores lowercase; lookup normalizes too
   const found = await store.getByEmail("charlie@example.com");
@@ -111,7 +159,10 @@ Deno.test("LocalSiteUserStore: getByEmail is case-insensitive", async () => {
 
 Deno.test("LocalSiteUserStore: getByProvider finds user", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "dave@example.com",
@@ -126,7 +177,10 @@ Deno.test("LocalSiteUserStore: getByProvider finds user", async () => {
 
 Deno.test("LocalSiteUserStore: getByProvider returns null for wrong provider", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   await store.create({
     email: "eve@example.com",
@@ -141,7 +195,10 @@ Deno.test("LocalSiteUserStore: getByProvider returns null for wrong provider", a
 
 Deno.test("LocalSiteUserStore: update modifies fields", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "frank@example.com",
@@ -162,7 +219,10 @@ Deno.test("LocalSiteUserStore: update modifies fields", async () => {
 
 Deno.test("LocalSiteUserStore: update returns null for missing user", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const result = await store.update("nonexistent", { name: "Ghost" });
   assertEquals(result, null);
@@ -170,7 +230,10 @@ Deno.test("LocalSiteUserStore: update returns null for missing user", async () =
 
 Deno.test("LocalSiteUserStore: list returns all users sorted by createdAt", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   await store.create({ email: "a@example.com", provider: "github", roles: [] });
   await store.create({ email: "b@example.com", provider: "google", roles: [] });
@@ -184,7 +247,10 @@ Deno.test("LocalSiteUserStore: list returns all users sorted by createdAt", asyn
 
 Deno.test("LocalSiteUserStore: list with limit and offset", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   await store.create({ email: "x@example.com", provider: "github", roles: [] });
   await store.create({ email: "y@example.com", provider: "github", roles: [] });
@@ -199,7 +265,10 @@ Deno.test("LocalSiteUserStore: list with limit and offset", async () => {
 
 Deno.test("LocalSiteUserStore: delete removes user and email index", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "gone@example.com",
@@ -216,7 +285,10 @@ Deno.test("LocalSiteUserStore: delete removes user and email index", async () =>
 
 Deno.test("LocalSiteUserStore: delete returns false for missing user", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const result = await store.delete("nonexistent-id");
   assertEquals(result, false);
@@ -224,14 +296,20 @@ Deno.test("LocalSiteUserStore: delete returns false for missing user", async () 
 
 Deno.test("LocalSiteUserStore: getById returns null for missing", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   assertEquals(await store.getById("no-such-id"), null);
 });
 
 Deno.test("LocalSiteUserStore: create respects enabled:false", async () => {
   const storage = createMemoryStorage();
-  const store = createLocalSiteUserStore({ storage, usersDir: "data/site-users" });
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
 
   const user = await store.create({
     email: "disabled@example.com",
@@ -241,4 +319,100 @@ Deno.test("LocalSiteUserStore: create respects enabled:false", async () => {
   });
 
   assertEquals(user.enabled, false);
+});
+
+// ---------------------------------------------------------------------------
+// create() email race — Phase 0 of decisions/dec-identity-unification.md
+// ---------------------------------------------------------------------------
+
+Deno.test("LocalSiteUserStore: create() throws DuplicateEmailError for an already-used email", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
+
+  await store.create({
+    email: "dup@example.com",
+    provider: "github",
+    roles: [],
+  });
+
+  await assertRejects(
+    () =>
+      store.create({ email: "dup@example.com", provider: "google", roles: [] }),
+    DuplicateEmailError,
+  );
+});
+
+Deno.test("LocalSiteUserStore: DuplicateEmailError check is case-insensitive", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
+
+  await store.create({
+    email: "Grace@Example.com",
+    provider: "github",
+    roles: [],
+  });
+
+  await assertRejects(
+    () =>
+      store.create({
+        email: "grace@example.com",
+        provider: "google",
+        roles: [],
+      }),
+    DuplicateEmailError,
+  );
+});
+
+Deno.test("LocalSiteUserStore: two concurrent create() calls for the same email produce exactly one user", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalSiteUserStore({
+    storage,
+    usersDir: "data/site-users",
+  });
+
+  const results = await Promise.allSettled([
+    store.create({
+      email: "race@example.com",
+      provider: "github",
+      providerId: "gh-1",
+      roles: [],
+    }),
+    store.create({
+      email: "race@example.com",
+      provider: "google",
+      providerId: "go-1",
+      roles: [],
+    }),
+  ]);
+
+  const fulfilled = results.filter((r) => r.status === "fulfilled");
+  const rejected = results.filter((r) => r.status === "rejected");
+  assertEquals(fulfilled.length, 1, "exactly one create() call should succeed");
+  assertEquals(
+    rejected.length,
+    1,
+    "exactly one create() call should be rejected",
+  );
+  assertInstanceOf(
+    (rejected[0] as PromiseRejectedResult).reason,
+    DuplicateEmailError,
+  );
+
+  // The critical assertion: no orphaned account. Only the winner's record
+  // exists, and it's reachable by email — this is what was silently broken
+  // before the fix (the loser's write would win the index race and orphan
+  // the winner's user record).
+  const all = await store.list();
+  assertEquals(all.length, 1);
+  const byEmail = await store.getByEmail("race@example.com");
+  assertEquals(
+    byEmail?.id,
+    (fulfilled[0] as PromiseFulfilledResult<{ id: string }>).value.id,
+  );
 });
