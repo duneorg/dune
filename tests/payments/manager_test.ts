@@ -14,7 +14,7 @@ import {
 import { createPaymentManager } from "../../src/payments/manager.ts";
 import type { PaymentProvider, CheckoutSession, WebhookEvent, Product } from "../../src/payments/types.ts";
 import type { SiteUserStore } from "../../src/auth/user-store.ts";
-import type { SiteUser, SiteUserCreate } from "../../src/auth/types.ts";
+import type { SiteUser, UserCreate } from "../../src/auth/types.ts";
 import { createDuneAuthSystem } from "../../src/auth/authz.ts";
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ class MockUserStore implements SiteUserStore {
 
   async getByEmail(_email: string): Promise<SiteUser | null> { return null; }
   async getByProvider(_provider: string, _providerId: string): Promise<SiteUser | null> { return null; }
-  async create(_user: SiteUserCreate): Promise<SiteUser> { throw new Error("not implemented"); }
+  async create(_user: UserCreate): Promise<SiteUser> { throw new Error("not implemented"); }
 
   async update(
     id: string,

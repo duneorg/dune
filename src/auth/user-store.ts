@@ -8,7 +8,7 @@
 
 import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { SiteUser, SiteUserCreate } from "./types.ts";
+import type { SiteUser, UserCreate } from "./types.ts";
 
 /**
  * Thrown by `create()` when a user with the given email already exists.
@@ -28,7 +28,7 @@ export interface SiteUserStore {
   getByEmail(email: string): Promise<SiteUser | null>;
   getByProvider(provider: string, providerId: string): Promise<SiteUser | null>;
   /** @throws {DuplicateEmailError} if a user with this email already exists. */
-  create(user: SiteUserCreate): Promise<SiteUser>;
+  create(user: UserCreate): Promise<SiteUser>;
   update(
     id: string,
     updates: Partial<
@@ -144,7 +144,7 @@ export function createLocalSiteUserStore(
     return null;
   }
 
-  async function create(input: SiteUserCreate): Promise<SiteUser> {
+  async function create(input: UserCreate): Promise<SiteUser> {
     return withEmailLock(input.email, async () => {
       // Re-check under the lock — a concurrent create() for the same email
       // may have already won the race and completed while this call was

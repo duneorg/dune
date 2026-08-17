@@ -478,7 +478,7 @@ export async function bootstrap(
   // read the public-auth config for this too, which meant a site running
   // `site.auth.mode: "external-jwt"` (or `site.auth.authzStore: "db"`)
   // silently lost real admin-panel permission checking as well, even though
-  // AdminUser tuples (bootstrapAdminTuples()) have nothing to do with how
+  // Admin User tuples (bootstrapAdminTuples(), @dune/plugin-admin) have nothing to do with how
   // public site users authenticate. Default is "local", created whenever
   // the admin panel itself is enabled — see AdminConfig.authzStore's doc
   // comment (src/config/admin-config.ts) for the full reasoning.

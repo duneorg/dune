@@ -10,7 +10,7 @@
  */
 
 import type { DbAdapter } from "../db/types.ts";
-import type { SiteUser, SiteUserCreate } from "./types.ts";
+import type { SiteUser, UserCreate } from "./types.ts";
 import type { SiteUserStore } from "./user-store.ts";
 
 // ── DB row shape (roles as JSON string) ──────────────────────────────────────
@@ -113,7 +113,7 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
       return rows[0] ? rowToUser(rows[0]) : null;
     },
 
-    async create(data: SiteUserCreate): Promise<SiteUser> {
+    async create(data: UserCreate): Promise<SiteUser> {
       const id = crypto.randomUUID();
       const now = Date.now();
       const user: SiteUser = {

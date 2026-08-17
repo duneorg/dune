@@ -2,7 +2,7 @@
  * Configuration type definitions for Dune CMS.
  *
  * Re-exports all public types from the focused sub-modules:
- *   - admin-config.ts  — AdminConfig, AdminRole, AuthProviderConfig, webhook/notification types
+ *   - admin-config.ts  — AdminConfig, Role, AuthProviderConfig, webhook/notification types
  *   - site-config.ts   — SiteConfig, HttpCacheRule
  *   - system-config.ts — SystemConfig, ThemeConfig, ConfigSource, SiteEntry, MultisiteConfig
  *   - dune-config.ts   — DuneConfig, PluginEntry
@@ -11,7 +11,7 @@
  */
 
 export type {
-  AdminRole,
+  Role,
   AuthProviderConfig,
   /** Admin panel configuration */
   AdminConfig,

@@ -21,8 +21,15 @@ export interface SiteUser {
   stripeCustomerId?: string;
 }
 
-/** Input for creating a new {@link SiteUser} — server-generated fields are omitted. */
-export type SiteUserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "enabled"> & {
+/**
+ * Input for creating a new {@link SiteUser} — server-generated fields are
+ * omitted. Named `UserCreate`, not `SiteUserCreate`, per
+ * decisions/dec-identity-unification.md's Phase 3 (the bare name is the
+ * target for the whole identity system, landed on the DTO first); `SiteUser`
+ * itself keeps its current name until Phase 5 merges it with the admin-side
+ * user record.
+ */
+export type UserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "enabled"> & {
   enabled?: boolean;
 };
 

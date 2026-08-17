@@ -196,7 +196,7 @@ export async function bootstrapRoleTuples(
 }
 
 /**
- * Bootstrap permission tuples for existing AdminUser records.
+ * Bootstrap permission tuples for existing admin User records (@dune/plugin-admin).
  *
  * Each admin user gets a direct relation tuple on `{ type: "app", id: "admin" }`
  * matching their role ("admin", "editor", or "author"). Idempotent — skips
