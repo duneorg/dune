@@ -16,7 +16,7 @@
  *   dune migrate:roles-to-tuples --dry-run    # report without writing
  */
 
-import { join, resolve } from "@std/path";
+import { resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { createLocalUserStore } from "../auth/user-store.ts";
@@ -41,7 +41,12 @@ export async function migrateRolesToTuplesCommand(
 
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-  const dataDir = join(root, config.admin?.dataDir ?? "data");
+  // Relative to `storage`'s own rootDir, not joined with `root` — StorageAdapter
+  // requires relative paths and rejects (silently, into empty results from
+  // list()/getByEmail() etc.) anything absolute. This was a real, previously
+  // latent bug: joining `root` here meant this command silently reported
+  // "No users with roles found" on every real site, every time it ran.
+  const dataDir = config.admin?.dataDir ?? "data";
   const siteAuth = (config.site as { auth?: { userStore?: string; authzStore?: string } }).auth;
   const userStoreTier = siteAuth?.userStore ?? "local";
   const authzStoreTier = siteAuth?.authzStore ?? "local";
