@@ -31,7 +31,7 @@ Dune owns the session lifecycle. Credential verification is delegated to OAuth p
 # site.yaml
 auth:
   mode: dune               # default — can be omitted
-  userStore: session        # identity embedded in the session record — no data/site-users/ files
+  userStore: session        # identity embedded in the session record — no data/users/ files
   sessionLifetime: 604800   # seconds (7 days) — flat field, default 2592000 (30 days)
   providers:
     github:
@@ -39,14 +39,14 @@ auth:
       clientSecret: "${GITHUB_CLIENT_SECRET}"
 ```
 
-**There is no `session.secret`/`SESSION_SECRET` config anywhere in the real auth system.** Sessions are opaque server-tracked IDs stored under `{admin.runtimeDir}/site-sessions/`, not signed/encrypted cookies — nothing reads a signing secret. See Gotchas.
+**There is no `session.secret`/`SESSION_SECRET` config anywhere in the real auth system.** Sessions are opaque server-tracked IDs, not signed/encrypted cookies — nothing reads a signing secret. By default they're stored under `{admin.runtimeDir}/site-sessions/`, using the same `SessionStore` mechanism (local/KV/Redis) admin sessions use — set `system.session_store` to switch backends; see `src/session/mod.ts`. See Gotchas.
 
 ### With persistent user records + magic link
 
 ```yaml
 auth:
   mode: dune
-  userStore: local          # JSON files at data/site-users/ + by-email/ index
+  userStore: local          # JSON files at data/users/ + by-email/ index — the same store @dune/plugin-admin's admin accounts live in
   providers:
     github:
       clientId: "${GITHUB_CLIENT_ID}"
@@ -62,9 +62,9 @@ auth:
 ```
 GET  /auth/login                → default login page (theme's templates/auth/login.tsx if present, else a minimal built-in page)
 GET  /auth/logout                → destroy session, redirect to /   (GET, not POST)
-GET  /auth/me                    → current SiteUser as JSON, or 401 if not logged in
+GET  /auth/me                    → current User as JSON, or 401 if not logged in
 GET  /auth/{provider}             → begin OAuth flow (github, google, discord — only configured ones; others 404)
-GET  /auth/{provider}/callback    → complete OAuth, upsert SiteUser, set session cookie, redirect
+GET  /auth/{provider}/callback    → complete OAuth, upsert User, set session cookie, redirect
 POST /auth/magic/send             → send magic link email          (NOT /auth/magic-link/send)
 GET  /auth/magic                  → verify magic link token, create session   (NOT /auth/magic-link/verify)
 ```
@@ -98,25 +98,30 @@ No routes generated. No sessions. No user records in Dune. Clients pass `Authori
 
 ## `ctx.state.siteUser` shape
 
+`ctx.state.siteUser` is a `User` — the same account record type `@dune/plugin-admin`'s admin accounts use (they share one store, `data/users/`). A site visitor is just a `User` whose `roles` happen not to include an admin-tier value:
+
 ```ts
-interface SiteUser {
-  id: string;                // UUID (dune mode) or the JWT's userIdClaim value (external-jwt)
+interface User {
+  id: string;                 // UUID (dune mode) or the JWT's userIdClaim value (external-jwt)
   email: string;
   name?: string;
   avatarUrl?: string;
-  provider: string;          // "github" | "google" | "discord" | "magic" | "external-jwt"
-  providerId?: string;       // the OAuth provider's own user ID
-  roles: string[];           // always an array, never undefined
-  createdAt: number;         // ms timestamp — a number, not a Date
+  username?: string;          // set only for password-login admin accounts — always absent here
+  passwordHash?: string;      // set only for accounts with a local password — always absent here
+  provider: string;           // "github" | "google" | "discord" | "magic" | "local" | "external-jwt"
+  providerId?: string;        // the OAuth provider's own user ID
+  roles: string[];            // always an array, never undefined
+  createdAt: number;          // ms timestamp — a number, not a Date
+  updatedAt: number;
   lastSeenAt: number;
   enabled: boolean;
-  stripeCustomerId?: string; // set after a successful Stripe checkout, if payments are used
+  stripeCustomerId?: string;  // set after a successful Stripe checkout, if payments are used
 }
 
 // ctx.state.siteUser is null on unauthenticated requests — never undefined
 ```
 
-(`src/auth/types.ts`.) In `external-jwt` mode, `roles` comes from the JWT's `rolesClaim` on every request — there's no persistent record. In `dune` mode, `roles` is a field stored directly on the `SiteUser` record.
+(`src/auth/types.ts`.) In `external-jwt` mode, `roles` comes from the JWT's `rolesClaim` on every request — there's no persistent record. In `dune` mode, `roles` is a field stored directly on the `User` record.
 
 ### Reading it outside a Fresh handler
 
@@ -186,8 +191,8 @@ For content gating via frontmatter `roles:`, this check runs automatically in th
 | Value | User records | When to use |
 |-------|-------------|-------------|
 | `session` | None — synthesized from OAuth/magic-link claims, stored in the session record itself | OAuth-only. Roles granted after login (e.g. via payment) aren't reflected until the next login. |
-| `local` | JSON files at `data/site-users/{id}.json` + `data/site-users/by-email/` index (default) | No DB required. |
-| `db` | `site_users` table via Dune's own `DbAdapter` | Requires a database configured — `DUNE_DB_URL`, or `DUNE_DB_PATH` for SQLite (default `data/dune.db`). Dune manages this table's schema itself; you don't define it. Use at scale or for multi-process deployments where flat-file contention matters. |
+| `local` | JSON files at `data/users/{id}.json` + `data/users/by-email/` index (default) — the same directory admin accounts live in | No DB required. |
+| `db` | `site_users` table via Dune's own `DbAdapter` (table name is a legacy internal detail, kept as-is to avoid a destructive rename of live installs) | Requires a database configured — `DUNE_DB_URL`, or `DUNE_DB_PATH` for SQLite (default `data/dune.db`). Dune manages this table's schema itself; you don't define it. Use at scale or for multi-process deployments where flat-file contention matters. **Admin accounts have no db-tier option today** — `@dune/plugin-admin`'s `UserManager` only ever uses the local (`data/users/`) store, even if public auth is on `userStore: db`. |
 
 ---
 

@@ -2,7 +2,7 @@
 /**
  * ProfileCard — server-rendered component.
  *
- * Displays user info from a SiteUser object. Shows avatar (if avatarUrl),
+ * Displays user info from a User object. Shows avatar (if avatarUrl),
  * display name, email, roles, and a logout button that POSTs to /auth/logout.
  */
 
@@ -22,7 +22,7 @@ export interface ProfileCardProps {
   className?: string;
 }
 
-/** Server-rendered card showing a SiteUser's avatar, name, email, roles, and a logout button. */
+/** Server-rendered card showing a User's avatar, name, email, roles, and a logout button. */
 export default function ProfileCard({ user, className }: ProfileCardProps): JSX.Element {
   const displayName = user.name ?? user.email;
 
