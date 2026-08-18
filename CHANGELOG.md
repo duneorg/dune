@@ -9,6 +9,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`/api/inline-edit/ws` (the real-time editing WebSocket handler) also
+  bypassed `authz`, missed by the admin-bar-gate fix below.** Same flat
+  `ROLE_PERMISSIONS`-only `adminAuth.hasPermission()` call, in a second,
+  separate spot — the literal handler `backlog.md`'s "Inline-edit: auth
+  still coupled to admin sessions" entry names. Extracted the decision
+  into `checkInlineEditPermission()` (`src/runtime/server.ts`, exported)
+  — `authz.check()` as sole authority when configured, the flat table
+  only as the narrow-case fallback — and unit-tested it directly rather
+  than standing up a full WebSocket-upgrade harness. 4 new tests.
+
 - **Inline editing's admin-bar gate bypassed the polizy `authz` system,
   checking the flat `ROLE_PERMISSIONS` table directly.**
   `runPluginResponseTransforms()` — which decides whether to inject the
