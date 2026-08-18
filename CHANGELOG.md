@@ -9,6 +9,32 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`SQLiteAdapter` silently truncated large integers to 32 bits on read.**
+  `jsr:@db/sqlite`'s `Database` constructor defaults its `int64` option to
+  `false`, which the adapter never overrode — any `INTEGER` column value
+  beyond 32 bits (millisecond epoch timestamps included) came back from
+  `SELECT` masked to its lower 32 bits, silently corrupting `createdAt` /
+  `updatedAt` / `lastSeenAt` and any other large integer stored via the
+  SQLite db tier. Affects every feature routed through `SQLiteAdapter`, not
+  just user records. Fixed by passing `{ int64: true }` when opening the
+  database. Found while adding the first test coverage for
+  `createDbUserStore()` (`tests/auth/user_store_db_test.ts`, 14 tests,
+  previously none).
+
+- **The db-tier `UserStore` didn't translate a duplicate-email write into
+  `DuplicateEmailError`,** unlike the local (flat-file) tier — a conflicting
+  `create()`/`update()` surfaced a raw driver error instead. `jsr:@db/sqlite`
+  turned out to give the detailed `"UNIQUE constraint failed: <table>.
+  <column>"` message only when the failing call happens at a script's top
+  level; routed through any wrapping function (this adapter's `query()`
+  included), the same failure instead reports a generic `SQLITE_CONSTRAINT`
+  code with no way to identify which column caused it, and the driver
+  exposes no API to enable SQLite's extended result codes. Rather than
+  depend on message parsing that's unreliable for one of the two drivers,
+  `create()`/`update()` now re-check reality after a write fails — if a
+  different row now holds the email being written, it's reported as
+  `DuplicateEmailError`; any other failure is rethrown unchanged.
+
 - **`SiteUser.create()` had a TOCTOU race that could orphan an account.**
   `create()`/`saveUser()` wrote the user record and the by-email index as
   two separate, non-atomic `storage.write()` calls, with no existence check
