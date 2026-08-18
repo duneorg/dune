@@ -13,9 +13,12 @@ import type { DbAdapter } from "../types.ts";
 // Dynamic import so the module can be loaded on non-SQLite environments
 // without hard errors.  We type it loosely and assert at runtime.
 
-let _DatabaseClass: typeof import("jsr:@db/sqlite@^0.12").Database | null = null;
+let _DatabaseClass: typeof import("jsr:@db/sqlite@^0.12").Database | null =
+  null;
 
-async function getDatabaseClass(): Promise<typeof import("jsr:@db/sqlite@^0.12").Database> {
+async function getDatabaseClass(): Promise<
+  typeof import("jsr:@db/sqlite@^0.12").Database
+> {
   if (_DatabaseClass) return _DatabaseClass;
   const mod = await import("jsr:@db/sqlite@^0.12");
   _DatabaseClass = mod.Database;
@@ -56,8 +59,7 @@ export class SQLiteAdapter implements DbAdapter {
   }
 
   static async open(path?: string): Promise<SQLiteAdapter> {
-    const dbPath =
-      path ??
+    const dbPath = path ??
       Deno.env.get("DUNE_DB_PATH") ??
       "data/dune.db";
 
@@ -71,7 +73,12 @@ export class SQLiteAdapter implements DbAdapter {
     }
 
     const Database = await getDatabaseClass();
-    const db = new Database(dbPath) as unknown as SqliteDatabase;
+    // int64: true is required — jsr:@db/sqlite defaults to false, which
+    // silently truncates any INTEGER column value beyond 32 bits (e.g.
+    // millisecond timestamps) to its lower 32 bits on read.
+    const db = new Database(dbPath, {
+      int64: true,
+    }) as unknown as SqliteDatabase;
 
     // Enable WAL mode for better concurrency
     try {
@@ -110,7 +117,9 @@ export class SQLiteAdapter implements DbAdapter {
       this.#db.exec("COMMIT");
       return result;
     } catch (err) {
-      try { this.#db.exec("ROLLBACK"); } catch { /* ignore rollback error */ }
+      try {
+        this.#db.exec("ROLLBACK");
+      } catch { /* ignore rollback error */ }
       throw err;
     }
   }

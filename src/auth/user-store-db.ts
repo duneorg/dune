@@ -12,6 +12,7 @@
 import type { DbAdapter } from "../db/types.ts";
 import type { User, UserCreate } from "./types.ts";
 import type { UserStore } from "./user-store.ts";
+import { DuplicateEmailError } from "./user-store.ts";
 
 // ── DB row shape (roles as JSON string) ──────────────────────────────────────
 
@@ -51,10 +52,46 @@ function rowToUser(row: DbRow): User {
   };
 }
 
+// ── UNIQUE-violation detection ───────────────────────────────────────────────
+//
+// Neither driver Dune ships exposes a reliable, typed way to identify which
+// column caused a UNIQUE-constraint failure: Postgres gives a `.constraint`
+// name we could parse, but jsr:@db/sqlite only surfaces SQLite's detailed
+// "UNIQUE constraint failed: <table>.<column>" message when the failing
+// statement runs at the top level of a script — routed through any wrapping
+// function (this adapter's `query()` included, sync or async), the same
+// failure instead reports as a bare SQLITE_CONSTRAINT code with a generic
+// message ("constraint failed"), and the driver exposes no API to enable
+// SQLite's extended result codes to disambiguate it further.
+//
+// Rather than depend on message parsing that's unreliable for one of the
+// two drivers, re-check reality after a write fails: if a *different* row
+// now holds the email we tried to write, the failure was a duplicate email;
+// any other failure (NOT NULL, a username collision, connectivity) is
+// rethrown unchanged. This is driver-agnostic and scoped to `email` only —
+// `username` also has a UNIQUE constraint on this tier but the local tier
+// never enforced username uniqueness, so there's no cross-tier
+// DuplicateEmailError-style contract to honor there.
+
+async function checkDuplicateEmail(
+  db: DbAdapter,
+  email: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const rows = await db.query<{ id: string }>(
+    "SELECT id FROM site_users WHERE email = ? LIMIT 1",
+    [email],
+  );
+  return rows.length > 0 && rows[0].id !== excludeId;
+}
+
 // ── KV guard ─────────────────────────────────────────────────────────────────
 
 function assertNotKv(adapter: DbAdapter): void {
-  if ("_kv" in adapter || (adapter.constructor && adapter.constructor.name === "KVAdapter")) {
+  if (
+    "_kv" in adapter ||
+    (adapter.constructor && adapter.constructor.name === "KVAdapter")
+  ) {
     throw new Error(
       "[dune/auth] userStore: db requires a SQL-capable database (SQLite or Postgres). " +
         "The Deno KV adapter does not support raw SQL. " +
@@ -98,14 +135,22 @@ async function ensureTable(db: DbAdapter): Promise<void> {
   // (every boot after the first) and are swallowed; any other failure
   // (permissions, connectivity) is expected to have already surfaced from
   // the CREATE TABLE/INDEX statements above.
-  await db.query(`ALTER TABLE site_users ADD COLUMN username TEXT`).catch(() => {});
-  await db.query(`ALTER TABLE site_users ADD COLUMN passwordHash TEXT`).catch(() => {});
-  await db.query(`ALTER TABLE site_users ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0`).catch(() => {});
+  await db.query(`ALTER TABLE site_users ADD COLUMN username TEXT`).catch(
+    () => {},
+  );
+  await db.query(`ALTER TABLE site_users ADD COLUMN passwordHash TEXT`).catch(
+    () => {},
+  );
+  await db.query(
+    `ALTER TABLE site_users ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0`,
+  ).catch(() => {});
 }
 
 // ── Store factory ─────────────────────────────────────────────────────────────
 
-export async function createDbUserStore(config: { adapter: DbAdapter }): Promise<UserStore> {
+export async function createDbUserStore(
+  config: { adapter: DbAdapter },
+): Promise<UserStore> {
   const db = config.adapter;
   await ensureTable(db);
 
@@ -134,7 +179,10 @@ export async function createDbUserStore(config: { adapter: DbAdapter }): Promise
       return rows[0] ? rowToUser(rows[0]) : null;
     },
 
-    async getByProvider(provider: string, providerId: string): Promise<User | null> {
+    async getByProvider(
+      provider: string,
+      providerId: string,
+    ): Promise<User | null> {
       const rows = await db.query<DbRow>(
         "SELECT * FROM site_users WHERE provider = ? AND providerId = ? LIMIT 1",
         [provider, providerId],
@@ -161,17 +209,34 @@ export async function createDbUserStore(config: { adapter: DbAdapter }): Promise
         enabled: data.enabled ?? true,
         stripeCustomerId: data.stripeCustomerId,
       };
-      await db.query(
-        `INSERT INTO site_users
-           (id, email, name, avatarUrl, username, passwordHash, provider, providerId, roles, createdAt, updatedAt, lastSeenAt, enabled, stripeCustomerId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          user.id, user.email, user.name ?? null, user.avatarUrl ?? null,
-          user.username ?? null, user.passwordHash ?? null,
-          user.provider, user.providerId ?? null, JSON.stringify(user.roles),
-          user.createdAt, user.updatedAt, user.lastSeenAt, user.enabled ? 1 : 0, user.stripeCustomerId ?? null,
-        ],
-      );
+      try {
+        await db.query(
+          `INSERT INTO site_users
+             (id, email, name, avatarUrl, username, passwordHash, provider, providerId, roles, createdAt, updatedAt, lastSeenAt, enabled, stripeCustomerId)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            user.id,
+            user.email,
+            user.name ?? null,
+            user.avatarUrl ?? null,
+            user.username ?? null,
+            user.passwordHash ?? null,
+            user.provider,
+            user.providerId ?? null,
+            JSON.stringify(user.roles),
+            user.createdAt,
+            user.updatedAt,
+            user.lastSeenAt,
+            user.enabled ? 1 : 0,
+            user.stripeCustomerId ?? null,
+          ],
+        );
+      } catch (err) {
+        if (await checkDuplicateEmail(db, user.email)) {
+          throw new DuplicateEmailError(user.email);
+        }
+        throw err;
+      }
       return user;
     },
 
@@ -195,23 +260,58 @@ export async function createDbUserStore(config: { adapter: DbAdapter }): Promise
       const sets: string[] = ["updatedAt = ?"];
       const params: unknown[] = [Date.now()];
 
-      // No DuplicateEmailError translation here — matches create()'s existing
-      // behavior on this tier: the UNIQUE constraint gives atomicity, but a
-      // conflicting write surfaces as a raw DB error, not a typed one. A
-      // pre-existing gap on this tier (see decisions/dec-identity-
-      // unification.md), not introduced by this email-update addition.
-      if ("email" in updates) { sets.push("email = ?"); params.push(updates.email); }
-      if ("name" in updates) { sets.push("name = ?"); params.push(updates.name ?? null); }
-      if ("avatarUrl" in updates) { sets.push("avatarUrl = ?"); params.push(updates.avatarUrl ?? null); }
-      if ("username" in updates) { sets.push("username = ?"); params.push(updates.username ?? null); }
-      if ("passwordHash" in updates) { sets.push("passwordHash = ?"); params.push(updates.passwordHash ?? null); }
-      if ("roles" in updates) { sets.push("roles = ?"); params.push(JSON.stringify(updates.roles ?? [])); }
-      if ("lastSeenAt" in updates) { sets.push("lastSeenAt = ?"); params.push(updates.lastSeenAt); }
-      if ("enabled" in updates) { sets.push("enabled = ?"); params.push(updates.enabled ? 1 : 0); }
-      if ("stripeCustomerId" in updates) { sets.push("stripeCustomerId = ?"); params.push(updates.stripeCustomerId ?? null); }
+      if ("email" in updates) {
+        sets.push("email = ?");
+        params.push(updates.email);
+      }
+      if ("name" in updates) {
+        sets.push("name = ?");
+        params.push(updates.name ?? null);
+      }
+      if ("avatarUrl" in updates) {
+        sets.push("avatarUrl = ?");
+        params.push(updates.avatarUrl ?? null);
+      }
+      if ("username" in updates) {
+        sets.push("username = ?");
+        params.push(updates.username ?? null);
+      }
+      if ("passwordHash" in updates) {
+        sets.push("passwordHash = ?");
+        params.push(updates.passwordHash ?? null);
+      }
+      if ("roles" in updates) {
+        sets.push("roles = ?");
+        params.push(JSON.stringify(updates.roles ?? []));
+      }
+      if ("lastSeenAt" in updates) {
+        sets.push("lastSeenAt = ?");
+        params.push(updates.lastSeenAt);
+      }
+      if ("enabled" in updates) {
+        sets.push("enabled = ?");
+        params.push(updates.enabled ? 1 : 0);
+      }
+      if ("stripeCustomerId" in updates) {
+        sets.push("stripeCustomerId = ?");
+        params.push(updates.stripeCustomerId ?? null);
+      }
 
       params.push(id);
-      await db.query(`UPDATE site_users SET ${sets.join(", ")} WHERE id = ?`, params);
+      try {
+        await db.query(
+          `UPDATE site_users SET ${sets.join(", ")} WHERE id = ?`,
+          params,
+        );
+      } catch (err) {
+        if (
+          "email" in updates &&
+          await checkDuplicateEmail(db, updates.email!, id)
+        ) {
+          throw new DuplicateEmailError(updates.email!);
+        }
+        throw err;
+      }
       return store.getById(id);
     },
 
