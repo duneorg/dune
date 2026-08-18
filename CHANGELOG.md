@@ -126,6 +126,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   `deno task check` pass unchanged — purely a rename, no behavioral
   change.
 
+- **Unified `SiteUser`/`SiteUserStore` into `User`/`UserStore` — the first
+  of three ordered sub-phases merging `@dune/plugin-admin`'s password-based
+  admin accounts with public site visitors into one record and store**
+  (`decisions/dec-identity-unification.md`'s Phase 5a; Phase 5b will handle
+  the actual `data/site-users/` → `data/users/` data migration and
+  `@dune/plugin-admin` cutover, Phase 5c the session-mechanism unification).
+  `User` gained `username?`, `passwordHash?`, and `updatedAt` — the fields
+  admin's pre-merge `User` had that `SiteUser` didn't. No closed `Role`
+  union survives on the type: `"admin"`/`"editor"`/`"author"` are just
+  conventional `roles[]` string values now, interpreted by
+  `@dune/plugin-admin`'s existing rank/escalation logic rather than
+  enforced by the type. Added `UserStore.getByUsername()` (both tiers).
+  The db tier's physical table stays named `site_users` for now — a live
+  db-tier deployment already has data under that name, and renaming it is
+  explicitly Phase 5b's job; an additive `ALTER TABLE` step backfills the
+  new nullable columns onto an existing table without a destructive
+  rebuild. `@dune/plugin-admin`'s own `User`/`UserManager` are untouched in
+  this step. 6 new tests for the added fields/method; full 1510-test suite
+  and `deno task check` pass.
+
 ---
 
 ## [0.31.7] — 2026-08-13
