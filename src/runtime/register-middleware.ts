@@ -4,21 +4,21 @@ import type { HttpCacheRule } from "../config/types.ts";
 import type { PageCache } from "../cache/mod.ts";
 import { isMediaFile } from "../content/path-utils.ts";
 import {
-  maybeCompress,
-  withSecurityHeaders,
-  renderErrorPage,
+  injectBasePath,
   injectFeedLinks,
   injectLiveReload,
   injectRtlDir,
-  injectBasePath,
+  maybeCompress,
+  renderErrorPage,
+  withSecurityHeaders,
 } from "../cli/serve-utils.ts";
 import { hasAdminSessionCookie } from "../cli/admin-bar-inject.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
 import {
+  buildCacheControl,
   computeEtag,
   etagMatches,
   resolvePolicy,
-  buildCacheControl,
 } from "../cache/mod.ts";
 import { isRtl } from "../i18n/rtl.ts";
 
@@ -41,7 +41,9 @@ export interface ContentMiddlewareOptions {
   routes: DuneRoutes;
 }
 
-function makeRenderJsx(render: (vnode: unknown) => Response | Promise<Response>): RenderJsx {
+function makeRenderJsx(
+  render: (vnode: unknown) => Response | Promise<Response>,
+): RenderJsx {
   return async (jsx: unknown, statusCode = 200): Promise<Response> => {
     const res = await render(jsx);
     if (statusCode === 200) return res;
@@ -68,8 +70,19 @@ export function registerContentCatchAll(
   ctx: BootstrapResult,
   opts: ContentMiddlewareOptions,
 ): void {
-  const { dev, debug, pageCache, transformFingerprint, cacheRules, cacheDefaults, feedEnabled, siteName, adminPrefix, routes } = opts;
-  const { engine, imageHandler, hooks, config, metrics } = ctx;
+  const {
+    dev,
+    debug,
+    pageCache,
+    transformFingerprint,
+    cacheRules,
+    cacheDefaults,
+    feedEnabled,
+    siteName,
+    adminPrefix,
+    routes,
+  } = opts;
+  const { engine, imageHandler, hooks, config, metrics, authz } = ctx;
   // deno-lint-ignore no-explicit-any
   const getAdminAuth = () => (ctx.adminContext as any)?.auth ?? null;
 
@@ -101,21 +114,30 @@ export function registerContentCatchAll(
               media.contentType.includes("text/html") ||
               media.contentType.includes("image/svg+xml")
             ) {
-              headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups";
+              headers["Content-Security-Policy"] =
+                "sandbox allow-scripts allow-popups";
               headers["X-Frame-Options"] = "SAMEORIGIN";
             }
             response = new Response(media.data as BodyInit, { headers });
           }
-          metrics?.recordRequest(url.pathname, performance.now() - startMs, response.status >= 500);
+          metrics?.recordRequest(
+            url.pathname,
+            performance.now() - startMs,
+            response.status >= 500,
+          );
           return response;
         }
       }
 
-      const renderJsx = makeRenderJsx((vnode) => fc.render(vnode as Parameters<typeof fc.render>[0]));
+      const renderJsx = makeRenderJsx((vnode) =>
+        fc.render(vnode as Parameters<typeof fc.render>[0])
+      );
 
       if (!dev) {
         const pageIndex = engine.pages.find((p) => p.route === url.pathname);
-        const etag = pageIndex ? await computeEtag(pageIndex, transformFingerprint) : null;
+        const etag = pageIndex
+          ? await computeEtag(pageIndex, transformFingerprint)
+          : null;
         const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
         const ccValue = buildCacheControl(policy);
 
@@ -135,7 +157,10 @@ export function registerContentCatchAll(
         if (pageCache && etag && !skipSharedCache) {
           const cached = pageCache.get(url.pathname);
           if (cached?.etag === etag) {
-            await hooks.fire("onCacheHit", { key: url.pathname, value: cached });
+            await hooks.fire("onCacheHit", {
+              key: url.pathname,
+              value: cached,
+            });
             if (etagMatches(req.headers.get("If-None-Match"), etag)) {
               response = new Response(null, {
                 status: 304,
@@ -144,29 +169,42 @@ export function registerContentCatchAll(
             } else {
               response = await maybeCompress(
                 req,
-                withSecurityHeaders(new Response(cached.body as BodyInit, {
-                  status: 200,
-                  headers: {
-                    "Content-Type": "text/html; charset=utf-8",
-                    "ETag": etag,
-                    "Cache-Control": ccValue,
-                  },
-                })),
+                withSecurityHeaders(
+                  new Response(cached.body as BodyInit, {
+                    status: 200,
+                    headers: {
+                      "Content-Type": "text/html; charset=utf-8",
+                      "ETag": etag,
+                      "Cache-Control": ccValue,
+                    },
+                  }),
+                ),
               );
             }
-            metrics?.recordRequest(url.pathname, performance.now() - startMs, false);
+            metrics?.recordRequest(
+              url.pathname,
+              performance.now() - startMs,
+              false,
+            );
             return response;
           }
           await hooks.fire("onCacheMiss", { key: url.pathname });
         }
 
         // Browser ETag revalidation (skipped for admin-session requests).
-        if (etag && !skipSharedCache && etagMatches(req.headers.get("If-None-Match"), etag)) {
+        if (
+          etag && !skipSharedCache &&
+          etagMatches(req.headers.get("If-None-Match"), etag)
+        ) {
           response = new Response(null, {
             status: 304,
             headers: { "ETag": etag, "Cache-Control": ccValue },
           });
-          metrics?.recordRequest(url.pathname, performance.now() - startMs, false);
+          metrics?.recordRequest(
+            url.pathname,
+            performance.now() - startMs,
+            false,
+          );
           return response;
         }
 
@@ -179,6 +217,7 @@ export function registerContentCatchAll(
           response,
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
+          authz,
           pages: engine.pages,
           config,
           adminPrefix,
@@ -187,11 +226,14 @@ export function registerContentCatchAll(
         // RTL direction injection
         const rtlSupportedLangs = config.system.languages?.supported ?? [];
         const rtlUrlSegments = url.pathname.split("/");
-        const pageLang =
-          rtlSupportedLangs.length > 1 && rtlSupportedLangs.includes(rtlUrlSegments[1])
-            ? rtlUrlSegments[1]
-            : (config.system.languages?.default ?? "en");
-        response = injectRtlDir(response, isRtl(pageLang, config.system.languages?.rtl_override));
+        const pageLang = rtlSupportedLangs.length > 1 &&
+            rtlSupportedLangs.includes(rtlUrlSegments[1])
+          ? rtlUrlSegments[1]
+          : (config.system.languages?.default ?? "en");
+        response = injectRtlDir(
+          response,
+          isRtl(pageLang, config.system.languages?.rtl_override),
+        );
         response = injectBasePath(response, config.site.basePath);
 
         // Cache headers. Admin responses get private/no-store so CDNs/browsers
@@ -221,7 +263,10 @@ export function registerContentCatchAll(
             etag,
             cacheControl: ccValue,
           });
-          response = new Response(body, { status: 200, headers: response.headers });
+          response = new Response(body, {
+            status: 200,
+            headers: response.headers,
+          });
         }
 
         response = await maybeCompress(req, withSecurityHeaders(response));
@@ -240,6 +285,7 @@ export function registerContentCatchAll(
           response,
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
+          authz,
           pages: engine.pages,
           config,
           adminPrefix,
@@ -247,11 +293,14 @@ export function registerContentCatchAll(
 
         const devSupportedLangs = config.system.languages?.supported ?? [];
         const devUrlSegments = url.pathname.split("/");
-        const devLang =
-          devSupportedLangs.length > 1 && devSupportedLangs.includes(devUrlSegments[1])
-            ? devUrlSegments[1]
-            : (config.system.languages?.default ?? "en");
-        response = injectRtlDir(response, isRtl(devLang, config.system.languages?.rtl_override));
+        const devLang = devSupportedLangs.length > 1 &&
+            devSupportedLangs.includes(devUrlSegments[1])
+          ? devUrlSegments[1]
+          : (config.system.languages?.default ?? "en");
+        response = injectRtlDir(
+          response,
+          isRtl(devLang, config.system.languages?.rtl_override),
+        );
         response = injectBasePath(response, config.site.basePath);
         response = injectLiveReload(response);
       }
@@ -260,14 +309,25 @@ export function registerContentCatchAll(
       if (debug) {
         console.error(`✗ Error serving ${safePath}:`, err);
       } else {
-        console.error(`✗ Error serving ${safePath}: ${(err as Error).message ?? err}`);
+        console.error(
+          `✗ Error serving ${safePath}: ${(err as Error).message ?? err}`,
+        );
       }
       response = withSecurityHeaders(
-        renderErrorPage(500, "Server Error", "Something went wrong. Please try again later.", siteName),
+        renderErrorPage(
+          500,
+          "Server Error",
+          "Something went wrong. Please try again later.",
+          siteName,
+        ),
       );
     }
 
-    metrics?.recordRequest(url.pathname, performance.now() - startMs, response.status >= 500);
+    metrics?.recordRequest(
+      url.pathname,
+      performance.now() - startMs,
+      response.status >= 500,
+    );
     return response;
   });
 }

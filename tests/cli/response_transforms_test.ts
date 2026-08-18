@@ -7,9 +7,15 @@
  * - anonymous requests reach plugins with auth: null and no session lookup
  */
 
-import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertStrictEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { runPluginResponseTransforms } from "../../src/cli/response-transforms.ts";
-import type { DunePlugin, ResponseTransformContext } from "../../src/hooks/types.ts";
+import type {
+  DunePlugin,
+  ResponseTransformContext,
+} from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
 // NOTE: this imports the renamed User/Role names from @dune/plugin-admin's
 // Phase 3 rename (decisions/dec-identity-unification.md) — dune/deno.json's
@@ -19,7 +25,11 @@ import type { DuneConfig } from "../../src/config/types.ts";
 // @dune/plugin-admin to the local (already-renamed) checkout regardless of
 // the declared pin; dune's standalone CI will fail here until that publish
 // lands, at which point bump the pin above to ^2.0 in the same commit.
-import type { AuthResult, AdminPermission, User } from "jsr:@dune/plugin-admin/admin/types";
+import type {
+  AdminPermission,
+  AuthResult,
+  User,
+} from "jsr:@dune/plugin-admin/admin/types";
 
 const config = {} as DuneConfig;
 
@@ -51,7 +61,9 @@ function makeAuth(opts: {
     authenticate(_req: Request): Promise<AuthResult> {
       calls.authenticate++;
       if (opts.throws) return Promise.reject(new Error("session store down"));
-      return Promise.resolve(opts.result ?? { authenticated: false, error: "No session cookie" });
+      return Promise.resolve(
+        opts.result ?? { authenticated: false, error: "No session cookie" },
+      );
     },
     hasPermission(authResult: unknown, permission: string): boolean {
       const r = authResult as AuthResult;
@@ -123,7 +135,9 @@ Deno.test("runPluginResponseTransforms: no transform plugins, session cookie —
   const auth = makeAuth({});
   const result = await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
-    response: htmlResponse(`<div data-dune-body data-dune-source="content/about.md">x</div>`),
+    response: htmlResponse(
+      `<div data-dune-body data-dune-source="content/about.md">x</div>`,
+    ),
     plugins: [{ name: "noop", version: "1.0.0", hooks: {} }],
     auth,
     pages,
@@ -258,6 +272,108 @@ Deno.test("runPluginResponseTransforms: non-content route — page is null", asy
   assertEquals(seen[0].page, null);
 });
 
+// ── authz-first permission check (dec-identity-unification Phase 7) ─────────────
+//
+// The `pages.update` gate must consult `authz.check()` when `authz` is
+// configured, not the flat ROLE_PERMISSIONS table `auth.hasPermission()`
+// alone would consult — same sole-authority contract as every other admin
+// permission check (Phase 5c). These prove authz's answer wins over what
+// auth.hasPermission() would say in either direction.
+
+function makeAuthz(allowed: boolean) {
+  const calls = { check: 0 };
+  return {
+    calls,
+    // deno-lint-ignore no-explicit-any
+    check(_args: any): Promise<boolean> {
+      calls.check++;
+      return Promise.resolve(allowed);
+    },
+  };
+}
+
+Deno.test("runPluginResponseTransforms: authz.check() allowing wins even when ROLE_PERMISSIONS would deny", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("author") },
+    permissions: [] as AdminPermission[], // ROLE_PERMISSIONS alone would deny
+  });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(true) as any;
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth,
+    authz,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(authz.calls.check, 1);
+  assertEquals(seen[0].auth?.username, "alice");
+});
+
+Deno.test("runPluginResponseTransforms: authz.check() denying wins even when ROLE_PERMISSIONS would allow", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("editor") },
+    permissions: ["pages.update"] as AdminPermission[], // ROLE_PERMISSIONS alone would allow
+  });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(false) as any;
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth,
+    authz,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(authz.calls.check, 1);
+  assertEquals(seen[0].auth, null);
+});
+
+Deno.test("runPluginResponseTransforms: falls back to ROLE_PERMISSIONS when authz is not passed", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("editor") },
+    permissions: ["pages.update"] as AdminPermission[],
+  });
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen[0].auth?.username, "alice");
+});
+
+Deno.test("runPluginResponseTransforms: authz.check() denying scrubs markers even though ROLE_PERMISSIONS would allow", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("editor") },
+    permissions: ["pages.update"] as AdminPermission[],
+  });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(false) as any;
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(MARKED_HTML),
+    plugins: [],
+    auth,
+    authz,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(await result.text(), `<h1>About</h1><div>body</div>`);
+});
+
 Deno.test("runPluginResponseTransforms: transforms compose in registration order", async () => {
   const auth = makeAuth({});
   const a = makeRecordingPlugin("a");
@@ -296,7 +412,9 @@ Deno.test("marker scrub: anonymous HTML response loses all data-dune-* attribute
 });
 
 Deno.test("marker scrub: forged/invalid session cookie still gets scrubbed", async () => {
-  const auth = makeAuth({ result: { authenticated: false, error: "bad session" } });
+  const auth = makeAuth({
+    result: { authenticated: false, error: "bad session" },
+  });
   const result = await runPluginResponseTransforms({
     req: makeReq("/about", "dune_session=forged"),
     response: htmlResponse(MARKED_HTML),
@@ -352,10 +470,13 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
     hooks: {},
     async transformResponse(ctx) {
       const body = await ctx.response.text();
-      return new Response(`${body}<span data-dune-field="x" data-dune-source="s.md">v</span>`, {
-        status: ctx.response.status,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return new Response(
+        `${body}<span data-dune-field="x" data-dune-source="s.md">v</span>`,
+        {
+          status: ctx.response.status,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
     },
   };
   const result = await runPluginResponseTransforms({

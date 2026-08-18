@@ -8,7 +8,11 @@
  * - Resolve the auth context once per request, enforcing the documented
  *   contract: `auth` is non-null only for a valid admin session that holds
  *   the `pages.update` permission. Plugins can rely on this and must not
- *   need to re-authenticate.
+ *   need to re-authenticate. The permission check itself goes through the
+ *   polizy `authz` system (`authz.check()`) when configured — the same
+ *   sole-authority contract every other admin permission check follows
+ *   (dec-identity-unification Phase 5c/7) — not the flat `ROLE_PERMISSIONS`
+ *   table `auth.hasPermission()` alone would consult.
  * - Never run transforms on admin-panel paths (defense in depth — admin
  *   routes are mounted separately and should never reach the content
  *   catch-all, but the pipeline must not depend on routing order alone).
@@ -20,7 +24,13 @@
  * Used by both the production and dev request paths in fresh-app.ts.
  */
 
-/** Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`. */
+/**
+ * Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`.
+ * `authenticate()` is still the only way to validate an admin session cookie
+ * (core doesn't own admin session cookie config), but `hasPermission()` is
+ * used only as the fallback when `authz` (below) isn't configured — see the
+ * doc comment on `runPluginResponseTransforms` for why.
+ */
 interface AdminAuthMiddleware {
   authenticate(req: Request): Promise<unknown>;
   hasPermission(result: unknown, permission: string): boolean;
@@ -28,6 +38,7 @@ interface AdminAuthMiddleware {
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
@@ -45,6 +56,14 @@ export interface RunResponseTransformsOptions {
    * When null, all sessions are treated as anonymous (transformAuth stays null).
    */
   auth: AdminAuthMiddleware | null;
+  /**
+   * Polizy authz system — when present, is the sole authority for the
+   * `pages.update` check below (dec-identity-unification Phase 7). Falls
+   * back to `auth.hasPermission()` only in the narrow, exceptional case
+   * where authz creation itself failed at startup (already logged loudly
+   * there — see `src/runtime/bootstrap.ts`).
+   */
+  authz?: DuneAuthSystem;
   /** Content index used to match the current URL to a page. */
   pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[];
   config: DuneConfig;
@@ -73,8 +92,8 @@ function matchPageForUrl(
     }
   }
 
-  return pages.find((p) => p.route === route && p.language === lang)
-    ?? pages.find((p) => p.route === route);
+  return pages.find((p) => p.route === route && p.language === lang) ??
+    pages.find((p) => p.route === route);
 }
 
 /**
@@ -94,7 +113,8 @@ function matchPageForUrl(
 export async function runPluginResponseTransforms(
   opts: RunResponseTransformsOptions,
 ): Promise<Response> {
-  const { req, response, plugins, auth, pages, config, adminPrefix } = opts;
+  const { req, response, plugins, auth, authz, pages, config, adminPrefix } =
+    opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
 
@@ -110,10 +130,17 @@ export async function runPluginResponseTransforms(
       // admin-bar injector enforced.
       // deno-lint-ignore no-explicit-any
       const r = result as any;
-      if (
-        r?.authenticated && r?.user &&
-        auth.hasPermission(result, "pages.update")
-      ) {
+      const canUpdatePages = r?.authenticated && r?.user && (
+        authz
+          ? await authz.check({
+            who: { type: "user", id: r.user.id as string },
+            // deno-lint-ignore no-explicit-any
+            canThey: "pages.update" as any,
+            onWhat: { type: "app", id: "admin" },
+          })
+          : auth.hasPermission(result, "pages.update")
+      );
+      if (canUpdatePages) {
         const user = r.user as Record<string, unknown>;
         // dec-identity-unification Phase 5b: the merged User type has no
         // single `role` field, only a generic `roles: string[]` — an admin
@@ -136,7 +163,12 @@ export async function runPluginResponseTransforms(
   if (transformPlugins.length > 0) {
     const supportedLangs = config.system?.languages?.supported ?? [];
     const defaultLang = config.system?.languages?.default ?? "en";
-    const matchedPage = matchPageForUrl(url.pathname, pages, supportedLangs, defaultLang);
+    const matchedPage = matchPageForUrl(
+      url.pathname,
+      pages,
+      supportedLangs,
+      defaultLang,
+    );
     out = await applyResponseTransforms(transformPlugins, {
       req,
       response,
