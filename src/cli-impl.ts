@@ -93,6 +93,7 @@ import { authzSignCommand } from "./cli/authz-sign.ts";
 import { migrateAuthToDbCommand } from "./cli/migrate-auth-to-db.ts";
 import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
 import { migrateUsersCommand } from "./cli/migrate-users.ts";
+import { grantRoleCommand, revokeRoleCommand } from "./cli/users-role.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 
 /** Resolve version string and install source from runtime context. */
@@ -209,6 +210,8 @@ Commands:
   migrate:users                Reshape pre-Phase-5b data/users/ accounts + build email index (idempotent)
   migrate:auth-to-db           Migrate flat-file users + tuples to DB (idempotent)
   migrate:roles-to-tuples      Ensure polizy tuples exist for all user roles[] (idempotent)
+  users:grant-role <email> <role>   Grant an admin-tier role (admin/editor/author) to a user
+  users:revoke-role <email> <role>  Revoke an admin-tier role from a user
 
   jobs:list                    List all registered jobs with schedule and last-run state
   jobs:run <name>              Trigger a job immediately (dev/ops use)
@@ -734,6 +737,24 @@ export async function main(args: string[] = Deno.args) {
         await migrateRolesToTuplesCommand(root, {
           dryRun: options.dryRun === true,
         });
+        break;
+
+      case "users:grant-role":
+        await grantRoleCommand(
+          root,
+          options.positional as string,
+          options.positional2 as string,
+          { dryRun: options.dryRun === true },
+        );
+        break;
+
+      case "users:revoke-role":
+        await revokeRoleCommand(
+          root,
+          options.positional as string,
+          options.positional2 as string,
+          { dryRun: options.dryRun === true },
+        );
         break;
 
       case "jobs:list":
