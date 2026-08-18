@@ -13,19 +13,14 @@
 
 import { App, staticFiles } from "fresh";
 import type { BootstrapResult } from "./bootstrap.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
-import {
-  withSecurityHeaders,
-  isAdminPath,
-} from "../cli/serve-utils.ts";
+import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { createApiHandler } from "../api/handlers.ts";
-import {
-  createPageCache,
-  type PageCache,
-} from "../cache/mod.ts";
+import { createPageCache, type PageCache } from "../cache/mod.ts";
 import { registerHealthRoutes } from "./register-health.ts";
 import { registerFeeds } from "./register-feeds.ts";
 import { registerStaticRoutes } from "./register-static.ts";
@@ -104,12 +99,48 @@ function sanitizeRequestForHook(req: Request): Request {
   });
 }
 
-function stripSetCookieOnAdmin(res: Response, pathname: string, prefix: string): Response {
+function stripSetCookieOnAdmin(
+  res: Response,
+  pathname: string,
+  prefix: string,
+): Response {
   if (!isAdminPath(pathname, prefix)) return res;
   if (!res.headers.has("set-cookie")) return res;
   const headers = new Headers(res.headers);
   headers.delete("set-cookie");
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
+
+/**
+ * Whether an authenticated admin session may perform inline edits
+ * (`pages.update`). Checked against `authz` when configured — the sole
+ * authority every other admin permission check follows
+ * (dec-identity-unification Phase 5c/7) — falling back to
+ * `adminAuth.hasPermission()` (the flat `ROLE_PERMISSIONS` table) only when
+ * authz creation itself failed at startup. Extracted from the `/api/
+ * inline-edit/ws` handler below and exported so this decision is directly
+ * unit-testable without a full app + WebSocket-upgrade harness.
+ */
+export async function checkInlineEditPermission(
+  authz: DuneAuthSystem | undefined,
+  // deno-lint-ignore no-explicit-any
+  adminAuth: any,
+  // deno-lint-ignore no-explicit-any
+  authResult: any,
+): Promise<boolean> {
+  if (authz) {
+    return await authz.check({
+      who: { type: "user", id: authResult.user.id },
+      // deno-lint-ignore no-explicit-any
+      canThey: "pages.update" as any,
+      onWhat: { type: "app", id: "admin" },
+    });
+  }
+  return adminAuth.hasPermission(authResult, "pages.update");
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────────
@@ -120,15 +151,39 @@ export async function createDuneApp(
   options: DuneAppOptions,
 ): Promise<DuneAppResult> {
   const { root, port, debug = false, dev = false, mountAuth = true } = options;
-  const { engine, collections, taxonomy, search, flexEngine, hooks, config, metrics, contentApi } = ctx;
+  const {
+    engine,
+    collections,
+    taxonomy,
+    search,
+    flexEngine,
+    hooks,
+    config,
+    metrics,
+    contentApi,
+  } = ctx;
 
   const startTime = Date.now();
   const feedEnabled = config.site.feed?.enabled !== false;
   const siteName = engine.site.title;
   const adminPrefix = config.admin?.path ?? "/admin";
 
-  const routes = duneRoutes(engine, collections, flexEngine, search, contentApi, hooks);
-  const apiHandler = createApiHandler({ engine, collections, taxonomy, search, flex: flexEngine, hooks });
+  const routes = duneRoutes(
+    engine,
+    collections,
+    flexEngine,
+    search,
+    contentApi,
+    hooks,
+  );
+  const apiHandler = createApiHandler({
+    engine,
+    collections,
+    taxonomy,
+    search,
+    flex: flexEngine,
+    hooks,
+  });
 
   // HTTP caching config
   const httpCacheConfig = config.site.http_cache ?? {};
@@ -145,7 +200,10 @@ export async function createDuneApp(
     .map((p) => `${p.name}@${p.version}`)
     .join(",");
 
-  const clientBundles = await buildPluginClientBundles(hooks.plugins(), { root, dev });
+  const clientBundles = await buildPluginClientBundles(hooks.plugins(), {
+    root,
+    dev,
+  });
 
   let pageCache: PageCache | null = null;
   if (!dev && config.system.page_cache?.enabled) {
@@ -168,10 +226,16 @@ export async function createDuneApp(
   }
 
   async function warmPageCache() {
-    const toWarm = engine.pages.filter((p) => p.published && p.routable).map((p) => p.route);
+    const toWarm = engine.pages.filter((p) => p.published && p.routable).map((
+      p,
+    ) => p.route);
     const CONCURRENCY = 8;
     for (let i = 0; i < toWarm.length; i += CONCURRENCY) {
-      await Promise.all(toWarm.slice(i, i + CONCURRENCY).map((r) => engine.resolve(r).catch(() => {})));
+      await Promise.all(
+        toWarm.slice(i, i + CONCURRENCY).map((r) =>
+          engine.resolve(r).catch(() => {})
+        ),
+      );
     }
   }
 
@@ -189,7 +253,10 @@ export async function createDuneApp(
   app.use(async (fc) => {
     const startMs = performance.now();
     const sanitizedReq = sanitizeRequestForHook(fc.req);
-    const hookResult = await hooks.fire<Request | Response>("onRequest", sanitizedReq);
+    const hookResult = await hooks.fire<Request | Response>(
+      "onRequest",
+      sanitizedReq,
+    );
     if (hookResult instanceof Response) {
       if (isAdminPath(fc.url.pathname, adminPrefix)) {
         console.warn(
@@ -198,15 +265,28 @@ export async function createDuneApp(
         await hookResult.body?.cancel().catch(() => {});
         return fc.next();
       }
-      const finalResponse = stripSetCookieOnAdmin(hookResult, fc.url.pathname, adminPrefix);
-      metrics?.recordRequest(fc.url.pathname, performance.now() - startMs, finalResponse.status >= 500);
+      const finalResponse = stripSetCookieOnAdmin(
+        hookResult,
+        fc.url.pathname,
+        adminPrefix,
+      );
+      metrics?.recordRequest(
+        fc.url.pathname,
+        performance.now() - startMs,
+        finalResponse.status >= 500,
+      );
       return withSecurityHeaders(finalResponse);
     }
     return fc.next();
   });
 
   // 3. Health routes
-  const { setShuttingDown } = registerHealthRoutes(app, { config, engine, pageCache, startTime });
+  const { setShuttingDown } = registerHealthRoutes(app, {
+    config,
+    engine,
+    pageCache,
+    startTime,
+  });
 
   // 4. Sitemap, feeds, staged preview, dev SSE
   const { notifyReload } = await registerFeeds(app, ctx, { port, dev });
@@ -229,10 +309,16 @@ export async function createDuneApp(
   }
 
   // 6. Inline-edit WebSocket — in core so it works without @dune/plugin-admin.
-  //    Auth via the admin session (same cookie as /admin/*).
+  //    Auth via the admin session (same cookie as /admin/*). The pages.update
+  //    check itself goes through authz.check() when configured — the sole
+  //    authority every other admin permission check follows
+  //    (dec-identity-unification Phase 5c/7) — not adminAuth.hasPermission()
+  //    (the flat ROLE_PERMISSIONS table) alone.
   app.get("/api/inline-edit/ws", async (fc) => {
     const inlineEdit = ctx.adminServices?.inlineEdit;
-    if (!inlineEdit) return new Response("Inline editing not enabled", { status: 501 });
+    if (!inlineEdit) {
+      return new Response("Inline editing not enabled", { status: 501 });
+    }
     if (fc.req.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
     }
@@ -240,7 +326,9 @@ export async function createDuneApp(
     if (origin) {
       try {
         if (new URL(origin).host !== new URL(fc.req.url).host) {
-          return new Response("Cross-origin WebSocket rejected", { status: 403 });
+          return new Response("Cross-origin WebSocket rejected", {
+            status: 403,
+          });
         }
       } catch {
         return new Response("Cross-origin WebSocket rejected", { status: 403 });
@@ -248,16 +336,25 @@ export async function createDuneApp(
     }
     const sourcePath = new URL(fc.req.url).searchParams.get("path");
     const SAFE_PATH_RE = /^[a-zA-Z0-9/_.-]+\.(?:md|mdx|yaml|yml|json|tsx)$/;
-    if (!sourcePath || !SAFE_PATH_RE.test(sourcePath) || sourcePath.includes("..")) {
+    if (
+      !sourcePath || !SAFE_PATH_RE.test(sourcePath) || sourcePath.includes("..")
+    ) {
       return new Response("Invalid path", { status: 400 });
     }
     // deno-lint-ignore no-explicit-any
     const adminAuth = (ctx.adminContext as any)?.auth;
     if (!adminAuth) return new Response("Unauthorized", { status: 401 });
     const authResult = await adminAuth.authenticate(fc.req).catch(() => null);
-    if (!authResult?.authenticated || !authResult.user) return new Response("Unauthorized", { status: 401 });
-    if (!adminAuth.hasPermission(authResult, "pages.update")) return new Response("Forbidden", { status: 403 });
-    return inlineEdit.handleUpgrade(fc.req, { id: authResult.user.id, name: authResult.user.username });
+    if (!authResult?.authenticated || !authResult.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    if (!await checkInlineEditPermission(ctx.authz, adminAuth, authResult)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    return inlineEdit.handleUpgrade(fc.req, {
+      id: authResult.user.id,
+      name: authResult.user.username,
+    });
   });
 
   // 7. Core content API (admin API handled by fsRoutes in plugin).
