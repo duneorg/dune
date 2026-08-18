@@ -5,29 +5,26 @@
  * and populates `ctx.state.siteUser` on every request. Does NOT redirect —
  * individual routes decide what to do with a null siteUser.
  *
- * Session files live in {runtimeDir}/site-sessions/, keyed by session ID.
- * Key prefix is distinct from admin sessions which live in {runtimeDir}/sessions/.
+ * Sessions are backed by the same SessionStore/SessionManager mechanism
+ * admin sessions use (src/session/mod.ts, dec-identity-unification Phase
+ * 5c) — local/KV/Redis, chosen the same way via system.session_store.
+ * Public sessions live in a separate directory/key namespace from admin
+ * sessions ({runtimeDir}/site-sessions vs {runtimeDir}/sessions) so the two
+ * don't collide, even though the storage mechanism is identical.
  */
 
-import { encodeHex } from "@std/encoding/hex";
-import type { StorageAdapter } from "../storage/types.ts";
-import type { SiteSession, User } from "./types.ts";
+import type { User } from "./types.ts";
 import type { UserStore } from "./user-store.ts";
 import type { ExternalJwtOptions } from "./jwt.ts";
 import { verifyExternalJwt } from "./jwt.ts";
+import type { SessionManager } from "../session/mod.ts";
 
 export const SITE_COOKIE_NAME = "dune_auth";
 export const OAUTH_STATE_COOKIE = "dune_oauth_state";
 
-export interface SiteSessionManager {
-  create(userId: string, ip?: string, embeddedUser?: User): Promise<SiteSession>;
-  get(sessionId: string): Promise<SiteSession | null>;
-  revoke(sessionId: string): Promise<void>;
-}
-
 export interface SiteAuthMiddlewareConfig {
   userStore: UserStore;
-  sessions: SiteSessionManager;
+  sessions: SessionManager;
   mode?: "dune" | "external-jwt";
   jwt?: ExternalJwtOptions;
   secure?: boolean;
@@ -161,68 +158,6 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     createOAuthStateCookie,
     clearOAuthStateCookie,
   };
-}
-
-/**
- * Create a site session manager backed by the storage adapter.
- * Sessions stored in {sessionsDir}/{id}.json.
- */
-export function createSiteSessionManager(config: {
-  storage: StorageAdapter;
-  sessionsDir: string;
-  /** Session lifetime in milliseconds. */
-  lifetimeMs: number;
-}): SiteSessionManager {
-  const { storage, sessionsDir, lifetimeMs } = config;
-
-  async function create(userId: string, ip?: string, embeddedUser?: User): Promise<SiteSession> {
-    const id = await generateSessionId();
-    const now = Date.now();
-    const session: SiteSession = {
-      id,
-      userId,
-      createdAt: now,
-      expiresAt: now + lifetimeMs,
-      ip,
-      ...(embeddedUser !== undefined ? { embeddedUser } : {}),
-    };
-    await storage.write(
-      `${sessionsDir}/${id}.json`,
-      new TextEncoder().encode(JSON.stringify(session)),
-    );
-    return session;
-  }
-
-  async function get(sessionId: string): Promise<SiteSession | null> {
-    const path = `${sessionsDir}/${sessionId}.json`;
-    try {
-      if (!(await storage.exists(path))) return null;
-      const data = await storage.read(path);
-      const session = JSON.parse(new TextDecoder().decode(data)) as SiteSession;
-      if (session.expiresAt < Date.now()) {
-        await storage.delete(path);
-        return null;
-      }
-      return session;
-    } catch {
-      return null;
-    }
-  }
-
-  async function revoke(sessionId: string): Promise<void> {
-    try {
-      await storage.delete(`${sessionsDir}/${sessionId}.json`);
-    } catch {
-      // already gone — fine
-    }
-  }
-
-  return { create, get, revoke };
-}
-
-async function generateSessionId(): Promise<string> {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return encodeHex(bytes);
 }
 
 function parseCookie(header: string, name: string): string | null {

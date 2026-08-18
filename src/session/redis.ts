@@ -2,7 +2,7 @@
  * Redis-backed session store (via ioredis).
  *
  * Key layout:
- *   dune:session:{id}          — JSON-encoded AdminSession (with EX TTL)
+ *   dune:session:{id}          — JSON-encoded Session (with EX TTL)
  *   dune:session_user:{userId} — Redis Set of session IDs for the user
  *
  * The store connects lazily — the Redis client is not contacted until the
@@ -13,7 +13,7 @@
  * available via Deno's npm: specifier support.
  */
 
-import type { AdminSession } from "./types.ts";
+import type { Session } from "./types.ts";
 import type { SessionStore } from "./types.ts";
 
 // Minimal interface covering the ioredis methods we use, so callers can
@@ -52,18 +52,18 @@ export function createRedisSessionStore(config: RedisSessionStoreConfig): Sessio
     return `${USER_SET_PREFIX}${userId}`;
   }
 
-  function ttlFor(session: AdminSession): number {
+  function ttlFor(session: Session): number {
     const remaining = Math.ceil((session.expiresAt - Date.now()) / 1000);
     return remaining > 0 ? remaining : lifetimeSec;
   }
 
-  async function get(id: string): Promise<AdminSession | null> {
+  async function get(id: string): Promise<Session | null> {
     const raw = await client.get(sessionKey(id));
     if (raw === null) return null;
 
-    let session: AdminSession;
+    let session: Session;
     try {
-      session = JSON.parse(raw) as AdminSession;
+      session = JSON.parse(raw) as Session;
     } catch {
       return null;
     }
@@ -76,7 +76,7 @@ export function createRedisSessionStore(config: RedisSessionStoreConfig): Sessio
     return session;
   }
 
-  async function set(session: AdminSession): Promise<void> {
+  async function set(session: Session): Promise<void> {
     const ttl = ttlFor(session);
     const raw = JSON.stringify(session);
     // Write the session string and update the user set atomically via pipeline.
@@ -92,7 +92,7 @@ export function createRedisSessionStore(config: RedisSessionStoreConfig): Sessio
     await client.del(sessionKey(id));
     if (raw !== null) {
       try {
-        const session = JSON.parse(raw) as AdminSession;
+        const session = JSON.parse(raw) as Session;
         await client.srem(userSetKey(session.userId), id);
       } catch {
         // Best-effort index cleanup

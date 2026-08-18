@@ -9,9 +9,9 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createKVSessionStore } from "../../src/session/kv.ts";
-import type { AdminSession } from "../../src/session/types.ts";
+import type { Session } from "../../src/session/types.ts";
 
-function makeSession(overrides: Partial<AdminSession> = {}): AdminSession {
+function makeSession(overrides: Partial<Session> = {}): Session {
   return {
     id: crypto.randomUUID().replace(/-/g, ""),
     userId: "user-1",

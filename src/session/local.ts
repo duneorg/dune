@@ -10,7 +10,7 @@
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
-import type { AdminSession } from "./types.ts";
+import type { Session } from "./types.ts";
 import type { SessionStore } from "./types.ts";
 
 export interface LocalSessionStoreConfig {
@@ -27,13 +27,13 @@ export interface LocalSessionStoreConfig {
 export function createLocalSessionStore(config: LocalSessionStoreConfig): SessionStore {
   const { storage, sessionsDir } = config;
 
-  async function get(id: string): Promise<AdminSession | null> {
+  async function get(id: string): Promise<Session | null> {
     const path = `${sessionsDir}/${id}.json`;
     try {
       if (!(await storage.exists(path))) return null;
 
       const data = await storage.read(path);
-      const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
+      const session: Session = JSON.parse(new TextDecoder().decode(data));
 
       if (session.expiresAt < Date.now()) {
         await storage.delete(path);
@@ -46,7 +46,7 @@ export function createLocalSessionStore(config: LocalSessionStoreConfig): Sessio
     }
   }
 
-  async function set(session: AdminSession): Promise<void> {
+  async function set(session: Session): Promise<void> {
     const path = `${sessionsDir}/${session.id}.json`;
     const data = new TextEncoder().encode(JSON.stringify(session));
     await storage.write(path, data);
@@ -69,7 +69,7 @@ export function createLocalSessionStore(config: LocalSessionStoreConfig): Sessio
         const path = `${sessionsDir}/${entry.name}`;
         try {
           const data = await storage.read(path);
-          const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
+          const session: Session = JSON.parse(new TextDecoder().decode(data));
           if (session.userId === userId) {
             await storage.delete(path);
           }
@@ -93,7 +93,7 @@ export function createLocalSessionStore(config: LocalSessionStoreConfig): Sessio
         const path = `${sessionsDir}/${entry.name}`;
         try {
           const data = await storage.read(path);
-          const session: AdminSession = JSON.parse(new TextDecoder().decode(data));
+          const session: Session = JSON.parse(new TextDecoder().decode(data));
           if (session.expiresAt < now) {
             await storage.delete(path);
             cleaned++;

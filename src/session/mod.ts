@@ -10,14 +10,16 @@
  * @module
  */
 
+import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { SessionStore } from "./types.ts";
+import type { Session, SessionStore } from "./types.ts";
+import type { User } from "../auth/types.ts";
 import { createLocalSessionStore } from "./local.ts";
 import { createKVSessionStore } from "./kv.ts";
 import { createRedisSessionStoreFromUrl } from "./redis.ts";
 
 export type {
-  /** Session store interface — backend-agnostic contract for admin session persistence. */
+  /** Session store interface — backend-agnostic contract for session persistence. */
   SessionStore,
 } from "./types.ts";
 
@@ -81,6 +83,70 @@ function resolveType(opts: SessionStoreOptions): "local" | "kv" | "redis" {
   return "local";
 }
 
+/**
+ * Creates and validates sessions backed by a SessionStore.
+ *
+ * Shared by @dune/plugin-admin's admin sessions and public-site auth
+ * sessions (dec-identity-unification Phase 5c) — one mechanism,
+ * parameterized by which SessionStore backend it's given, rather than two
+ * independently-implemented stacks. `create()`'s `embeddedUser` param is
+ * only ever used by public auth's `userStore: "session"` mode; admin
+ * sessions never pass it.
+ */
+export interface SessionManager {
+  /** Create a new session for a user. */
+  create(userId: string, ip?: string, embeddedUser?: User): Promise<Session>;
+  /** Get and validate a session by its ID. Returns null if expired or not found. */
+  get(sessionId: string): Promise<Session | null>;
+  /** Revoke (delete) a session. */
+  revoke(sessionId: string): Promise<void>;
+  /** Revoke all sessions for a user. */
+  revokeAll(userId: string): Promise<void>;
+  /** Clean up expired sessions. */
+  cleanup(): Promise<number>;
+}
+
+/** Create a SessionManager over the given store. `lifetimeMs` determines each session's `expiresAt`. */
+export function createSessionManager(store: SessionStore, lifetimeMs: number): SessionManager {
+  async function create(userId: string, ip?: string, embeddedUser?: User): Promise<Session> {
+    const id = await generateSessionId();
+    const now = Date.now();
+    const session: Session = {
+      id,
+      userId,
+      createdAt: now,
+      expiresAt: now + lifetimeMs,
+      ip,
+      ...(embeddedUser !== undefined ? { embeddedUser } : {}),
+    };
+    await store.set(session);
+    return session;
+  }
+
+  async function get(sessionId: string): Promise<Session | null> {
+    return store.get(sessionId);
+  }
+
+  async function revoke(sessionId: string): Promise<void> {
+    await store.delete(sessionId);
+  }
+
+  async function revokeAll(userId: string): Promise<void> {
+    await store.deleteByUserId(userId);
+  }
+
+  async function cleanup(): Promise<number> {
+    return store.cleanup();
+  }
+
+  return { create, get, revoke, revokeAll, cleanup };
+}
+
+async function generateSessionId(): Promise<string> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return encodeHex(bytes);
+}
+
 // Re-export low-level session primitives for @dune/plugin-admin
 export { createLocalSessionStore } from "./local.ts";
-export type { AdminSession } from "./types.ts";
+export type { Session } from "./types.ts";

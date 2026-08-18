@@ -14,7 +14,8 @@
 import type { App } from "fresh";
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalUserStore } from "./user-store.ts";
-import { createSiteAuthMiddleware, createSiteSessionManager } from "./middleware.ts";
+import { createSiteAuthMiddleware } from "./middleware.ts";
+import { createSessionManager, createSessionStore } from "../session/mod.ts";
 import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
 import { SITE_USER_HEADER, type User } from "./types.ts";
@@ -86,13 +87,23 @@ export async function mountDuneAuth(
   }
 
   // ── Session manager ─────────────────────────────────────────────────────────
-  // Site sessions stored under a separate directory from admin sessions
-  const sessionsDir = `${runtimeDir}/site-sessions`;
-  const sessionMgr = createSiteSessionManager({
+  // Same SessionStore/SessionManager mechanism admin sessions use
+  // (dec-identity-unification Phase 5c) — local/KV/Redis, chosen the same
+  // way via system.session_store. Site sessions live in a separate
+  // directory/key namespace from admin sessions so the two don't collide.
+  const sessionStoreCfg = config.system?.session_store;
+  const siteSessionStore = await createSessionStore({
+    type: sessionStoreCfg?.type ?? "local",
+    redisUrl: sessionStoreCfg?.url
+      ? (sessionStoreCfg.url.startsWith("$")
+        ? Deno.env.get(sessionStoreCfg.url.slice(1))
+        : sessionStoreCfg.url)
+      : undefined,
     storage,
-    sessionsDir,
+    sessionsDir: `${runtimeDir}/site-sessions`,
     lifetimeMs: sessionLifetimeSec * 1000,
   });
+  const sessionMgr = createSessionManager(siteSessionStore, sessionLifetimeSec * 1000);
 
   // ── Auth middleware ─────────────────────────────────────────────────────────
   const jwtOpts = mode === "external-jwt" && authConfig?.jwt

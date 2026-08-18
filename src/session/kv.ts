@@ -9,7 +9,7 @@
  * (i.e. running on Deno Deploy) or when explicitly requested via config.
  */
 
-import type { AdminSession } from "./types.ts";
+import type { Session } from "./types.ts";
 import type { SessionStore } from "./types.ts";
 
 export interface KVSessionStoreConfig {
@@ -25,8 +25,8 @@ export interface KVSessionStoreConfig {
 export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore {
   const { kv, lifetimeMs } = config;
 
-  async function get(id: string): Promise<AdminSession | null> {
-    const result = await kv.get<AdminSession>(["sessions", id]);
+  async function get(id: string): Promise<Session | null> {
+    const result = await kv.get<Session>(["sessions", id]);
     if (result.value === null) return null;
 
     // Belt-and-suspenders expiry check in case TTL is not enforced yet.
@@ -38,7 +38,7 @@ export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore
     return result.value;
   }
 
-  async function set(session: AdminSession): Promise<void> {
+  async function set(session: Session): Promise<void> {
     const ttlMs = Math.max(0, session.expiresAt - Date.now());
     // Write the session data and the user index entry atomically.
     await kv.atomic()
@@ -49,7 +49,7 @@ export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore
 
   async function del(id: string): Promise<void> {
     // Retrieve to get userId for index cleanup, then delete both entries.
-    const result = await kv.get<AdminSession>(["sessions", id]);
+    const result = await kv.get<Session>(["sessions", id]);
     if (result.value !== null) {
       await kv.atomic()
         .delete(["sessions", id])

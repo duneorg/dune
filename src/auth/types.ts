@@ -85,19 +85,3 @@ export function getSiteUser(req: Request): User | null {
     return null;
   }
 }
-
-/** Public user session stored in the site session directory. */
-export interface SiteSession {
-  id: string;
-  userId: string;
-  createdAt: number;
-  expiresAt: number;
-  ip?: string;
-  /**
-   * Full user object embedded in the session.
-   * Set when userStore is "session" — no persistent user record exists,
-   * so the User is synthesised from OAuth/magic-link claims at login
-   * and carried in the session for the lifetime of the cookie.
-   */
-  embeddedUser?: User;
-}

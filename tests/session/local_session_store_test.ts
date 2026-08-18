@@ -7,7 +7,7 @@ import {
   assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createLocalSessionStore } from "../../src/session/local.ts";
-import type { AdminSession } from "../../src/session/types.ts";
+import type { Session } from "../../src/session/types.ts";
 
 // Minimal in-memory StorageAdapter sufficient for session store tests.
 function createMemoryStorage() {
@@ -44,7 +44,7 @@ function createMemoryStorage() {
   } as any;
 }
 
-function makeSession(overrides: Partial<AdminSession> = {}): AdminSession {
+function makeSession(overrides: Partial<Session> = {}): Session {
   return {
     id: crypto.randomUUID().replace(/-/g, ""),
     userId: "user-1",
