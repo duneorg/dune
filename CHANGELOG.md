@@ -177,6 +177,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   from `data/users/` too. 8 new tests for the migration command. Full
   1521-test suite and `deno task check` pass.
 
+- **Unified admin and public-site sessions onto one mechanism, completing
+  Phase 5 (`decisions/dec-identity-unification.md`).** Public auth
+  sessions had their own hand-rolled, file-only implementation
+  (`SiteSessionManager`) — a second, independently-maintained stack with
+  no KV/Redis support, unlike admin sessions. `AdminSession` → `Session`
+  (bare name, matching the `User`/`Role` precedent — no longer
+  admin-specific), gained `embeddedUser?: User` for public auth's
+  `userStore: "session"` mode. New `createSessionManager(store,
+  lifetimeMs)` factory in `@dune/core/session` — the actual shared
+  mechanism, not just a shared type. `mountDuneAuth()`'s site sessions now
+  go through `createSessionStore()` + this factory, reading
+  `system.session_store` the same way admin sessions already do — site
+  sessions on Deno Deploy or behind a load balancer now actually work via
+  KV/Redis, which they never could before. The hand-rolled
+  `SiteSessionManager`/`SiteSession` are gone entirely. 9 new tests. Full
+  1530-test suite and `deno task check` pass.
+
 ---
 
 ## [0.31.7] — 2026-08-13
