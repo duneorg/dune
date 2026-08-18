@@ -343,6 +343,81 @@ Deno.test("LocalUserStore: update modifies fields", async () => {
   assertEquals(updated?.enabled, false);
 });
 
+Deno.test("LocalUserStore: update can change email, old email index entry is removed", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({
+    storage,
+    usersDir: "data/users",
+  });
+
+  const user = await store.create({
+    email: "jane-old@example.com",
+    provider: "local",
+    roles: [],
+  });
+
+  const updated = await store.update(user.id, {
+    email: "jane-new@example.com",
+  });
+  assertEquals(updated?.email, "jane-new@example.com");
+
+  const viaNewEmail = await store.getByEmail("jane-new@example.com");
+  assertEquals(viaNewEmail?.id, user.id);
+
+  const viaOldEmail = await store.getByEmail("jane-old@example.com");
+  assertEquals(viaOldEmail, null);
+});
+
+Deno.test("LocalUserStore: update throws DuplicateEmailError when changing to another user's email", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({
+    storage,
+    usersDir: "data/users",
+  });
+
+  await store.create({
+    email: "taken@example.com",
+    provider: "local",
+    roles: [],
+  });
+  const user2 = await store.create({
+    email: "available@example.com",
+    provider: "local",
+    roles: [],
+  });
+
+  await assertRejects(
+    () => store.update(user2.id, { email: "taken@example.com" }),
+    DuplicateEmailError,
+  );
+
+  // user2's own record is untouched
+  const stillThere = await store.getByEmail("available@example.com");
+  assertEquals(stillThere?.id, user2.id);
+});
+
+Deno.test("LocalUserStore: update with the same email (different case) is a no-op on the index", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({
+    storage,
+    usersDir: "data/users",
+  });
+
+  const user = await store.create({
+    email: "kim@example.com",
+    provider: "local",
+    roles: [],
+  });
+  const updated = await store.update(user.id, {
+    email: "Kim@Example.com",
+    name: "Kim",
+  });
+
+  assertEquals(updated?.name, "Kim");
+  const found = await store.getByEmail("kim@example.com");
+  assertEquals(found?.id, user.id);
+});
+
 Deno.test("LocalUserStore: update returns null for missing user", async () => {
   const storage = createMemoryStorage();
   const store = createLocalUserStore({

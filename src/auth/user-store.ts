@@ -31,11 +31,13 @@ export interface UserStore {
   getByProvider(provider: string, providerId: string): Promise<User | null>;
   /** @throws {DuplicateEmailError} if a user with this email already exists. */
   create(user: UserCreate): Promise<User>;
+  /** @throws {DuplicateEmailError} if `updates.email` is set and already used by a different user. */
   update(
     id: string,
     updates: Partial<
       Pick<
         User,
+        | "email"
         | "name"
         | "avatarUrl"
         | "username"
@@ -209,6 +211,34 @@ export function createLocalUserStore(
     updates: Partial<
       Pick<
         User,
+        | "email"
+        | "name"
+        | "avatarUrl"
+        | "username"
+        | "passwordHash"
+        | "roles"
+        | "lastSeenAt"
+        | "enabled"
+        | "stripeCustomerId"
+      >
+    >,
+  ): Promise<User | null> {
+    // Email changes touch the by-email index (a second file), so they're
+    // locked the same way create() is — a concurrent create()/update() for
+    // the target email can't win the race and be silently overwritten.
+    const newEmail = updates.email;
+    if (newEmail !== undefined) {
+      return withEmailLock(newEmail, () => applyUpdate(id, updates));
+    }
+    return applyUpdate(id, updates);
+  }
+
+  async function applyUpdate(
+    id: string,
+    updates: Partial<
+      Pick<
+        User,
+        | "email"
         | "name"
         | "avatarUrl"
         | "username"
@@ -223,6 +253,17 @@ export function createLocalUserStore(
     const user = await getById(id);
     if (!user) return null;
 
+    const oldEmail = user.email;
+    if (
+      updates.email !== undefined &&
+      updates.email.toLowerCase() !== oldEmail.toLowerCase()
+    ) {
+      const existing = await getByEmail(updates.email);
+      if (existing && existing.id !== id) {
+        throw new DuplicateEmailError(updates.email);
+      }
+      user.email = updates.email;
+    }
     if (updates.name !== undefined) user.name = updates.name;
     if (updates.avatarUrl !== undefined) user.avatarUrl = updates.avatarUrl;
     if (updates.username !== undefined) user.username = updates.username;
@@ -238,6 +279,12 @@ export function createLocalUserStore(
     user.updatedAt = Date.now();
 
     await saveUser(user);
+    if (user.email !== oldEmail) {
+      // Remove the stale index entry for the old email now that the new
+      // one has been written by saveUser().
+      const staleIndexPath = `${byEmailDir}/${encodeEmail(oldEmail)}.json`;
+      await storage.delete(staleIndexPath).catch(() => {});
+    }
     return user;
   }
 

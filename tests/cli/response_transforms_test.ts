@@ -23,16 +23,18 @@ import type { AuthResult, AdminPermission, User } from "jsr:@dune/plugin-admin/a
 
 const config = {} as DuneConfig;
 
-function makeUser(role: User["role"]): User {
+function makeUser(role: string): User {
   return {
     id: "u1",
     username: "alice",
     email: "alice@example.com",
     passwordHash: "",
-    role,
+    provider: "local",
+    roles: [role],
     name: "Alice",
     createdAt: 0,
     updatedAt: 0,
+    lastSeenAt: 0,
     enabled: true,
   };
 }

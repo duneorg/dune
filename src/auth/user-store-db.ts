@@ -180,6 +180,7 @@ export async function createDbUserStore(config: { adapter: DbAdapter }): Promise
       updates: Partial<
         Pick<
           User,
+          | "email"
           | "name"
           | "avatarUrl"
           | "username"
@@ -194,6 +195,12 @@ export async function createDbUserStore(config: { adapter: DbAdapter }): Promise
       const sets: string[] = ["updatedAt = ?"];
       const params: unknown[] = [Date.now()];
 
+      // No DuplicateEmailError translation here — matches create()'s existing
+      // behavior on this tier: the UNIQUE constraint gives atomicity, but a
+      // conflicting write surfaces as a raw DB error, not a typed one. A
+      // pre-existing gap on this tier (see decisions/dec-identity-
+      // unification.md), not introduced by this email-update addition.
+      if ("email" in updates) { sets.push("email = ?"); params.push(updates.email); }
       if ("name" in updates) { sets.push("name = ?"); params.push(updates.name ?? null); }
       if ("avatarUrl" in updates) { sets.push("avatarUrl = ?"); params.push(updates.avatarUrl ?? null); }
       if ("username" in updates) { sets.push("username = ?"); params.push(updates.username ?? null); }

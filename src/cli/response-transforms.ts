@@ -115,9 +115,17 @@ export async function runPluginResponseTransforms(
         auth.hasPermission(result, "pages.update")
       ) {
         const user = r.user as Record<string, unknown>;
+        // dec-identity-unification Phase 5b: the merged User type has no
+        // single `role` field, only a generic `roles: string[]` — an admin
+        // session always has exactly one entry in it (set by
+        // @dune/plugin-admin's UserManager), so the first entry is the
+        // session's admin role. This context field keeps its original
+        // `role: string` shape (a published hook type, ResponseTransformContext
+        // — minimize churn for plugin authors) rather than switching to `roles`.
+        const roles = user.roles as string[] | undefined;
         transformAuth = {
           username: user.username as string,
-          role: user.role as string,
+          role: roles?.[0] ?? "",
           hasPermission: (perm) => auth.hasPermission(result, perm as string),
         };
       }
