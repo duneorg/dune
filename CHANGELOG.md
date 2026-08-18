@@ -164,6 +164,18 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Added
 
+- **CI guard against workspace-member `@dune/core` pin drift.**
+  `scripts/check-core-pin-drift.ts` checks the latest published version of
+  every known sibling `@dune/*` package on JSR against this checkout's own
+  `deno.json` version, failing when a pin no longer covers it — the 2026-07-16
+  incident class, where a sibling's `@dune/core` range silently stopped
+  covering a real core version and Deno's workspace auto-linking (or plain
+  JSR resolution) fell back to a stale published core for real runtime
+  imports, with only a passive console warning. New `deno task
+  check:core-pin-drift` and CI step (kept separate from the offline `check`
+  task since this one needs network). 8 new tests for the pure parsing
+  logic.
+
 - **`dune users:grant-role <email> <role>` / `dune users:revoke-role <email>
   <role>`.** dec-identity-unification Phase 6's CLI leg for the
   role-granting mechanism — grants or revokes an admin-tier role
