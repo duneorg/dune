@@ -11,8 +11,8 @@
 
 import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { SiteSession, SiteUser } from "./types.ts";
-import type { SiteUserStore } from "./user-store.ts";
+import type { SiteSession, User } from "./types.ts";
+import type { UserStore } from "./user-store.ts";
 import type { ExternalJwtOptions } from "./jwt.ts";
 import { verifyExternalJwt } from "./jwt.ts";
 
@@ -20,13 +20,13 @@ export const SITE_COOKIE_NAME = "dune_auth";
 export const OAUTH_STATE_COOKIE = "dune_oauth_state";
 
 export interface SiteSessionManager {
-  create(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<SiteSession>;
+  create(userId: string, ip?: string, embeddedUser?: User): Promise<SiteSession>;
   get(sessionId: string): Promise<SiteSession | null>;
   revoke(sessionId: string): Promise<void>;
 }
 
 export interface SiteAuthMiddlewareConfig {
-  userStore: SiteUserStore;
+  userStore: UserStore;
   sessions: SiteSessionManager;
   mode?: "dune" | "external-jwt";
   jwt?: ExternalJwtOptions;
@@ -36,14 +36,14 @@ export interface SiteAuthMiddlewareConfig {
 }
 
 export interface SiteAuthMiddleware {
-  /** Populate ctx.state.siteUser — returns SiteUser or null */
-  resolveUser(req: Request): Promise<SiteUser | null>;
+  /** Populate ctx.state.siteUser — returns User or null */
+  resolveUser(req: Request): Promise<User | null>;
   /** Create a session and return a Set-Cookie header value */
   createSessionCookie(sessionId: string): string;
   /** Return a Set-Cookie header value that clears the session cookie */
   clearSessionCookie(): string;
   /** Create a new session for a user, return session ID */
-  createSession(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<string>;
+  createSession(userId: string, ip?: string, embeddedUser?: User): Promise<string>;
   /** Destroy a session */
   destroySession(sessionId: string): Promise<void>;
   /** Build an OAuth state cookie (10 min) */
@@ -63,14 +63,14 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     trustForwardedFor = false,
   } = config;
 
-  async function resolveUser(req: Request): Promise<SiteUser | null> {
+  async function resolveUser(req: Request): Promise<User | null> {
     if (mode === "external-jwt") {
       return resolveUserFromJwt(req);
     }
     return resolveUserFromSession(req);
   }
 
-  async function resolveUserFromSession(req: Request): Promise<SiteUser | null> {
+  async function resolveUserFromSession(req: Request): Promise<User | null> {
     const cookieHeader = req.headers.get("Cookie") ?? "";
     const sessionId = parseCookie(cookieHeader, SITE_COOKIE_NAME);
     if (!sessionId) return null;
@@ -97,7 +97,7 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     return user;
   }
 
-  async function resolveUserFromJwt(req: Request): Promise<SiteUser | null> {
+  async function resolveUserFromJwt(req: Request): Promise<User | null> {
     if (!jwtOpts) return null;
 
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -107,14 +107,15 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     const claims = await verifyExternalJwt(token, jwtOpts);
     if (!claims) return null;
 
-    // Upsert a synthetic SiteUser from JWT claims — no persistent record needed
-    // but we provide a consistent SiteUser object to route handlers.
-    const syntheticUser: SiteUser = {
+    // Upsert a synthetic User from JWT claims — no persistent record needed
+    // but we provide a consistent User object to route handlers.
+    const syntheticUser: User = {
       id: claims.userId,
       email: claims.email ?? "",
       provider: "external-jwt",
       roles: claims.roles ?? [],
       createdAt: 0,
+      updatedAt: 0,
       lastSeenAt: Date.now(),
       enabled: true,
     };
@@ -131,7 +132,7 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     return `${SITE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
   }
 
-  async function createSession(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<string> {
+  async function createSession(userId: string, ip?: string, embeddedUser?: User): Promise<string> {
     const session = await sessions.create(userId, ip, embeddedUser);
     return session.id;
   }
@@ -174,7 +175,7 @@ export function createSiteSessionManager(config: {
 }): SiteSessionManager {
   const { storage, sessionsDir, lifetimeMs } = config;
 
-  async function create(userId: string, ip?: string, embeddedUser?: SiteUser): Promise<SiteSession> {
+  async function create(userId: string, ip?: string, embeddedUser?: User): Promise<SiteSession> {
     const id = await generateSessionId();
     const now = Date.now();
     const session: SiteSession = {

@@ -16,9 +16,9 @@ import { join, resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
-import { createDbSiteUserStore } from "../auth/user-store-db.ts";
+import { createDbUserStore } from "../auth/user-store-db.ts";
 import { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
-import type { SiteUser } from "../auth/types.ts";
+import type { User } from "../auth/types.ts";
 
 export interface MigrateAuthToDbOptions {
   dryRun?: boolean;
@@ -54,10 +54,10 @@ export async function migrateAuthToDbCommand(
   let usersSkipped = 0;
 
   if (userFiles.length > 0) {
-    const dbStore = dryRun ? null : await createDbSiteUserStore({ adapter: dbAdapter });
+    const dbStore = dryRun ? null : await createDbUserStore({ adapter: dbAdapter });
 
     for (const filePath of userFiles) {
-      const user = JSON.parse(await Deno.readTextFile(filePath)) as SiteUser;
+      const user = JSON.parse(await Deno.readTextFile(filePath)) as User;
       if (!user.id) { usersSkipped++; continue; }
 
       if (dryRun) {

@@ -13,11 +13,11 @@
 // deno-lint-ignore no-explicit-any
 import type { App } from "fresh";
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
-import { createLocalSiteUserStore } from "./user-store.ts";
+import { createLocalUserStore } from "./user-store.ts";
 import { createSiteAuthMiddleware, createSiteSessionManager } from "./middleware.ts";
 import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
-import { SITE_USER_HEADER, type SiteUser } from "./types.ts";
+import { SITE_USER_HEADER, type User } from "./types.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { createDuneAuthSystem, bootstrapRoleTuples } from "./authz.ts";
 import type { DuneAuthSystem } from "./authz.ts";
@@ -33,7 +33,7 @@ type FreshApp = App<any>;
 
 export interface PublicAuthContext {
   /** Resolve the current site user from a request (null if not authenticated) */
-  resolveUser: (req: Request) => Promise<SiteUser | null>;
+  resolveUser: (req: Request) => Promise<User | null>;
   /**
    * The configured authz system, or null in external-jwt mode.
    * Pass to `mountPaymentRoutes()` so the payment manager can call
@@ -71,14 +71,14 @@ export async function mountDuneAuth(
 
   // ── User store ──────────────────────────────────────────────────────────────
   const usersDir = `${dataDir}/site-users`;
-  let userStore: import("./user-store.ts").SiteUserStore;
+  let userStore: import("./user-store.ts").UserStore;
   if (userStoreType === "db") {
     const { createDbAdapter } = await import("../db/adapters/mod.ts");
-    const { createDbSiteUserStore } = await import("./user-store-db.ts");
+    const { createDbUserStore } = await import("./user-store-db.ts");
     const dbAdapter = await createDbAdapter();
-    userStore = await createDbSiteUserStore({ adapter: dbAdapter });
+    userStore = await createDbUserStore({ adapter: dbAdapter });
   } else {
-    userStore = createLocalSiteUserStore({ storage, usersDir });
+    userStore = createLocalUserStore({ storage, usersDir });
   }
 
   // ── Session manager ─────────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ export async function mountDuneAuth(
 
   // GET /auth/login
   app.get("/auth/login", (fc) => {
-    const siteUser = (fc.state as any).siteUser as SiteUser | null;
+    const siteUser = (fc.state as any).siteUser as User | null;
     return routes.login(fc.req, siteUser);
   });
 
@@ -335,7 +335,7 @@ export async function mountDuneAuth(
 
   // GET /auth/me
   app.get("/auth/me", (fc) => {
-    const siteUser = (fc.state as any).siteUser as SiteUser | null;
+    const siteUser = (fc.state as any).siteUser as User | null;
     return routes.me(fc.req, siteUser);
   });
 

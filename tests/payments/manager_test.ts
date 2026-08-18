@@ -1,7 +1,7 @@
 /**
  * Unit tests for PaymentManager.
  *
- * Uses mock implementations of PaymentProvider and SiteUserStore.
+ * Uses mock implementations of PaymentProvider and UserStore.
  * No HTTP calls are made — all external behaviour is stubbed at the interface level.
  */
 
@@ -13,15 +13,15 @@ import {
 
 import { createPaymentManager } from "../../src/payments/manager.ts";
 import type { PaymentProvider, CheckoutSession, WebhookEvent, Product } from "../../src/payments/types.ts";
-import type { SiteUserStore } from "../../src/auth/user-store.ts";
-import type { SiteUser, UserCreate } from "../../src/auth/types.ts";
+import type { UserStore } from "../../src/auth/user-store.ts";
+import type { User, UserCreate } from "../../src/auth/types.ts";
 import { createDuneAuthSystem } from "../../src/auth/authz.ts";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
 
-function makeUser(overrides: Partial<SiteUser> = {}): SiteUser {
+function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: "user-123",
     email: "user@example.com",
@@ -29,6 +29,7 @@ function makeUser(overrides: Partial<SiteUser> = {}): SiteUser {
     provider: "magic",
     roles: [],
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     lastSeenAt: Date.now(),
     enabled: true,
     ...overrides,
@@ -46,23 +47,24 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
-/** Minimal mock SiteUserStore. Only getById and update are exercised by the manager. */
-class MockUserStore implements SiteUserStore {
-  users: Map<string, SiteUser> = new Map();
-  updateCalls: Array<{ id: string; updates: Partial<SiteUser> }> = [];
+/** Minimal mock UserStore. Only getById and update are exercised by the manager. */
+class MockUserStore implements UserStore {
+  users: Map<string, User> = new Map();
+  updateCalls: Array<{ id: string; updates: Partial<User> }> = [];
 
-  async getById(id: string): Promise<SiteUser | null> {
+  async getById(id: string): Promise<User | null> {
     return this.users.get(id) ?? null;
   }
 
-  async getByEmail(_email: string): Promise<SiteUser | null> { return null; }
-  async getByProvider(_provider: string, _providerId: string): Promise<SiteUser | null> { return null; }
-  async create(_user: UserCreate): Promise<SiteUser> { throw new Error("not implemented"); }
+  async getByEmail(_email: string): Promise<User | null> { return null; }
+  async getByUsername(_username: string): Promise<User | null> { return null; }
+  async getByProvider(_provider: string, _providerId: string): Promise<User | null> { return null; }
+  async create(_user: UserCreate): Promise<User> { throw new Error("not implemented"); }
 
   async update(
     id: string,
-    updates: Partial<Pick<SiteUser, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled">>,
-  ): Promise<SiteUser | null> {
+    updates: Partial<Pick<User, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled">>,
+  ): Promise<User | null> {
     this.updateCalls.push({ id, updates });
     const user = this.users.get(id);
     if (!user) return null;
@@ -71,7 +73,7 @@ class MockUserStore implements SiteUserStore {
     return updated;
   }
 
-  async list(_opts?: { limit?: number; offset?: number }): Promise<SiteUser[]> { return []; }
+  async list(_opts?: { limit?: number; offset?: number }): Promise<User[]> { return []; }
   async delete(_id: string): Promise<boolean> { return false; }
 }
 
@@ -106,7 +108,7 @@ class MockPaymentProvider implements PaymentProvider {
 function buildManager(opts: {
   products?: Product[];
   parseWebhookResult?: WebhookEvent | null;
-  users?: SiteUser[];
+  users?: User[];
 }) {
   const provider = new MockPaymentProvider();
   if (opts.parseWebhookResult !== undefined) {

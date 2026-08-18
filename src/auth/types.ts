@@ -1,17 +1,39 @@
 /**
- * Public auth types — site visitor accounts, distinct from admin users.
+ * Auth types — one unified account record shared by the admin panel
+ * (@dune/plugin-admin) and public site visitors.
+ *
+ * Merged from the formerly-separate `AdminUser` (admin-only, password auth,
+ * single closed-union role) and `SiteUser` (public-only, OAuth/magic-link,
+ * generic string roles) per decisions/dec-identity-unification.md's Phase 5.
+ * There is no closed role union on this type: `"admin"`/`"editor"`/`"author"`
+ * are just conventional string values inside `roles`, interpreted by
+ * @dune/plugin-admin's `ROLE_RANK`/`VALID_ROLES`/`highestValidRole()`
+ * (src/admin/auth/provisioner.ts) — a user with none of those strings in
+ * `roles` simply has no admin-panel access, the same way a public site
+ * member with no matching content-gating role has none.
  */
 
-/** A site visitor account. No passwords — OAuth and magic link only. */
-export interface SiteUser {
-  id: string;           // UUID
+/** A Dune account — admin panel user, public site visitor, or both. */
+export interface User {
+  id: string;
   email: string;
   name?: string;
   avatarUrl?: string;
-  provider: string;     // "github" | "google" | "discord" | "magic" | "local"
-  providerId?: string;  // provider's user ID (for OAuth)
-  roles: string[];      // custom roles, e.g. ["member", "subscriber"]
-  createdAt: number;    // ms timestamp
+  /**
+   * Login name for password-based (local admin) auth. Absent for
+   * OAuth/magic-link-only accounts, which have no username concept.
+   */
+  username?: string;
+  /** PBKDF2 hash, present only for accounts with a local password. */
+  passwordHash?: string;
+  /** External identity provider: "local" (password) | "github" | "google" | "discord" | "magic" | ... */
+  provider: string;
+  /** Provider's user ID (for OAuth). */
+  providerId?: string;
+  /** Roles/tags, e.g. ["admin"], ["member", "subscriber"]. */
+  roles: string[];
+  createdAt: number; // ms timestamp
+  updatedAt: number;
   lastSeenAt: number;
   enabled: boolean;
   /**
@@ -22,20 +44,15 @@ export interface SiteUser {
 }
 
 /**
- * Input for creating a new {@link SiteUser} — server-generated fields are
- * omitted. Named `UserCreate`, not `SiteUserCreate`, per
- * decisions/dec-identity-unification.md's Phase 3 (the bare name is the
- * target for the whole identity system, landed on the DTO first); `SiteUser`
- * itself keeps its current name until Phase 5 merges it with the admin-side
- * user record.
+ * Input for creating a new {@link User} — server-generated fields are omitted.
  */
-export type UserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "enabled"> & {
+export type UserCreate = Omit<User, "id" | "createdAt" | "updatedAt" | "lastSeenAt" | "enabled"> & {
   enabled?: boolean;
 };
 
 /**
  * Header name used by the public auth middleware to communicate the resolved
- * SiteUser to downstream handlers (content gating, API guards, etc.).
+ * User to downstream handlers (content gating, API guards, etc.).
  *
  * The middleware serialises the user as JSON into this header after validating
  * the session cookie. Treat as trusted only when set by the same process —
@@ -46,11 +63,11 @@ export type UserCreate = Omit<SiteUser, "id" | "createdAt" | "lastSeenAt" | "ena
 export const SITE_USER_HEADER = "x-dune-site-user";
 
 /**
- * Extract the SiteUser from a request, if one was injected by the public auth
+ * Extract the User from a request, if one was injected by the public auth
  * middleware. Returns null when the user is unauthenticated or the header is
  * absent or malformed.
  */
-export function getSiteUser(req: Request): SiteUser | null {
+export function getSiteUser(req: Request): User | null {
   const raw = req.headers.get(SITE_USER_HEADER);
   if (!raw) return null;
   try {
@@ -61,7 +78,7 @@ export function getSiteUser(req: Request): SiteUser | null {
       typeof parsed.id === "string" &&
       Array.isArray(parsed.roles)
     ) {
-      return parsed as SiteUser;
+      return parsed as User;
     }
     return null;
   } catch {
@@ -79,8 +96,8 @@ export interface SiteSession {
   /**
    * Full user object embedded in the session.
    * Set when userStore is "session" — no persistent user record exists,
-   * so the SiteUser is synthesised from OAuth/magic-link claims at login
+   * so the User is synthesised from OAuth/magic-link claims at login
    * and carried in the session for the lifetime of the cookie.
    */
-  embeddedUser?: SiteUser;
+  embeddedUser?: User;
 }

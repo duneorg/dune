@@ -16,8 +16,8 @@
  */
 
 import { encodeHex } from "@std/encoding/hex";
-import type { SiteUser } from "./types.ts";
-import { DuplicateEmailError, type SiteUserStore } from "./user-store.ts";
+import type { User } from "./types.ts";
+import { DuplicateEmailError, type UserStore } from "./user-store.ts";
 import type { SiteAuthMiddleware } from "./middleware.ts";
 import { OAUTH_STATE_COOKIE } from "./middleware.ts";
 import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
@@ -26,7 +26,7 @@ import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit
 import { logger } from "../core/logger.ts";
 
 export interface AuthRoutesConfig {
-  userStore: SiteUserStore;
+  userStore: UserStore;
   middleware: SiteAuthMiddleware;
   providers: Map<string, OAuthProvider>;
   magicLinkEnabled: boolean;
@@ -46,13 +46,13 @@ export interface AuthRoutesConfig {
 }
 
 export interface AuthRouteHandlers {
-  login: (req: Request, siteUser: SiteUser | null) => Response;
+  login: (req: Request, siteUser: User | null) => Response;
   logout: (req: Request) => Promise<Response>;
   oauthStart: (req: Request, provider: string) => Response;
   oauthCallback: (req: Request, provider: string) => Promise<Response>;
   magicSend: (req: Request) => Promise<Response>;
   magicVerify: (req: Request) => Promise<Response>;
-  me: (req: Request, siteUser: SiteUser | null) => Response;
+  me: (req: Request, siteUser: User | null) => Response;
 }
 
 // Magic link send: 5 requests per 10 minutes per IP
@@ -75,7 +75,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
   // ── Login page ─────────────────────────────────────────────────────────────
 
-  function login(req: Request, siteUser: SiteUser | null): Response {
+  function login(req: Request, siteUser: User | null): Response {
     if (siteUser) {
       // Already logged in — honour a sanitised ?next= redirect target.
       const url = new URL(req.url);
@@ -169,7 +169,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
         // No persistent user record — synthesise identity from OAuth claims and
         // embed it in the session. User ID is stable across sessions for the
         // same OAuth identity: "{provider}:{providerId}".
-        const syntheticUser: SiteUser = {
+        const syntheticUser: User = {
           id: `${providerName}:${profile.id}`,
           email: profile.email,
           name: profile.name,
@@ -178,6 +178,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
           providerId: profile.id,
           roles: [],
           createdAt: Date.now(),
+          updatedAt: Date.now(),
           lastSeenAt: Date.now(),
           enabled: true,
         };
@@ -354,12 +355,13 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     if (userStoreType === "session") {
       // No persistent user record — synthesise identity from the verified email.
       // User ID is stable: "magic:{email}".
-      const syntheticUser: SiteUser = {
+      const syntheticUser: User = {
         id: `magic:${email}`,
         email,
         provider: "magic",
         roles: [],
         createdAt: Date.now(),
+        updatedAt: Date.now(),
         lastSeenAt: Date.now(),
         enabled: true,
       };
@@ -406,7 +408,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
   // ── /auth/me ───────────────────────────────────────────────────────────────
 
-  function me(_req: Request, siteUser: SiteUser | null): Response {
+  function me(_req: Request, siteUser: User | null): Response {
     if (!siteUser) {
       return new Response(JSON.stringify({ error: "Not authenticated" }), {
         status: 401,

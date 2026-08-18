@@ -11,11 +11,11 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { parseRolesSpec, checkRoles, enforceRoles } from "../../src/auth/gating.ts";
 import type { RolesSpec } from "../../src/auth/gating.ts";
-import type { SiteUser } from "../../src/auth/types.ts";
+import type { User } from "../../src/auth/types.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeUser(roles: string[]): SiteUser {
+function makeUser(roles: string[]): User {
   return {
     id: "u1",
     email: "test@example.com",
@@ -23,6 +23,7 @@ function makeUser(roles: string[]): SiteUser {
     provider: "magic",
     roles,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     lastSeenAt: Date.now(),
     enabled: true,
   };

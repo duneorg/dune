@@ -19,12 +19,12 @@
 import { join, resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
-import { createLocalSiteUserStore } from "../auth/user-store.ts";
+import { createLocalUserStore } from "../auth/user-store.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
-import { createDbSiteUserStore } from "../auth/user-store-db.ts";
-import type { SiteUserStore } from "../auth/user-store.ts";
+import { createDbUserStore } from "../auth/user-store-db.ts";
+import type { UserStore } from "../auth/user-store.ts";
 
 export interface MigrateRolesToTuplesOptions {
   dryRun?: boolean;
@@ -47,12 +47,12 @@ export async function migrateRolesToTuplesCommand(
   const authzStoreTier = siteAuth?.authzStore ?? "local";
 
   // ── Load users ─────────────────────────────────────────────────────────────
-  let userStore: SiteUserStore;
+  let userStore: UserStore;
   if (userStoreTier === "db") {
     const dbAdapter = await createDbAdapter();
-    userStore = await createDbSiteUserStore({ adapter: dbAdapter });
+    userStore = await createDbUserStore({ adapter: dbAdapter });
   } else {
-    userStore = createLocalSiteUserStore({ storage, usersDir: `${dataDir}/site-users` });
+    userStore = createLocalUserStore({ storage, usersDir: `${dataDir}/site-users` });
   }
 
   const allUsers = await userStore.list();

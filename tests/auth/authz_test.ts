@@ -4,7 +4,7 @@
  * Verifies:
  *   - AuthzLocalAdapter: write, delete, findTuples, findSubjects, findObjects
  *   - AuthSystem round-trip: addMember → check
- *   - bootstrapRoleTuples: derives tuples from SiteUser.roles[]
+ *   - bootstrapRoleTuples: derives tuples from User.roles[]
  *   - checkRolesAsync: uses authz when wired via setGatingAuthz
  */
 
@@ -19,7 +19,7 @@ import {
   createDuneAuthSystem,
 } from "../../src/auth/authz.ts";
 import { checkRolesAsync, setGatingAuthz } from "../../src/auth/gating.ts";
-import type { SiteUser } from "../../src/auth/types.ts";
+import type { User } from "../../src/auth/types.ts";
 
 // ── In-memory StorageAdapter for tests ────────────────────────────────────────
 
@@ -96,13 +96,14 @@ function makeStorage() {
   } as import("../../src/storage/types.ts").StorageAdapter;
 }
 
-function makeUser(id: string, roles: string[]): SiteUser {
+function makeUser(id: string, roles: string[]): User {
   return {
     id,
     email: `${id}@example.com`,
     provider: "magic",
     roles,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     lastSeenAt: Date.now(),
     enabled: true,
   };

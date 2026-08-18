@@ -11,8 +11,8 @@
 /** @module */
 
 import type { CheckoutSession, PaymentProvider, Product, WebhookEvent } from "./types.ts";
-import type { SiteUserStore } from "../auth/user-store.ts";
-import type { SiteUser } from "../auth/types.ts";
+import type { UserStore } from "../auth/user-store.ts";
+import type { User } from "../auth/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export interface PaymentManagerConfig {
   /** Webhook signing secret forwarded to provider.parseWebhook(). */
   webhookSecret: string;
   /** User store used to assign roles after a successful payment. */
-  userStore: SiteUserStore;
+  userStore: UserStore;
   /** Base URL of the site, e.g. "https://example.com". Used to build redirect URLs. */
   baseUrl: string;
   /**
@@ -46,7 +46,7 @@ export interface PaymentManager {
    * @param user - The authenticated site user initiating the purchase.
    * @throws Error when productId is not found in the configured product list.
    */
-  checkout(productId: string, user: SiteUser): Promise<CheckoutSession>;
+  checkout(productId: string, user: User): Promise<CheckoutSession>;
 
   /**
    * Handle an inbound provider webhook request.
@@ -65,7 +65,7 @@ export interface PaymentManager {
    * @param user - The authenticated site user.
    * @param customerId - Provider-side customer ID (e.g. Stripe cus_xxx).
    */
-  portal(user: SiteUser, customerId: string): Promise<{ url: string }>;
+  portal(user: User, customerId: string): Promise<{ url: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
     return products.find((p) => p.id === productId);
   }
 
-  async function checkout(productId: string, user: SiteUser): Promise<CheckoutSession> {
+  async function checkout(productId: string, user: User): Promise<CheckoutSession> {
     const product = findProduct(productId);
     if (!product) {
       throw new Error(`Unknown payment product: "${productId}"`);
@@ -174,7 +174,7 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
     }
   }
 
-  async function portal(_user: SiteUser, customerId: string): Promise<{ url: string }> {
+  async function portal(_user: User, customerId: string): Promise<{ url: string }> {
     const returnUrl = `${baseUrl}/account`;
     return provider.createPortalSession({ customerId, returnUrl });
   }

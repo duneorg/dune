@@ -17,7 +17,7 @@
 // deno-lint-ignore no-explicit-any
 import type { App } from "fresh";
 import type { SiteConfig } from "../config/types.ts";
-import type { SiteUserStore } from "../auth/user-store.ts";
+import type { UserStore } from "../auth/user-store.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import { createStripePaymentProvider } from "./stripe.ts";
 import { createPaymentManager } from "./manager.ts";
@@ -31,7 +31,7 @@ export interface PaymentMountConfig {
   /** Full site config — reads the `payments:` block. */
   siteConfig: SiteConfig;
   /** User store used by the manager to assign roles after payment. */
-  userStore: SiteUserStore;
+  userStore: UserStore;
   /** Base URL of the site (e.g. "https://example.com") for redirect URLs. */
   baseUrl: string;
   /**

@@ -1,14 +1,15 @@
 /**
- * Site user store — CRUD operations for public site user accounts.
+ * User store — CRUD operations for the unified account record shared by
+ * the admin panel and public site visitors (dec-identity-unification Phase 5).
  *
- * Users are stored as JSON files in data/site-users/{id}.json.
- * An email index at data/site-users/by-email/{encodedEmail}.json contains
+ * Users are stored as JSON files in data/users/{id}.json.
+ * An email index at data/users/by-email/{encodedEmail}.json contains
  * just { id } for O(1) email lookup without scanning all user files.
  */
 
 import { encodeHex } from "@std/encoding/hex";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { SiteUser, UserCreate } from "./types.ts";
+import type { User, UserCreate } from "./types.ts";
 
 /**
  * Thrown by `create()` when a user with the given email already exists.
@@ -23,42 +24,45 @@ export class DuplicateEmailError extends Error {
   }
 }
 
-export interface SiteUserStore {
-  getById(id: string): Promise<SiteUser | null>;
-  getByEmail(email: string): Promise<SiteUser | null>;
-  getByProvider(provider: string, providerId: string): Promise<SiteUser | null>;
+export interface UserStore {
+  getById(id: string): Promise<User | null>;
+  getByEmail(email: string): Promise<User | null>;
+  getByUsername(username: string): Promise<User | null>;
+  getByProvider(provider: string, providerId: string): Promise<User | null>;
   /** @throws {DuplicateEmailError} if a user with this email already exists. */
-  create(user: UserCreate): Promise<SiteUser>;
+  create(user: UserCreate): Promise<User>;
   update(
     id: string,
     updates: Partial<
       Pick<
-        SiteUser,
+        User,
         | "name"
         | "avatarUrl"
+        | "username"
+        | "passwordHash"
         | "roles"
         | "lastSeenAt"
         | "enabled"
         | "stripeCustomerId"
       >
     >,
-  ): Promise<SiteUser | null>;
-  list(opts?: { limit?: number; offset?: number }): Promise<SiteUser[]>;
+  ): Promise<User | null>;
+  list(opts?: { limit?: number; offset?: number }): Promise<User[]>;
   delete(id: string): Promise<boolean>;
 }
 
-export interface LocalSiteUserStoreConfig {
+export interface LocalUserStoreConfig {
   storage: StorageAdapter;
-  /** Base directory for user files, e.g. "data/site-users" */
+  /** Base directory for user files, e.g. "data/users" */
   usersDir: string;
 }
 
 /**
  * Flat-file implementation: one JSON file per user, email index for O(1) lookup.
  */
-export function createLocalSiteUserStore(
-  config: LocalSiteUserStoreConfig,
-): SiteUserStore {
+export function createLocalUserStore(
+  config: LocalUserStoreConfig,
+): UserStore {
   const { storage, usersDir } = config;
   const byEmailDir = `${usersDir}/by-email`;
 
@@ -93,18 +97,18 @@ export function createLocalSiteUserStore(
     return encodeURIComponent(email.toLowerCase());
   }
 
-  async function getById(id: string): Promise<SiteUser | null> {
+  async function getById(id: string): Promise<User | null> {
     const path = `${usersDir}/${id}.json`;
     try {
       if (!(await storage.exists(path))) return null;
       const data = await storage.read(path);
-      return JSON.parse(new TextDecoder().decode(data)) as SiteUser;
+      return JSON.parse(new TextDecoder().decode(data)) as User;
     } catch {
       return null;
     }
   }
 
-  async function getByEmail(email: string): Promise<SiteUser | null> {
+  async function getByEmail(email: string): Promise<User | null> {
     const indexPath = `${byEmailDir}/${encodeEmail(email)}.json`;
     try {
       if (!(await storage.exists(indexPath))) return null;
@@ -118,10 +122,33 @@ export function createLocalSiteUserStore(
     }
   }
 
+  async function getByUsername(username: string): Promise<User | null> {
+    // No secondary index for username lookups — scan all users. Matches
+    // @dune/plugin-admin's pre-Phase-5 UserManager.getByUsername(), which
+    // did the same full-scan; not a regression, and admin installs are
+    // small (see dec-identity-unification.md's "low migration risk" note).
+    try {
+      const entries = await storage.list(usersDir);
+      for (const entry of entries) {
+        if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
+        try {
+          const data = await storage.read(`${usersDir}/${entry.name}`);
+          const user = JSON.parse(new TextDecoder().decode(data)) as User;
+          if (user.username === username) return user;
+        } catch {
+          // skip corrupt files
+        }
+      }
+    } catch {
+      // directory doesn't exist yet
+    }
+    return null;
+  }
+
   async function getByProvider(
     provider: string,
     providerId: string,
-  ): Promise<SiteUser | null> {
+  ): Promise<User | null> {
     // No secondary index for provider lookups — scan all users.
     // Provider logins are infrequent; O(n) is acceptable for a flat-file store.
     try {
@@ -130,7 +157,7 @@ export function createLocalSiteUserStore(
         if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
-          const user = JSON.parse(new TextDecoder().decode(data)) as SiteUser;
+          const user = JSON.parse(new TextDecoder().decode(data)) as User;
           if (user.provider === provider && user.providerId === providerId) {
             return user;
           }
@@ -144,7 +171,7 @@ export function createLocalSiteUserStore(
     return null;
   }
 
-  async function create(input: UserCreate): Promise<SiteUser> {
+  async function create(input: UserCreate): Promise<User> {
     return withEmailLock(input.email, async () => {
       // Re-check under the lock — a concurrent create() for the same email
       // may have already won the race and completed while this call was
@@ -155,17 +182,21 @@ export function createLocalSiteUserStore(
       const id = await generateId();
       const now = Date.now();
 
-      const user: SiteUser = {
+      const user: User = {
         id,
         email: input.email,
         name: input.name,
         avatarUrl: input.avatarUrl,
+        username: input.username,
+        passwordHash: input.passwordHash,
         provider: input.provider,
         providerId: input.providerId,
         roles: input.roles ?? [],
         createdAt: now,
+        updatedAt: now,
         lastSeenAt: now,
         enabled: input.enabled !== false,
+        stripeCustomerId: input.stripeCustomerId,
       };
 
       await saveUser(user);
@@ -176,17 +207,35 @@ export function createLocalSiteUserStore(
   async function update(
     id: string,
     updates: Partial<
-      Pick<SiteUser, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled">
+      Pick<
+        User,
+        | "name"
+        | "avatarUrl"
+        | "username"
+        | "passwordHash"
+        | "roles"
+        | "lastSeenAt"
+        | "enabled"
+        | "stripeCustomerId"
+      >
     >,
-  ): Promise<SiteUser | null> {
+  ): Promise<User | null> {
     const user = await getById(id);
     if (!user) return null;
 
     if (updates.name !== undefined) user.name = updates.name;
     if (updates.avatarUrl !== undefined) user.avatarUrl = updates.avatarUrl;
+    if (updates.username !== undefined) user.username = updates.username;
+    if (updates.passwordHash !== undefined) {
+      user.passwordHash = updates.passwordHash;
+    }
     if (updates.roles !== undefined) user.roles = updates.roles;
     if (updates.lastSeenAt !== undefined) user.lastSeenAt = updates.lastSeenAt;
     if (updates.enabled !== undefined) user.enabled = updates.enabled;
+    if (updates.stripeCustomerId !== undefined) {
+      user.stripeCustomerId = updates.stripeCustomerId;
+    }
+    user.updatedAt = Date.now();
 
     await saveUser(user);
     return user;
@@ -194,15 +243,15 @@ export function createLocalSiteUserStore(
 
   async function list(
     opts: { limit?: number; offset?: number } = {},
-  ): Promise<SiteUser[]> {
-    const users: SiteUser[] = [];
+  ): Promise<User[]> {
+    const users: User[] = [];
     try {
       const entries = await storage.list(usersDir);
       for (const entry of entries) {
         if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
-          users.push(JSON.parse(new TextDecoder().decode(data)) as SiteUser);
+          users.push(JSON.parse(new TextDecoder().decode(data)) as User);
         } catch {
           // skip corrupt files
         }
@@ -243,7 +292,7 @@ export function createLocalSiteUserStore(
     }
   }
 
-  async function saveUser(user: SiteUser): Promise<void> {
+  async function saveUser(user: User): Promise<void> {
     const userPath = `${usersDir}/${user.id}.json`;
     await storage.write(
       userPath,
@@ -261,6 +310,7 @@ export function createLocalSiteUserStore(
   return {
     getById,
     getByEmail,
+    getByUsername,
     getByProvider,
     create,
     update,

@@ -11,7 +11,7 @@ import {
 import { parseRawSchema, parseSchemaYaml } from "../../src/db/schema-parser.ts";
 import { generateApiRoutes, generateCode } from "../../src/db/codegen.ts";
 import { requireAuth, SITE_USER_HEADER } from "../../src/auth/api-guard.ts";
-import type { SiteUser } from "../../src/auth/types.ts";
+import type { User } from "../../src/auth/types.ts";
 
 // ---------------------------------------------------------------------------
 // Schema parsing — api: block
@@ -400,7 +400,7 @@ Deno.test("generateApiRoutes: only [id].ts when methods are get/update/delete", 
 // requireAuth — guard helper
 // ---------------------------------------------------------------------------
 
-function makeRequest(user: SiteUser | null): Request {
+function makeRequest(user: User | null): Request {
   const headers: Record<string, string> = {};
   if (user) {
     headers[SITE_USER_HEADER] = JSON.stringify(user);
@@ -408,12 +408,13 @@ function makeRequest(user: SiteUser | null): Request {
   return new Request("https://example.com/api/comments", { headers });
 }
 
-const MOCK_USER: SiteUser = {
+const MOCK_USER: User = {
   id: "user-123",
   email: "alice@example.com",
   provider: "local",
   roles: [],
   createdAt: Date.now(),
+  updatedAt: Date.now(),
   lastSeenAt: Date.now(),
   enabled: true,
 };

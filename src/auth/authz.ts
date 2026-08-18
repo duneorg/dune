@@ -157,7 +157,7 @@ export function createDuneAuthSystem(
  * Bootstrap permission tuples from a list of (userId, roles[]) pairs.
  *
  * On first startup after polizy is introduced, this derives group membership
- * tuples from the `roles` array on existing SiteUser records. Idempotent —
+ * tuples from the `roles` array on existing User records. Idempotent —
  * skips tuples that already exist.
  *
  * Called by `mountDuneAuth()` after constructing the AuthSystem.
@@ -168,7 +168,7 @@ export interface AuthzAdapterLike {
 }
 
 /**
- * Bootstrap role-based permission tuples from existing SiteUser `roles[]`.
+ * Bootstrap role-based permission tuples from existing User `roles[]`.
  *
  * Idempotent — skips tuples that already exist. Call once on first startup
  * after introducing polizy into an existing site.

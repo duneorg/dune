@@ -1,17 +1,17 @@
 /**
- * DbSiteUserStore — database-backed SiteUser store.
+ * DbUserStore — database-backed User store (dec-identity-unification Phase 5).
  *
  * Uses Dune's DbAdapter directly (raw queries) rather than the generic
  * Repository<T> layer, because the roles field requires JSON round-trip
  * that the generic layer's type system can't express cleanly.
  *
- * Table: site_users
- * Mirrors the SiteUser shape — roles stored as a JSON string column.
+ * Table: users
+ * Mirrors the User shape — roles stored as a JSON string column.
  */
 
 import type { DbAdapter } from "../db/types.ts";
-import type { SiteUser, UserCreate } from "./types.ts";
-import type { SiteUserStore } from "./user-store.ts";
+import type { User, UserCreate } from "./types.ts";
+import type { UserStore } from "./user-store.ts";
 
 // ── DB row shape (roles as JSON string) ──────────────────────────────────────
 
@@ -20,25 +20,31 @@ interface DbRow {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  username: string | null;
+  passwordHash: string | null;
   provider: string;
   providerId: string | null;
   roles: string; // JSON array
   createdAt: number;
+  updatedAt: number;
   lastSeenAt: number;
   enabled: number | boolean; // SQLite returns 0/1
   stripeCustomerId: string | null;
 }
 
-function rowToUser(row: DbRow): SiteUser {
+function rowToUser(row: DbRow): User {
   return {
     id: row.id,
     email: row.email,
     name: row.name ?? undefined,
     avatarUrl: row.avatarUrl ?? undefined,
+    username: row.username ?? undefined,
+    passwordHash: row.passwordHash ?? undefined,
     provider: row.provider,
     providerId: row.providerId ?? undefined,
     roles: typeof row.roles === "string" ? JSON.parse(row.roles) : row.roles,
     createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
     lastSeenAt: row.lastSeenAt,
     enabled: Boolean(row.enabled),
     stripeCustomerId: row.stripeCustomerId ?? undefined,
@@ -68,10 +74,13 @@ async function ensureTable(db: DbAdapter): Promise<void> {
       email TEXT NOT NULL UNIQUE,
       name TEXT,
       avatarUrl TEXT,
+      username TEXT UNIQUE,
+      passwordHash TEXT,
       provider TEXT NOT NULL,
       providerId TEXT,
       roles TEXT NOT NULL DEFAULT '[]',
       createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL,
       lastSeenAt INTEGER NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
       stripeCustomerId TEXT
@@ -80,16 +89,28 @@ async function ensureTable(db: DbAdapter): Promise<void> {
   await db.query(
     `CREATE INDEX IF NOT EXISTS idx_site_users_provider ON site_users (provider, providerId)`,
   ).catch(() => {});
+
+  // Additive schema migration for installs upgrading from before Phase 5's
+  // username/passwordHash/updatedAt columns existed — `CREATE TABLE IF NOT
+  // EXISTS` above is a no-op against an already-existing table, so a fresh
+  // ALTER is needed to backfill these on an existing site_users table.
+  // Column-already-exists errors are the expected steady-state outcome
+  // (every boot after the first) and are swallowed; any other failure
+  // (permissions, connectivity) is expected to have already surfaced from
+  // the CREATE TABLE/INDEX statements above.
+  await db.query(`ALTER TABLE site_users ADD COLUMN username TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE site_users ADD COLUMN passwordHash TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE site_users ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0`).catch(() => {});
 }
 
 // ── Store factory ─────────────────────────────────────────────────────────────
 
-export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Promise<SiteUserStore> {
+export async function createDbUserStore(config: { adapter: DbAdapter }): Promise<UserStore> {
   const db = config.adapter;
   await ensureTable(db);
 
-  const store: SiteUserStore = {
-    async getById(id: string): Promise<SiteUser | null> {
+  const store: UserStore = {
+    async getById(id: string): Promise<User | null> {
       const rows = await db.query<DbRow>(
         "SELECT * FROM site_users WHERE id = ? LIMIT 1",
         [id],
@@ -97,7 +118,7 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
       return rows[0] ? rowToUser(rows[0]) : null;
     },
 
-    async getByEmail(email: string): Promise<SiteUser | null> {
+    async getByEmail(email: string): Promise<User | null> {
       const rows = await db.query<DbRow>(
         "SELECT * FROM site_users WHERE email = ? LIMIT 1",
         [email],
@@ -105,7 +126,15 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
       return rows[0] ? rowToUser(rows[0]) : null;
     },
 
-    async getByProvider(provider: string, providerId: string): Promise<SiteUser | null> {
+    async getByUsername(username: string): Promise<User | null> {
+      const rows = await db.query<DbRow>(
+        "SELECT * FROM site_users WHERE username = ? LIMIT 1",
+        [username],
+      );
+      return rows[0] ? rowToUser(rows[0]) : null;
+    },
+
+    async getByProvider(provider: string, providerId: string): Promise<User | null> {
       const rows = await db.query<DbRow>(
         "SELECT * FROM site_users WHERE provider = ? AND providerId = ? LIMIT 1",
         [provider, providerId],
@@ -113,30 +142,34 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
       return rows[0] ? rowToUser(rows[0]) : null;
     },
 
-    async create(data: UserCreate): Promise<SiteUser> {
+    async create(data: UserCreate): Promise<User> {
       const id = crypto.randomUUID();
       const now = Date.now();
-      const user: SiteUser = {
+      const user: User = {
         id,
         email: data.email,
         name: data.name,
         avatarUrl: data.avatarUrl,
+        username: data.username,
+        passwordHash: data.passwordHash,
         provider: data.provider,
         providerId: data.providerId,
         roles: data.roles ?? [],
         createdAt: now,
+        updatedAt: now,
         lastSeenAt: now,
         enabled: data.enabled ?? true,
         stripeCustomerId: data.stripeCustomerId,
       };
       await db.query(
         `INSERT INTO site_users
-           (id, email, name, avatarUrl, provider, providerId, roles, createdAt, lastSeenAt, enabled, stripeCustomerId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, email, name, avatarUrl, username, passwordHash, provider, providerId, roles, createdAt, updatedAt, lastSeenAt, enabled, stripeCustomerId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           user.id, user.email, user.name ?? null, user.avatarUrl ?? null,
+          user.username ?? null, user.passwordHash ?? null,
           user.provider, user.providerId ?? null, JSON.stringify(user.roles),
-          user.createdAt, user.lastSeenAt, user.enabled ? 1 : 0, user.stripeCustomerId ?? null,
+          user.createdAt, user.updatedAt, user.lastSeenAt, user.enabled ? 1 : 0, user.stripeCustomerId ?? null,
         ],
       );
       return user;
@@ -144,19 +177,31 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
 
     async update(
       id: string,
-      updates: Partial<Pick<SiteUser, "name" | "avatarUrl" | "roles" | "lastSeenAt" | "enabled" | "stripeCustomerId">>,
-    ): Promise<SiteUser | null> {
-      const sets: string[] = [];
-      const params: unknown[] = [];
+      updates: Partial<
+        Pick<
+          User,
+          | "name"
+          | "avatarUrl"
+          | "username"
+          | "passwordHash"
+          | "roles"
+          | "lastSeenAt"
+          | "enabled"
+          | "stripeCustomerId"
+        >
+      >,
+    ): Promise<User | null> {
+      const sets: string[] = ["updatedAt = ?"];
+      const params: unknown[] = [Date.now()];
 
       if ("name" in updates) { sets.push("name = ?"); params.push(updates.name ?? null); }
       if ("avatarUrl" in updates) { sets.push("avatarUrl = ?"); params.push(updates.avatarUrl ?? null); }
+      if ("username" in updates) { sets.push("username = ?"); params.push(updates.username ?? null); }
+      if ("passwordHash" in updates) { sets.push("passwordHash = ?"); params.push(updates.passwordHash ?? null); }
       if ("roles" in updates) { sets.push("roles = ?"); params.push(JSON.stringify(updates.roles ?? [])); }
       if ("lastSeenAt" in updates) { sets.push("lastSeenAt = ?"); params.push(updates.lastSeenAt); }
       if ("enabled" in updates) { sets.push("enabled = ?"); params.push(updates.enabled ? 1 : 0); }
       if ("stripeCustomerId" in updates) { sets.push("stripeCustomerId = ?"); params.push(updates.stripeCustomerId ?? null); }
-
-      if (sets.length === 0) return store.getById(id);
 
       params.push(id);
       await db.query(`UPDATE site_users SET ${sets.join(", ")} WHERE id = ?`, params);
@@ -168,7 +213,7 @@ export async function createDbSiteUserStore(config: { adapter: DbAdapter }): Pro
       return true;
     },
 
-    async list(opts?: { limit?: number; offset?: number }): Promise<SiteUser[]> {
+    async list(opts?: { limit?: number; offset?: number }): Promise<User[]> {
       // OFFSET requires LIMIT in standard SQL — always emit LIMIT when OFFSET is requested
       let sql = "SELECT * FROM site_users ORDER BY createdAt ASC";
       const params: unknown[] = [];

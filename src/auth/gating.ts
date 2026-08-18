@@ -17,7 +17,7 @@
  * is used — same semantics, no polizy dependency.
  */
 
-import type { SiteUser } from "./types.ts";
+import type { User } from "./types.ts";
 import { getSiteUser } from "./types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 
@@ -155,7 +155,7 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
  * - `string[]` spec → user must have at least one (OR); empty array = any user
  * - `{ all: string[] }` spec → user must have every listed role (AND)
  */
-export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
+export function checkRoles(user: User | null, spec: RolesSpec): boolean {
   // Unauthenticated visitors can never satisfy a gating spec.
   if (user === null) return false;
 
@@ -185,7 +185,7 @@ export function checkRoles(user: SiteUser | null, spec: RolesSpec): boolean {
  *   `authz` instance to bypass the per-origin registry lookup.
  */
 export async function checkRolesAsync(
-  user: SiteUser | null,
+  user: User | null,
   spec: RolesSpec,
   authzOverride?: DuneAuthSystem | null,
 ): Promise<boolean> {
@@ -260,7 +260,7 @@ export async function checkRolesAsync(
  */
 export async function enforceRoles(
   req: Request,
-  user: SiteUser | null,
+  user: User | null,
   spec: RolesSpec,
   authzOverride?: DuneAuthSystem | null,
 ): Promise<Response | null> {
@@ -285,7 +285,7 @@ export async function enforceRoles(
 }
 
 /**
- * Convenience: read the SiteUser from the request and enforce a roles spec in
+ * Convenience: read the User from the request and enforce a roles spec in
  * one call. Selects the authz instance by request origin from the per-origin map.
  *
  * Returns `null` when access is granted, or a Response to return to the client.

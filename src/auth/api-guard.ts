@@ -22,7 +22,7 @@
 
 /** @module */
 
-import type { SiteUser } from "./types.ts";
+import type { User } from "./types.ts";
 
 /** Name of the internal header used to pass the resolved site user. */
 export const SITE_USER_HEADER = "x-dune-site-user";
@@ -37,13 +37,13 @@ export type AuthMode = "none" | "required" | "owner";
 
 /** Return type of {@link requireAuth} — user on success, error Response on failure. */
 export type GuardResult =
-  | { error: null; user: SiteUser | null }
+  | { error: null; user: User | null }
   | { error: Response; user: null };
 
 /**
  * Extract and validate the site user from a request.
  *
- * Reads the resolved `SiteUser` from the internal `x-dune-site-user` header
+ * Reads the resolved `User` from the internal `x-dune-site-user` header
  * set by the Dune auth middleware. Returns the user (or null for "none" mode)
  * or an error Response that the caller should return immediately.
  *
@@ -74,14 +74,14 @@ export async function requireAuth(req: Request, mode: AuthMode): Promise<GuardRe
  * Deserialise the site user from the internal `x-dune-site-user` header.
  * Returns null if the header is absent, empty, or cannot be parsed.
  */
-function resolveUserFromHeader(req: Request): SiteUser | null {
+function resolveUserFromHeader(req: Request): User | null {
   const raw = req.headers.get(SITE_USER_HEADER);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
     // Minimal sanity-check: must have an id string
     if (parsed && typeof parsed === "object" && typeof parsed.id === "string") {
-      return parsed as SiteUser;
+      return parsed as User;
     }
     return null;
   } catch {

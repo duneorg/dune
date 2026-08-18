@@ -315,7 +315,7 @@ export {
   AuthzLocalAdapter,
   /** Create a Dune AuthSystem backed by the configured storage tier. @since 1.0.0 */
   createDuneAuthSystem,
-  /** Bootstrap permission tuples from existing SiteUser roles[]. @since 1.0.0 */
+  /** Bootstrap permission tuples from existing User roles[]. @since 1.0.0 */
   bootstrapRoleTuples,
   /** Bootstrap permission tuples for existing admin User records (@dune/plugin-admin). @since 1.0.0 */
   bootstrapAdminTuples,

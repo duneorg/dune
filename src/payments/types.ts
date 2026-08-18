@@ -17,7 +17,7 @@ export interface Product {
   priceId: string;
   /**
    * Role to assign to the user upon successful payment.
-   * Looked up in SiteUserStore.update() by the PaymentManager.
+   * Looked up in UserStore.update() by the PaymentManager.
    */
   role?: string;
   /**
