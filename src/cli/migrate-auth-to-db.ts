@@ -1,7 +1,7 @@
 /**
  * dune migrate:auth-to-db
  *
- * One-time migration: reads flat-file site user records and permission tuples,
+ * One-time migration: reads flat-file user records and permission tuples,
  * imports them into the configured DB, then updates site.yaml to enable
  * `userStore: db` and `authzStore: db`.
  *
@@ -39,8 +39,8 @@ export async function migrateAuthToDbCommand(
 
   const dbAdapter = await createDbAdapter();
 
-  // ── Site users ──────────────────────────────────────────────────────────────
-  const usersDir = join(dataDir, "site-users");
+  // ── Users ───────────────────────────────────────────────────────────────────
+  const usersDir = join(dataDir, "users");
   let userFiles: string[] = [];
   try {
     for await (const e of Deno.readDir(usersDir)) {

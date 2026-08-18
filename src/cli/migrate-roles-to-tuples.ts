@@ -1,7 +1,7 @@
 /**
  * dune migrate:roles-to-tuples
  *
- * One-time migration: for each site user whose `roles[]` array contains role
+ * One-time migration: for each user whose `roles[]` array contains role
  * names, ensure the corresponding polizy group-membership tuples exist in the
  * configured authzStore (local or db).
  *
@@ -52,7 +52,7 @@ export async function migrateRolesToTuplesCommand(
     const dbAdapter = await createDbAdapter();
     userStore = await createDbUserStore({ adapter: dbAdapter });
   } else {
-    userStore = createLocalUserStore({ storage, usersDir: `${dataDir}/site-users` });
+    userStore = createLocalUserStore({ storage, usersDir: `${dataDir}/users` });
   }
 
   const allUsers = await userStore.list();

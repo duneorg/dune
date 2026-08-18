@@ -92,6 +92,7 @@ import { jobsListCommand, jobsRunCommand } from "./cli/jobs.ts";
 import { authzSignCommand } from "./cli/authz-sign.ts";
 import { migrateAuthToDbCommand } from "./cli/migrate-auth-to-db.ts";
 import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
+import { migrateUsersCommand } from "./cli/migrate-users.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 
 /** Resolve version string and install source from runtime context. */
@@ -205,6 +206,7 @@ Commands:
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
 
   authz:sign [--dry-run]       Sign existing permission tuple files with DUNE_AUTHZ_HMAC_SECRET
+  migrate:users                Reshape pre-Phase-5b data/users/ accounts + build email index (idempotent)
   migrate:auth-to-db           Migrate flat-file users + tuples to DB (idempotent)
   migrate:roles-to-tuples      Ensure polizy tuples exist for all user roles[] (idempotent)
 
@@ -712,6 +714,12 @@ export async function main(args: string[] = Deno.args) {
 
       case "authz:sign":
         await authzSignCommand(root, {
+          dryRun: options.dryRun === true,
+        });
+        break;
+
+      case "migrate:users":
+        await migrateUsersCommand(root, {
           dryRun: options.dryRun === true,
         });
         break;

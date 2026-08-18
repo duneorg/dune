@@ -70,7 +70,11 @@ export async function mountDuneAuth(
   try { siteOrigin = new URL(config.site.url).origin; } catch { /* ignore */ }
 
   // ── User store ──────────────────────────────────────────────────────────────
-  const usersDir = `${dataDir}/site-users`;
+  // data/users/ — shared with @dune/plugin-admin's admin accounts since
+  // dec-identity-unification Phase 5b; the old data/site-users/ location
+  // never accumulated real-world data (pre-1.0, unreleased), so there's no
+  // migration for it, just a direct cutover to the unified directory.
+  const usersDir = `${dataDir}/users`;
   let userStore: import("./user-store.ts").UserStore;
   if (userStoreType === "db") {
     const { createDbAdapter } = await import("../db/adapters/mod.ts");
