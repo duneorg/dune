@@ -9,6 +9,16 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **A validly configured live email provider sent real mail under
+  `DUNE_ENV=dev`, exactly as in production.** `createEmailProvider()` had
+  no dev-mode awareness of its own — the only dev-aware behavior lived
+  inside `ConsoleEmailProvider`, which never applied once a real
+  `smtp`/`resend`/`postmark`/`sendgrid` provider was configured. Now
+  refuses to construct a live provider under `DUNE_ENV=dev` and falls
+  back to the console provider instead, logging a loud warning. Opt out
+  with `DUNE_EMAIL_ALLOW_DEV_SEND=1` for the rare case dev genuinely
+  needs to verify real delivery. Outside dev, unchanged. 13 new tests.
+
 - **`/api/inline-edit/ws` (the real-time editing WebSocket handler) also
   bypassed `authz`, missed by the admin-bar-gate fix below.** Same flat
   `ROLE_PERMISSIONS`-only `adminAuth.hasPermission()` call, in a second,
