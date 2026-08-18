@@ -9,6 +9,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **Inline editing's admin-bar gate bypassed the polizy `authz` system,
+  checking the flat `ROLE_PERMISSIONS` table directly.**
+  `runPluginResponseTransforms()` — which decides whether to inject the
+  admin bar and keep `data-dune-*` inline-edit markers — called
+  `auth.hasPermission()` straight from a loosely-typed
+  `ctx.adminContext?.auth` interface, the one remaining permission check
+  that hadn't been cut over to `authz.check()` (dec-identity-unification
+  Phase 7 — every other admin permission check already had been, in
+  Phase 5c). Added an `authz` option (`BootstrapResult.authz`, already
+  available) that's now the sole authority for the `pages.update` check
+  when configured; `auth.hasPermission()` is only the fallback for the
+  narrow case where authz creation itself failed at startup. 4 new tests.
+
 - **`dune migrate:roles-to-tuples` silently found zero users on every run.**
   `dataDir` was built by joining the site root into `config.admin?.dataDir`,
   producing an absolute path — but `StorageAdapter` requires paths relative
