@@ -88,6 +88,7 @@
     "serve": "deno run -A src/cli.ts serve",
     "test": "deno test -A tests/",
     "check": "deno lint src/ && deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
+    "check:core-pin-drift": "deno run --allow-net --allow-read scripts/check-core-pin-drift.ts",
     "dune": "deno run -A src/cli.ts"
   },
   "compilerOptions": {
