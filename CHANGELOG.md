@@ -146,6 +146,22 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   this step. 6 new tests for the added fields/method; full 1510-test suite
   and `deno task check` pass.
 
+- **`UserStore.update()` now accepts `email`** (`decisions/dec-identity-
+  unification.md`'s Phase 5b). A real gap found mid-cutover of
+  `@dune/plugin-admin` to this store: its existing PUT
+  `/admin/api/users/:id` route already let operators change a user's
+  email, but the store never supported it — email is the by-email index
+  key on the local tier, so changing it wasn't a simple field write. Local
+  tier: lock-protected the same way `create()` is, throws
+  `DuplicateEmailError` on conflict with another user, cleans up the stale
+  index entry for the old address. Db tier: column added to the `UPDATE`;
+  no `DuplicateEmailError` translation there yet, matching `create()`'s
+  existing (pre-existing, not newly introduced) gap on that tier. Added
+  `./auth/types`, `./auth/user-store`, `./auth/user-store-db` subpath
+  exports so `@dune/plugin-admin` has real public-API access instead of
+  reaching into `src/` internals. 3 new tests. Full 1513-test suite and
+  `deno task check` pass.
+
 ---
 
 ## [0.31.7] — 2026-08-13
