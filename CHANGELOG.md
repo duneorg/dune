@@ -9,6 +9,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`dune migrate:roles-to-tuples` silently found zero users on every run.**
+  `dataDir` was built by joining the site root into `config.admin?.dataDir`,
+  producing an absolute path — but `StorageAdapter` requires paths relative
+  to its own rootDir and rejects absolute ones with a `PathEscapeError`,
+  which `userStore.list()`'s try/catch silently swallowed into an empty
+  result (indistinguishable from "no users have roles"). This command
+  reported "No users with roles found — nothing to migrate" on every real
+  site, every time it ran, regardless of actual data — a real,
+  previously-latent bug with zero test coverage to catch it. Fixed by
+  making `dataDir` relative, matching the convention `@dune/plugin-admin`'s
+  `mod.ts` already used correctly. Found while building `users:grant-role`
+  (below), which hit the identical bug in new code before it was ever
+  committed. 6 new tests — the first coverage this command has ever had.
+
 - **`SQLiteAdapter` silently truncated large integers to 32 bits on read.**
   `jsr:@db/sqlite`'s `Database` constructor defaults its `int64` option to
   `false`, which the adapter never overrode — any `INTEGER` column value
@@ -114,6 +128,24 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   against the pre-fix code: boots a real site in `external-jwt` mode with
   no `authzStore` set and asserts `ctx.authz`/`ctx.authzAdapter` are still
   populated.
+
+### Added
+
+- **`dune users:grant-role <email> <role>` / `dune users:revoke-role <email>
+  <role>`.** dec-identity-unification Phase 6's CLI leg for the
+  role-granting mechanism — grants or revokes an admin-tier role
+  (`admin`/`editor`/`author`) on an existing unified `User` identified by
+  email, updating `roles[]` and syncing the `app:admin` authz tuple
+  `authz.check()` reads, the same two things the admin panel's `PUT
+  /admin/api/users/:id` route already does over HTTP. For operators
+  without (or before) web access: first-admin bootstrap on a headless
+  install, scripted/CI-driven site provisioning, or granting access to an
+  existing OAuth/magic-link account that has never had an admin-tier
+  role. The API and UI legs of Phase 6's original DOD turned out to
+  already be satisfied as an emergent consequence of Phase 5 — plugin-admin's
+  `UserManager` and public auth now share one unified `data/users/` store,
+  so the existing users API/UI already work against every account
+  regardless of origin. 16 new tests.
 
 ### Changed
 
