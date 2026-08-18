@@ -162,6 +162,21 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   reaching into `src/` internals. 3 new tests. Full 1513-test suite and
   `deno task check` pass.
 
+- **`mountDuneAuth()`'s public-auth `UserStore` now points at `data/users/`
+  instead of `data/site-users/`, completing Phase 5b's store cutover.**
+  There's no migration for the old location — `data/site-users/` is
+  pre-1.0 and unreleased, so it never accumulated real-world data; the
+  public side just switches directly to the unified directory. `data/
+  users/` on an *upgrading* install still has old-shape admin accounts
+  (`role` field, no `provider`/`lastSeenAt`, no `by-email/` index) —
+  reshaping those is the new `dune migrate:users` CLI's job. It's
+  idempotent, supports `--dry-run`, and detects (with a warning, not a
+  silent pick) accounts that share an email — admin accounts never had
+  uniqueness enforcement before this cutover, unlike site users since
+  Phase 0. `migrate-roles-to-tuples`/`migrate-auth-to-db` updated to read
+  from `data/users/` too. 8 new tests for the migration command. Full
+  1521-test suite and `deno task check` pass.
+
 ---
 
 ## [0.31.7] — 2026-08-13
