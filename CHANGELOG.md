@@ -7,7 +7,28 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ## [Unreleased]
 
+### Breaking
+
+- **Renamed the internal user-identity header and its accessors**:
+  `SITE_USER_HEADER` → `USER_HEADER`, its value `"x-dune-site-user"` →
+  `"x-dune-user"`, `getSiteUser()` → `getUser()` (`@dune/core/auth/types`).
+  Finishes a rename `dec-identity-unification`'s `SiteUser` → `User` pass
+  left behind — every type reference was renamed at the time, but this
+  wire-level name and its own duplicate copy of the constant/resolver
+  logic (in `@dune/core/auth/api-guard`, now consolidated onto
+  `auth/types.ts` as the single source) were not. Generated `dune codegen`
+  CRUD routes are unaffected — they only ever import `requireAuth()`, not
+  these directly.
+
 ### Fixed
+
+- **Incoming requests could set the internal user-identity header
+  themselves under some configurations.** The only code that stripped an
+  externally-supplied copy of this header lived inside `mountDuneAuth()`'s
+  middleware, which only registers when `site.auth` is configured —
+  independent of whether `db:` CRUD routes (which read the header via
+  `requireAuth()`) are in use. `createDuneApp()` now strips it
+  unconditionally as its first middleware step, regardless of `site.auth`.
 
 - **A validly configured live email provider sent real mail under
   `DUNE_ENV=dev`, exactly as in production.** `createEmailProvider()` had
@@ -163,6 +184,13 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   populated.
 
 ### Added
+
+- **`ContentPageProps.siteUser`** — hand-written `.tsx` content pages now
+  receive the resolved public-site user (or `null`) as a prop, the same
+  `User` a Fresh route handler gets via `fc.state.siteUser` or a generated
+  CRUD route via `requireAuth()`. Previously a TSX page had to read the
+  internal user header itself to get this. Resolved once per request in
+  `handleTsxPage()`.
 
 - **CI guard against workspace-member `@dune/core` pin drift.**
   `scripts/check-core-pin-drift.ts` checks the latest published version of
