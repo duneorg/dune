@@ -10,6 +10,7 @@ import { createMediaHelper } from "./link-rewriter.ts";
 import { renderErrorPage } from "./error-page.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
+import { requireAuth } from "../auth/api-guard.ts";
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -23,6 +24,14 @@ export async function handleTsxPage(
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
   contentApi?: ContentApi,
 ): Promise<Response> {
+  // Resolved once per request and threaded into every ContentPageProps
+  // construction below — the same User (or null) a Fresh route handler
+  // would get via fc.state.siteUser, or a generated CRUD route via
+  // requireAuth() reading the internal x-dune-user header. "none"
+  // mode never errors; it just resolves to null when no session is
+  // present or public auth isn't configured at all.
+  const { user: siteUser } = await requireAuth(req, "none");
+
   // Dispatch through Fresh-style `export const handler` if present.
   const pageHandlers = await page.handlers();
   if (pageHandlers) {
@@ -36,19 +45,29 @@ export async function handleTsxPage(
         params: {},
         render: async (data: unknown) => {
           if (!Component) {
-            return renderErrorPage(engine, url, render, 500, "TSX component not found", contentApi);
+            return renderErrorPage(
+              engine,
+              url,
+              render,
+              500,
+              "TSX component not found",
+              contentApi,
+            );
           }
-          return render(await resolveTemplateVNode(Component as ComponentType<any>, {
-            data,
-            site: engine.site,
-            config: engine.config,
-            nav: engine.router.getTopNavigation(page.language),
-            navAll: engine.router.getNavigation(page.language),
-            translations: engine.router.getTranslations(page.route),
-            route: page.route,
-            params: {},
-            content: contentApi,
-          }));
+          return render(
+            await resolveTemplateVNode(Component as ComponentType<any>, {
+              data,
+              site: engine.site,
+              config: engine.config,
+              nav: engine.router.getTopNavigation(page.language),
+              navAll: engine.router.getNavigation(page.language),
+              translations: engine.router.getTranslations(page.route),
+              route: page.route,
+              params: {},
+              content: contentApi,
+              siteUser,
+            }),
+          );
         },
         /**
          * Same-origin CSRF guard for mutating handlers.
@@ -82,7 +101,14 @@ export async function handleTsxPage(
 
   const Component = await page.component();
   if (!Component) {
-    return renderErrorPage(engine, url, render, 500, "TSX component not found", contentApi);
+    return renderErrorPage(
+      engine,
+      url,
+      render,
+      500,
+      "TSX component not found",
+      contentApi,
+    );
   }
 
   const layoutName = page.frontmatter.layout;
@@ -95,6 +121,7 @@ export async function handleTsxPage(
         media: createMediaHelper(page.media),
         params: {},
         content: contentApi,
+        siteUser,
       }),
     );
   }
@@ -110,12 +137,14 @@ export async function handleTsxPage(
     media: createMediaHelper(page.media),
     params: {},
     content: contentApi,
+    siteUser,
   });
 
   if (layout) {
     const strings = await engine.themes.loadLocale(page.language ?? "en");
     const t = createTranslator(strings);
-    const pageLangForDir = page.language ?? engine.config?.system?.languages?.default ?? "en";
+    const pageLangForDir = page.language ??
+      engine.config?.system?.languages?.default ?? "en";
     return render(
       await resolveTemplateVNode(layout as ComponentType<any>, {
         page,
@@ -129,7 +158,10 @@ export async function handleTsxPage(
         search: url.search,
         themeConfig: await resolveThemeConfig(page, engine),
         t,
-        dir: directionOf(pageLangForDir, engine.config?.system?.languages?.rtl_override),
+        dir: directionOf(
+          pageLangForDir,
+          engine.config?.system?.languages?.rtl_override,
+        ),
         children: content,
         content: contentApi,
       }),

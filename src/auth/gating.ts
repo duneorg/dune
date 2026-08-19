@@ -18,7 +18,7 @@
  */
 
 import type { User } from "./types.ts";
-import { getSiteUser } from "./types.ts";
+import { getUser } from "./types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 
 // ── Per-origin authz registry ──────────────────────────────────────────────────
@@ -48,7 +48,10 @@ const _authzByOrigin = new Map<string, DuneAuthSystem>();
  * Single-site deployments call this once; multisite deployments call it once per
  * site with their respective origins.
  */
-export function setGatingAuthz(authz: DuneAuthSystem | null, origin?: string): void {
+export function setGatingAuthz(
+  authz: DuneAuthSystem | null,
+  origin?: string,
+): void {
   const key = origin ?? "_default";
   if (authz === null) {
     _authzByOrigin.delete(key);
@@ -65,7 +68,9 @@ export function setGatingAuthz(authz: DuneAuthSystem | null, origin?: string): v
  * 2. If only one origin is registered (single-site), return it regardless of origin.
  * 3. Otherwise return null (fall back to direct array check).
  */
-function resolveAuthzForOrigin(requestOrigin: string | null): DuneAuthSystem | null {
+function resolveAuthzForOrigin(
+  requestOrigin: string | null,
+): DuneAuthSystem | null {
   if (requestOrigin !== null && _authzByOrigin.has(requestOrigin)) {
     return _authzByOrigin.get(requestOrigin)!;
   }
@@ -121,7 +126,9 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
   if (Array.isArray(raw)) {
     // Filter to non-empty strings; preserve the array (even empty) since
     // an empty array means "any authenticated user".
-    const roles = raw.filter((r): r is string => typeof r === "string" && r.trim().length > 0)
+    const roles = raw.filter((r): r is string =>
+      typeof r === "string" && r.trim().length > 0
+    )
       .map((r) => r.trim());
     // Reconstruct to the cleaned list; original empty arrays stay empty.
     return raw.length === 0 ? [] : roles.length > 0 ? roles : null;
@@ -132,7 +139,9 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
     const obj = raw as Record<string, unknown>;
     if (Array.isArray(obj.all)) {
       const all = obj.all
-        .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
+        .filter((r): r is string =>
+          typeof r === "string" && r.trim().length > 0
+        )
         .map((r: string) => r.trim());
       return all.length > 0 ? { all } : null;
     }
@@ -198,7 +207,9 @@ export async function checkRolesAsync(
   // (single-site deployments will have exactly one entry).
   const effectiveAuthz = authzOverride !== undefined
     ? authzOverride
-    : (_authzByOrigin.size === 1 ? _authzByOrigin.values().next().value as DuneAuthSystem : null);
+    : (_authzByOrigin.size === 1
+      ? _authzByOrigin.values().next().value as DuneAuthSystem
+      : null);
 
   if (effectiveAuthz === null) {
     // No authz configured — fall back to direct array check
@@ -297,11 +308,17 @@ export async function enforceRolesFromRequest(
   spec: RolesSpec,
   authzOverride?: DuneAuthSystem | null,
 ): Promise<Response | null> {
-  const user = getSiteUser(req);
+  const user = getUser(req);
   // Resolve authz by origin so each site in a multisite deployment uses its own
   // permission store. Single-site deployments are unaffected: the single
   // registered entry is used as a fallback when the origin is not in the map.
-  const origin = (() => { try { return new URL(req.url).origin; } catch { return null; } })();
+  const origin = (() => {
+    try {
+      return new URL(req.url).origin;
+    } catch {
+      return null;
+    }
+  })();
   const effectiveAuthz = authzOverride !== undefined
     ? authzOverride
     : resolveAuthzForOrigin(origin);

@@ -7,13 +7,13 @@
  *   GET  /payments/portal              — open billing portal session (auth required)
  *
  * Route handlers receive plain Request objects. The authenticated site user is
- * read from the x-dune-site-user header injected by the Dune auth middleware,
+ * read from the x-dune-user header injected by the Dune auth middleware,
  * mirroring the pattern used in src/auth/api-guard.ts.
  */
 
 /** @module */
 
-import { getSiteUser } from "../auth/types.ts";
+import { getUser } from "../auth/types.ts";
 import type { PaymentManager } from "./manager.ts";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,10 @@ import type { PaymentManager } from "./manager.ts";
  * A minimal route-handler signature compatible with how Fresh handlers
  * receive requests in Dune's generated/mounted routes.
  */
-export type RouteHandler = (req: Request, params?: Record<string, string>) => Promise<Response>;
+export type RouteHandler = (
+  req: Request,
+  params?: Record<string, string>,
+) => Promise<Response>;
 
 export interface PaymentRouteHandlers {
   /** POST /payments/checkout/:productId */
@@ -44,7 +47,9 @@ export interface PaymentRouteHandlers {
  *
  * Mount these handlers via mountPaymentRoutes() or directly on a Fresh app.
  */
-export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandlers {
+export function createPaymentRoutes(
+  manager: PaymentManager,
+): PaymentRouteHandlers {
   /**
    * POST /payments/checkout/:productId
    *
@@ -55,7 +60,7 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
     req: Request,
     params?: Record<string, string>,
   ): Promise<Response> {
-    const user = getSiteUser(req);
+    const user = getUser(req);
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -101,7 +106,7 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
    * accepted from query parameters to prevent IDOR attacks.
    */
   async function portal(req: Request): Promise<Response> {
-    const user = getSiteUser(req);
+    const user = getUser(req);
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -112,7 +117,9 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
     const customerId = user.stripeCustomerId;
     if (!customerId) {
       return Response.json(
-        { error: "No billing account found. Please complete a purchase first." },
+        {
+          error: "No billing account found. Please complete a purchase first.",
+        },
         { status: 404 },
       );
     }
@@ -121,7 +128,9 @@ export function createPaymentRoutes(manager: PaymentManager): PaymentRouteHandle
     try {
       result = await manager.portal(user, customerId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Portal session failed";
+      const message = err instanceof Error
+        ? err.message
+        : "Portal session failed";
       return Response.json({ error: message }, { status: 400 });
     }
 

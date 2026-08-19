@@ -18,9 +18,9 @@ import { createSiteAuthMiddleware } from "./middleware.ts";
 import { createSessionManager, createSessionStore } from "../session/mod.ts";
 import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
-import { SITE_USER_HEADER, type User } from "./types.ts";
+import { type User, USER_HEADER } from "./types.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
-import { createDuneAuthSystem, bootstrapRoleTuples } from "./authz.ts";
+import { bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
@@ -56,19 +56,23 @@ export async function mountDuneAuth(
   const { config, storage } = ctx;
   const authConfig: SiteConfig["auth"] = config.site.auth;
 
-  const adminCfg = config.admin ?? { dataDir: "data", runtimeDir: ".dune/admin" };
+  const adminCfg = config.admin ??
+    { dataDir: "data", runtimeDir: ".dune/admin" };
   const dataDir = adminCfg.dataDir ?? "data";
   const runtimeDir = adminCfg.runtimeDir ?? ".dune/admin";
 
   const mode = authConfig?.mode ?? "dune";
   const sessionLifetimeSec = authConfig?.sessionLifetime ?? 30 * 24 * 60 * 60;
-  const userStoreType: "local" | "session" | "db" = (authConfig?.userStore ?? "local") as "local" | "session" | "db";
+  const userStoreType: "local" | "session" | "db" =
+    (authConfig?.userStore ?? "local") as "local" | "session" | "db";
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
   // Derive the canonical origin for per-origin authz registration (M5).
   let siteOrigin: string | undefined;
-  try { siteOrigin = new URL(config.site.url).origin; } catch { /* ignore */ }
+  try {
+    siteOrigin = new URL(config.site.url).origin;
+  } catch { /* ignore */ }
 
   // ── User store ──────────────────────────────────────────────────────────────
   // data/users/ — shared with @dune/plugin-admin's admin accounts since
@@ -103,7 +107,10 @@ export async function mountDuneAuth(
     sessionsDir: `${runtimeDir}/site-sessions`,
     lifetimeMs: sessionLifetimeSec * 1000,
   });
-  const sessionMgr = createSessionManager(siteSessionStore, sessionLifetimeSec * 1000);
+  const sessionMgr = createSessionManager(
+    siteSessionStore,
+    sessionLifetimeSec * 1000,
+  );
 
   // ── Auth middleware ─────────────────────────────────────────────────────────
   const jwtOpts = mode === "external-jwt" && authConfig?.jwt
@@ -145,16 +152,22 @@ export async function mountDuneAuth(
   // For headless setups that call mountDuneAuth() without a prior bootstrap()
   // (e.g. testing or custom servers), a fresh bundle is created here.
   let mountAuthz: DuneAuthSystem | null = null;
-  let mountAdapter: import("./authz-adapter-local.ts").AuthzLocalAdapter | import("./authz-adapter-db.ts").AuthzDbAdapter | null = null;
+  let mountAdapter:
+    | import("./authz-adapter-local.ts").AuthzLocalAdapter
+    | import("./authz-adapter-db.ts").AuthzDbAdapter
+    | null = null;
 
   const authzStoreCfg = mode === "dune"
-    ? (authConfig?.authzStore ?? "local")   // default local in dune mode
-    : authConfig?.authzStore;               // must be explicit in external-jwt mode
+    ? (authConfig?.authzStore ?? "local") // default local in dune mode
+    : authConfig?.authzStore; // must be explicit in external-jwt mode
 
   if (authzStoreCfg === "db") {
     const { createDbAdapter } = await import("../db/adapters/mod.ts");
     const dbAdapter = await createDbAdapter();
-    const bundle = createDuneAuthSystem({ authzStore: "db", dbAdapter }, storage);
+    const bundle = createDuneAuthSystem(
+      { authzStore: "db", dbAdapter },
+      storage,
+    );
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
@@ -165,12 +178,15 @@ export async function mountDuneAuth(
     // with the HMAC key already configured. For headless setups, load the key now.
     // Reuse the HMAC key from bootstrap if present (avoids re-reading the env var
     // and emitting the "not set" warning a second time in normal full-stack setups).
-    const hmacKey = (ctx as { hmacKey?: CryptoKey | null }).hmacKey
-      ?? await loadHmacKeyFromEnv().catch(() => null);
+    const hmacKey = (ctx as { hmacKey?: CryptoKey | null }).hmacKey ??
+      await loadHmacKeyFromEnv().catch(() => null);
 
     const bundle = (existingAuthz && existingAdapter)
       ? { authz: existingAuthz, adapter: existingAdapter }
-      : createDuneAuthSystem({ authzStore: "local", dataDir, hmacKey }, storage);
+      : createDuneAuthSystem(
+        { authzStore: "local", dataDir, hmacKey },
+        storage,
+      );
 
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
@@ -198,7 +214,8 @@ export async function mountDuneAuth(
   });
 
   // ── Magic link ─────────────────────────────────────────────────────────────
-  const magicEnabled = authConfig?.providers?.magicLink?.enabled === true && mode === "dune";
+  const magicEnabled = authConfig?.providers?.magicLink?.enabled === true &&
+    mode === "dune";
   const envSecret = Deno.env.get("DUNE_AUTH_SECRET");
 
   if (magicEnabled && !envSecret) {
@@ -217,7 +234,14 @@ export async function mountDuneAuth(
 
   // ── Email sender ────────────────────────────────────────────────────────────
   // Reuse the admin SMTP config if present, same pattern as admin/email.ts
-  let sendEmail: ((to: string, subject: string, text: string, html: string) => Promise<void>) | undefined;
+  let sendEmail:
+    | ((
+      to: string,
+      subject: string,
+      text: string,
+      html: string,
+    ) => Promise<void>)
+    | undefined;
   if (magicEnabled) {
     const smtpCfg = (config as any).admin?.notifications?.email?.smtp;
     if (smtpCfg) {
@@ -232,7 +256,8 @@ export async function mountDuneAuth(
           pass: expandEnv(smtpCfg.pass),
         },
       });
-      const from = (config as any).admin?.notifications?.email?.from ?? `noreply@${new URL(siteUrl).hostname}`;
+      const from = (config as any).admin?.notifications?.email?.from ??
+        `noreply@${new URL(siteUrl).hostname}`;
       sendEmail = async (to, subject, text, html) => {
         await transporter.sendMail({ from, to, subject, text, html });
       };
@@ -242,7 +267,9 @@ export async function mountDuneAuth(
   // ── Magic token store (single-use enforcement) ─────────────────────────────
   // Use an in-memory store by default. Multi-process deployments should inject
   // a shared store (KV, Redis) via the authConfig extension points.
-  const magicTokenStore = magicEnabled ? new InMemoryMagicTokenStore() : undefined;
+  const magicTokenStore = magicEnabled
+    ? new InMemoryMagicTokenStore()
+    : undefined;
 
   // ── Startup warning: session userStore + payments is a lossy combination ──────
   // Payments grant roles by calling userStore.update() + authz.addMember().
@@ -275,10 +302,11 @@ export async function mountDuneAuth(
 
   // ── Register global middleware — populates ctx.state.siteUser ───────────────
   //
-  // Security: strip any externally-supplied x-dune-site-user header before
-  // resolving the user from the session/JWT. Without this an external caller
-  // could forge the header and impersonate any site user in handlers that read
-  // it via getSiteUser() or requireAuth().
+  // Strip any externally-supplied x-dune-user header before resolving the
+  // user from the session/JWT. createDuneApp() also strips this header
+  // unconditionally earlier in the pipeline (see stripUserHeader() in
+  // src/runtime/server.ts), so this is a second, independent layer for any
+  // caller of mountDuneAuth() outside that pipeline.
   //
   // After resolving the real user, inject the header back so that downstream
   // plain-Request handlers (content gating, API guards, payment routes) can
@@ -301,7 +329,7 @@ export async function mountDuneAuth(
   app.use(async (fc) => {
     // Build a clean header set with any externally-supplied header removed.
     const cleanHeaders = new Headers(fc.req.headers);
-    cleanHeaders.delete(SITE_USER_HEADER);
+    cleanHeaders.delete(USER_HEADER);
     const cleanReq = new Request(fc.req, { headers: cleanHeaders });
 
     // Resolve the real user from the session cookie / JWT only.
@@ -321,13 +349,15 @@ export async function mountDuneAuth(
         await mountAuthz.disallowAllMatching({
           who: { type: "user", id: user.id },
         }).catch(() => {});
-        await bootstrapRoleTuples(mountAuthz, mountAdapter, [user]).catch(() => {});
+        await bootstrapRoleTuples(mountAuthz, mountAdapter, [user]).catch(
+          () => {},
+        );
       }
     }
 
-    // Re-inject the resolved user so downstream handlers can call getSiteUser(req).
+    // Re-inject the resolved user so downstream handlers can call getUser(req).
     if (user) {
-      cleanHeaders.set(SITE_USER_HEADER, JSON.stringify(user));
+      cleanHeaders.set(USER_HEADER, JSON.stringify(user));
     }
     // Replace the request on the context so all downstream handlers see the
     // sanitised + enriched version.
@@ -366,7 +396,10 @@ export async function mountDuneAuth(
   for (const [providerName] of providers) {
     const pName = providerName; // capture for closure
     app.get(`/auth/${pName}`, (fc) => routes.oauthStart(fc.req, pName));
-    app.get(`/auth/${pName}/callback`, (fc) => routes.oauthCallback(fc.req, pName));
+    app.get(
+      `/auth/${pName}/callback`,
+      (fc) => routes.oauthCallback(fc.req, pName),
+    );
   }
 
   // ── POST /auth/webhook — IdP user-lifecycle events ─────────────────────────
@@ -399,8 +432,7 @@ export async function mountDuneAuth(
       handleWebhook(fc.req, {
         config: whConfig,
         authz: whAuthz,
-      })
-    );
+      }));
 
     logger.info("auth.webhook.mounted", {
       route: "POST /auth/webhook",

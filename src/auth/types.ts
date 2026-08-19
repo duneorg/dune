@@ -46,29 +46,34 @@ export interface User {
 /**
  * Input for creating a new {@link User} — server-generated fields are omitted.
  */
-export type UserCreate = Omit<User, "id" | "createdAt" | "updatedAt" | "lastSeenAt" | "enabled"> & {
-  enabled?: boolean;
-};
+export type UserCreate =
+  & Omit<User, "id" | "createdAt" | "updatedAt" | "lastSeenAt" | "enabled">
+  & {
+    enabled?: boolean;
+  };
 
 /**
  * Header name used by the public auth middleware to communicate the resolved
- * User to downstream handlers (content gating, API guards, etc.).
+ * User to downstream handlers (content gating, API guards, TSX content
+ * pages, etc.).
  *
- * The middleware serialises the user as JSON into this header after validating
- * the session cookie. Treat as trusted only when set by the same process —
- * a reverse proxy should strip it from inbound external requests.
+ * The middleware serialises the user as JSON into this header after
+ * validating the session cookie. `createDuneApp()` unconditionally strips
+ * any externally-supplied copy of this header from every incoming request
+ * before any route or plugin sees it, regardless of whether `site.auth` is
+ * configured — see `stripUserHeader()` in `src/runtime/server.ts`.
  *
  * @internal
  */
-export const SITE_USER_HEADER = "x-dune-site-user";
+export const USER_HEADER = "x-dune-user";
 
 /**
  * Extract the User from a request, if one was injected by the public auth
  * middleware. Returns null when the user is unauthenticated or the header is
  * absent or malformed.
  */
-export function getSiteUser(req: Request): User | null {
-  const raw = req.headers.get(SITE_USER_HEADER);
+export function getUser(req: Request): User | null {
+  const raw = req.headers.get(USER_HEADER);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);

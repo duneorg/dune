@@ -8,6 +8,7 @@
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
 import type { ContentApi } from "./api.ts";
 import type { HookRegistry } from "../hooks/types.ts";
+import type { User } from "../auth/types.ts";
 
 // === Content Format ===
 
@@ -210,7 +211,12 @@ export interface Page {
    * request through it before (or instead of) rendering the component.
    * Mirrors Fresh's `export const handler: Handlers<Data>` idiom exactly.
    */
-  handlers: () => Promise<Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>> | null>;
+  handlers: () => Promise<
+    Record<
+      string,
+      (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>
+    > | null
+  >;
   /** Co-located media files */
   media: MediaFile[];
   /** Navigation order (from numeric prefix, or frontmatter) */
@@ -477,7 +483,9 @@ export interface TemplateProps {
    * Themes can use this to render a custom search results page
    * instead of the built-in fallback by providing a "search" template.
    */
-  searchResults?: Array<{ route: string; title: string; excerpt: string; score: number }>;
+  searchResults?: Array<
+    { route: string; title: string; excerpt: string; score: number }
+  >;
   children?: unknown;
   /**
    * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
@@ -515,6 +523,24 @@ export interface ContentPageProps {
    * @since 0.31.7
    */
   content?: ContentApi;
+  /**
+   * The resolved public-site user for this request, or `null` if the
+   * request carries no valid public-auth session. Same `User` record
+   * `mountDuneAuth()`'s middleware resolves for Fresh route handlers
+   * (`fc.state.siteUser`) and generated CRUD routes (the internal
+   * `x-dune-user` header, read via `requireAuth()` from
+   * `@dune/core/auth/api-guard`) — hand-written TSX content pages
+   * previously had no equivalent and had to read that header themselves
+   * to get the same information. Optional on the type (a handful of
+   * minimal/fallback render paths construct props without a `Request` to
+   * resolve it from), but every normal TSX content page render populates
+   * it, since public auth may not be configured at all — check for
+   * `null`, not just falsy, since `undefined` means "not resolved here"
+   * while `null` means "resolved: nobody is logged in."
+   *
+   * @since 0.31.8
+   */
+  siteUser?: User | null;
 }
 
 // === Format Handler ===
@@ -612,7 +638,10 @@ export interface ContentFormatHandler {
  *   - Home page (no title):         "My Site"
  */
 export function buildPageTitle(
-  page: { frontmatter: Pick<PageFrontmatter, "title" | "descriptor"> } | undefined | null,
+  page:
+    | { frontmatter: Pick<PageFrontmatter, "title" | "descriptor"> }
+    | undefined
+    | null,
   siteName: string,
 ): string {
   if (!page?.frontmatter?.title) return siteName;

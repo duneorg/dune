@@ -16,6 +16,7 @@ import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
+import { USER_HEADER } from "../auth/types.ts";
 import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { buildPluginClientBundles } from "../cli/client-bundles.ts";
@@ -97,6 +98,22 @@ function sanitizeRequestForHook(req: Request): Request {
     keepalive: req.keepalive,
     signal: req.signal,
   });
+}
+
+/**
+ * Strip any externally-supplied `x-dune-user` header from a request. This
+ * header (`USER_HEADER` in `src/auth/types.ts`) is set internally by
+ * Dune's own middleware and read by `requireAuth()`/`getUser()`; incoming
+ * requests must never be allowed to set it themselves. Returns `req`
+ * unchanged when the header isn't present (avoids an unnecessary Request
+ * reconstruction on the common case). Exported so this is directly
+ * unit-testable without a full app.
+ */
+export function stripUserHeader(req: Request): Request {
+  if (!req.headers.has(USER_HEADER)) return req;
+  const cleanHeaders = new Headers(req.headers);
+  cleanHeaders.delete(USER_HEADER);
+  return new Request(req, { headers: cleanHeaders });
 }
 
 function stripSetCookieOnAdmin(
@@ -242,6 +259,17 @@ export async function createDuneApp(
   // ── App assembly ──────────────────────────────────────────────────────────
   // deno-lint-ignore no-explicit-any
   const app = new App<any>();
+
+  // 0. Strip any externally-supplied x-dune-user header, unconditionally,
+  // before any other middleware or route sees the request. This runs
+  // regardless of whether site.auth (and with it, mountDuneAuth()'s own
+  // strip-then-re-inject step) is configured, so the header is never
+  // trusted from an incoming request under any configuration.
+  app.use(async (fc) => {
+    // deno-lint-ignore no-explicit-any
+    (fc as any).req = stripUserHeader(fc.req);
+    return fc.next();
+  });
 
   // 1. Static files — /_fresh/js/* from build cache
   app.use(staticFiles());
