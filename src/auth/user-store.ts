@@ -99,12 +99,31 @@ export function createLocalUserStore(
     return encodeURIComponent(email.toLowerCase());
   }
 
+  /**
+   * Parse a raw user record, normalizing the pre-dec-identity-unification
+   * `role: string` shape into `roles: string[]` on read. A record written
+   * before that migration never gets rewritten to disk on its own, so every
+   * call site that treats `roles` as always present/array-shaped (most of
+   * `@dune/plugin-admin`'s admin routes do, unguarded) would otherwise throw
+   * the moment it touches one — including inside `mount()`, where an
+   * uncaught throw here silently aborts the rest of admin panel setup.
+   * Normalizing once, centrally, at the only place records actually get
+   * deserialized is cheaper and safer than guarding every consumer.
+   */
+  function parseUserRecord(raw: string): User {
+    const parsed = JSON.parse(raw) as User & { role?: string };
+    if (!Array.isArray(parsed.roles)) {
+      parsed.roles = typeof parsed.role === "string" ? [parsed.role] : [];
+    }
+    return parsed;
+  }
+
   async function getById(id: string): Promise<User | null> {
     const path = `${usersDir}/${id}.json`;
     try {
       if (!(await storage.exists(path))) return null;
       const data = await storage.read(path);
-      return JSON.parse(new TextDecoder().decode(data)) as User;
+      return parseUserRecord(new TextDecoder().decode(data));
     } catch {
       return null;
     }
@@ -135,7 +154,7 @@ export function createLocalUserStore(
         if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
-          const user = JSON.parse(new TextDecoder().decode(data)) as User;
+          const user = parseUserRecord(new TextDecoder().decode(data));
           if (user.username === username) return user;
         } catch {
           // skip corrupt files
@@ -159,7 +178,7 @@ export function createLocalUserStore(
         if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
-          const user = JSON.parse(new TextDecoder().decode(data)) as User;
+          const user = parseUserRecord(new TextDecoder().decode(data));
           if (user.provider === provider && user.providerId === providerId) {
             return user;
           }
@@ -298,7 +317,7 @@ export function createLocalUserStore(
         if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
         try {
           const data = await storage.read(`${usersDir}/${entry.name}`);
-          users.push(JSON.parse(new TextDecoder().decode(data)) as User);
+          users.push(parseUserRecord(new TextDecoder().decode(data)));
         } catch {
           // skip corrupt files
         }

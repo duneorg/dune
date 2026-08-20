@@ -617,3 +617,99 @@ Deno.test("LocalUserStore: two concurrent create() calls for the same email prod
     (fulfilled[0] as PromiseFulfilledResult<{ id: string }>).value.id,
   );
 });
+
+// ---------------------------------------------------------------------------
+// Legacy `role: string` -> `roles: string[]` normalization on read
+// ---------------------------------------------------------------------------
+//
+// A record written before dec-identity-unification's roles-array migration
+// (`role: "admin"` singular, no `roles` field at all) never gets rewritten to
+// disk on its own — every consumer that treats `roles` as always present and
+// array-shaped (most of @dune/plugin-admin's admin routes do, unguarded)
+// would otherwise throw the moment it reads one, including inside mount(),
+// where an uncaught throw silently aborts the rest of admin panel setup.
+
+async function writeLegacyRecord(
+  // deno-lint-ignore no-explicit-any
+  storage: any,
+  usersDir: string,
+  id: string,
+  fields: Record<string, unknown>,
+): Promise<void> {
+  await storage.write(
+    `${usersDir}/${id}.json`,
+    JSON.stringify({ id, ...fields }),
+  );
+}
+
+Deno.test("LocalUserStore: getById normalizes a legacy role:string record to roles:[role]", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/users" });
+  await writeLegacyRecord(storage, "data/users", "legacy-1", {
+    email: "legacy@example.com",
+    provider: "local",
+    role: "admin",
+    enabled: true,
+  });
+
+  const user = await store.getById("legacy-1");
+  assertEquals(user?.roles, ["admin"]);
+});
+
+Deno.test("LocalUserStore: getById normalizes a record with neither role nor roles to roles:[]", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/users" });
+  await writeLegacyRecord(storage, "data/users", "legacy-2", {
+    email: "norole@example.com",
+    provider: "local",
+    enabled: true,
+  });
+
+  const user = await store.getById("legacy-2");
+  assertEquals(user?.roles, []);
+});
+
+Deno.test("LocalUserStore: list() normalizes legacy records alongside current-shape ones", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/users" });
+  await writeLegacyRecord(storage, "data/users", "legacy-3", {
+    email: "legacy3@example.com",
+    provider: "local",
+    role: "editor",
+    enabled: true,
+    createdAt: 1,
+  });
+  await store.create({
+    email: "current@example.com",
+    provider: "local",
+    roles: ["member"],
+  });
+
+  const all = await store.list();
+  assertEquals(all.length, 2);
+  const legacy = all.find((u) => u.email === "legacy3@example.com");
+  assertEquals(legacy?.roles, ["editor"]);
+  // The exact bug this guards against: filtering on .roles.includes(...)
+  // over a mixed legacy/current list must not throw.
+  const admins = all.filter((u) => u.roles.includes("admin"));
+  assertEquals(admins.length, 0);
+});
+
+Deno.test("LocalUserStore: getByUsername and getByProvider also normalize legacy records", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/users" });
+  await writeLegacyRecord(storage, "data/users", "legacy-4", {
+    email: "legacy4@example.com",
+    username: "legacyadmin",
+    provider: "local",
+    providerId: "prov-4",
+    role: "admin",
+    enabled: true,
+  });
+
+  const byUsername = await store.getByUsername("legacyadmin");
+  assertEquals(byUsername?.roles, ["admin"]);
+
+  const byProvider = await store.getByProvider("local", "prov-4");
+  assertEquals(byProvider?.roles, ["admin"]);
+});

@@ -22,6 +22,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **A `data/users/*.json` record written before the `role: string` →
+  `roles: string[]` migration (dec-identity-unification Phase 3/4) crashed
+  any code that read `.roles` unguarded — including inside
+  `@dune/plugin-admin`'s `mount()`, where an uncaught throw silently
+  aborted the rest of admin panel setup (everything registered before that
+  point still worked; every `adminPages`/`publicRoutes` collected after it
+  in the same `mount()` call silently never registered, no visible error to
+  a site visitor). `createLocalUserStore()`'s four read paths (`getById`,
+  `getByUsername`, `getByProvider`, `list`) now normalize a legacy
+  `role: string` record to `roles: [role]` (or `roles: []` if neither field
+  is present) once, centrally, at read time — cheaper and safer than
+  guarding every one of `@dune/plugin-admin`'s ~20 unguarded
+  `.roles.includes(...)` call sites individually. 4 new tests.
+
+- **`mountPlugins()`'s `mount()` error handler logged only the error
+  message, no stack** — under `DUNE_DEV`, now logs the full stack, matching
+  the existing pattern in `content/formats/mdx.ts`'s MDX render-error
+  logging (message-only by default, since a stack can leak filesystem
+  paths; full detail when an operator has shell access and asked for it).
+
 - **Incoming requests could set the internal user-identity header
   themselves under some configurations.** The only code that stripped an
   externally-supplied copy of this header lived inside `mountDuneAuth()`'s
