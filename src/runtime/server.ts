@@ -319,13 +319,32 @@ export async function createDuneApp(
   // 4. Sitemap, feeds, staged preview, dev SSE
   const { notifyReload } = await registerFeeds(app, ctx, { port, dev });
 
+  // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
+  // Must run before plugin public routes below: @dune/plugin-admin's own
+  // mount() (invoked from here) adds the `fc.state.adminContext = ...`
+  // middleware that publicRoutes handlers rely on for manual auth (the
+  // documented pattern — see e.g. any plugin route that does
+  // `fc.state?.adminContext?.auth.authenticate(fc.req)`). Registering a
+  // plugin's route via `app.get()`/`app.post()` before that middleware
+  // exists means the middleware chain built for that route never includes
+  // it, so `fc.state.adminContext` reads as undefined at request time no
+  // matter how the request is authenticated — confirmed via a live 401
+  // repro before this fix (eda-worksheets' pdf-export plugin).
+  await mountPlugins(app, ctx);
+
   // 4b. Plugin public routes (DunePlugin.publicRoutes) — core-owned, unlike
   // adminPages, so this works in every createDuneApp() context regardless of
-  // whether @dune/plugin-admin (or any admin package) is present.
+  // whether @dune/plugin-admin (or any admin package) is present. Calling
+  // this after mountPlugins() (rather than before, as originally written)
+  // is what makes the ordering above work: when admin is enabled,
+  // @dune/plugin-admin's own mountDuneAdmin() (invoked via mountPlugins())
+  // already calls this internally, correctly ordered after its own
+  // middleware within that same call — this trailing call is then a no-op
+  // via the ctx-keyed WeakSet guard in registerPluginPublicRoutes(). When
+  // admin is disabled (headless mode), nothing calls it during
+  // mountPlugins(), so this call is what actually registers the routes —
+  // unchanged from the behavior commit 77bf31f introduced this call to fix.
   registerPluginPublicRoutes(app, ctx, { adminPrefix });
-
-  // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
-  await mountPlugins(app, ctx);
 
   // 5b. Public auth — only when the site has an `auth:` block at all, so
   // sites that never opted in get zero behavior change (no new directories,

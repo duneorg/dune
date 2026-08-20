@@ -150,6 +150,64 @@ Deno.test(
 );
 
 Deno.test(
+  "registerPluginPublicRoutes: publicRoutes handlers run after mount()-registered middleware from other plugins",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    // Regression test for a real bug: createDuneApp() used to call
+    // registerPluginPublicRoutes() BEFORE mountPlugins(), so a route
+    // registered via DunePlugin.publicRoutes could never see middleware
+    // added by another plugin's mount() — including, in the real app,
+    // @dune/plugin-admin's own `fc.state.adminContext = ...` middleware,
+    // which plugin publicRoutes handlers rely on for manual auth (the
+    // documented pattern for a mutating route — see e.g. eda-worksheets'
+    // pdf-export plugin). Registering a route before that middleware exists
+    // means the middleware chain built for that route never includes it.
+    //
+    // This uses two minimal fake plugins rather than the real
+    // @dune/plugin-admin: plugin-admin's own admin-context middleware is
+    // added from inside an async `setup()` that registry.ts intentionally
+    // fire-and-forgets (see its own doc comment) with no ordering guarantee
+    // relative to `mountPlugins()`, so exercising the real plugin here would
+    // make this test flaky on a separate, unrelated race rather than testing
+    // the ordering fix in server.ts. The two-plugin setup below isolates
+    // exactly that ordering guarantee.
+    let seenMarker: unknown;
+    const middlewarePlugin: DunePlugin = {
+      name: "test-middleware-plugin",
+      version: "1.0.0",
+      hooks: {},
+      // deno-lint-ignore no-explicit-any
+      mount({ app }: any) {
+        app.use((fc: any) => {
+          fc.state.marker = "set-by-mount";
+          return fc.next();
+        });
+      },
+    };
+    const routePlugin: DunePlugin = {
+      name: "test-route-plugin",
+      version: "1.0.0",
+      hooks: {},
+      publicRoutes: [
+        {
+          path: "/probe-marker",
+          // deno-lint-ignore no-explicit-any
+          handler: (fc: any) => {
+            seenMarker = fc.state?.marker;
+            return new Response("ok", { status: 200 });
+          },
+        },
+      ],
+    };
+    await withTestApp([middlewarePlugin, routePlugin], async (handler) => {
+      const res = await handler(new Request("http://localhost/probe-marker"));
+      assertEquals(res.status, 200);
+      assertEquals(seenMarker, "set-by-mount");
+    });
+  },
+);
+
+Deno.test(
   "registerPluginPublicRoutes: calling twice for the same ctx is a no-op the second time",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
