@@ -7,7 +7,11 @@
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
-import { findLocalDuneCoreCheckout, warnIfLocalCheckoutUnused } from "../../src/cli/local-checkout-detect.ts";
+import {
+  findLocalDuneCoreCheckout,
+  findWorkspaceRoot,
+  warnIfLocalCheckoutUnused,
+} from "../../src/cli/local-checkout-detect.ts";
 
 async function makeWorkspace(): Promise<{ root: string; corePath: string; siteDir: string }> {
   const root = await Deno.makeTempDir();
@@ -71,6 +75,28 @@ Deno.test("warnIfLocalCheckoutUnused: prints a warning naming the local path whe
   assertEquals(lines.length, 1);
   assertStringIncludes(lines[0], await Deno.realPath(corePath));
   assertStringIncludes(lines[0], "--config");
+});
+
+Deno.test("findWorkspaceRoot: finds the root and its full member list from a nested site dir", async () => {
+  const root = await Deno.makeTempDir();
+  await Deno.mkdir(join(root, "dune"), { recursive: true });
+  await Deno.mkdir(join(root, "plugin-admin"), { recursive: true });
+  const siteDir = join(root, "demos", "some-site");
+  await Deno.mkdir(siteDir, { recursive: true });
+  await Deno.writeTextFile(
+    join(root, "deno.json"),
+    JSON.stringify({ workspace: ["./dune", "./plugin-admin"], unstable: ["kv"] }),
+  );
+
+  const found = await findWorkspaceRoot(siteDir);
+  assertEquals(found?.rootDir, await Deno.realPath(root));
+  assertEquals(found?.config.workspace, ["./dune", "./plugin-admin"]);
+  assertEquals(found?.config.unstable, ["kv"]);
+});
+
+Deno.test("findWorkspaceRoot: returns null when no ancestor deno.json has a workspace array", async () => {
+  const dir = await Deno.makeTempDir();
+  assertEquals(await findWorkspaceRoot(dir), null);
 });
 
 Deno.test("warnIfLocalCheckoutUnused: stays silent when no local checkout is found", async () => {

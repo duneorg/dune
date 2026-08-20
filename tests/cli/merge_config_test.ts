@@ -114,6 +114,69 @@ Deno.test("buildMergedConfig: unstable arrays are unioned and deduped", async ()
   );
 });
 
+Deno.test("buildMergedConfig: works with no site config at all (workspace-linking-only case)", async () => {
+  await withTempConfigs(
+    { imports: { "shared": "npm:shared@^1" } },
+    {},
+    async (dunePath) => {
+      const merged = await buildMergedConfig(dunePath, undefined);
+      assertEquals(
+        (merged.imports as Record<string, string>)["shared"],
+        "npm:shared@^1",
+      );
+    },
+  );
+});
+
+Deno.test("buildMergedConfig: carries the workspace root's own member list into the merged config", async () => {
+  await withTempConfigs(
+    {},
+    {},
+    async (dunePath, sitePath) => {
+      const merged = await buildMergedConfig(dunePath, sitePath, {
+        rootDir: "/workspace/root",
+        config: { workspace: ["./dune", "./plugin-admin"] },
+      });
+      assertEquals(merged.workspace, ["./dune", "./plugin-admin"]);
+    },
+  );
+});
+
+Deno.test("buildMergedConfig: workspace root's own imports are the lowest-priority layer", async () => {
+  await withTempConfigs(
+    { imports: { "shared": "npm:shared-dune@^1" } },
+    {},
+    async (dunePath) => {
+      const merged = await buildMergedConfig(dunePath, undefined, {
+        rootDir: "/workspace/root",
+        config: {
+          workspace: ["./dune"],
+          imports: {
+            "shared": "npm:shared-root@^1",
+            "root-only": "npm:root-only@^1",
+          },
+        },
+      });
+      const imports = merged.imports as Record<string, string>;
+      // dune's own import wins over the root's for a shared key...
+      assertEquals(imports["shared"], "npm:shared-dune@^1");
+      // ...but a root-only import still comes through.
+      assertEquals(imports["root-only"], "npm:root-only@^1");
+    },
+  );
+});
+
+Deno.test("buildMergedConfig: omits workspace field when no workspace root is passed", async () => {
+  await withTempConfigs(
+    {},
+    {},
+    async (dunePath, sitePath) => {
+      const merged = await buildMergedConfig(dunePath, sitePath);
+      assertEquals("workspace" in merged, false);
+    },
+  );
+});
+
 Deno.test("buildMergedConfig: nodeModulesDir — site wins when both set", async () => {
   await withTempConfigs(
     { nodeModulesDir: "manual" },

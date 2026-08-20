@@ -65,6 +65,45 @@ export async function findLocalDuneCoreCheckout(startDir: string): Promise<strin
   return null;
 }
 
+/** Directory and parsed config of the nearest ancestor workspace root. */
+export interface WorkspaceRootInfo {
+  rootDir: string;
+  config: Record<string, unknown>;
+}
+
+/**
+ * Walk up from `startDir` looking for the nearest ancestor deno.json/jsonc
+ * with a `"workspace"` array. Returns its directory and parsed config, or
+ * null if none is found within `MAX_WALK_UP` levels.
+ *
+ * Unlike {@link findLocalDuneCoreCheckout}, this doesn't require any
+ * particular member to be present — it just finds the workspace root
+ * itself, for callers that want the whole member list (e.g. to carry the
+ * `"workspace"` field into a merged config so sibling packages beyond
+ * `@dune/core` also get linked).
+ */
+export async function findWorkspaceRoot(startDir: string): Promise<WorkspaceRootInfo | null> {
+  let dir = startDir;
+  for (let i = 0; i < MAX_WALK_UP; i++) {
+    for (const filename of ["deno.json", "deno.jsonc"]) {
+      const configPath = `${dir}/${filename}`;
+      const config = await readJsonIfExists(configPath);
+      if (Array.isArray(config?.workspace)) {
+        try {
+          return { rootDir: await Deno.realPath(dir), config: config! };
+        } catch {
+          return { rootDir: dir, config: config! };
+        }
+      }
+    }
+
+    const parent = dir.replace(/\/[^/]+$/, "");
+    if (parent === dir || parent === "") break;
+    dir = parent;
+  }
+  return null;
+}
+
 /**
  * Print a one-time warning if this process is about to lock into running
  * the published @dune/core package while an unused local workspace checkout

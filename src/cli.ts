@@ -18,6 +18,13 @@
  *    workspace, so site theme TSX outside it would otherwise fail with
  *    "not in import map" errors on bare specifiers like preact.
  *
+ *    When dune's own checkout sits inside a workspace (an ancestor deno.json
+ *    with a "workspace" array — the multi-repo local-dev layout), the merged
+ *    config also carries that array over, so sibling packages beyond
+ *    @dune/core (@dune/plugin-admin, @dune/plugin-orama, etc.) get
+ *    workspace-linked to their local checkouts too. See resolveConfig()
+ *    below for why this changes where the merged config gets written.
+ *
  * 2. Remote (JSR/https) — handled by cli-impl.ts, which re-execs with the
  *    site's deno.json so site-specific imports (preact version, theme
  *    components) are in scope.
@@ -54,6 +61,7 @@ import {
 } from "./cli/import-map-error.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
 import { buildMergedConfig } from "./cli/merge-config.ts";
+import { findWorkspaceRoot } from "./cli/local-checkout-detect.ts";
 import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
 import {
   computeLockPolicy,
@@ -83,33 +91,67 @@ if (import.meta.main) {
 // ── 1. Local source re-exec ────────────────────────────────────────────────────
 
 /**
- * Decide which --config to re-exec with. Returns dune's own deno.json path,
- * or — when the site root has a separate deno.json — the path of a temporary
- * merged config (dune imports + site imports, site wins). Returns the temp
- * dir for cleanup in the latter case.
+ * Decide which --config to re-exec with. Returns dune's own deno.json path
+ * unchanged when there's nothing to add; otherwise the path of a merged
+ * config (dune imports + site imports, site wins, plus an ancestor
+ * workspace's own member list when dune's checkout sits inside one) and the
+ * temp location to clean up afterward.
+ *
+ * A workspace's `"workspace"` array only resolves when every member is
+ * nested under the config file's own directory (Deno rejects it otherwise)
+ * — so when an ancestor workspace root is found, the merged config is
+ * written directly into that root directory (as a temp *file*, cleaned up
+ * after) rather than an arbitrary OS tempdir. This is what lets `dune
+ * dev`/`dune serve`, run from inside a workspace checkout, pick up local
+ * changes to *any* workspace-linked sibling package (`@dune/plugin-admin`,
+ * `@dune/plugin-orama`, etc.), not just `@dune/core`.
  */
 async function resolveConfig(
   duneConfigPath: string,
-): Promise<{ configPath: string; tempDir?: string }> {
-  let siteConfigPath: string;
+): Promise<{ configPath: string; tempDir?: string; tempFile?: string }> {
+  const duneDir = duneConfigPath.replace(/\/deno\.json$/, "");
+  const workspaceRoot = await findWorkspaceRoot(duneDir).catch(() => null);
+
+  let siteConfigPath: string | undefined;
+  let insideDuneRepo = false;
   try {
     const siteRoot = await Deno.realPath(parseRootArg(Deno.args));
-    siteConfigPath = `${siteRoot}/deno.json`;
-    await Deno.stat(siteConfigPath);
-    if (siteConfigPath === await Deno.realPath(duneConfigPath)) {
-      return { configPath: duneConfigPath }; // running inside the dune repo itself
+    const candidate = `${siteRoot}/deno.json`;
+    await Deno.stat(candidate);
+    if (candidate === await Deno.realPath(duneConfigPath)) {
+      insideDuneRepo = true; // running inside the dune repo itself
+    } else {
+      siteConfigPath = candidate;
     }
   } catch {
-    return { configPath: duneConfigPath }; // no site root / no site deno.json
+    // no site root / no site deno.json — siteConfigPath stays undefined
   }
+
+  if (!workspaceRoot && (insideDuneRepo || !siteConfigPath)) {
+    return { configPath: duneConfigPath };
+  }
+
   try {
-    const merged = await buildMergedConfig(duneConfigPath, siteConfigPath);
+    const merged = await buildMergedConfig(
+      duneConfigPath,
+      siteConfigPath,
+      workspaceRoot ?? undefined,
+    );
+    if (workspaceRoot) {
+      const configPath = await Deno.makeTempFile({
+        dir: workspaceRoot.rootDir,
+        prefix: ".dune-cli-config-",
+        suffix: ".json",
+      });
+      await Deno.writeTextFile(configPath, JSON.stringify(merged, null, 2));
+      return { configPath, tempFile: configPath };
+    }
     const tempDir = await Deno.makeTempDir({ prefix: "dune-config-" });
     const configPath = `${tempDir}/deno.json`;
     await Deno.writeTextFile(configPath, JSON.stringify(merged, null, 2));
     return { configPath, tempDir };
   } catch {
-    // Unreadable/non-JSON site config — fall back to dune's own
+    // Unreadable/non-JSON config somewhere in the chain — fall back to dune's own
     return { configPath: duneConfigPath };
   }
 }
@@ -121,14 +163,20 @@ if (
   try {
     const duneConfigPath = new URL("../deno.json", import.meta.url).pathname;
     await Deno.stat(duneConfigPath); // verify it exists before re-execing
-    const { configPath, tempDir } = await resolveConfig(duneConfigPath);
+    const { configPath, tempDir, tempFile } = await resolveConfig(
+      duneConfigPath,
+    );
+    const cleanup = async () => {
+      if (tempDir) {
+        await Deno.remove(tempDir, { recursive: true }).catch(() => {});
+      }
+      if (tempFile) await Deno.remove(tempFile).catch(() => {});
+    };
     const lockPolicy = await computeLockPolicy(Deno.args);
     const lockError = await preflightLockPolicy(lockPolicy);
     if (lockError) {
       console.error(lockError);
-      if (tempDir) {
-        await Deno.remove(tempDir, { recursive: true }).catch(() => {});
-      }
+      await cleanup();
       Deno.exit(1);
     }
     const cmd = new Deno.Command(Deno.execPath(), {
@@ -150,9 +198,7 @@ if (
       stderr: "inherit",
     });
     const status = await waitForwardingSignals(cmd.spawn());
-    if (tempDir) {
-      await Deno.remove(tempDir, { recursive: true }).catch(() => {});
-    }
+    await cleanup();
     Deno.exit(status.code);
   } catch {
     // deno.json not found next to source — fall through and try to run as-is

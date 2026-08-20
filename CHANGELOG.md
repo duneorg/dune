@@ -200,6 +200,26 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   previously had no way to query the content index (e.g. to link a record to
   a related page). 2 new tests.
 
+- **`dune dev`/`dune serve` workspace-link sibling plugin packages, not
+  just `@dune/core`.** Previously, running the CLI from a local source
+  checkout only ever re-exec'd with dune's own (member) `deno.json`, or a
+  temp config merging it with the site's — neither carries a `"workspace"`
+  field (Deno only accepts one in a workspace-*root* config), so a local
+  checkout of `@dune/plugin-admin`/`@dune/plugin-orama`/etc. silently fell
+  back to the published JSR package even when developing them side by side
+  in the same multi-repo checkout. `resolveConfig()` now walks up from
+  dune's own directory looking for an ancestor workspace root
+  (`findWorkspaceRoot()`, `src/cli/local-checkout-detect.ts`), and when
+  found, writes the merged config as a temp *file* directly inside that
+  root directory (member paths in `"workspace"` only resolve when nested
+  under the config file's own directory) instead of an arbitrary OS
+  tempdir, carrying the root's own member list and import layer through
+  (`buildMergedConfig()`, lowest priority: root → dune → site). Applies
+  even when the site has no deno.json of its own — workspace-linking no
+  longer requires a site-side merge to piggyback on. 6 new tests, including
+  a real `deno run --no-remote` spawn proving a `jsr:` specifier actually
+  resolves to the local sibling checkout.
+
 - **CI guard against workspace-member `@dune/core` pin drift.**
   `scripts/check-core-pin-drift.ts` checks the latest published version of
   every known sibling `@dune/*` package on JSR against this checkout's own
