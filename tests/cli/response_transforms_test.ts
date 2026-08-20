@@ -98,6 +98,7 @@ const pages = [
     sourcePath: "content/about.md",
     title: "About",
     language: "en",
+    template: "post",
   },
 ];
 
@@ -490,4 +491,73 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
   });
   // Even markers introduced by a transform are stripped for anonymous visitors.
   assertEquals(await result.text(), `<p>p</p><span>v</span>`);
+});
+
+Deno.test("runPluginResponseTransforms: ctx.plugins lets a bar-owning plugin collect another plugin's adminBarActions", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("admin") },
+    permissions: ["pages.update"],
+  });
+
+  // A plugin that only contributes adminBarActions — no transformResponse
+  // of its own. Confirms ctx.plugins is the full list, not just the ones
+  // already filtered on transformResponse.
+  const contributor: DunePlugin = {
+    name: "pdf-export",
+    version: "1.0.0",
+    hooks: {},
+    adminBarActions: ({ page }) =>
+      page?.template === "post"
+        ? [{ id: "pdf-export:download", label: "PDF", href: `/pdf/${page.sourcePath}` }]
+        : [],
+  };
+
+  // The bar-owning plugin: renders whatever adminBarActions it can collect
+  // from ctx.plugins into the response body, to prove it received them.
+  const barOwner: DunePlugin = {
+    name: "bar-owner",
+    version: "1.0.0",
+    hooks: {},
+    async transformResponse(ctx) {
+      const body = await ctx.response.text();
+      const actions = ctx.plugins.flatMap((p) =>
+        p.adminBarActions?.({ page: ctx.page, adminPrefix: ctx.adminPrefix }) ?? []
+      );
+      const rendered = actions.map((a) => `<a id="${a.id}" href="${a.href}">${a.label}</a>`).join("");
+      return new Response(`${body}${rendered}`, {
+        status: ctx.response.status,
+        headers: ctx.response.headers,
+      });
+    },
+  };
+
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [contributor, barOwner],
+    auth,
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+
+  assertEquals(
+    await result.text(),
+    `<p>p</p><a id="pdf-export:download" href="/pdf/content/about.md">PDF</a>`,
+  );
+});
+
+Deno.test("runPluginResponseTransforms: page.template is populated from the content index", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth: makeAuth({}),
+    pages,
+    config,
+    adminPrefix: "/admin",
+  });
+  await result.text();
+  assertEquals(seen[0].page?.template, "post");
 });

@@ -65,7 +65,7 @@ export interface RunResponseTransformsOptions {
    */
   authz?: DuneAuthSystem;
   /** Content index used to match the current URL to a page. */
-  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[];
+  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template">[];
   config: DuneConfig;
   adminPrefix: string;
 }
@@ -76,10 +76,10 @@ export interface RunResponseTransformsOptions {
  */
 function matchPageForUrl(
   pathname: string,
-  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language">[],
+  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template">[],
   supportedLangs: string[],
   defaultLang: string,
-): Pick<PageIndex, "route" | "sourcePath" | "title" | "language"> | undefined {
+): Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template"> | undefined {
   let route = pathname;
   let lang = defaultLang;
 
@@ -179,9 +179,15 @@ export async function runPluginResponseTransforms(
           sourcePath: matchedPage.sourcePath,
           route: matchedPage.route,
           title: matchedPage.title ?? null,
+          template: matchedPage.template,
         }
         : null,
       adminPrefix,
+      // Full list (not transformPlugins) — a plugin can contribute
+      // adminBarActions without declaring transformResponse itself, so the
+      // bar-owning plugin needs every plugin, not just the ones already
+      // selected to run their own transform.
+      plugins: plugins.map((p) => ({ name: p.name, adminBarActions: p.adminBarActions })),
     });
   }
 

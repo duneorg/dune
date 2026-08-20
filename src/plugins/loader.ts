@@ -378,8 +378,14 @@ export async function mountPlugins(
     try {
       await plugin.mount({ app, bootstrap: ctx, adminServices });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`[dune] Plugin "${plugin.name}" mount() failed: ${message}`);
+      // Full stack in dev (DUNE_DEV) — matches the pattern already used for
+      // MDX render errors (see content/formats/mdx.ts's sanitizeMdxError):
+      // message-only by default (a stack can leak filesystem paths), full
+      // detail when an operator has shell access and asked for it.
+      const detail = Deno.env.get("DUNE_DEV") && err instanceof Error
+        ? (err.stack ?? err.message)
+        : (err instanceof Error ? err.message : String(err));
+      console.error(`[dune] Plugin "${plugin.name}" mount() failed: ${detail}`);
     }
   }
 }

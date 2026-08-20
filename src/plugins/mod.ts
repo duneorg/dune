@@ -102,6 +102,10 @@ export const CORE_INSTANCE: Readonly<Record<never, never>> = Object.freeze({});
 export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms, mountPlugins } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
+  /** A button contributed to the shared admin bar UI via `DunePlugin.adminBarActions`. */
+  AdminBarAction,
+  /** Context passed to {@link DunePlugin.adminBarActions}. */
+  AdminBarActionContext,
   /** A custom admin page contributed by a plugin. Registered via `DunePlugin.adminPages`. */
   AdminPageRegistration,
   /** Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}. */

@@ -208,6 +208,58 @@ export interface PublicRouteRegistration {
 }
 
 /**
+ * Context passed to {@link DunePlugin.adminBarActions}.
+ *
+ * Deliberately the same narrowed shape {@link ResponseTransformContext}
+ * passes as `page`/`adminPrefix` (plus `template`, which actions need to
+ * decide what to show but `transformResponse` itself has never needed) —
+ * a plugin contributing bar actions is answering "what belongs on the bar
+ * for this response," the same question `transformResponse` answers for
+ * the page body.
+ *
+ * @since 1.2.0
+ */
+export interface AdminBarActionContext {
+  /** Content page matching the current URL, or null for non-content routes. */
+  page: { sourcePath: string; route: string; title: string | null; template: string } | null;
+  /** Admin panel URL prefix (e.g. `"/admin"`). */
+  adminPrefix: string;
+}
+
+/**
+ * A button contributed to the shared admin bar UI via
+ * {@link DunePlugin.adminBarActions}. Rendered by whichever plugin owns the
+ * bar (e.g. `@dune/plugin-inline-edit`) — the contributing plugin controls
+ * only the button's appearance and behavior, not its position or styling.
+ *
+ * @since 1.2.0
+ */
+export interface AdminBarAction {
+  /**
+   * Unique id — namespace by plugin name to avoid collisions across
+   * plugins, e.g. `"pdf-export:download"`.
+   */
+  id: string;
+  /** Button label. */
+  label: string;
+  /** Optional emoji/icon prefix. */
+  icon?: string;
+  /**
+   * Renders as a plain link (`<a href>`) when set — the common case for
+   * downloads and navigation. Mutually exclusive with `onClick`; `href`
+   * takes precedence if both are set.
+   */
+  href?: string;
+  /**
+   * Renders as a `<button>` running this literal JavaScript on click, when
+   * `href` is not set. Trusted content from a loaded plugin, not user
+   * input — no sanitization is applied, the same trust level as any other
+   * server-rendered admin-only script.
+   */
+  onClick?: string;
+}
+
+/**
  * A custom admin page contributed by a plugin.
  *
  * Plugins register these via `DunePlugin.adminPages`. Unlike `publicRoutes`,
@@ -390,6 +442,43 @@ export interface DunePlugin {
    * ```
    */
   publicRoutes?: PublicRouteRegistration[];
+  /**
+   * Contribute buttons to the shared admin bar UI — the small floating
+   * toolbar an editor plugin (e.g. `@dune/plugin-inline-edit`) injects into
+   * every content-page response for an authenticated admin, via its own
+   * `transformResponse`. This field lets *other* plugins add buttons to
+   * that bar without the bar-owning plugin knowing anything about them —
+   * `plugin-inline-edit` renders whatever's registered here with zero
+   * knowledge of what a "PDF export" or "edit source" button does.
+   *
+   * A function, not a static list, because actions are usually per-page
+   * (a download link needs the current page's sourcePath baked into its
+   * `href`) — called once per response by whichever plugin owns the bar,
+   * with the same narrowed page/adminPrefix context `transformResponse`
+   * itself receives. Return `[]` when this plugin has nothing to show for
+   * the given page (e.g. a PDF-export action that only makes sense on
+   * `template: "worksheet"` pages).
+   *
+   * Only plugins whose `transformResponse` also renders a bar need to call
+   * this — most plugins declaring `adminBarActions` do not need
+   * `transformResponse` of their own.
+   *
+   * @since 1.2.0
+   *
+   * @example
+   * ```ts
+   * adminBarActions: ({ page, adminPrefix }) => {
+   *   if (page?.template !== "worksheet") return [];
+   *   return [{
+   *     id: "pdf-export:download",
+   *     label: "PDF",
+   *     icon: "⬇",
+   *     href: `/pdf/download?scope=page&path=${encodeURIComponent(page.sourcePath)}`,
+   *   }];
+   * },
+   * ```
+   */
+  adminBarActions?: (ctx: AdminBarActionContext) => AdminBarAction[];
   /**
    * Preact island file specifiers contributed by this plugin.
    *
@@ -620,10 +709,21 @@ export interface ResponseTransformContext {
   /**
    * Content page matching the current URL, or null for non-content routes
    * (admin paths, API paths, plugin routes, theme static assets, etc.).
+   * `template` was added in 1.2.0 alongside `adminBarActions` — existing
+   * consumers destructuring the other four fields are unaffected.
    */
-  page: { sourcePath: string; route: string; title: string | null } | null;
+  page: { sourcePath: string; route: string; title: string | null; template: string } | null;
   /** Admin panel URL prefix (e.g. `"/admin"`). */
   adminPrefix: string;
+  /**
+   * Every registered plugin, narrowed to just `name` and `adminBarActions`
+   * — enough for a bar-owning plugin (e.g. `plugin-inline-edit`) to collect
+   * other plugins' contributed bar actions, without exposing full plugin
+   * internals (hooks, adminPages, etc.) to every `transformResponse`.
+   *
+   * @since 1.2.0
+   */
+  plugins: readonly Pick<DunePlugin, "name" | "adminBarActions">[];
 }
 
 /**
