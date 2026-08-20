@@ -192,6 +192,14 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   internal user header itself to get this. Resolved once per request in
   `handleTsxPage()`.
 
+- **`content` on Flex Object list/detail template props.**
+  `FlexListTemplateProps` and `FlexDetailTemplateProps` (the props a theme's
+  `templates/flex/{type}-list.tsx` / `templates/flex/{type}.tsx` receive) now
+  carry `content?: ContentApi`, the same content-query instance already
+  threaded into `TemplateProps` and `ContentPageProps` — Flex templates
+  previously had no way to query the content index (e.g. to link a record to
+  a related page). 2 new tests.
+
 - **CI guard against workspace-member `@dune/core` pin drift.**
   `scripts/check-core-pin-drift.ts` checks the latest published version of
   every known sibling `@dune/*` package on JSR against this checkout's own

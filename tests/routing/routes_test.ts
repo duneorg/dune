@@ -488,6 +488,85 @@ Deno.test("duneRoutes: contentApi param reaches ContentPageProps.content for a T
   assertEquals(capturedContent, sentinelContentApi);
 });
 
+Deno.test("duneRoutes: contentApi param reaches FlexListTemplateProps.content", async () => {
+  const engine = makeEngine([], async (_route: string) => ({ type: "not-found" as const }));
+
+  let capturedContent: unknown = "not-captured";
+  engine.themes = {
+    ...engine.themes,
+    loadTemplate: (name: string) =>
+      name === "flex/list"
+        ? Promise.resolve({
+          name: "flex/list",
+          // Must be `async` — see the note in the TSX-page test above.
+          component: async (props: { content?: unknown }) => {
+            capturedContent = props.content;
+            return await Promise.resolve(null);
+          },
+          fromTheme: "default",
+        })
+        : Promise.resolve(null),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const flex = {
+    loadSchemas: () =>
+      Promise.resolve({ products: { title: "Products", fields: {} } }),
+    list: (_type: string) => Promise.resolve([]),
+    get: (_type: string, _id: string) => Promise.resolve(null),
+  } as unknown as import("../../src/flex/engine.ts").FlexEngine;
+
+  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(engine, undefined, flex, undefined, sentinelContentApi);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  await contentHandler(new Request("http://localhost/flex/products"), renderJsx);
+
+  assertEquals(capturedContent, sentinelContentApi);
+});
+
+Deno.test("duneRoutes: contentApi param reaches FlexDetailTemplateProps.content", async () => {
+  const engine = makeEngine([], async (_route: string) => ({ type: "not-found" as const }));
+
+  let capturedContent: unknown = "not-captured";
+  engine.themes = {
+    ...engine.themes,
+    loadTemplate: (name: string) =>
+      name === "flex/detail"
+        ? Promise.resolve({
+          name: "flex/detail",
+          // Must be `async` — see the note in the TSX-page test above.
+          component: async (props: { content?: unknown }) => {
+            capturedContent = props.content;
+            return await Promise.resolve(null);
+          },
+          fromTheme: "default",
+        })
+        : Promise.resolve(null),
+    loadLayout: (_name: string) => Promise.resolve(null),
+    loadLocale: (_lang: string) => Promise.resolve({}),
+  } as unknown as DuneEngine["themes"];
+
+  const flex = {
+    loadSchemas: () =>
+      Promise.resolve({ products: { title: "Products", fields: {} } }),
+    list: (_type: string) => Promise.resolve([]),
+    get: (_type: string, id: string) =>
+      Promise.resolve(id === "widget-1" ? { _id: "widget-1", name: "Widget" } : null),
+  } as unknown as import("../../src/flex/engine.ts").FlexEngine;
+
+  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(engine, undefined, flex, undefined, sentinelContentApi);
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
+
+  await contentHandler(new Request("http://localhost/flex/products/widget-1"), renderJsx);
+
+  assertEquals(capturedContent, sentinelContentApi);
+});
+
 Deno.test("duneRoutes: contentApi param reaches the themed 404 error page's TemplateProps.content", async () => {
   const engine = makeEngine([], async (_route: string) => ({ type: "not-found" as const }));
 

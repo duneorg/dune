@@ -242,7 +242,7 @@ export function duneRoutes(
 
       // ── Flex object public routes ─────────────────────────────────────────
       if (flex && langPath.startsWith("/flex/")) {
-        return respond(handleFlexRoute(engine, url, flex, renderJsx));
+        return respond(handleFlexRoute(engine, url, flex, renderJsx, contentApi));
       }
       // ─────────────────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 import { h, type ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { TemplateComponent } from "../content/types.ts";
+import type { ContentApi } from "../content/api.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
@@ -25,6 +26,13 @@ export interface FlexListTemplateProps {
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — the same instance `ContentPageProps.content` and `TemplateProps.content`
+   * expose. Optional since a handful of fallback render paths construct props
+   * without it.
+   */
+  content?: ContentApi;
 }
 
 /**
@@ -44,6 +52,13 @@ export interface FlexDetailTemplateProps {
   pathname: string;
   Layout?: TemplateComponent;
   t: (key: string) => string;
+  /**
+   * The content query API (`.pages()`, `.page()`, `.search()`, `.taxonomy()`)
+   * — the same instance `ContentPageProps.content` and `TemplateProps.content`
+   * expose. Optional since a handful of fallback render paths construct props
+   * without it.
+   */
+  content?: ContentApi;
 }
 
 /**
@@ -55,6 +70,7 @@ export async function handleFlexRoute(
   url: URL,
   flex: FlexEngine,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
+  contentApi?: ContentApi,
 ): Promise<Response> {
   const { lang, path } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
   const parts = path.split("/").filter(Boolean); // ["flex", type, ...id]
@@ -85,6 +101,7 @@ export async function handleFlexRoute(
     pathname: url.pathname,
     Layout: layout ?? undefined,
     t,
+    content: contentApi,
   };
 
   if (parts.length === 2) {
