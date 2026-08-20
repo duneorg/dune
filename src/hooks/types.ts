@@ -777,4 +777,16 @@ export interface HookRegistry {
    * that fires earlier in the bootstrap sequence.
    */
   setContentApi(api: ContentApi): void;
+  /**
+   * Resolve once every plugin's `setup()` — including async ones — has
+   * settled. `registerPlugin()` fires-and-forgets `setup()` so registration
+   * itself never blocks, but consumers that depend on setup-time state
+   * being fully initialized (e.g. `mountPlugins()`, which calls `mount()`
+   * shortly after all plugins register) must await this first. A plugin
+   * whose `setup()` rejects is still counted as settled here — the error is
+   * already logged by the registry, so this never rejects.
+   *
+   * @since 1.3.0
+   */
+  whenSetupComplete(): Promise<void>;
 }

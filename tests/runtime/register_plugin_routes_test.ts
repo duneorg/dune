@@ -220,11 +220,13 @@ Deno.test(
     //
     // This uses two minimal fake plugins rather than the real
     // @dune/plugin-admin: plugin-admin's own admin-context middleware is
-    // added from inside an async `setup()` that registry.ts intentionally
-    // fire-and-forgets (see its own doc comment) with no ordering guarantee
-    // relative to `mountPlugins()`, so exercising the real plugin here would
-    // make this test flaky on a separate, unrelated race rather than testing
-    // the ordering fix in server.ts. The two-plugin setup below isolates
+    // added from inside an async `setup()`, which registry.ts fire-and-forgets
+    // at registration time (see its own doc comment) — `mountPlugins()` now
+    // awaits `hooks.whenSetupComplete()` before calling any `mount()` (see
+    // tests/plugins/mount_setup_race_test.ts for that guarantee specifically),
+    // but exercising the real plugin here would still couple this test to
+    // plugin-admin's setup internals rather than the ordering fix in
+    // server.ts this test targets. The two-plugin setup below isolates
     // exactly that ordering guarantee.
     let seenMarker: unknown;
     const middlewarePlugin: DunePlugin = {

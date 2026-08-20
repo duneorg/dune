@@ -34,6 +34,10 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
   // Map of event → ordered list of handlers
   const handlers = new Map<HookEvent, HookHandler[]>();
   const registeredPlugins: DunePlugin[] = [];
+  // Settled (never-rejecting) promises for each plugin's setup(), so
+  // whenSetupComplete() can await them without one plugin's failure
+  // short-circuiting Promise.all for the rest.
+  const pendingSetups: Promise<void>[] = [];
   let jobContext: HookContext["jobs"] | undefined;
   let contentApi: ContentApi | undefined;
 
@@ -66,9 +70,11 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
         // async setup tasks should subscribe to onContentIndexReady instead.
         const maybePromise = plugin.setup(api);
         if (maybePromise instanceof Promise) {
-          maybePromise.catch((err) => {
-            console.error(`[dune] Plugin "${plugin.name}" setup() failed: ${err}`);
-          });
+          pendingSetups.push(
+            maybePromise.catch((err) => {
+              console.error(`[dune] Plugin "${plugin.name}" setup() failed: ${err}`);
+            }),
+          );
         }
       }
 
@@ -132,6 +138,14 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
 
     setContentApi(api: ContentApi): void {
       contentApi = api;
+    },
+
+    whenSetupComplete(): Promise<void> {
+      // Snapshot the current array: setup() promises never get removed, and
+      // no further plugins register after mountPlugins() calls this, but
+      // Promise.all over a live-length-changing array reference is still
+      // safer to reason about as a fixed batch.
+      return Promise.all(pendingSetups).then(() => undefined);
     },
   };
 

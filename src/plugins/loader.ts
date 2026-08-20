@@ -406,6 +406,13 @@ export async function mountPlugins(
   app: import("fresh").App<any>,
   ctx: import("../runtime/bootstrap.ts").BootstrapResult,
 ): Promise<void> {
+  // Plugin setup() is fire-and-forget at registration time (see
+  // registry.ts's registerPlugin()), so a plugin's async setup() work
+  // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
+  // here. adminServices() and mount() both read state setup() initializes,
+  // so wait for every plugin's setup() to settle before either runs.
+  await ctx.hooks.whenSetupComplete();
+
   const adminCfg = ctx.config.admin;
   const adminServices = await collectAdminServices(ctx.hooks.plugins(), {
     storage: ctx.storage,
