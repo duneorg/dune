@@ -50,6 +50,8 @@ Deno.test(
     const port = 18_842; // arbitrary, unlikely to collide with a real dev server
     let child: Deno.ChildProcess | undefined;
     let output = "";
+    let stdoutDone: Promise<void> | undefined;
+    let stderrDone: Promise<void> | undefined;
 
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
@@ -61,6 +63,20 @@ Deno.test(
       await Deno.writeTextFile(
         join(root, "config", "site.yaml"),
         "title: Smoke Test Site\n",
+      );
+      // A real site's own deno.json, same shape `dune new` scaffolds. Required:
+      // Fresh's Builder reads compilerOptions from *this* root (the value passed
+      // to `new Builder({ root })`, not from Deno.cwd() or dune's own config) on
+      // the first real build — omit it and every site (real or test fixture)
+      // fails with "Could not find a deno.json ... that contains a
+      // 'compilerOptions' field" on the first request, after "Fresh ready" has
+      // already printed. Found by tracing Fresh's own checkDenoCompilerOptions()
+      // in the cached jsr:@fresh/core source.
+      await Deno.writeTextFile(
+        join(root, "deno.json"),
+        JSON.stringify({
+          compilerOptions: { jsx: "react-jsx", jsxImportSource: "preact" },
+        }),
       );
 
       // --config points at dune's own deno.json directly (DUNE_CONFIG_APPLIED=1
@@ -93,8 +109,8 @@ Deno.test(
         const decoder = new TextDecoder();
         for await (const chunk of stream) output += decoder.decode(chunk);
       };
-      const stdoutDone = drain(child.stdout);
-      const stderrDone = drain(child.stderr);
+      stdoutDone = drain(child.stdout);
+      stderrDone = drain(child.stderr);
 
       let exited = false;
       let exitCode: number | undefined;
@@ -134,9 +150,6 @@ Deno.test(
       );
       const body = await response.text();
       assertStringIncludes(body, "alive");
-
-      await stdoutDone.catch(() => {});
-      await stderrDone.catch(() => {});
     } finally {
       if (child) {
         try {
@@ -145,6 +158,11 @@ Deno.test(
           // already exited
         }
         await child.status.catch(() => {});
+        // Only safe to await these once the process (and thus its stdout/
+        // stderr pipes) has actually closed -- awaiting them earlier, while
+        // the server is still serving, would hang forever waiting for EOF.
+        await stdoutDone?.catch(() => {});
+        await stderrDone?.catch(() => {});
       }
       await Deno.remove(root, { recursive: true }).catch(() => {});
     }
