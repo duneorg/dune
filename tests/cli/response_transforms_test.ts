@@ -17,14 +17,6 @@ import type {
   ResponseTransformContext,
 } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
-// NOTE: this imports the renamed User/Role names from @dune/plugin-admin's
-// Phase 3 rename (decisions/dec-identity-unification.md) — dune/deno.json's
-// "@dune/plugin-admin" pin stays at ^1.0 (the real, currently-published
-// version) until plugin-admin actually ships 2.0.0 to JSR. Until then this
-// file only type-checks inside the /Users/xrs/claude workspace, which links
-// @dune/plugin-admin to the local (already-renamed) checkout regardless of
-// the declared pin; dune's standalone CI will fail here until that publish
-// lands, at which point bump the pin above to ^2.0 in the same commit.
 import type {
   AdminPermission,
   AuthResult,
