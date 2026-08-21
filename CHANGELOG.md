@@ -5,7 +5,7 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
-## [Unreleased]
+## [0.32.0] — 2026-08-22
 
 ### Breaking
 
