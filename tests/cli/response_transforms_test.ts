@@ -102,6 +102,20 @@ const pages = [
   },
 ];
 
+/**
+ * Minimal stand-in for `engine.router.resolve` — exact route match only, no
+ * home-page/alias/multilingual handling (those are the real resolver's job,
+ * covered separately; this pipeline just needs *some* resolver to call).
+ */
+function resolveFor(pageList: typeof pages) {
+  return (pathname: string) => {
+    const page = pageList.find((p) => p.route === pathname);
+    return page ? { type: "page" as const, page } : null;
+  };
+}
+
+const resolve = resolveFor(pages);
+
 function makeReq(path: string, cookie?: string): Request {
   return new Request(`http://localhost${path}`, {
     headers: cookie ? { cookie } : undefined,
@@ -124,7 +138,7 @@ Deno.test("runPluginResponseTransforms: no transform plugins, anonymous — non-
     response: original,
     plugins: [{ name: "noop", version: "1.0.0", hooks: {} }],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -141,7 +155,7 @@ Deno.test("runPluginResponseTransforms: no transform plugins, session cookie —
     ),
     plugins: [{ name: "noop", version: "1.0.0", hooks: {} }],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -158,7 +172,7 @@ Deno.test("runPluginResponseTransforms: anonymous request — plugin runs with a
     response: new Response("hello"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -179,7 +193,7 @@ Deno.test("runPluginResponseTransforms: valid session WITHOUT pages.update — a
     response: new Response("hello"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -198,7 +212,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
     response: new Response("hello"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -222,7 +236,7 @@ Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)",
       response: original,
       plugins: [plugin],
       auth,
-      pages,
+      resolve,
       config,
       adminPrefix: "/admin",
     });
@@ -235,7 +249,7 @@ Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)",
     response: new Response("page"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -250,7 +264,7 @@ Deno.test("runPluginResponseTransforms: auth backend failure — treated as unau
     response: new Response("hello"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -266,7 +280,7 @@ Deno.test("runPluginResponseTransforms: non-content route — page is null", asy
     response: new Response("404 html", { status: 404 }),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -307,7 +321,7 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing wins even when RO
     plugins: [plugin],
     auth,
     authz,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -329,7 +343,7 @@ Deno.test("runPluginResponseTransforms: authz.check() denying wins even when ROL
     plugins: [plugin],
     auth,
     authz,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -348,7 +362,7 @@ Deno.test("runPluginResponseTransforms: falls back to ROLE_PERMISSIONS when auth
     response: new Response("hello"),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -368,7 +382,7 @@ Deno.test("runPluginResponseTransforms: authz.check() denying scrubs markers eve
     plugins: [],
     auth,
     authz,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -384,7 +398,7 @@ Deno.test("runPluginResponseTransforms: transforms compose in registration order
     response: new Response("x"),
     plugins: [a.plugin, b.plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -404,7 +418,7 @@ Deno.test("marker scrub: anonymous HTML response loses all data-dune-* attribute
     response: htmlResponse(MARKED_HTML),
     plugins: [],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -421,7 +435,7 @@ Deno.test("marker scrub: forged/invalid session cookie still gets scrubbed", asy
     response: htmlResponse(MARKED_HTML),
     plugins: [],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -439,7 +453,7 @@ Deno.test("marker scrub: valid session WITHOUT pages.update gets scrubbed", asyn
     response: htmlResponse(MARKED_HTML),
     plugins: [],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -456,7 +470,7 @@ Deno.test("marker scrub: valid editing session keeps markers", async () => {
     response: htmlResponse(MARKED_HTML),
     plugins: [],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -485,7 +499,7 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
     response: htmlResponse(`<p>p</p>`),
     plugins: [plugin],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -536,7 +550,7 @@ Deno.test("runPluginResponseTransforms: ctx.plugins lets a bar-owning plugin col
     response: htmlResponse(`<p>p</p>`),
     plugins: [contributor, barOwner],
     auth,
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
@@ -554,10 +568,51 @@ Deno.test("runPluginResponseTransforms: page.template is populated from the cont
     response: new Response("hello"),
     plugins: [plugin],
     auth: makeAuth({}),
-    pages,
+    resolve,
     config,
     adminPrefix: "/admin",
   });
   await result.text();
   assertEquals(seen[0].page?.template, "post");
+});
+
+// ---------------------------------------------------------------------------
+// Home-page routing: the resolve() callback must reflect the same home-page
+// mapping the content pipeline uses ("/" -> whatever page the router treats
+// as home), not just an exact route === pathname match — a prior hand-rolled
+// matcher here missed this, so the admin bar (and every other transformResponse
+// plugin) silently never received `page` for any site's homepage.
+// ---------------------------------------------------------------------------
+
+Deno.test("runPluginResponseTransforms: resolve() mapping '/' to the home page reaches plugins as `page`", async () => {
+  const homeAwareResolve = (pathname: string) => {
+    // Simulates what engine.router.resolve() actually does: "/" maps to the
+    // configured/autodetected home page, whose own stored route is NOT "/".
+    if (pathname === "/") {
+      return {
+        type: "page" as const,
+        page: {
+          route: "/home",
+          sourcePath: "content/01.home/default.md",
+          title: "Welcome",
+          language: "en",
+          template: "default",
+        },
+      };
+    }
+    return resolveFor(pages)(pathname);
+  };
+
+  const { plugin, seen } = makeRecordingPlugin();
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/"),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth: makeAuth({}),
+    resolve: homeAwareResolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  await result.text();
+  assertEquals(seen[0].page?.sourcePath, "content/01.home/default.md");
 });

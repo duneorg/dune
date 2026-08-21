@@ -22,6 +22,18 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
+- **`transformResponse` plugins (e.g. `@dune/plugin-inline-edit`'s admin bar)
+  never received `page` for a site's homepage.** `runPluginResponseTransforms()`
+  matched the current URL against the content index with a hand-rolled
+  exact `pathname === route` check — but a folder-based homepage's own
+  stored route is whatever folder maps to it (e.g. `/home`), not `/`, and
+  only the real router's `resolve()` knows the "/" → home-page mapping
+  (plus aliases and multilingual routing). Now takes a `resolve` callback
+  (wired to `engine.router.resolve`) instead of the raw page list, so it
+  matches identically to how the page itself was actually rendered. Every
+  site's homepage was affected — inline editing silently never worked
+  there. 1 new test.
+
 - **A `data/users/*.json` record written before the `role: string` →
   `roles: string[]` migration (dec-identity-unification Phase 3/4) crashed
   any code that read `.roles` unguarded — including inside

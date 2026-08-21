@@ -218,7 +218,7 @@ export function registerContentCatchAll(
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
           authz,
-          pages: engine.pages,
+          resolve: engine.router.resolve,
           config,
           adminPrefix,
         });
@@ -286,7 +286,7 @@ export function registerContentCatchAll(
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
           authz,
-          pages: engine.pages,
+          resolve: engine.router.resolve,
           config,
           adminPrefix,
         });

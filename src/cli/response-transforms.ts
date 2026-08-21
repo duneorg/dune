@@ -16,7 +16,11 @@
  * - Never run transforms on admin-panel paths (defense in depth — admin
  *   routes are mounted separately and should never reach the content
  *   catch-all, but the pipeline must not depend on routing order alone).
- * - Match the content page for the current URL so plugins receive `page`.
+ * - Match the content page for the current URL so plugins receive `page`,
+ *   via the same route resolver the content pipeline itself uses (so the
+ *   home page, aliases, and multilingual routes all resolve identically —
+ *   a prior hand-rolled matcher here missed the home-page mapping, so the
+ *   admin bar never rendered on any site's homepage).
  * - Scrub `data-dune-*` marker attributes from responses that do not belong
  *   to a validated editing session (see `marker-scrub.ts`) — markers are an
  *   admin-only contract and never ship to anonymous visitors.
@@ -37,12 +41,23 @@ interface AdminAuthMiddleware {
 }
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
-import type { PageIndex } from "../content/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
+import type { PageIndex } from "../content/types.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
 import { scrubMarkersFromResponse } from "./marker-scrub.ts";
+
+/**
+ * Narrow shape accepted from a route resolver's result — just the fields
+ * this module actually reads. `RouteResolver.resolve()` (`routing/resolver.ts`)
+ * returns the wider `RouteMatch` (`page: PageIndex`), which is structurally
+ * assignable here since `PageIndex` is a superset of this `Pick`.
+ */
+type ResolvedRoute = {
+  type: "page" | "redirect";
+  page?: Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template">;
+} | null;
 
 /** Options for {@link runPluginResponseTransforms}. */
 export interface RunResponseTransformsOptions {
@@ -64,36 +79,17 @@ export interface RunResponseTransformsOptions {
    * there — see `src/runtime/bootstrap.ts`).
    */
   authz?: DuneAuthSystem;
-  /** Content index used to match the current URL to a page. */
-  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template">[];
+  /**
+   * Resolves a URL pathname to the matching page — pass `engine.router.resolve`
+   * so this uses the exact same home-page/language/alias-aware resolution the
+   * content pipeline itself renders with. A hand-rolled route-matcher here
+   * previously missed the home-page mapping ("/" → whatever folder is
+   * configured/autodetected as home), so the admin bar silently never
+   * rendered on any site's homepage — see the fix that added this field.
+   */
+  resolve: (pathname: string) => ResolvedRoute;
   config: DuneConfig;
   adminPrefix: string;
-}
-
-/**
- * Match a page from the index for the given URL pathname, accounting for
- * language-prefixed routes (e.g. `/de/page` → route `/page`, lang `de`).
- */
-function matchPageForUrl(
-  pathname: string,
-  pages: Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template">[],
-  supportedLangs: string[],
-  defaultLang: string,
-): Pick<PageIndex, "route" | "sourcePath" | "title" | "language" | "template"> | undefined {
-  let route = pathname;
-  let lang = defaultLang;
-
-  if (supportedLangs.length > 1) {
-    const segments = pathname.split("/");
-    // segments[0] is "" (leading slash), segments[1] is the first path component
-    if (segments.length > 1 && supportedLangs.includes(segments[1])) {
-      lang = segments[1];
-      route = "/" + segments.slice(2).join("/") || "/";
-    }
-  }
-
-  return pages.find((p) => p.route === route && p.language === lang) ??
-    pages.find((p) => p.route === route);
 }
 
 /**
@@ -113,7 +109,7 @@ function matchPageForUrl(
 export async function runPluginResponseTransforms(
   opts: RunResponseTransformsOptions,
 ): Promise<Response> {
-  const { req, response, plugins, auth, authz, pages, config, adminPrefix } =
+  const { req, response, plugins, auth, authz, resolve, config, adminPrefix } =
     opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
@@ -161,14 +157,8 @@ export async function runPluginResponseTransforms(
 
   let out = response;
   if (transformPlugins.length > 0) {
-    const supportedLangs = config.system?.languages?.supported ?? [];
-    const defaultLang = config.system?.languages?.default ?? "en";
-    const matchedPage = matchPageForUrl(
-      url.pathname,
-      pages,
-      supportedLangs,
-      defaultLang,
-    );
+    const match = resolve(url.pathname);
+    const matchedPage = match?.type === "page" ? match.page : undefined;
     out = await applyResponseTransforms(transformPlugins, {
       req,
       response,
