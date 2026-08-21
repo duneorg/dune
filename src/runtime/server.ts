@@ -16,7 +16,7 @@ import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
-import { USER_HEADER } from "../auth/types.ts";
+import { getUser, USER_HEADER } from "../auth/types.ts";
 import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { buildPluginClientBundles } from "../cli/client-bundles.ts";
@@ -150,14 +150,41 @@ export async function checkInlineEditPermission(
   authResult: any,
 ): Promise<boolean> {
   if (authz) {
-    return await authz.check({
-      who: { type: "user", id: authResult.user.id },
-      // deno-lint-ignore no-explicit-any
-      canThey: "pages.update" as any,
-      onWhat: { type: "app", id: "admin" },
-    });
+    return await checkPagesUpdateViaAuthz(authz, authResult.user.id);
   }
   return adminAuth.hasPermission(authResult, "pages.update");
+}
+
+function checkPagesUpdateViaAuthz(
+  authz: DuneAuthSystem,
+  userId: string,
+): Promise<boolean> {
+  return authz.check({
+    who: { type: "user", id: userId },
+    // deno-lint-ignore no-explicit-any
+    canThey: "pages.update" as any,
+    onWhat: { type: "app", id: "admin" },
+  });
+}
+
+/**
+ * Same `pages.update` decision as {@link checkInlineEditPermission}, for a
+ * user resolved via the public-auth session (`src/auth/`, `getUser(req)`)
+ * rather than an admin session — this is what lets `/api/inline-edit/ws`
+ * work for a site that has `@dune/plugin-admin` decoupled entirely. There is
+ * no `ROLE_PERMISSIONS` table for public-auth users (that fallback exists
+ * only for admin sessions, whose roles are a closed admin-panel vocabulary),
+ * so the no-authz fallback here is a direct check against the user's own
+ * `roles: string[]` for an editor-equivalent role instead.
+ */
+export async function checkInlineEditPermissionForSiteUser(
+  authz: DuneAuthSystem | undefined,
+  user: { id: string; roles: string[] },
+): Promise<boolean> {
+  if (authz) {
+    return await checkPagesUpdateViaAuthz(authz, user.id);
+  }
+  return user.roles.includes("editor") || user.roles.includes("admin");
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────────
@@ -356,11 +383,14 @@ export async function createDuneApp(
   }
 
   // 6. Inline-edit WebSocket — in core so it works without @dune/plugin-admin.
-  //    Auth via the admin session (same cookie as /admin/*). The pages.update
-  //    check itself goes through authz.check() when configured — the sole
-  //    authority every other admin permission check follows
-  //    (dec-identity-unification Phase 5c/7) — not adminAuth.hasPermission()
-  //    (the flat ROLE_PERMISSIONS table) alone.
+  //    Auth prefers the public-auth session (src/auth/, getUser(req)) set by
+  //    mountDuneAuth() above — this is what makes @dune/plugin-inline-edit
+  //    genuinely independent of @dune/plugin-admin when a site has `auth:`
+  //    configured. Falls back to the admin session (same cookie as /admin/*)
+  //    when this site has no public auth configured, which today is still
+  //    the common case. Either way, the pages.update decision itself goes
+  //    through authz.check() when configured — the sole authority every
+  //    other permission check follows (dec-identity-unification Phase 5c/7).
   app.get("/api/inline-edit/ws", async (fc) => {
     const inlineEdit = ctx.adminServices?.inlineEdit;
     if (!inlineEdit) {
@@ -388,20 +418,41 @@ export async function createDuneApp(
     ) {
       return new Response("Invalid path", { status: 400 });
     }
-    // deno-lint-ignore no-explicit-any
-    const adminAuth = (ctx.adminContext as any)?.auth;
-    if (!adminAuth) return new Response("Unauthorized", { status: 401 });
-    const authResult = await adminAuth.authenticate(fc.req).catch(() => null);
-    if (!authResult?.authenticated || !authResult.user) {
-      return new Response("Unauthorized", { status: 401 });
+
+    let userId: string;
+    let username: string;
+    let permitted: boolean;
+
+    const siteUser = getUser(fc.req);
+    if (siteUser) {
+      userId = siteUser.id;
+      username = siteUser.username ?? siteUser.name ?? siteUser.email;
+      permitted = await checkInlineEditPermissionForSiteUser(
+        ctx.authz,
+        siteUser,
+      );
+    } else {
+      // deno-lint-ignore no-explicit-any
+      const adminAuth = (ctx.adminContext as any)?.auth;
+      if (!adminAuth) return new Response("Unauthorized", { status: 401 });
+      const authResult = await adminAuth.authenticate(fc.req).catch(() =>
+        null
+      );
+      if (!authResult?.authenticated || !authResult.user) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      userId = authResult.user.id;
+      username = authResult.user.username;
+      permitted = await checkInlineEditPermission(
+        ctx.authz,
+        adminAuth,
+        authResult,
+      );
     }
-    if (!await checkInlineEditPermission(ctx.authz, adminAuth, authResult)) {
-      return new Response("Forbidden", { status: 403 });
-    }
-    return inlineEdit.handleUpgrade(fc.req, {
-      id: authResult.user.id,
-      name: authResult.user.username,
-    });
+
+    if (!permitted) return new Response("Forbidden", { status: 403 });
+
+    return inlineEdit.handleUpgrade(fc.req, { id: userId, name: username });
   });
 
   // 7. Core content API (admin API handled by fsRoutes in plugin).

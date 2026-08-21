@@ -1,9 +1,11 @@
 /**
  * Tests for src/runtime/server.ts's standalone helper functions:
  *
- * - checkInlineEditPermission() — the pages.update decision behind
- *   /api/inline-edit/ws, dec-identity-unification Phase 5c/7's authz-first
- *   cutover applied to the inline-edit WebSocket handler.
+ * - checkInlineEditPermission() / checkInlineEditPermissionForSiteUser() —
+ *   the pages.update decision behind /api/inline-edit/ws, for an admin
+ *   session and a public-auth (src/auth/) session respectively —
+ *   dec-identity-unification Phase 5c/7's authz-first cutover, extended to
+ *   let the inline-edit WS route work without @dune/plugin-admin at all.
  * - stripUserHeader() — part of the internal x-dune-user header handling
  *   (dec-identity-unification's User rename); ensures the header is only
  *   ever set by Dune's own middleware, never accepted from an incoming
@@ -20,6 +22,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   checkInlineEditPermission,
+  checkInlineEditPermissionForSiteUser,
   stripUserHeader,
 } from "../../src/runtime/server.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
@@ -94,6 +97,52 @@ Deno.test("checkInlineEditPermission: falls back to ROLE_PERMISSIONS denial when
     adminAuth,
     authResult,
   );
+  assertEquals(result, false);
+});
+
+// ── checkInlineEditPermissionForSiteUser ────────────────────────────────
+
+Deno.test("checkInlineEditPermissionForSiteUser: authz.check() decides when configured, regardless of roles", async () => {
+  const authz = makeAuthz(true);
+  const result = await checkInlineEditPermissionForSiteUser(
+    authz as unknown as DuneAuthSystem,
+    { id: "u1", roles: [] },
+  );
+  assertEquals(result, true);
+  assertEquals(authz.calls.check, 1);
+});
+
+Deno.test("checkInlineEditPermissionForSiteUser: authz.check() denial wins even with an editor role", async () => {
+  const authz = makeAuthz(false);
+  const result = await checkInlineEditPermissionForSiteUser(
+    authz as unknown as DuneAuthSystem,
+    { id: "u1", roles: ["editor"] },
+  );
+  assertEquals(result, false);
+  assertEquals(authz.calls.check, 1);
+});
+
+Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — editor allowed", async () => {
+  const result = await checkInlineEditPermissionForSiteUser(undefined, {
+    id: "u1",
+    roles: ["editor"],
+  });
+  assertEquals(result, true);
+});
+
+Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — admin allowed", async () => {
+  const result = await checkInlineEditPermissionForSiteUser(undefined, {
+    id: "u1",
+    roles: ["admin"],
+  });
+  assertEquals(result, true);
+});
+
+Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — no matching role denied", async () => {
+  const result = await checkInlineEditPermissionForSiteUser(undefined, {
+    id: "u1",
+    roles: ["member", "subscriber"],
+  });
   assertEquals(result, false);
 });
 

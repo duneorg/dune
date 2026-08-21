@@ -62,6 +62,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   before plugins are ever imported, so this closes the gap at config-load
   time rather than at import time. 7 new tests.
 
+- **`/api/inline-edit/ws` only ever authenticated via the admin session
+  cookie, so `@dune/plugin-inline-edit` could not actually work without
+  `@dune/plugin-admin` installed — despite the WS route itself having lived
+  in core (not the admin plugin's route tree) since v0.26.0.** This was the
+  known-deferred half of the inline-edit auth-decoupling item (v0.25's own
+  notes flagged it explicitly at the time). The route now prefers the
+  public-auth session (`src/auth/`, `getUser(req)`) set by `mountDuneAuth()`
+  when a site has `auth:` configured, falling back to the admin session
+  when it doesn't — today's still-common case, unchanged in behavior.
+  New `checkInlineEditPermissionForSiteUser()` makes the same `pages.update`
+  decision `checkInlineEditPermission()` already made for admin sessions:
+  `authz.check()` when configured (the same shared tuple store admin and
+  public users already sit in, post dec-identity-unification), falling back
+  to a direct `roles.includes("editor" | "admin")` check — there's no
+  `ROLE_PERMISSIONS` table for public-auth users, that fallback only ever
+  made sense for admin sessions. 9 new tests.
+
 - **`mountPlugins()`'s `mount()` error handler logged only the error
   message, no stack** — under `DUNE_DEV`, now logs the full stack, matching
   the existing pattern in `content/formats/mdx.ts`'s MDX render-error
