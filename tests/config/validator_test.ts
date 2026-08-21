@@ -77,6 +77,37 @@ Deno.test("validator: catches empty theme.name", () => {
   assertEquals(errors.some((e) => e.includes("theme.name")), true);
 });
 
+Deno.test("validator: catches unpinned jsr: plugin specifier", () => {
+  const config = cloneConfig();
+  config.pluginList = [{ src: "jsr:@dune/plugin-seo" }];
+  const errors = validateConfig(config);
+  assertEquals(errors.some((e) => e.includes("pluginList[0].src") && e.includes("pinned")), true);
+});
+
+Deno.test("validator: catches caret-range npm: plugin specifier", () => {
+  const config = cloneConfig();
+  config.pluginList = [{ src: "npm:dune-plugin-thing@^1.0.0" }];
+  const errors = validateConfig(config);
+  assertEquals(errors.some((e) => e.includes("pluginList[0].src") && e.includes("pinned")), true);
+});
+
+Deno.test("validator: accepts pinned jsr: plugin specifier", () => {
+  const config = cloneConfig();
+  config.pluginList = [{ src: "jsr:@dune/plugin-seo@1.0.0" }];
+  const errors = validateConfig(config);
+  assertEquals(errors.length, 0);
+});
+
+Deno.test("validator: accepts local and https plugin specifiers unpinned", () => {
+  const config = cloneConfig();
+  config.pluginList = [
+    { src: "./plugins/my-plugin.ts" },
+    { src: "https://example.com/plugin.ts" },
+  ];
+  const errors = validateConfig(config);
+  assertEquals(errors.length, 0);
+});
+
 Deno.test("validator: valid custom config passes", () => {
   const config = cloneConfig();
   config.site.title = "My Site";

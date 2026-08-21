@@ -48,6 +48,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   guarding every one of `@dune/plugin-admin`'s ~20 unguarded
   `.roles.includes(...)` call sites individually. 4 new tests.
 
+- **`site.yaml`'s `plugins:` list had no pinning gate — a `jsr:`/`npm:` plugin
+  specifier could be an unpinned caret range or bare name, unlike the
+  equivalent theme specifier check.** Plugins execute with full process
+  privileges at load time (`loadPlugins()`'s dynamic `import()`), so a
+  crafted or compromised `site.yaml` could point at a typosquatted or
+  unreviewed newer release with nothing rejecting it before that import
+  runs. Added `src/plugins/reference.ts` (`assertPinnedPluginSpecifier()`,
+  mirroring `src/themes/reference.ts`'s theme-specifier check) and wired it
+  into `validateConfig()` via a new `validatePluginList()` — local paths and
+  `https:` URLs are unaffected, only `jsr:`/`npm:` specifiers must pin an
+  exact version. `loadConfig()` already throws on any validation error
+  before plugins are ever imported, so this closes the gap at config-load
+  time rather than at import time. 7 new tests.
+
 - **`mountPlugins()`'s `mount()` error handler logged only the error
   message, no stack** — under `DUNE_DEV`, now logs the full stack, matching
   the existing pattern in `content/formats/mdx.ts`'s MDX render-error

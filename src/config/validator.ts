@@ -7,12 +7,13 @@
  *   → Did you mean: ["category", "tag"]?
  */
 
-import type { DuneConfig, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
 import {
   assertPinnedThemeSpecifier,
   assertThemeName,
   isRemoteThemeSpecifier,
 } from "../themes/reference.ts";
+import { assertPinnedPluginSpecifier, isRemotePluginSpecifier } from "../plugins/reference.ts";
 
 /** A single validation error with path and message. */
 export interface ValidationError {
@@ -34,6 +35,7 @@ export function validateConfig(config: DuneConfig): string[] {
   validateTheme(config.theme, errors);
   validateThemeList(config.themeList, errors);
   validatePlugins(config.plugins, errors);
+  validatePluginList(config.pluginList, errors);
   validateAdmin(config.admin, errors);
 
   return errors.map(formatError);
@@ -398,6 +400,43 @@ function validatePlugins(
       message: "must be an object (plugin name → plugin config)",
       got: plugins,
     });
+  }
+}
+
+function validatePluginList(
+  pluginList: PluginEntry[] | undefined,
+  errors: ValidationError[],
+): void {
+  if (!pluginList) return;
+  if (!Array.isArray(pluginList)) {
+    errors.push({
+      path: "pluginList",
+      message: "must be an array of { src, config? } entries",
+      got: pluginList,
+    });
+    return;
+  }
+
+  for (let i = 0; i < pluginList.length; i++) {
+    const entry = pluginList[i];
+    const base = `pluginList[${i}]`;
+    if (!entry || typeof entry !== "object") {
+      errors.push({ path: base, message: "must be an object with src" });
+      continue;
+    }
+    if (typeof entry.src !== "string" || !entry.src.trim()) {
+      errors.push({ path: `${base}.src`, message: "must be a non-empty package specifier", got: entry.src });
+    } else if (isRemotePluginSpecifier(entry.src)) {
+      try {
+        assertPinnedPluginSpecifier(entry.src);
+      } catch (err) {
+        errors.push({
+          path: `${base}.src`,
+          message: err instanceof Error ? err.message : String(err),
+          got: entry.src,
+        });
+      }
+    }
   }
 }
 
