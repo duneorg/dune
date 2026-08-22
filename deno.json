@@ -3,6 +3,10 @@
   "version": "0.32.0",
   "license": "MIT",
   "author": "zumbrunn (https://zumbrunn.com)",
+  "minimumDependencyAge": {
+    "age": "P1D",
+    "exclude": ["jsr:@dune/plugin-admin"]
+  },
   "exports": {
     ".": "./src/mod.ts",
     "./cli": "./src/cli.ts",

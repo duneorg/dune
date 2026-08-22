@@ -18,10 +18,10 @@
 import { CORE_INSTANCE, CORE_VERSION } from "./mod.ts";
 
 /** The built-in admin plugin package (bootstrap.ts's dynamic import). */
-export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@^1.0";
+export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@^2.0";
 
 /** The admin mount subpath used by the multisite manager. */
-export const ADMIN_MOUNT_SPECIFIER = "jsr:@dune/plugin-admin@^1.0/admin/mount";
+export const ADMIN_MOUNT_SPECIFIER = "jsr:@dune/plugin-admin@^2.0/admin/mount";
 
 /**
  * Core-instance handshake for the dynamically imported admin plugin.
