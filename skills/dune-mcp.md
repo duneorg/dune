@@ -4,7 +4,7 @@ Connects AI coding agents to a live Dune content engine via the Model Context Pr
 
 ## Security model — no auth of its own
 
-The server has **no authentication** — any process that can write to its stdin can call every tool, including the write ones. The example configs below run it with `deno -A` (all permissions), so tools execute with your full user privileges: they can read/write files and reach the network. `install_plugin`/`update_config` modify `site.yaml`, which controls what code your site runs later — treat MCP tool access as equivalent to code execution. Only connect it to agents/machines you trust, and never bridge its stdio to a network socket. To reduce blast radius, replace `-A` with narrower flags:
+The server has **no authentication** — any process that can write to its stdin can call every tool, including the write ones. The example configs below run it with `deno -A` (all permissions), so tools execute with your full user privileges: they can read/write files and reach the network. `install_plugin`/`update_config` modify `site.yaml`, which controls what code your site runs later — treat MCP tool access as equivalent to code execution. Only connect it to agents/machines you trust, and never bridge its stdio to a network socket. There is no API-key/token gate, and there isn't meant to be one: stdio access already implies the same trust as code execution, so a shared secret sitting in the same config wouldn't add a real boundary — it would only matter once stdio gets bridged over a network, which is exactly the case this doc tells you not to do. For a genuinely less-trusted caller (CI, a less-trusted agent), pass `--readonly` to omit the write/scaffold tools entirely — that's a real boundary (read vs. write), unlike a token would be. To reduce blast radius further, replace `-A` with narrower flags:
 
 ```json
 "args": [
@@ -50,9 +50,12 @@ dune mcp:serve [options]
   --root <dir>    Site root directory (default: current directory)
   --debug         Log debug info to stderr
   --no-search     Skip building the search index (faster startup, disables search_content)
+  --readonly      Omit write/scaffold tools. Opt-in — writes stay the default
+                   because that's the local-agent workflow this exists for.
+                   Use for CI or a less-trusted agent; see "Security model" above.
 ```
 
-On startup, the server logs `MCP server ready — N tools (R read, W write/scaffold), M resources` — a quick way to confirm write tools loaded.
+On startup, the server logs `MCP server ready — N tools (R read, W write/scaffold[, --readonly]), M resources` — a quick way to confirm write tools loaded (or correctly omitted).
 
 ## Available read tools
 
