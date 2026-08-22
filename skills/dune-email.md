@@ -111,13 +111,13 @@ Thanks for signing up! Your account is ready.
 
 ---
 
-## Dev-mode interception — read this before assuming you're safe
+## Dev-mode interception
 
-**Provider selection does not check `DUNE_ENV` at all.** If `email:` in `site.yaml` names a real provider (`resend`, `smtp`, `postmark`, `sendgrid`) with valid credentials, `createEmailProvider()` returns that real provider and `send()` actually delivers — in development exactly as in production. Nothing in `createEmailProvider()`'s selection logic is dev-aware.
+**`createEmailProvider()` refuses to construct a live provider under `DUNE_ENV=dev`.** If `email:` in `site.yaml` names a real provider (`resend`, `smtp`, `postmark`, `sendgrid`) with valid credentials, provider selection checks `DUNE_ENV` first — under `DUNE_ENV=dev` it logs a loud warning and falls back to `ConsoleEmailProvider` instead of constructing the real one, regardless of how valid the configured credentials are. This is deliberate, not a gap: a validly configured live provider used to send real mail in dev exactly as in production, with nothing distinguishing the two.
 
-The only thing that's dev-aware is inside `ConsoleEmailProvider` itself — the provider you get when `email:` is omitted, or when the configured provider's credentials are missing. Only *that* provider, and only when `DUNE_ENV=dev`, additionally writes each message to `{runtimeDir}/dev-email/{id}.json` (default `.dune/admin/dev-email/`) so the admin panel can show it. `ConsoleEmailProvider` always logs to stdout regardless of `DUNE_ENV`; the file-write is the dev-only part.
+Opt out with `DUNE_EMAIL_ALLOW_DEV_SEND=1` (or `true`) for the rare case dev genuinely needs to verify real delivery — that's the only way a real provider gets constructed under `DUNE_ENV=dev`. Outside dev, this check never applies; a configured real provider always sends for real in production, same as before.
 
-In short: **"dev mode" does not intercept a properly-configured real provider.** If you have live Resend/SMTP/etc. credentials in `site.yaml` and run locally, real email goes to real recipients. To be safe locally, either don't configure real provider credentials in your local `site.yaml`, or explicitly point `email.provider: console` there.
+`ConsoleEmailProvider` itself (the provider you get when `email:` is omitted, when the configured provider's credentials are missing, or via the dev-mode refusal above) has its own separate dev-aware behavior: only under `DUNE_ENV=dev` does it additionally write each message to `{runtimeDir}/dev-email/{id}.json` (default `.dune/admin/dev-email/`) so the admin panel can show it. It always logs to stdout regardless of `DUNE_ENV`; the file-write is the dev-only part.
 
 Inspect intercepted emails (console-provider-with-`DUNE_ENV=dev` case only):
 
@@ -203,7 +203,7 @@ await resend.emails.send({
 
 **`export type Data` is compile-time only.** Nothing at runtime enforces it — Dune doesn't validate `data:` against it.
 
-**Dev mode does not block real sends.** `createEmailProvider()` never checks `DUNE_ENV` — only `ConsoleEmailProvider` (the fallback when no/invalid provider is configured) is dev-aware, and only for its file-logging behavior. A validly configured real provider sends for real regardless of `DUNE_ENV`. Don't rely on "I'm in dev mode" as a safety net if real credentials are present in config.
+**Dev mode blocks real sends by default.** `createEmailProvider()` refuses to construct a live provider under `DUNE_ENV=dev`, falling back to `ConsoleEmailProvider` and logging a loud warning — even with fully valid real credentials configured. Set `DUNE_EMAIL_ALLOW_DEV_SEND=1` to override for the rare case dev genuinely needs to verify real delivery.
 
 **Bounce and complaint handling is the provider's responsibility.** Dune has no webhook receiver for bounce/complaint events. If you need to handle them, add your own route and wire it to your provider's webhook config.
 
