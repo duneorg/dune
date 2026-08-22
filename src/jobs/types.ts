@@ -45,6 +45,19 @@ export interface JobContext {
    * be configured.
    */
   email: import("../email/client.ts").EmailClient;
+  /**
+   * Aborted when this run exceeds its timeout (default
+   * `JobScheduler`'s `defaultTimeoutMs`, or `JobDefinition.timeoutMs` when
+   * set). Only bounds the *scheduler's own wait* — a handler that ignores
+   * this signal keeps running in the background even after the scheduler
+   * has already marked the job "errored" and moved on; there's no true
+   * cancellation in JS without handler cooperation. Pass it to `fetch()`
+   * (`fetch(url, { signal: ctx.signal })`) or check `ctx.signal.aborted` in
+   * a loop for a handler that actually stops on timeout.
+   *
+   * @since 0.32.1
+   */
+  signal: AbortSignal;
 }
 
 /** A validated, registered job definition loaded from jobs/*.ts. */
@@ -55,6 +68,19 @@ export interface JobDefinition {
   schedule: string;
   /** The handler function exported as default from the job file. */
   handler: (ctx: JobContext) => Promise<void> | void;
+  /**
+   * Per-job timeout override, in milliseconds. Defaults to
+   * `JobScheduler`'s `defaultTimeoutMs` (10 minutes) when unset. A run
+   * that exceeds this is treated as an error — `ctx.signal` is aborted,
+   * `JobState.status` becomes `"errored"` with a timeout `lastError`, and
+   * (importantly) the job is unblocked for its next scheduled run rather
+   * than staying stuck at `"running"` forever, which was the actual worst
+   * consequence of no timeout existing at all: one hung run silently
+   * disabling every future run of that job until process restart.
+   *
+   * @since 0.32.1
+   */
+  timeoutMs?: number;
 }
 
 /** Persisted per-job execution state. Stored in {runtimeDir}/jobs/{name}.json. */

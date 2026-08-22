@@ -5,12 +5,22 @@ import { logger } from "../core/logger.ts";
 
 const TICK_INTERVAL_MS = 60_000; // 1 minute
 
+/** Default per-job timeout when JobDefinition.timeoutMs is unset. */
+export const DEFAULT_JOB_TIMEOUT_MS = 10 * 60_000; // 10 minutes
+
 export interface JobSchedulerConfig {
   definitions: JobDefinition[];
-  context: JobContext;
+  /**
+   * Base context shared by every job run. `signal` is intentionally
+   * excluded here — JobScheduler builds a fresh AbortSignal per execution,
+   * scoped to that run's own timeout.
+   */
+  context: Omit<JobContext, "signal">;
   /** Directory for persisting per-job state JSON files. */
   stateDir: string;
   storage: StorageAdapter;
+  /** Default per-job timeout in ms, overridable per job via JobDefinition.timeoutMs. Default: DEFAULT_JOB_TIMEOUT_MS (10 minutes). */
+  defaultTimeoutMs?: number;
 }
 
 /**
@@ -21,13 +31,20 @@ export interface JobSchedulerConfig {
  * {stateDir}/{name}.json via the StorageAdapter.
  *
  * Error behaviour: log + persist lastError + continue scheduling. No retry.
+ * A run exceeding its timeout (JobDefinition.timeoutMs, default
+ * DEFAULT_JOB_TIMEOUT_MS) is treated the same way — status becomes
+ * "errored" rather than staying stuck at "running" forever, which
+ * previously blocked every future scheduled run of that job until process
+ * restart. ctx.signal is aborted on timeout for handlers that cooperate
+ * (e.g. pass it to fetch()); JS has no true cancellation otherwise.
  * Multi-process warning: emitted at startup when workers > 1.
  */
 export class JobScheduler {
   private readonly definitions: Map<string, JobDefinition>;
-  private readonly context: JobContext;
+  private readonly context: Omit<JobContext, "signal">;
   private readonly stateDir: string;
   private readonly storage: StorageAdapter;
+  private readonly defaultTimeoutMs: number;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
@@ -36,6 +53,7 @@ export class JobScheduler {
     this.context = config.context;
     this.stateDir = config.stateDir;
     this.storage = config.storage;
+    this.defaultTimeoutMs = config.defaultTimeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
   }
 
   /** Start the scheduler. Uses Deno.cron() on Deno Deploy, interval-based elsewhere. */
@@ -171,8 +189,20 @@ export class JobScheduler {
       lastRun: startedAt,
     });
 
+    const timeoutMs = def.timeoutMs ?? this.defaultTimeoutMs;
+    const controller = new AbortController();
+    const jobContext: JobContext = { ...this.context, signal: controller.signal };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`Job "${def.name}" timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
     try {
-      await def.handler(this.context);
+      await Promise.race([def.handler(jobContext), timeout]);
+      clearTimeout(timer);
       const next = nextRunAfter(def.schedule, new Date());
       await this.writeState(def, {
         name: def.name,
@@ -182,6 +212,7 @@ export class JobScheduler {
         lastError: null,
       });
     } catch (err) {
+      clearTimeout(timer);
       const msg = err instanceof Error ? err.message : String(err);
       const next = nextRunAfter(def.schedule, new Date());
       await this.writeState(def, {

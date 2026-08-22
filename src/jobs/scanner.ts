@@ -4,8 +4,11 @@
  * Each file must export:
  *   export const schedule = "cron expression";   // required
  *   export default async function handler(ctx) {} // required
+ *   export const timeoutMs = 30_000;              // optional — per-job timeout override
  *
- * Files without both exports are silently skipped.
+ * Files without both required exports are silently skipped. An invalid
+ * timeoutMs (not a positive number) is ignored with a warning — the
+ * scheduler's default timeout applies instead, not a hard load failure.
  *
  * ## Explicit allowlist (recommended)
  *
@@ -85,6 +88,7 @@ async function loadJobFile(filePath: string, displayName: string): Promise<JobDe
     const mod = await import(filePath); // lockfile-safe: site-local (job file from site jobs/ directory)
     const schedule = mod.schedule;
     const handler = mod.default;
+    const timeoutMs = mod.timeoutMs;
 
     if (typeof schedule !== "string" || !schedule.trim()) {
       // Missing or empty schedule — silently skip (files without exports are ignored per spec).
@@ -99,9 +103,21 @@ async function loadJobFile(filePath: string, displayName: string): Promise<JobDe
       return null;
     }
 
+    if (timeoutMs !== undefined && (typeof timeoutMs !== "number" || timeoutMs <= 0)) {
+      logger.warn("jobs.load.invalid_timeout", {
+        job: displayName,
+        reason: "timeoutMs export must be a positive number — ignoring, default timeout applies",
+      });
+    }
+
     // Derive the job name from the filename stem (last path segment, no extension).
     const stem = filePath.replace(/\.[^/.]+$/, "").split(SEPARATOR).at(-1) ?? displayName;
-    return { name: stem, schedule: schedule.trim(), handler };
+    return {
+      name: stem,
+      schedule: schedule.trim(),
+      handler,
+      ...(typeof timeoutMs === "number" && timeoutMs > 0 ? { timeoutMs } : {}),
+    };
   } catch (err) {
     logger.warn("jobs.load.failed", {
       job: displayName,

@@ -42,7 +42,7 @@ Deno.test(
       const ctx = await bootstrap(root, {});
 
       const noop = () => {};
-      const jobContext: JobContext = {
+      const jobContext: Omit<JobContext, "signal"> = {
         content: ctx.engine,
         contentApi: ctx.contentApi,
         config: ctx.config,

@@ -187,13 +187,22 @@ This is a DIY pattern, not something Dune ships or documents end-to-end — noth
 
 **There is no `ctx.db`, ever, on any job.** Same fabricated-elsewhere claim as plugin hooks — import `@dune/core/db` yourself if you need it.
 
-**No timeout enforcement.** If a handler hangs indefinitely, Dune doesn't kill it. Add your own timeout logic for jobs that call external services:
+**A default 10-minute timeout applies to every job.** `JobDefinition.timeoutMs` overrides it per job; `JobScheduler`'s `defaultTimeoutMs` constructor option overrides the default globally. A run that exceeds it is treated as an error — `JobState.status` becomes `"errored"` and the job is unblocked for its next scheduled run, rather than staying stuck at `"running"` forever (which used to silently disable every future run of that job until process restart — the actual worst consequence of there being no ceiling at all).
+
+The timeout only bounds the *scheduler's own wait* — it doesn't truly cancel a handler that ignores it. `ctx.signal` (`AbortSignal`) is aborted when the timeout fires; pass it to `fetch()` for real cancellation:
 
 ```ts
-const result = await Promise.race([
-  fetchExternalData(),
-  new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
-]);
+const result = await fetch(url, { signal: ctx.signal });
+```
+
+Set a shorter or longer `timeoutMs` per job when 10 minutes isn't the right ceiling:
+
+```ts
+export const timeoutMs = 30_000; // 30 seconds for a job that should always be fast
+
+export default async function handler(ctx: JobContext) {
+  await fetch("https://api.example.com/sync", { signal: ctx.signal });
+}
 ```
 
 **No retry on error.** Errors are logged and the job waits for its next scheduled run. If your job sends an email or charges a card and fails halfway through, you need idempotency logic in the handler — not retry configuration.
