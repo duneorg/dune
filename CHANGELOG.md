@@ -19,6 +19,23 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   `mountDuneAuth()`'s middleware sets) is unaffected — this only renames
   the TSX content-page prop.
 
+### Added
+
+- **`dune users:create <email> [--role x[,y]] [--name "..."]`** —
+  admin-provisioned local user accounts. Creates a `User` record directly,
+  before the person has ever logged in, reusing the same `UserStore`
+  primitive `users:grant-role`/`users:revoke-role` already use; an
+  admin-tier role (`admin`/`editor`/`author`) syncs the `app:admin` authz
+  tuple immediately, same as those commands. The record is marked
+  `provider: "invited"`. The invited person's first magic-link login
+  matches it by email and just works; first login via OAuth does not —
+  the OAuth callback's account-takeover guard rejects an email-only match
+  from a different provider with a 409, and there's no "original method"
+  yet for a record this command creates. That's a deliberate scope
+  boundary, not a bug: closed/invite-only signup (which would need to
+  change the OAuth linking rules themselves) is a separate, larger
+  feature. 9 new tests.
+
 ## [0.32.0] — 2026-08-22
 
 ### Breaking

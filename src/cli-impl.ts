@@ -94,6 +94,7 @@ import { migrateAuthToDbCommand } from "./cli/migrate-auth-to-db.ts";
 import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
 import { migrateUsersCommand } from "./cli/migrate-users.ts";
 import { grantRoleCommand, revokeRoleCommand } from "./cli/users-role.ts";
+import { usersCreateCommand } from "./cli/users-create.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 
 /** Resolve version string and install source from runtime context. */
@@ -212,6 +213,11 @@ Commands:
   migrate:users                Reshape pre-Phase-5b data/users/ accounts + build email index (idempotent)
   migrate:auth-to-db           Migrate flat-file users + tuples to DB (idempotent)
   migrate:roles-to-tuples      Ensure polizy tuples exist for all user roles[] (idempotent)
+  users:create <email>          Create a user record before their first login
+                                (--role x[,y], --name "Display Name") — the
+                                admin-provisioned account use case; see the
+                                command's own doc comment for OAuth vs.
+                                magic-link first-login caveats
   users:grant-role <email> <role>   Grant an admin-tier role (admin/editor/author) to a user
   users:revoke-role <email> <role>  Revoke an admin-tier role from a user
 
@@ -315,11 +321,16 @@ export async function main(args: string[] = Deno.args) {
 
   // Parse common options
   const options: Record<string, string | boolean> = {};
-  // --upgrade is repeatable (and/or comma-separated) — kept out of `options`
-  // since that record is single-valued.
+  // --upgrade and --role are repeatable (and/or comma-separated) — kept out
+  // of `options` since that record is single-valued.
   const upgradeKeys: string[] = [];
+  const roleValues: string[] = [];
   for (let i = 1; i < args.length; i++) {
-    if (args[i] === "--upgrade" && args[i + 1]) {
+    if (args[i] === "--role" && args[i + 1]) {
+      roleValues.push(
+        ...args[++i].split(",").map((s) => s.trim()).filter(Boolean),
+      );
+    } else if (args[i] === "--upgrade" && args[i + 1]) {
       upgradeKeys.push(
         ...args[++i].split(",").map((s) => s.trim()).filter(Boolean),
       );
@@ -746,6 +757,18 @@ export async function main(args: string[] = Deno.args) {
         await migrateRolesToTuplesCommand(root, {
           dryRun: options.dryRun === true,
         });
+        break;
+
+      case "users:create":
+        await usersCreateCommand(
+          root,
+          options.positional as string,
+          {
+            roles: roleValues.length > 0 ? roleValues : undefined,
+            name: options.themeName as string | undefined,
+            dryRun: options.dryRun === true,
+          },
+        );
         break;
 
       case "users:grant-role":
