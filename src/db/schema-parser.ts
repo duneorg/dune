@@ -134,7 +134,7 @@ function parseApiBlock(
   // existing schemas fail loudly at parse/codegen instead of silently
   // accepting every column. An empty list is allowed (no client fields).
   const needsWritable = methods.includes("create") || methods.includes("update");
-  let writable: string[] = [];
+  const writable: string[] = [];
   if (raw.writable === undefined) {
     if (needsWritable) {
       throw new Error(

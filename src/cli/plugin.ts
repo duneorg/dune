@@ -17,6 +17,7 @@ import {
   assertHttpsPluginIntegrity,
   assertPinnedPluginSpecifier,
 } from "../plugins/reference.ts";
+import type { PluginEntry } from "../config/types.ts";
 
 // ─── plugin:list ──────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export async function pluginInstallCommand(
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
   const existing = Array.isArray(parsed.plugins)
-    ? parsed.plugins as Array<{ src: string }>
+    ? parsed.plugins as PluginEntry[]
     : [];
 
   if (existing.some((e) => e.src === src)) {
@@ -202,7 +203,7 @@ export async function pluginRemoveCommand(
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
   const existing = Array.isArray(parsed.plugins)
-    ? parsed.plugins as Array<{ src: string }>
+    ? parsed.plugins as PluginEntry[]
     : [];
 
   const before = existing.length;
@@ -518,7 +519,7 @@ export async function pluginUpdateCommand(
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
   const plugins = Array.isArray(parsed.plugins)
-    ? parsed.plugins as Array<{ src: string }>
+    ? parsed.plugins as PluginEntry[]
     : [];
 
   // Filter to JSR plugins (and optionally by name)
