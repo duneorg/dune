@@ -12,6 +12,7 @@ import { SmtpEmailProvider } from "./smtp.ts";
 import { ResendEmailProvider } from "./resend.ts";
 import { PostmarkEmailProvider } from "./postmark.ts";
 import { SendGridEmailProvider } from "./sendgrid.ts";
+import { DevDomainFilterEmailProvider } from "./dev-domain-filter.ts";
 
 export type { SmtpProviderConfig } from "./smtp.ts";
 export type { ResendProviderConfig } from "./resend.ts";
@@ -68,31 +69,71 @@ function devSendAllowed(): boolean {
 }
 
 /**
+ * Parsed DUNE_EMAIL_DEV_ALLOWED_DOMAINS (comma-separated), or null when unset.
+ * A safer middle ground than DUNE_EMAIL_ALLOW_DEV_SEND=1: real sends stay
+ * bounded to known-safe recipient domains instead of "everyone the
+ * configured credentials can reach" — guards against a dev environment
+ * somehow pointed at production-like data (a seeded/cloned dataset, a bug).
+ * Takes precedence over DUNE_EMAIL_ALLOW_DEV_SEND when both are set.
+ */
+function devAllowedDomains(): string[] | null {
+  try {
+    const v = Deno.env.get("DUNE_EMAIL_DEV_ALLOWED_DOMAINS");
+    if (!v) return null;
+    const domains = v.split(",").map((d) => d.trim()).filter(Boolean);
+    return domains.length > 0 ? domains : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Create an EmailProvider from the supplied config.
  *
  * When `provider` is omitted or set to "console" (or when the required
  * provider credentials are missing), a ConsoleEmailProvider is returned.
  *
  * Under DUNE_ENV=dev, a configured live provider (smtp/resend/postmark/
- * sendgrid) is refused and swapped for ConsoleEmailProvider unless
- * DUNE_EMAIL_ALLOW_DEV_SEND=1 is also set — a validly configured live
- * provider previously sent real mail in dev with zero indication anything
- * was different from production.
+ * sendgrid) is refused and swapped for ConsoleEmailProvider unless either:
+ *   - DUNE_EMAIL_DEV_ALLOWED_DOMAINS is set — real provider is constructed,
+ *     but wrapped so only recipients on an allowed domain are actually sent
+ *     for real; anything else redirects to console. Takes precedence.
+ *   - DUNE_EMAIL_ALLOW_DEV_SEND=1 is set — real provider, unrestricted.
+ * A validly configured live provider previously sent real mail in dev with
+ * zero indication anything was different from production.
  */
 export function createEmailProvider(config: EmailConfig): EmailProvider {
   const from = config.from ?? "noreply@example.com";
+  const liveProviderRequested = !!config.provider && config.provider !== "console";
 
-  if (
-    config.provider && config.provider !== "console" && isDevEnv() &&
-    !devSendAllowed()
-  ) {
-    console.warn(
-      `[Dune Email] DUNE_ENV=dev — refusing to construct the "${config.provider}" live provider, ` +
-        "falling back to console. Set DUNE_EMAIL_ALLOW_DEV_SEND=1 to send real email in dev.",
-    );
-    return new ConsoleEmailProvider();
+  if (liveProviderRequested && isDevEnv()) {
+    const allowedDomains = devAllowedDomains();
+    if (allowedDomains) {
+      const real = createRawProvider(config, from);
+      if (!(real instanceof ConsoleEmailProvider)) {
+        console.warn(
+          `[Dune Email] DUNE_ENV=dev — real sends for "${config.provider}" restricted to: ` +
+            `${allowedDomains.join(", ")} (DUNE_EMAIL_DEV_ALLOWED_DOMAINS). ` +
+            "Any other recipient redirects to console instead.",
+        );
+        return new DevDomainFilterEmailProvider({ realProvider: real, allowedDomains });
+      }
+      return real;
+    }
+    if (!devSendAllowed()) {
+      console.warn(
+        `[Dune Email] DUNE_ENV=dev — refusing to construct the "${config.provider}" live provider, ` +
+          "falling back to console. Set DUNE_EMAIL_ALLOW_DEV_SEND=1 to send real email in dev, " +
+          "or DUNE_EMAIL_DEV_ALLOWED_DOMAINS to restrict real sends to specific domains.",
+      );
+      return new ConsoleEmailProvider();
+    }
   }
 
+  return createRawProvider(config, from);
+}
+
+function createRawProvider(config: EmailConfig, from: string): EmailProvider {
   switch (config.provider) {
     case "smtp": {
       if (!config.smtp) {

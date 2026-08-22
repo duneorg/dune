@@ -51,6 +51,7 @@ export { SmtpEmailProvider } from "./providers/smtp.ts";
 export { ResendEmailProvider } from "./providers/resend.ts";
 export { PostmarkEmailProvider } from "./providers/postmark.ts";
 export { SendGridEmailProvider } from "./providers/sendgrid.ts";
+export { DevDomainFilterEmailProvider } from "./providers/dev-domain-filter.ts";
 
 // Templates
 export { loadTemplate, renderTemplate } from "./templates.ts";

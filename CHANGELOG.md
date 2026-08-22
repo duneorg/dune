@@ -36,6 +36,19 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   change the OAuth linking rules themselves) is a separate, larger
   feature. 9 new tests.
 
+- **`DUNE_EMAIL_DEV_ALLOWED_DOMAINS`** — a safer middle ground for dev-mode
+  email sends, alongside the existing unrestricted
+  `DUNE_EMAIL_ALLOW_DEV_SEND=1`. When set (comma-separated domains),
+  `createEmailProvider()` constructs the real provider but wraps it in a
+  new `DevDomainFilterEmailProvider`: each `send()` checks every
+  recipient's domain against the list — all matching sends for real, any
+  not matching redirects the *whole* message to console instead of a
+  partial send to just the allowed recipients. Takes precedence over
+  `DUNE_EMAIL_ALLOW_DEV_SEND` when both are set. Guards against a dev
+  environment somehow pointed at production-like data (a seeded/cloned
+  dataset, a bug) — real sends stay bounded to known-safe domains instead
+  of "everyone the configured credentials can reach." 11 new tests.
+
 ## [0.32.0] — 2026-08-22
 
 ### Breaking
