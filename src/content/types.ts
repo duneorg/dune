@@ -529,7 +529,7 @@ export interface ContentPageProps {
    */
   content?: ContentApi;
   /**
-   * The resolved public-site user for this request, or `null` if the
+   * The resolved public-auth user for this request, or `null` if the
    * request carries no valid public-auth session. Same `User` record
    * `mountDuneAuth()`'s middleware resolves for Fresh route handlers
    * (`fc.state.siteUser`) and generated CRUD routes (the internal
@@ -543,9 +543,9 @@ export interface ContentPageProps {
    * `null`, not just falsy, since `undefined` means "not resolved here"
    * while `null` means "resolved: nobody is logged in."
    *
-   * @since 0.31.8
+   * @since 0.32.0 (as `siteUser`; renamed to `user` in 0.32.1)
    */
-  siteUser?: User | null;
+  user?: User | null;
 }
 
 // === Format Handler ===

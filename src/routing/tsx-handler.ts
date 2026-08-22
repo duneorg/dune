@@ -32,7 +32,7 @@ export async function handleTsxPage(
   // requireAuth() reading the internal x-dune-user header. "none"
   // mode never errors; it just resolves to null when no session is
   // present or public auth isn't configured at all.
-  const { user: siteUser } = await requireAuth(req, "none");
+  const { user } = await requireAuth(req, "none");
 
   // Dispatch through Fresh-style `export const handler` if present.
   const pageHandlers = await page.handlers();
@@ -69,7 +69,7 @@ export async function handleTsxPage(
               route: page.route,
               params: {},
               content: contentApi,
-              siteUser,
+              user,
             }),
           );
         },
@@ -107,7 +107,7 @@ export async function handleTsxPage(
         media: createMediaHelper(page.media),
         params: {},
         content: contentApi,
-        siteUser,
+        user,
       }),
     );
   }
@@ -123,7 +123,7 @@ export async function handleTsxPage(
     media: createMediaHelper(page.media),
     params: {},
     content: contentApi,
-    siteUser,
+    user,
   });
 
   if (layout) {

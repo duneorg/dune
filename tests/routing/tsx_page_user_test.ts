@@ -1,9 +1,11 @@
 /**
  * Full-pipeline integration tests, covering two related pieces:
  *
- * - Backlog item #9: TSX content pages get an auto-populated `siteUser`
- *   prop (ContentPageProps.siteUser) instead of having to hand-parse the
- *   internal x-dune-user header themselves.
+ * - Backlog item #9: TSX content pages get an auto-populated `user`
+ *   prop (ContentPageProps.user) instead of having to hand-parse the
+ *   internal x-dune-user header themselves. (Field was originally named
+ *   `siteUser`, matching the pre-rename `SiteUser` type; renamed to `user`
+ *   to follow dec-identity-unification's `SiteUser` → `User` rename.)
  * - createDuneApp() strips any externally-supplied x-dune-user header
  *   unconditionally, regardless of whether site.auth is configured, so a
  *   request can never set its own value for this internal header — see
@@ -33,8 +35,8 @@ export const frontmatter = {
   layout: false,
 };
 
-export default function Whoami({ siteUser }) {
-  return <div id="whoami">{JSON.stringify(siteUser)}</div>;
+export default function Whoami({ user }) {
+  return <div id="whoami">{JSON.stringify(user)}</div>;
 }
 `;
 
@@ -63,7 +65,7 @@ async function withApp(
 }
 
 Deno.test(
-  "TSX page siteUser prop: no session, no site.auth configured -> siteUser is null",
+  "TSX page user prop: no session, no site.auth configured -> user is null",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withApp(
@@ -78,7 +80,7 @@ Deno.test(
 );
 
 Deno.test(
-  "TSX page siteUser prop: an incoming x-dune-user header has no effect, with no site.auth configured",
+  "TSX page user prop: an incoming x-dune-user header has no effect, with no site.auth configured",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withApp(
@@ -105,7 +107,7 @@ Deno.test(
 );
 
 Deno.test(
-  "TSX page siteUser prop: an incoming x-dune-user header has no effect, with site.auth configured",
+  "TSX page user prop: an incoming x-dune-user header has no effect, with site.auth configured",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withApp(

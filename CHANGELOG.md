@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ---
 
+## [Unreleased]
+
+### Breaking
+
+- **`ContentPageProps.siteUser` → `.user`** — dec-identity-unification
+  renamed `SiteUser` → `User` / `getSiteUser()` → `getUser()` /
+  `x-dune-site-user` → `x-dune-user` everywhere else on the public API;
+  this one field (published in `[0.32.0]` below) predated that pass and
+  was missed. Renamed now, one release after it shipped — a real, if
+  narrow, breaking change for anyone who already adopted the `.siteUser`
+  name in a TSX content page. `ctx.state.siteUser` (the Fresh-state key
+  `mountDuneAuth()`'s middleware sets) is unaffected — this only renames
+  the TSX content-page prop.
+
 ## [0.32.0] — 2026-08-22
 
 ### Breaking
