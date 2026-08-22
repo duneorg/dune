@@ -49,6 +49,27 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   dataset, a bug) — real sends stay bounded to known-safe domains instead
   of "everyone the configured credentials can reach." 11 new tests.
 
+- **A default 10-minute timeout on every background job.** A hung handler
+  (infinite loop, a `fetch()` that never resolves) previously ran forever
+  — and worse, left `JobState.status` stuck at `"running"` permanently,
+  silently blocking every future scheduled run of that job until process
+  restart. `JobDefinition.timeoutMs` overrides the default per job
+  (readable as an `export const timeoutMs` from a `jobs/*.ts` file,
+  mirroring the existing `schedule`/`handler` convention);
+  `JobSchedulerConfig.defaultTimeoutMs` overrides it globally. A timed-out
+  run is treated the same as any other handler error, unblocking future
+  runs. New `JobContext.signal` (`AbortSignal`) is aborted on timeout for
+  handlers that cooperate (e.g. pass it to `fetch()`) — JS has no true
+  cancellation otherwise. 11 new tests.
+
+- **`write_page` (MCP) now warns instead of silently writing malformed
+  frontmatter.** Previously wrote raw content verbatim with zero parsing
+  — broken YAML frontmatter landed on disk silently, only surfacing later
+  at render/index time. Still writes exactly what was given (deliberately
+  parse-and-warn, not reject — `write_page` is a trusted-agent primitive),
+  but the result now includes a warning when the frontmatter block isn't
+  valid YAML. 3 new tests.
+
 ## [0.32.0] — 2026-08-22
 
 ### Breaking
