@@ -142,7 +142,7 @@ Write or overwrite a content file.
 ```json
 { "path": "blog/hello.md", "content": "---\ntitle: Hello\n---\n\nBody text" }
 ```
-`path` is relative to the content directory; `content` is the full file including frontmatter. Written as-is — no YAML/frontmatter parsing or validation happens before the write, so malformed frontmatter lands on disk exactly as given.
+`path` is relative to the content directory; `content` is the full file including frontmatter. Written as-is, always — this never rejects a write. If the frontmatter block isn't valid YAML, the write still succeeds but the result text includes a `⚠️ Warning: frontmatter is not valid YAML (...)` line so the problem doesn't silently surface later at render/index time instead.
 
 ### `delete_page`
 Delete a content file by route (preferred) or path.

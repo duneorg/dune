@@ -91,6 +91,33 @@ function renderFrontmatter(fm: Record<string, unknown>, body: string): string {
   return `---\n${yamlStr}\n---\n${body}`;
 }
 
+/**
+ * Check whether `content`'s frontmatter block (if any) is valid YAML.
+ * Returns a human-readable warning when it isn't, or null when it's fine
+ * (including when there's no frontmatter block at all — some pages, and
+ * every non-.md/.mdx file, legitimately have none).
+ *
+ * write_page writes raw content verbatim with no parsing of its own —
+ * malformed frontmatter would otherwise land on disk silently and only
+ * surface later at render/index time, disconnected from the write that
+ * caused it. This is deliberately parse-and-warn, not reject: write_page
+ * is a trusted-agent primitive (MCP's own security-model doc already
+ * treats tool access as code execution), so it shouldn't refuse a write
+ * the caller explicitly asked for — it should just make sure they can't
+ * miss that something's wrong.
+ */
+function checkFrontmatterSyntax(content: string): string | null {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!match) return null;
+  try {
+    parseYaml(match[1]);
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `frontmatter is not valid YAML (${msg}) — written as-is, but this page will likely fail to index or render correctly until fixed.`;
+  }
+}
+
 /** Resolve a route like "/blog/hello" to a source path via the engine, or null. */
 function routeToSourcePath(engine: DuneEngine, route: string): string | null {
   const normalised = route.startsWith("/") ? route : `/${route}`;
@@ -133,7 +160,12 @@ function makeWritePageHandler(deps: WriteToolDeps): ToolHandler {
 
     try {
       await deps.storage.write(storagePath, new TextEncoder().encode(content));
-      return ok(`Written: ${storagePath}`);
+      const warning = checkFrontmatterSyntax(content);
+      return ok(
+        warning
+          ? `Written: ${storagePath}\n⚠️  Warning: ${warning}`
+          : `Written: ${storagePath}`,
+      );
     } catch (e) {
       return err(`Failed to write ${path}: ${e}`);
     }

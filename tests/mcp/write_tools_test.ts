@@ -63,3 +63,56 @@ Deno.test("install_plugin: accepts a pinned jsr: specifier", async () => {
   assertEquals(storage.writes.length, 1);
   assertEquals(storage.writes[0].includes("jsr:@dune/plugin-seo@1.0.0"), true);
 });
+
+// ── write_page: frontmatter parse-and-warn ──────────────────────────────
+
+function writePageTool(storage: StorageAdapter & { writes: string[] }) {
+  const tools = buildWriteTools({
+    engine: { pages: [] } as unknown as DuneEngine,
+    storage,
+    root: "/tmp",
+    contentDir: "content",
+  });
+  return tools.find((t) => t.meta.name === "write_page")!;
+}
+
+Deno.test("write_page: valid frontmatter writes with no warning", async () => {
+  const storage = makeStorage();
+  const result = await writePageTool(storage).handler({
+    path: "blog/hello.md",
+    content: "---\ntitle: Hello\n---\n\nBody text\n",
+  });
+  assertEquals(result.isError, undefined);
+  const text = (result.content[0] as { text: string }).text;
+  assertEquals(text.includes("Written:"), true);
+  assertEquals(text.includes("Warning"), false);
+  assertEquals(storage.writes.length, 1);
+});
+
+Deno.test("write_page: malformed YAML frontmatter still writes, but with a warning", async () => {
+  const storage = makeStorage();
+  const result = await writePageTool(storage).handler({
+    path: "blog/broken.md",
+    // Unclosed bracket — invalid YAML.
+    content: "---\ntitle: [Hello\n---\n\nBody text\n",
+  });
+  assertEquals(result.isError, undefined);
+  const text = (result.content[0] as { text: string }).text;
+  assertEquals(text.includes("Written:"), true);
+  assertEquals(text.includes("Warning"), true);
+  assertEquals(text.includes("not valid YAML"), true);
+  // Still writes the content exactly as given — parse-and-warn, not reject.
+  assertEquals(storage.writes.length, 1);
+  assertEquals(storage.writes[0], "---\ntitle: [Hello\n---\n\nBody text\n");
+});
+
+Deno.test("write_page: no frontmatter block at all — no warning", async () => {
+  const storage = makeStorage();
+  const result = await writePageTool(storage).handler({
+    path: "notes/plain.md",
+    content: "Just a body, no frontmatter.\n",
+  });
+  assertEquals(result.isError, undefined);
+  const text = (result.content[0] as { text: string }).text;
+  assertEquals(text.includes("Warning"), false);
+});
