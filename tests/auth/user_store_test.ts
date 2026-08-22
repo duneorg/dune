@@ -193,6 +193,104 @@ Deno.test("LocalUserStore: getByProvider returns null for wrong provider", async
   assertEquals(notFound, null);
 });
 
+// === Account linking (multi-provider) ===
+
+Deno.test("LocalUserStore: linkProvider adds a linked provider entry", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "frank@example.com",
+    provider: "magic",
+    roles: [],
+  });
+
+  const updated = await store.linkProvider(user.id, "github", "gh-1");
+  assertEquals(updated?.linkedProviders, [{ provider: "github", providerId: "gh-1" }]);
+});
+
+Deno.test("LocalUserStore: getByProvider finds a user via a linked (non-primary) provider", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "grace@example.com",
+    provider: "magic",
+    roles: [],
+  });
+  await store.linkProvider(user.id, "github", "gh-2");
+
+  const found = await store.getByProvider("github", "gh-2");
+  assertEquals(found?.id, user.id);
+});
+
+Deno.test("LocalUserStore: linkProvider is a no-op when already linked", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "henry@example.com",
+    provider: "magic",
+    roles: [],
+  });
+  await store.linkProvider(user.id, "github", "gh-3");
+  const updatedAt1 = (await store.getById(user.id))!.updatedAt;
+
+  const again = await store.linkProvider(user.id, "github", "gh-3");
+  assertEquals(again?.linkedProviders, [{ provider: "github", providerId: "gh-3" }]);
+  assertEquals(again?.updatedAt, updatedAt1);
+});
+
+Deno.test("LocalUserStore: linkProvider is a no-op when the pair is already the primary identity", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "iris@example.com",
+    provider: "github",
+    providerId: "gh-4",
+    roles: [],
+  });
+
+  const updated = await store.linkProvider(user.id, "github", "gh-4");
+  assertEquals(updated?.linkedProviders ?? [], []);
+});
+
+Deno.test("LocalUserStore: unlinkProvider removes a linked entry", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "jack@example.com",
+    provider: "magic",
+    roles: [],
+  });
+  await store.linkProvider(user.id, "github", "gh-5");
+  await store.linkProvider(user.id, "google", "gg-5");
+
+  const updated = await store.unlinkProvider(user.id, "github");
+  assertEquals(updated?.linkedProviders, [{ provider: "google", providerId: "gg-5" }]);
+
+  const stillFindsGoogle = await store.getByProvider("google", "gg-5");
+  assertEquals(stillFindsGoogle?.id, user.id);
+  const noLongerFindsGithub = await store.getByProvider("github", "gh-5");
+  assertEquals(noLongerFindsGithub, null);
+});
+
+Deno.test("LocalUserStore: unlinkProvider is a no-op when nothing matches", async () => {
+  const storage = createMemoryStorage();
+  const store = createLocalUserStore({ storage, usersDir: "data/site-users" });
+
+  const user = await store.create({
+    email: "kim@example.com",
+    provider: "magic",
+    roles: [],
+  });
+
+  const updated = await store.unlinkProvider(user.id, "github");
+  assertEquals(updated?.linkedProviders ?? [], []);
+});
+
 // === Phase 5a: unified fields (username/passwordHash/updatedAt) ===
 
 Deno.test("LocalUserStore: create persists username and passwordHash", async () => {

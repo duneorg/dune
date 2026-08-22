@@ -28,9 +28,26 @@ export interface UserStore {
   getById(id: string): Promise<User | null>;
   getByEmail(email: string): Promise<User | null>;
   getByUsername(username: string): Promise<User | null>;
+  /** Checks both the primary provider/providerId pair and linkedProviders. */
   getByProvider(provider: string, providerId: string): Promise<User | null>;
   /** @throws {DuplicateEmailError} if a user with this email already exists. */
   create(user: UserCreate): Promise<User>;
+  /**
+   * Add an OAuth identity to `linkedProviders`. Caller is responsible for
+   * checking `getByProvider()` first — this is a pure data operation, not a
+   * policy decision (that lives in the route handler, which decides what
+   * "already claimed elsewhere" should mean). No-op (returns the user
+   * unchanged) if this exact (provider, providerId) pair is already present,
+   * whether as the primary pair or an existing linked entry.
+   */
+  linkProvider(id: string, provider: string, providerId: string): Promise<User | null>;
+  /**
+   * Remove a linked OAuth identity by provider name. Only removes entries in
+   * `linkedProviders` — the primary `provider`/`providerId` pair (the
+   * account's original signup method) is never touched here. No-op if no
+   * matching entry exists.
+   */
+  unlinkProvider(id: string, provider: string): Promise<User | null>;
   /** @throws {DuplicateEmailError} if `updates.email` is set and already used by a different user. */
   update(
     id: string,
@@ -182,6 +199,13 @@ export function createLocalUserStore(
           if (user.provider === provider && user.providerId === providerId) {
             return user;
           }
+          if (
+            user.linkedProviders?.some(
+              (lp) => lp.provider === provider && lp.providerId === providerId,
+            )
+          ) {
+            return user;
+          }
         } catch {
           // skip corrupt files
         }
@@ -190,6 +214,42 @@ export function createLocalUserStore(
       // directory doesn't exist yet
     }
     return null;
+  }
+
+  async function linkProvider(
+    id: string,
+    provider: string,
+    providerId: string,
+  ): Promise<User | null> {
+    const user = await getById(id);
+    if (!user) return null;
+
+    if (user.provider === provider && user.providerId === providerId) {
+      return user; // already the primary identity
+    }
+    const linked = user.linkedProviders ?? [];
+    if (linked.some((lp) => lp.provider === provider && lp.providerId === providerId)) {
+      return user; // already linked
+    }
+
+    user.linkedProviders = [...linked, { provider, providerId }];
+    user.updatedAt = Date.now();
+    await saveUser(user);
+    return user;
+  }
+
+  async function unlinkProvider(id: string, provider: string): Promise<User | null> {
+    const user = await getById(id);
+    if (!user) return null;
+
+    const linked = user.linkedProviders ?? [];
+    const next = linked.filter((lp) => lp.provider !== provider);
+    if (next.length === linked.length) return user; // nothing matched — no-op
+
+    user.linkedProviders = next;
+    user.updatedAt = Date.now();
+    await saveUser(user);
+    return user;
   }
 
   async function create(input: UserCreate): Promise<User> {
@@ -380,6 +440,8 @@ export function createLocalUserStore(
     getByProvider,
     create,
     update,
+    linkProvider,
+    unlinkProvider,
     list,
     delete: deleteUser,
   };

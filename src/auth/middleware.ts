@@ -21,6 +21,15 @@ import type { SessionManager } from "../session/mod.ts";
 
 export const SITE_COOKIE_NAME = "dune_auth";
 export const OAUTH_STATE_COOKIE = "dune_oauth_state";
+/**
+ * Carries the linking user's id through an account-linking OAuth flow.
+ * Unsigned, like OAUTH_STATE_COOKIE — its security comes from being
+ * httpOnly + Secure + SameSite=Lax + short-lived (only the server can set
+ * or read it), the same guarantee the state cookie already relies on, not
+ * a cryptographic signature. Set only by oauthLinkStart(); read and
+ * cleared by oauthCallback() when present.
+ */
+export const OAUTH_LINK_COOKIE = "dune_oauth_link_user";
 
 export interface SiteAuthMiddlewareConfig {
   userStore: UserStore;
@@ -47,6 +56,10 @@ export interface SiteAuthMiddleware {
   createOAuthStateCookie(state: string): string;
   /** Clear the OAuth state cookie */
   clearOAuthStateCookie(): string;
+  /** Build the OAuth account-linking intent cookie (10 min) — see OAUTH_LINK_COOKIE. */
+  createOAuthLinkCookie(userId: string): string;
+  /** Clear the OAuth account-linking intent cookie */
+  clearOAuthLinkCookie(): string;
 }
 
 export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): SiteAuthMiddleware {
@@ -149,6 +162,16 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     return `${OAUTH_STATE_COOKIE}=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
   }
 
+  function createOAuthLinkCookie(userId: string): string {
+    const secureFlag = secure ? "; Secure" : "";
+    return `${OAUTH_LINK_COOKIE}=${userId}; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600${secureFlag}`;
+  }
+
+  function clearOAuthLinkCookie(): string {
+    const secureFlag = secure ? "; Secure" : "";
+    return `${OAUTH_LINK_COOKIE}=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
+  }
+
   return {
     resolveUser,
     createSessionCookie,
@@ -157,6 +180,8 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
     destroySession,
     createOAuthStateCookie,
     clearOAuthStateCookie,
+    createOAuthLinkCookie,
+    clearOAuthLinkCookie,
   };
 }
 

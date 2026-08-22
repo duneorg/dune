@@ -362,8 +362,13 @@ export async function mountDuneAuth(
       cleanHeaders.set(USER_HEADER, JSON.stringify(user));
     }
     // Replace the request on the context so all downstream handlers see the
-    // sanitised + enriched version.
-    const nextReq = new Request(fc.req, { headers: cleanHeaders });
+    // sanitised + enriched version. Built from `cleanReq`, not `fc.req` again —
+    // a Request's body can only be used as the source for a `new Request()`
+    // once; reconstructing a second time from the original `fc.req` (which
+    // `cleanReq` above already consumed as its source) throws "Input
+    // request's body is unusable" for any request with a body, breaking
+    // every POST route under /auth/* (including /auth/magic/send).
+    const nextReq = new Request(cleanReq, { headers: cleanHeaders });
     copySocketAddr(fc.req, nextReq);
     (fc as any).req = nextReq;
 
@@ -395,15 +400,29 @@ export async function mountDuneAuth(
   app.get("/auth/magic", (fc) => routes.magicVerify(fc.req));
 
   // GET /auth/{provider} — initiate OAuth
-  // GET /auth/{provider}/callback — OAuth callback
+  // GET /auth/{provider}/link — initiate OAuth to link this provider to the
+  //   current session's account (authenticated only)
+  // GET /auth/{provider}/callback — OAuth callback (shared by both flows above)
+  // POST /auth/{provider}/unlink — remove a previously-linked (non-primary) provider
   // Fresh doesn't have wildcard sub-path matching cleanly, so register each configured provider
   for (const [providerName] of providers) {
     const pName = providerName; // capture for closure
     app.get(`/auth/${pName}`, (fc) => routes.oauthStart(fc.req, pName));
+    app.get(`/auth/${pName}/link`, (fc) => {
+      const siteUser = (fc.state as any).siteUser as User | null;
+      return routes.oauthLinkStart(fc.req, pName, siteUser);
+    });
     app.get(
       `/auth/${pName}/callback`,
-      (fc) => routes.oauthCallback(fc.req, pName),
+      (fc) => {
+        const siteUser = (fc.state as any).siteUser as User | null;
+        return routes.oauthCallback(fc.req, pName, siteUser);
+      },
     );
+    app.post(`/auth/${pName}/unlink`, (fc) => {
+      const siteUser = (fc.state as any).siteUser as User | null;
+      return routes.unlinkProvider(fc.req, pName, siteUser);
+    });
   }
 
   // ── POST /auth/webhook — IdP user-lifecycle events ─────────────────────────

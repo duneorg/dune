@@ -26,10 +26,25 @@ export interface User {
   username?: string;
   /** PBKDF2 hash, present only for accounts with a local password. */
   passwordHash?: string;
-  /** External identity provider: "local" (password) | "github" | "google" | "discord" | "magic" | ... */
+  /**
+   * External identity provider this account was originally created with:
+   * "local" (password) | "github" | "google" | "discord" | "magic" | ...
+   * Unlike `linkedProviders` below, this one is not removable through the
+   * account-linking flow — it's the account's original signup method.
+   */
   provider: string;
   /** Provider's user ID (for OAuth). */
   providerId?: string;
+  /**
+   * Additional OAuth identities linked to this account after signup, via
+   * `GET /auth/{provider}/link` (requires an existing session). Each entry
+   * is independently usable to log in — `getByProvider()` checks both this
+   * list and the primary `provider`/`providerId` pair. Unlike the primary
+   * pair, entries here can be removed via `POST /auth/{provider}/unlink`.
+   *
+   * @since 0.32.1
+   */
+  linkedProviders?: { provider: string; providerId: string }[];
   /** Roles/tags, e.g. ["admin"], ["member", "subscriber"]. */
   roles: string[];
   createdAt: number; // ms timestamp

@@ -70,6 +70,49 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   but the result now includes a warning when the frontmatter block isn't
   valid YAML. 3 new tests.
 
+- **Account linking — connect an additional OAuth provider to an existing
+  account.** `GET /auth/{provider}/link` (authenticated only) starts an
+  OAuth flow that attaches the resulting identity to the *current
+  session's* account via new `linkedProviders` on `User`, instead of
+  logging in as a separate/new one; `POST /auth/{provider}/unlink` removes
+  a previously-linked (non-primary) one. `UserStore.getByProvider()` now
+  checks both the account's original signup `provider`/`providerId` and
+  everything in `linkedProviders` — implemented for both the local
+  flat-file store and the `db`-backed store (a JSON column, matching how
+  `roles` is already stored there — no join table needed). The original
+  signup provider is never removable through this route. Closes the
+  `users:create` OAuth-first-login gap from earlier in this release: an
+  invited person can now log in via magic link and then connect their
+  preferred OAuth provider for future visits.
+
+  Real design decisions made along the way, not just an obvious API:
+  **exact-match-wins**, not a hard error, when the provider identity being
+  linked already belongs to a *different*, already-established account —
+  completing that provider's OAuth consent screen is real proof of
+  controlling it, so the flow logs into that account instead of erroring
+  (redirects with `?dune_link=linked_elsewhere`, never leaking the other
+  account's details). **Unlinking is blocked only when it would remove
+  your last additional identity while magic link is disabled site-wide**
+  — magic link needs no extra state (just a valid email) so it's always a
+  safe fallback when enabled. The OAuth callback re-verifies the active
+  session still matches who *started* the link flow (bound via a new
+  httpOnly `dune_oauth_link_user` cookie, unsigned like the existing state
+  cookie — its security is confidentiality, not a signature), refusing
+  rather than silently linking to whoever's logged in if the session
+  changed mid-flow. Scoped to `userStore: local`/`db` only — `400`s under
+  `userStore: session` (no persistent record to attach a link to).
+  26 new tests.
+
+- **Fixed a real, pre-existing bug found while testing the above: every
+  `POST` route under `/auth/*` (including the existing `/auth/magic/send`)
+  500'd whenever it had a request body.** `mountDuneAuth()`'s resolve-user
+  middleware reconstructed the request twice via `new Request(fc.req,
+  ...)` from the same original `fc.req` — a Request's body can only be
+  the source of a `new Request()` once, so the second reconstruction
+  threw "Input request's body is unusable" for any request with a body.
+  Fixed by chaining the second reconstruction off the first (already-
+  rebuilt) request instead of the original. 1 new regression test.
+
 ## [0.32.0] — 2026-08-22
 
 ### Breaking

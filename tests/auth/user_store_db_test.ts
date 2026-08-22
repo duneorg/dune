@@ -92,6 +92,57 @@ Deno.test("DbUserStore: getByProvider finds a created user", async () => {
   });
 });
 
+Deno.test("DbUserStore: linkProvider adds a linked entry, findable via getByProvider", async () => {
+  await withStore(async (store) => {
+    const user = await store.create({
+      email: "erin@example.com",
+      provider: "magic",
+      roles: [],
+    });
+
+    const updated = await store.linkProvider(user.id, "github", "gh-erin");
+    assertEquals(updated?.linkedProviders, [{ provider: "github", providerId: "gh-erin" }]);
+
+    const found = await store.getByProvider("github", "gh-erin");
+    assertEquals(found?.id, user.id);
+  });
+});
+
+Deno.test("DbUserStore: linkProvider is a no-op when already linked or already primary", async () => {
+  await withStore(async (store) => {
+    const user = await store.create({
+      email: "farid@example.com",
+      provider: "github",
+      providerId: "gh-farid",
+      roles: [],
+    });
+
+    const same = await store.linkProvider(user.id, "github", "gh-farid");
+    assertEquals(same?.linkedProviders ?? [], []);
+
+    await store.linkProvider(user.id, "google", "gg-farid");
+    const again = await store.linkProvider(user.id, "google", "gg-farid");
+    assertEquals(again?.linkedProviders, [{ provider: "google", providerId: "gg-farid" }]);
+  });
+});
+
+Deno.test("DbUserStore: unlinkProvider removes a linked entry", async () => {
+  await withStore(async (store) => {
+    const user = await store.create({
+      email: "gina@example.com",
+      provider: "magic",
+      roles: [],
+    });
+    await store.linkProvider(user.id, "github", "gh-gina");
+    await store.linkProvider(user.id, "google", "gg-gina");
+
+    const updated = await store.unlinkProvider(user.id, "github");
+    assertEquals(updated?.linkedProviders, [{ provider: "google", providerId: "gg-gina" }]);
+    assertEquals(await store.getByProvider("github", "gh-gina"), null);
+    assertEquals((await store.getByProvider("google", "gg-gina"))?.id, user.id);
+  });
+});
+
 Deno.test("DbUserStore: create() throws DuplicateEmailError for an already-used email", async () => {
   await withStore(async (store) => {
     await store.create({

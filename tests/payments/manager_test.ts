@@ -73,6 +73,13 @@ class MockUserStore implements UserStore {
     return updated;
   }
 
+  async linkProvider(_id: string, _provider: string, _providerId: string): Promise<User | null> {
+    return null;
+  }
+  async unlinkProvider(_id: string, _provider: string): Promise<User | null> {
+    return null;
+  }
+
   async list(_opts?: { limit?: number; offset?: number }): Promise<User[]> { return []; }
   async delete(_id: string): Promise<boolean> { return false; }
 }

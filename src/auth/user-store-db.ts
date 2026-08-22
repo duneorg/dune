@@ -25,6 +25,7 @@ interface DbRow {
   passwordHash: string | null;
   provider: string;
   providerId: string | null;
+  linkedProviders: string | null; // JSON array
   roles: string; // JSON array
   createdAt: number;
   updatedAt: number;
@@ -43,6 +44,7 @@ function rowToUser(row: DbRow): User {
     passwordHash: row.passwordHash ?? undefined,
     provider: row.provider,
     providerId: row.providerId ?? undefined,
+    linkedProviders: row.linkedProviders ? JSON.parse(row.linkedProviders) : undefined,
     roles: typeof row.roles === "string" ? JSON.parse(row.roles) : row.roles,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -115,6 +117,7 @@ async function ensureTable(db: DbAdapter): Promise<void> {
       passwordHash TEXT,
       provider TEXT NOT NULL,
       providerId TEXT,
+      linkedProviders TEXT NOT NULL DEFAULT '[]',
       roles TEXT NOT NULL DEFAULT '[]',
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
@@ -143,6 +146,9 @@ async function ensureTable(db: DbAdapter): Promise<void> {
   );
   await db.query(
     `ALTER TABLE site_users ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0`,
+  ).catch(() => {});
+  await db.query(
+    `ALTER TABLE site_users ADD COLUMN linkedProviders TEXT NOT NULL DEFAULT '[]'`,
   ).catch(() => {});
 }
 
@@ -187,7 +193,26 @@ export async function createDbUserStore(
         "SELECT * FROM site_users WHERE provider = ? AND providerId = ? LIMIT 1",
         [provider, providerId],
       );
-      return rows[0] ? rowToUser(rows[0]) : null;
+      if (rows[0]) return rowToUser(rows[0]);
+
+      // Not the primary pair on any row — fall back to scanning
+      // linkedProviders. No index on this JSON column (same O(n) tradeoff
+      // the local flat-file store already accepts: provider logins are
+      // infrequent, and this only runs after the indexed primary lookup misses).
+      const allRows = await db.query<DbRow>("SELECT * FROM site_users", []);
+      for (const row of allRows) {
+        if (!row.linkedProviders) continue;
+        try {
+          const linked = JSON.parse(row.linkedProviders) as
+            { provider: string; providerId: string }[];
+          if (linked.some((lp) => lp.provider === provider && lp.providerId === providerId)) {
+            return rowToUser(row);
+          }
+        } catch {
+          // skip corrupt JSON
+        }
+      }
+      return null;
     },
 
     async create(data: UserCreate): Promise<User> {
@@ -202,6 +227,7 @@ export async function createDbUserStore(
         passwordHash: data.passwordHash,
         provider: data.provider,
         providerId: data.providerId,
+        linkedProviders: data.linkedProviders ?? [],
         roles: data.roles ?? [],
         createdAt: now,
         updatedAt: now,
@@ -312,6 +338,45 @@ export async function createDbUserStore(
         }
         throw err;
       }
+      return store.getById(id);
+    },
+
+    async linkProvider(
+      id: string,
+      provider: string,
+      providerId: string,
+    ): Promise<User | null> {
+      const user = await store.getById(id);
+      if (!user) return null;
+
+      if (user.provider === provider && user.providerId === providerId) {
+        return user; // already the primary identity
+      }
+      const linked = user.linkedProviders ?? [];
+      if (linked.some((lp) => lp.provider === provider && lp.providerId === providerId)) {
+        return user; // already linked
+      }
+
+      const next = [...linked, { provider, providerId }];
+      await db.query(
+        "UPDATE site_users SET linkedProviders = ?, updatedAt = ? WHERE id = ?",
+        [JSON.stringify(next), Date.now(), id],
+      );
+      return store.getById(id);
+    },
+
+    async unlinkProvider(id: string, provider: string): Promise<User | null> {
+      const user = await store.getById(id);
+      if (!user) return null;
+
+      const linked = user.linkedProviders ?? [];
+      const next = linked.filter((lp) => lp.provider !== provider);
+      if (next.length === linked.length) return user; // nothing matched — no-op
+
+      await db.query(
+        "UPDATE site_users SET linkedProviders = ?, updatedAt = ? WHERE id = ?",
+        [JSON.stringify(next), Date.now(), id],
+      );
       return store.getById(id);
     },
 

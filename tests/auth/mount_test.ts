@@ -72,6 +72,56 @@ Deno.test(
 );
 
 Deno.test(
+  "mountDuneAuth: POST /auth/magic/send with a real JSON body doesn't 500 " +
+    "(regression: the resolve-user middleware reconstructed the request " +
+    "twice from the same original Request, and a body can only be the " +
+    "source of a `new Request()` once)",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const root = await Deno.makeTempDir({ prefix: "dune_test_auth_magic_body_" });
+    const priorSecret = Deno.env.get("DUNE_AUTH_SECRET");
+    try {
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\nHello\n",
+      );
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "title: Test Site\nurl: http://localhost:3000\n" +
+          "auth:\n  mode: dune\n  userStore: session\n  providers:\n    magicLink:\n      enabled: true\n",
+      );
+      Deno.env.set("DUNE_AUTH_SECRET", "a".repeat(32));
+
+      const ctx = await bootstrap(root, {});
+      // deno-lint-ignore no-explicit-any
+      const app = new App() as any;
+      await mountDuneAuth(app, ctx);
+      const handler = app.handler();
+
+      const res = await handler(
+        new Request("http://localhost/auth/magic/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: "a@example.com" }),
+        }),
+      );
+
+      // The real bug threw inside the middleware before the route handler
+      // ever ran, surfacing as a 500. Any non-500 response (200 success, or
+      // even a 4xx from the route's own validation) proves the request body
+      // survived the middleware chain intact.
+      assertEquals(res.status, 200);
+    } finally {
+      if (priorSecret === undefined) Deno.env.delete("DUNE_AUTH_SECRET");
+      else Deno.env.set("DUNE_AUTH_SECRET", priorSecret);
+      await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
+  },
+);
+
+Deno.test(
   "mountDuneAuth: external-jwt without issuer and audience refuses to start",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {

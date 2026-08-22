@@ -9,7 +9,9 @@
  *   GET  /auth/login               — login page (provider selection)
  *   GET  /auth/logout              — destroy session, redirect to /
  *   GET  /auth/{provider}          — initiate OAuth flow
- *   GET  /auth/{provider}/callback — OAuth callback
+ *   GET  /auth/{provider}/link     — initiate OAuth to link this provider (authenticated only)
+ *   GET  /auth/{provider}/callback — OAuth callback (shared by both flows above)
+ *   POST /auth/{provider}/unlink   — remove a linked (non-primary) provider (authenticated only)
  *   POST /auth/magic/send          — send magic link email
  *   GET  /auth/magic               — verify token, create session
  *   GET  /auth/me                  — JSON: current user or 401
@@ -19,10 +21,11 @@ import { encodeHex } from "@std/encoding/hex";
 import type { User } from "./types.ts";
 import { DuplicateEmailError, type UserStore } from "./user-store.ts";
 import type { SiteAuthMiddleware } from "./middleware.ts";
-import { OAUTH_STATE_COOKIE } from "./middleware.ts";
+import { OAUTH_LINK_COOKIE, OAUTH_STATE_COOKIE } from "./middleware.ts";
 import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
 import type { OAuthProvider } from "./providers/types.ts";
 import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit.ts";
+import { checkSameOriginCsrf } from "../security/csrf.ts";
 import { logger } from "../core/logger.ts";
 
 export interface AuthRoutesConfig {
@@ -49,10 +52,15 @@ export interface AuthRouteHandlers {
   login: (req: Request, siteUser: User | null) => Response;
   logout: (req: Request) => Promise<Response>;
   oauthStart: (req: Request, provider: string) => Response;
-  oauthCallback: (req: Request, provider: string) => Promise<Response>;
+  /** Authenticated-only: start linking an additional provider to the current session's account. */
+  oauthLinkStart: (req: Request, provider: string, siteUser: User | null) => Response;
+  /** siteUser is the ACTIVE session at callback time — used to re-verify a link flow didn't switch sessions mid-flow. */
+  oauthCallback: (req: Request, provider: string, siteUser: User | null) => Promise<Response>;
   magicSend: (req: Request) => Promise<Response>;
   magicVerify: (req: Request) => Promise<Response>;
   me: (req: Request, siteUser: User | null) => Response;
+  /** Authenticated-only: remove a linked (non-primary) provider from the current session's account. */
+  unlinkProvider: (req: Request, provider: string, siteUser: User | null) => Promise<Response>;
 }
 
 // Magic link send: 5 requests per 10 minutes per IP
@@ -134,9 +142,182 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     });
   }
 
+  // ── OAuth link start (add a provider to an existing session's account) ─────
+
+  function oauthLinkStart(
+    _req: Request,
+    providerName: string,
+    siteUser: User | null,
+  ): Response {
+    if (!siteUser) {
+      return new Response("Must be logged in to link an account", { status: 401 });
+    }
+    if (userStoreType === "session") {
+      return new Response(
+        "Account linking is not supported when userStore: session (no persistent record to link to)",
+        { status: 400 },
+      );
+    }
+    const provider = providers.get(providerName);
+    if (!provider) {
+      return new Response("Unknown provider", { status: 404 });
+    }
+
+    const state = generateState();
+    const redirectUri = `${siteUrl}/auth/${providerName}/callback`;
+    const url = provider.authorizationUrl(state, redirectUri);
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: url,
+        "Set-Cookie": [
+          middleware.createOAuthStateCookie(state),
+          middleware.createOAuthLinkCookie(siteUser.id),
+        ].join(", "),
+      },
+    });
+  }
+
+  // ── OAuth account-linking callback ──────────────────────────────────────────
+
+  /**
+   * Handles the callback when OAUTH_LINK_COOKIE is present — i.e. this
+   * exchange started from oauthLinkStart(), not an ordinary login attempt.
+   * Always clears both OAuth cookies (single-use).
+   */
+  async function handleLinkCallback(
+    req: Request,
+    providerName: string,
+    profile: { id: string; email: string; name?: string; avatarUrl?: string },
+    linkUserId: string,
+    siteUser: User | null,
+  ): Promise<Response> {
+    const clearCookies = [
+      middleware.clearOAuthStateCookie(),
+      middleware.clearOAuthLinkCookie(),
+    ];
+
+    if (!siteUser || siteUser.id !== linkUserId) {
+      // The active session at callback time doesn't match who started the
+      // flow (logged out, or switched accounts, during the provider
+      // round-trip) — refuse rather than silently linking to whoever's
+      // signed in now.
+      return new Response(
+        "Please stay logged in as the same account to finish linking a provider.",
+        { status: 403, headers: { "Set-Cookie": clearCookies.join(", ") } },
+      );
+    }
+
+    const existing = await userStore.getByProvider(providerName, profile.id);
+
+    if (existing && existing.id !== linkUserId) {
+      // Exact-match-wins: this provider identity already belongs to a
+      // different, already-established account. Completing that provider's
+      // OAuth consent screen is real proof of controlling it — the same
+      // trust getByProvider() already extends for an ordinary login — so
+      // honor it as a login to that account rather than attaching it here
+      // or erroring. Surfaced via a query param since there's no prebuilt UI;
+      // a site can check for it and show its own message.
+      const ip = clientIp(req, { trustForwardedFor });
+      const sessionId = await middleware.createSession(existing.id, ip || undefined);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/?dune_link=linked_elsewhere",
+          "Set-Cookie": [middleware.createSessionCookie(sessionId), ...clearCookies].join(", "),
+        },
+      });
+    }
+
+    if (existing && existing.id === linkUserId) {
+      // Already linked to this same account — no-op, not an error.
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/?dune_link=already_linked",
+          "Set-Cookie": clearCookies.join(", "),
+        },
+      });
+    }
+
+    await userStore.linkProvider(linkUserId, providerName, profile.id);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/?dune_link=linked",
+        "Set-Cookie": clearCookies.join(", "),
+      },
+    });
+  }
+
+  // ── Unlink a provider ────────────────────────────────────────────────────────
+
+  async function unlinkProvider(
+    req: Request,
+    providerName: string,
+    siteUser: User | null,
+  ): Promise<Response> {
+    const csrf = checkSameOriginCsrf(req);
+    if (csrf) return csrf;
+
+    if (!siteUser) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const linkedCount = siteUser.linkedProviders?.length ?? 0;
+    const isLinkedEntry = siteUser.linkedProviders?.some((lp) => lp.provider === providerName) ??
+      false;
+
+    if (!isLinkedEntry) {
+      // Either not linked at all, or it's the primary (original signup)
+      // provider — never removable through this route.
+      return new Response(
+        JSON.stringify({
+          error: providerName === siteUser.provider
+            ? "Cannot unlink your original signup provider"
+            : `${providerName} is not linked to this account`,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Magic link (when enabled) is always a safe fallback — it needs no
+    // extra state (just a valid email, which every account has) — so
+    // unlinking never risks locking the account out when it's on. Only
+    // block removing what would be the account's LAST identity when magic
+    // link isn't available as the safety net. The primary provider always
+    // remains regardless, so "last identity" here only ever matters when
+    // this would be the sole *linked* entry AND magic link is off — the
+    // primary provider is unaffected either way, kept for clarity.
+    if (!magicLinkEnabled && linkedCount <= 1) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Cannot unlink your only additional provider while magic link is disabled for this site " +
+            "— you'd have no way back in if this were your only method (it isn't, your original " +
+            "signup provider always remains, but this guard is conservative on purpose).",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const updated = await userStore.unlinkProvider(siteUser.id, providerName);
+    return new Response(JSON.stringify({ linkedProviders: updated?.linkedProviders ?? [] }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // ── OAuth callback ─────────────────────────────────────────────────────────
 
-  async function oauthCallback(req: Request, providerName: string): Promise<Response> {
+  async function oauthCallback(
+    req: Request,
+    providerName: string,
+    siteUser: User | null,
+  ): Promise<Response> {
     const provider = providers.get(providerName);
     if (!provider) {
       return new Response("Unknown provider", { status: 404 });
@@ -157,10 +338,16 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       return new Response("Invalid state — CSRF check failed", { status: 400 });
     }
 
+    const linkUserId = parseCookie(cookieHeader, OAUTH_LINK_COOKIE);
+
     try {
       const redirectUri = `${siteUrl}/auth/${providerName}/callback`;
       const { accessToken } = await provider.exchangeCode(code, redirectUri);
       const profile = await provider.getUser(accessToken);
+
+      if (linkUserId) {
+        return await handleLinkCallback(req, providerName, profile, linkUserId, siteUser);
+      }
 
       const ip = clientIp(req, { trustForwardedFor });
       let sessionId: string;
@@ -422,6 +609,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       name: siteUser.name,
       avatarUrl: siteUser.avatarUrl,
       provider: siteUser.provider,
+      linkedProviders: (siteUser.linkedProviders ?? []).map((lp) => lp.provider),
       roles: siteUser.roles,
     };
     return new Response(JSON.stringify(safe), {
@@ -429,7 +617,17 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     });
   }
 
-  return { login, logout, oauthStart, oauthCallback, magicSend, magicVerify, me };
+  return {
+    login,
+    logout,
+    oauthStart,
+    oauthLinkStart,
+    oauthCallback,
+    magicSend,
+    magicVerify,
+    me,
+    unlinkProvider,
+  };
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
