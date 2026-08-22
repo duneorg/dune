@@ -291,6 +291,7 @@ const HEADLESS_DENO_JSON = `{
   "imports": {
     "fresh": "jsr:@fresh/core@^2",
     "@dune/core": "jsr:@dune/core",
+    "@dune/core/security": "jsr:@dune/core/security",
     "preact": "npm:preact@^10",
     "preact/": "npm:preact@^10/",
     "@preact/signals": "npm:@preact/signals@^1",
@@ -312,6 +313,7 @@ const HEADLESS_MAIN_TS = `/**
 import { App, staticFiles } from "fresh";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "@dune/core";
+import { withSocketAddr } from "@dune/core/security";
 import { mountDuneAdmin, getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
 
 // 1. Bootstrap Dune (content index, admin, search, …)
@@ -343,8 +345,8 @@ const builder = new Builder({
 const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 applySnapshot(app);
 
-// 7. Start server
-Deno.serve({ port: 3000, handler: app.handler() });
+// 7. Start server — stamp TCP peer so clientIp() works without trusted_proxies
+Deno.serve({ port: 3000, handler: withSocketAddr(app.handler()) });
 `;
 
 const HEADLESS_LAYOUT_TSX = `/** @jsxImportSource preact */

@@ -9,6 +9,7 @@ import type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 import { logger } from "../core/logger.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
+import { copySocketAddr, rememberSocketAddr } from "../security/rate-limit.ts";
 
 export { loadMultisiteConfig };
 
@@ -230,13 +231,19 @@ export class MultisiteManager {
 
     const stripped = url.pathname.slice(entry.pathPrefix.length) || "/";
     url.pathname = stripped;
-    return new Request(url.toString(), req);
+    const next = new Request(url.toString(), req);
+    copySocketAddr(req, next);
+    return next;
   }
 
   /**
    * Main entry point: resolve → adjust → dispatch.
    */
-  async handle(req: Request): Promise<Response> {
+  async handle(
+    req: Request,
+    info?: { remoteAddr?: { hostname?: string } },
+  ): Promise<Response> {
+    rememberSocketAddr(req, info?.remoteAddr);
     const site = this.resolveEntry(req);
     if (!site) {
       return new Response("No site configured", { status: 503 });

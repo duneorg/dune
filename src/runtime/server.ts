@@ -12,6 +12,7 @@
  */
 
 import { App, staticFiles } from "fresh";
+import { captureHandlerSocketAddr, copySocketAddr } from "../security/rate-limit.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import { mountPlugins } from "../plugins/loader.ts";
@@ -82,7 +83,7 @@ const HOOK_STRIPPED_HEADERS = [
 function sanitizeRequestForHook(req: Request): Request {
   const headers = new Headers(req.headers);
   for (const name of HOOK_STRIPPED_HEADERS) headers.delete(name);
-  return new Request(req.url, {
+  const next = new Request(req.url, {
     method: req.method,
     headers,
     body: req.body,
@@ -98,6 +99,8 @@ function sanitizeRequestForHook(req: Request): Request {
     keepalive: req.keepalive,
     signal: req.signal,
   });
+  copySocketAddr(req, next);
+  return next;
 }
 
 /**
@@ -113,7 +116,9 @@ export function stripUserHeader(req: Request): Request {
   if (!req.headers.has(USER_HEADER)) return req;
   const cleanHeaders = new Headers(req.headers);
   cleanHeaders.delete(USER_HEADER);
-  return new Request(req, { headers: cleanHeaders });
+  const next = new Request(req, { headers: cleanHeaders });
+  copySocketAddr(req, next);
+  return next;
 }
 
 function stripSetCookieOnAdmin(
@@ -512,6 +517,9 @@ export async function createDuneApp(
     adminPrefix,
     routes,
   });
+
+  const createHandler = app.handler.bind(app);
+  app.handler = captureHandlerSocketAddr(createHandler);
 
   return { app, notifyReload, setShuttingDown };
 }

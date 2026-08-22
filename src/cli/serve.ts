@@ -160,10 +160,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
         onListen: ({ port: p }) =>
           console.log(`  🌐 http://localhost:${p} (${manager.siteCount()} sites)\n`),
       },
-      async (req) => {
+      async (req, info) => {
         inFlight++;
         try {
-          return await manager.handle(req);
+          return await manager.handle(req, info);
         } finally {
           inFlight--;
         }
@@ -364,10 +364,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const handler = app.handler();
   const server = Deno.serve(
     { port, signal: ac.signal },
-    async (req) => {
+    async (req, info) => {
       inFlight++;
       try {
-        return await handler(req);
+        return await handler(req, info);
       } finally {
         inFlight--;
       }

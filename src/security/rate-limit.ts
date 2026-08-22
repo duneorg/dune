@@ -131,25 +131,87 @@ export class RateLimiter {
 
 /**
  * Extract a client IP from a Request for use as a rate-limit bucket key.
- * Falls back to "unknown" when no IP header is available.
  *
- * `x-forwarded-for` / `x-real-ip` can be spoofed by clients unless the
- * deployment sits behind a trusted reverse proxy. By default we IGNORE
- * those headers and fall back to "unknown" (which still rate-limits, but
- * collapses every direct caller into a single bucket — that's intentional;
- * the per-process rate limit then trips immediately under flood).
+ * By default forwarded headers are ignored (they are spoofable). The
+ * fallback is the TCP peer address stamped by {@link rememberSocketAddr}
+ * at the `Deno.serve` boundary, or `"unknown"` when that was never set
+ * (unit tests, SSG). `"unknown"` still rate-limits — every unbound caller
+ * shares one bucket.
  *
- * Operators that terminate TLS at a known load balancer should set
- * `system.trusted_proxies: true` (boolean) or list specific proxy
- * addresses in their reverse proxy and configure the limiter via
- * `clientIpFromRequest({ trustForwardedFor: true })`.
+ * Operators behind a reverse proxy that overwrites X-Forwarded-For should
+ * set `system.trusted_proxies: true` so {@link clientIp} prefers those
+ * headers (the socket address is then the proxy, not the browser).
  */
 export interface ClientIpOptions {
   /** Honor X-Forwarded-For / X-Real-IP. Only set when behind a trusted edge. */
   trustForwardedFor?: boolean;
 }
 
-/** Resolve the client IP for a request, optionally honoring X-Forwarded-For/X-Real-IP. */
+const socketAddrs = new WeakMap<Request, string>();
+
+function hostnameFromAddr(addr: unknown): string | undefined {
+  if (!addr || typeof addr !== "object") return undefined;
+  const hostname = (addr as { hostname?: unknown }).hostname;
+  return typeof hostname === "string" && hostname.length > 0 ? hostname : undefined;
+}
+
+/**
+ * Record the TCP peer for this Request. Call from the `Deno.serve`
+ * handler (`info.remoteAddr`) before any application code runs.
+ * Unix sockets have no hostname and are ignored.
+ */
+export function rememberSocketAddr(req: Request, addr: unknown): void {
+  const hostname = hostnameFromAddr(addr);
+  if (hostname) socketAddrs.set(req, hostname);
+}
+
+/**
+ * Copy a stamped socket address onto a cloned Request. Core recreates
+ * `Request` objects when stripping headers; WeakMap identity would
+ * otherwise drop the peer address.
+ */
+export function copySocketAddr(from: Request, to: Request): void {
+  const hostname = socketAddrs.get(from);
+  if (hostname) socketAddrs.set(to, hostname);
+}
+
+/**
+ * Wrap a `Deno.serve` handler so {@link clientIp} can see `info.remoteAddr`.
+ * Forwards `info` to the inner handler (Fresh's `app.handler()` uses it).
+ */
+export function withSocketAddr(
+  handler: (
+    req: Request,
+    info?: Deno.ServeHandlerInfo,
+  ) => Response | Promise<Response>,
+): (req: Request, info: Deno.ServeHandlerInfo) => Promise<Response> {
+  return async (req, info) => {
+    rememberSocketAddr(req, info.remoteAddr);
+    return await handler(req, info);
+  };
+}
+
+/**
+ * Stamp `info.remoteAddr` on every request Fresh's `app.handler()` sees.
+ * Covers `builder.listen()` / `app.listen()`, which call `Deno.serve`
+ * with the handler Fresh already typed as `(req, info?) =>`.
+ */
+export function captureHandlerSocketAddr(
+  createHandler: () => (
+    req: Request,
+    info?: Deno.ServeHandlerInfo,
+  ) => Promise<Response>,
+): () => (req: Request, info?: Deno.ServeHandlerInfo) => Promise<Response> {
+  return () => {
+    const inner = createHandler();
+    return (req, info) => {
+      rememberSocketAddr(req, info?.remoteAddr);
+      return inner(req, info);
+    };
+  };
+}
+
+/** Resolve the client IP, optionally honoring X-Forwarded-For/X-Real-IP. */
 export function clientIp(req: Request, opts: ClientIpOptions = {}): string {
   if (opts.trustForwardedFor) {
     const fwd = req.headers.get("x-forwarded-for");
@@ -157,7 +219,7 @@ export function clientIp(req: Request, opts: ClientIpOptions = {}): string {
     const real = req.headers.get("x-real-ip");
     if (real) return real.trim();
   }
-  return "unknown";
+  return socketAddrs.get(req) ?? "unknown";
 }
 
 /**

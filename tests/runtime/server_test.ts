@@ -28,6 +28,7 @@ import {
   isSafeInlineEditPath,
   stripUserHeader,
 } from "../../src/runtime/server.ts";
+import { clientIp, rememberSocketAddr } from "../../src/security/rate-limit.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import { USER_HEADER } from "../../src/auth/types.ts";
 
@@ -180,6 +181,15 @@ Deno.test("stripUserHeader: returns the same request instance when the header is
   });
   const result = stripUserHeader(req);
   assertStrictEquals(result, req);
+});
+
+Deno.test("stripUserHeader: keeps the stamped socket address on the cloned request", () => {
+  const req = new Request("https://example.com/", {
+    headers: { [USER_HEADER]: "{}" },
+  });
+  rememberSocketAddr(req, { hostname: "203.0.113.9" });
+  const cleaned = stripUserHeader(req);
+  assertEquals(clientIp(cleaned), "203.0.113.9");
 });
 
 Deno.test("assertInlineEditWsOrigin: missing Origin is rejected", async () => {

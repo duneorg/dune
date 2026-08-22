@@ -19,6 +19,7 @@ import { createSessionManager, createSessionStore } from "../session/mod.ts";
 import { createAuthRoutes } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
 import { type User, USER_HEADER } from "./types.ts";
+import { copySocketAddr } from "../security/rate-limit.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
 import type { DuneAuthSystem } from "./authz.ts";
@@ -331,6 +332,7 @@ export async function mountDuneAuth(
     const cleanHeaders = new Headers(fc.req.headers);
     cleanHeaders.delete(USER_HEADER);
     const cleanReq = new Request(fc.req, { headers: cleanHeaders });
+    copySocketAddr(fc.req, cleanReq);
 
     // Resolve the real user from the session cookie / JWT only.
     const user = await authMiddleware.resolveUser(cleanReq);
@@ -361,7 +363,9 @@ export async function mountDuneAuth(
     }
     // Replace the request on the context so all downstream handlers see the
     // sanitised + enriched version.
-    (fc as any).req = new Request(fc.req, { headers: cleanHeaders });
+    const nextReq = new Request(fc.req, { headers: cleanHeaders });
+    copySocketAddr(fc.req, nextReq);
+    (fc as any).req = nextReq;
 
     (fc.state as any).siteUser = user;
     return fc.next();

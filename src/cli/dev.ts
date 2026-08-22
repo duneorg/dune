@@ -57,7 +57,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: true });
     console.log(`\n  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
-    Deno.serve({ port, handler: (req) => manager.handle(req) });
+    Deno.serve({ port, handler: (req, info) => manager.handle(req, info) });
     return;
   }
 

@@ -316,7 +316,7 @@ export const CONFIG_SCHEMA = {
           type: "boolean",
           default: false,
           description:
-            "Trust X-Forwarded-For headers. Enable only behind a known reverse proxy.",
+            "Trust X-Forwarded-For headers. Enable only behind a known reverse proxy. When false, client IP is the TCP peer.",
         },
         health_token: {
           type: "string",

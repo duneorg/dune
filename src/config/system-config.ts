@@ -221,7 +221,8 @@ export interface SystemConfig {
    * proxy (Caddy, nginx, Cloudflare, etc.) that overwrites these headers
    * before forwarding. With direct internet exposure, leave it false (the
    * default) — otherwise any client can send their own forwarded header
-   * and bypass per-IP rate limits or evade lockout.
+   * and bypass per-IP rate limits or evade lockout. When false, `clientIp()`
+   * uses the TCP peer stamped at `Deno.serve` instead.
    *
    * @since 1.0.0
    */
