@@ -73,15 +73,26 @@ function safePath(baseDir: string, userPath: string): string | null {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Parse frontmatter + body from a markdown file. */
-function parseFrontmatter(src: string): { fm: Record<string, unknown>; body: string } {
+/**
+ * Parse frontmatter + body from a markdown file.
+ *
+ * `malformed` distinguishes "no frontmatter block present" (fm: {}, body:
+ * the whole file — a legitimate case) from "a frontmatter block is present
+ * but isn't valid YAML" (fm: {}, body: the whole file including the broken
+ * delimiters — callers that merge into `fm` must check this before writing
+ * back, or they'll silently prepend a new frontmatter block on top of the
+ * still-broken one instead of fixing or flagging it).
+ */
+function parseFrontmatter(
+  src: string,
+): { fm: Record<string, unknown>; body: string; malformed: boolean } {
   const match = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-  if (!match) return { fm: {}, body: src };
+  if (!match) return { fm: {}, body: src, malformed: false };
   try {
     const fm = (parseYaml(match[1]) ?? {}) as Record<string, unknown>;
-    return { fm, body: match[2] };
+    return { fm, body: match[2], malformed: false };
   } catch {
-    return { fm: {}, body: src };
+    return { fm: {}, body: src, malformed: true };
   }
 }
 
@@ -258,7 +269,14 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
     try {
       const rawBytes = await deps.storage.read(storagePath);
       const src = new TextDecoder().decode(rawBytes);
-      const { fm, body } = parseFrontmatter(src);
+      const { fm, body, malformed } = parseFrontmatter(src);
+      if (malformed) {
+        return err(
+          `${storagePath} has malformed frontmatter (invalid YAML) — refusing to merge updates into it, ` +
+            "since that would silently duplicate the frontmatter block instead of fixing it. " +
+            "Fix the existing frontmatter manually (or via write_page with corrected content) first.",
+        );
+      }
 
       for (const [key, value] of Object.entries(updates)) {
         if (value === null) {

@@ -116,3 +116,57 @@ Deno.test("write_page: no frontmatter block at all — no warning", async () => 
   const text = (result.content[0] as { text: string }).text;
   assertEquals(text.includes("Warning"), false);
 });
+
+// ── update_frontmatter: malformed existing frontmatter ──────────────────
+
+function updateFrontmatterTool(storage: StorageAdapter & { writes: string[] }) {
+  const tools = buildWriteTools({
+    engine: { pages: [] } as unknown as DuneEngine,
+    storage,
+    root: "/tmp",
+    contentDir: "content",
+  });
+  return tools.find((t) => t.meta.name === "update_frontmatter")!;
+}
+
+function makeStorageWithContent(content: string): StorageAdapter & { writes: string[] } {
+  const writes: string[] = [];
+  return {
+    writes,
+    read: () => Promise.resolve(new TextEncoder().encode(content)),
+    write: (_path: string, data: Uint8Array) => {
+      writes.push(new TextDecoder().decode(data));
+      return Promise.resolve();
+    },
+  } as unknown as StorageAdapter & { writes: string[] };
+}
+
+Deno.test("update_frontmatter: valid existing frontmatter merges correctly", async () => {
+  const storage = makeStorageWithContent("---\ntitle: Hello\ndraft: true\n---\n\nBody text\n");
+  const result = await updateFrontmatterTool(storage).handler({
+    path: "blog/hello.md",
+    updates: { draft: false, tags: ["a", "b"] },
+  });
+  assertEquals(result.isError, undefined);
+  assertEquals(storage.writes.length, 1);
+  const written = storage.writes[0];
+  assertEquals(written.includes("title: Hello"), true);
+  assertEquals(written.includes("draft: false"), true);
+  assertEquals(written.includes("Body text"), true);
+  // Only one frontmatter block should exist in the output.
+  assertEquals(written.match(/^---/gm)?.length, 2);
+});
+
+Deno.test("update_frontmatter: malformed existing frontmatter errors instead of corrupting the file", async () => {
+  // Unclosed bracket — invalid YAML, as written by write_page's parse-and-warn path.
+  const storage = makeStorageWithContent("---\ntitle: [Hello\n---\n\nBody text\n");
+  const result = await updateFrontmatterTool(storage).handler({
+    path: "blog/broken.md",
+    updates: { draft: false },
+  });
+  assertEquals(result.isError, true);
+  const text = (result.content[0] as { text: string }).text;
+  assertEquals(text.includes("malformed frontmatter"), true);
+  // Must not write anything back — no duplicated/corrupted frontmatter.
+  assertEquals(storage.writes, []);
+});
