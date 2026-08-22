@@ -137,6 +137,13 @@ export interface DbSchemaApi {
    * Required when auth is "owner".
    */
   ownerField?: string;
+  /**
+   * Client-writable field names for generated create/update handlers.
+   * Deny-by-default: required when `methods` includes create or update
+   * (use `[]` if the handler should accept no client fields). `id`,
+   * `ownerField`, and auto-managed timestamps are never writable.
+   */
+  writable: string[];
 }
 
 /** Parsed representation of a Dune DB schema YAML file. */

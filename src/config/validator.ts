@@ -13,7 +13,11 @@ import {
   assertThemeName,
   isRemoteThemeSpecifier,
 } from "../themes/reference.ts";
-import { assertPinnedPluginSpecifier, isRemotePluginSpecifier } from "../plugins/reference.ts";
+import {
+  assertHttpsPluginIntegrity,
+  assertPinnedPluginSpecifier,
+  isRemotePluginSpecifier,
+} from "../plugins/reference.ts";
 
 /** A single validation error with path and message. */
 export interface ValidationError {
@@ -434,6 +438,16 @@ function validatePluginList(
           path: `${base}.src`,
           message: err instanceof Error ? err.message : String(err),
           got: entry.src,
+        });
+      }
+    } else if (entry.src.startsWith("https:")) {
+      try {
+        assertHttpsPluginIntegrity(entry.src, entry.integrity);
+      } catch (err) {
+        errors.push({
+          path: `${base}.integrity`,
+          message: err instanceof Error ? err.message : String(err),
+          got: entry.integrity,
         });
       }
     }

@@ -39,6 +39,12 @@ export interface McpServeOptions {
   debug?: boolean;
   /** Build the search index before starting (enables search_content tool). */
   search?: boolean;
+  /**
+   * Omit write and scaffold tools. Opt-in: mcp:serve is a local-agent
+   * workflow and write_page / update_config / install_plugin are the
+   * product. Use this for CI or an untrusted agent.
+   */
+  readonly?: boolean;
 }
 
 /** Read version from deno.json or JSR URL (same logic as cli.ts). */
@@ -93,7 +99,8 @@ export async function mcpServeCommand(
   root: string,
   options: McpServeOptions = {},
 ): Promise<void> {
-  const { debug = false, search: buildSearch = true } = options;
+  const { debug = false, search: buildSearch = true, readonly = false } =
+    options;
 
   // Log to stderr so it doesn't pollute the JSON-RPC stdout stream
   const log = (...args: unknown[]) => {
@@ -124,7 +131,9 @@ export async function mcpServeCommand(
   // content/site storage fields — out of scope for now (mcp write tools
   // aren't used by content.src's driving use case, multisite demo fixtures).
   const contentDir = config.system?.content?.dir ?? "content";
-  const writeTools = buildWriteTools({ engine, storage, root, contentDir });
+  const writeTools = readonly
+    ? []
+    : buildWriteTools({ engine, storage, root, contentDir });
   const resources = buildResources(engine, storage, root);
 
   for (const { meta, handler } of [...tools, ...writeTools]) {
@@ -134,7 +143,11 @@ export async function mcpServeCommand(
     server.registerResource(meta, handler);
   }
 
-  log(`MCP server ready — ${tools.length + writeTools.length} tools (${tools.length} read, ${writeTools.length} write/scaffold), ${resources.length} resources`);
+  log(
+    `MCP server ready — ${tools.length + writeTools.length} tools (${tools.length} read, ${writeTools.length} write/scaffold${
+      readonly ? ", --readonly" : ""
+    }), ${resources.length} resources`,
+  );
 
   await server.serve();
 }

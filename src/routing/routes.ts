@@ -22,7 +22,12 @@ import type { ContentApi } from "../content/api.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
-import { parseRolesSpec, enforceRolesFromRequest } from "../auth/gating.ts";
+import {
+  canAccessIndexEntry,
+  enforceRolesFromRequest,
+  navigationForRequest,
+  parseRolesSpec,
+} from "../auth/gating.ts";
 import { logger, generateRequestId } from "../core/logger.ts";
 import { tracer } from "../tracing/mod.ts";
 import { createTranslator } from "../i18n/translate.ts";
@@ -180,10 +185,14 @@ export function duneRoutes(
         // page, without a separate total-count query (see /api/search for
         // the same trick).
         const fetched = search
-          ? await search.search(q, searchLimit + 1, { sort, filter, offset })
+          ? await search.search(q, 500, { sort, filter, offset: 0 })
           : [];
-        const hasMore = fetched.length > searchLimit;
-        const rawResults = hasMore ? fetched.slice(0, searchLimit) : fetched;
+        const visible = [];
+        for (const r of fetched) {
+          if (await canAccessIndexEntry(req, r.page)) visible.push(r);
+        }
+        const hasMore = visible.length > offset + searchLimit;
+        const rawResults = visible.slice(offset, offset + searchLimit);
         const results = rawResults.map((r) => ({
           route: r.page.route,
           title: r.page.title,
@@ -206,8 +215,10 @@ export function duneRoutes(
               pageTitle: `Search${q ? `: ${q}` : ""} | ${engine.site.title}`,
               site: engine.site,
               config: engine.config,
-              nav: engine.router.getTopNavigation(lang),
-              navAll: engine.router.getNavigation(lang),
+              ...(await navigationForRequest(
+                req,
+                engine.router.getNavigation(lang),
+              )),
               translations: engine.router.getTranslations(url.pathname),
               pathname: url.pathname,
               search: url.search,
@@ -242,7 +253,7 @@ export function duneRoutes(
 
       // ── Flex object public routes ─────────────────────────────────────────
       if (flex && langPath.startsWith("/flex/")) {
-        return respond(handleFlexRoute(engine, url, flex, renderJsx, contentApi));
+        return respond(handleFlexRoute(engine, url, flex, renderJsx, contentApi, req));
       }
       // ─────────────────────────────────────────────────────────────────────
 
@@ -274,7 +285,7 @@ export function duneRoutes(
 
       // Not found — render 404 through theme (error template → layout → bare)
       if (result.type === "not-found" || !result.page) {
-        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found", contentApi));
+        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found", contentApi, req));
       }
 
       const page = result.page;

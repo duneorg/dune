@@ -39,6 +39,22 @@ Deno.test("generateSitemap: includes published routable pages", () => {
   assertEquals(xml.includes('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'), true);
 });
 
+Deno.test("generateSitemap: excludes role-gated pages", () => {
+  const pages = [
+    makePage({ route: "/home" }),
+    makePage({
+      route: "/staff",
+      gated: true,
+      roles: "member",
+      sourcePath: "02.staff/default.md",
+    }),
+  ];
+  const xml = generateSitemap(pages, "https://example.com");
+
+  assertEquals(xml.includes("/home</loc>"), true);
+  assertEquals(xml.includes("/staff</loc>"), false);
+});
+
 Deno.test("generateSitemap: excludes unpublished pages", () => {
   const pages = [
     makePage({ route: "/home" }),

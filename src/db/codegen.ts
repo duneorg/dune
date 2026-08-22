@@ -151,12 +151,20 @@ function generateIndexFile(schemas: DbSchema[]): string {
  * Emit an inline validation block for required / maxLength / enum constraints.
  * Returns the generated lines (without surrounding blank lines).
  */
-function emitValidationBlock(schema: DbSchema, bodyVar: string): string[] {
+function emitValidationBlock(
+  schema: DbSchema,
+  bodyVar: string,
+  writableNames?: string[],
+  opts: { required?: boolean } = {},
+): string[] {
   const lines: string[] = [];
   const checks: string[] = [];
+  const allowed = writableNames ? new Set(writableNames) : null;
+  const checkRequired = opts.required !== false;
 
   for (const field of schema.fields) {
-    if (field.required) {
+    if (allowed && !allowed.has(field.name)) continue;
+    if (checkRequired && field.required) {
       checks.push(
         `    if (${bodyVar}.${field.name} === undefined || ${bodyVar}.${field.name} === null || ${bodyVar}.${field.name} === "") {`,
         `      errors.push({ field: "${field.name}", message: "is required" });`,
@@ -186,6 +194,29 @@ function emitValidationBlock(schema: DbSchema, bodyVar: string): string[] {
   lines.push(...checks);
   lines.push(`  if (errors.length > 0) return Response.json({ errors }, { status: 400 });`);
   return lines;
+}
+
+/** Field names the generated create/update handlers will copy from the JSON body. */
+function clientWritableNames(schema: DbSchema): string[] {
+  return schema.api?.writable ?? [];
+}
+
+/**
+ * Emit a pick of `body` into `data` using the allowlist. Always runs so a
+ * client-supplied `role` / `status` / `ownerField` cannot reach create/update
+ * even if it was in the raw JSON.
+ */
+function emitPickWritable(writable: string[]): string[] {
+  const allowedLit = JSON.stringify(writable);
+  return [
+    `  const allowed = new Set(${allowedLit} as string[]);`,
+    `  const data: Record<string, unknown> = {};`,
+    `  if (body && typeof body === "object") {`,
+    `    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {`,
+    `      if (allowed.has(key)) data[key] = value;`,
+    `    }`,
+    `  }`,
+  ];
 }
 
 /**
@@ -238,15 +269,18 @@ function generateApiIndexFile(schema: DbSchema): string {
     lines.push(`  const body = await req.json().catch(() => null);`);
     lines.push(`  if (!body) return Response.json({ error: "Invalid JSON" }, { status: 400 });`);
     lines.push(``);
-    const validationLines = emitValidationBlock(schema, "body");
+    const writable = clientWritableNames(schema);
+    for (const line of emitPickWritable(writable)) lines.push(line);
+    lines.push(``);
+    const validationLines = emitValidationBlock(schema, "data", writable);
     for (const vl of validationLines) lines.push(vl);
     if (validationLines.length > 0) lines.push(``);
     if (isOwner) {
       lines.push(`  // Owner scoping: force ownership to the authenticated user; a`);
       lines.push(`  // client-supplied ${ownerField} must never win.`);
-      lines.push(`  const record = await db.${schema.table}.create({ ...body, ${ownerField}: authResult.user!.id } as ${schema.model}Create);`);
+      lines.push(`  const record = await db.${schema.table}.create({ ...data, ${ownerField}: authResult.user!.id } as ${schema.model}Create);`);
     } else {
-      lines.push(`  const record = await db.${schema.table}.create(body as ${schema.model}Create);`);
+      lines.push(`  const record = await db.${schema.table}.create(data as ${schema.model}Create);`);
     }
     lines.push(`  return Response.json(record, { status: 201 });`);
     lines.push(`}`);
@@ -308,14 +342,15 @@ function generateApiIdFile(schema: DbSchema): string {
     lines.push(`  const body = await req.json().catch(() => null);`);
     lines.push(`  if (!body) return Response.json({ error: "Invalid JSON" }, { status: 400 });`);
     lines.push(``);
-    const validationLines = emitValidationBlock(schema, "body");
+    const writable = clientWritableNames(schema);
+    for (const line of emitPickWritable(writable)) lines.push(line);
+    lines.push(``);
+    const validationLines = emitValidationBlock(schema, "data", writable, {
+      required: false,
+    });
     for (const vl of validationLines) lines.push(vl);
     if (validationLines.length > 0) lines.push(``);
-    if (isOwner) {
-      lines.push(`  // Owner scoping: never let an update reassign ownership.`);
-      lines.push(`  delete (body as Record<string, unknown>).${ownerField};`);
-    }
-    lines.push(`  const result = await db.${schema.table}.update(params.id, body as ${schema.model}Update);`);
+    lines.push(`  const result = await db.${schema.table}.update(params.id, data as ${schema.model}Update);`);
     lines.push(`  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`);
     lines.push(`  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
     lines.push(`  return Response.json(record);`);

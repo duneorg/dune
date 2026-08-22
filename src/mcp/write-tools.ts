@@ -34,6 +34,10 @@ import {
   generateTheme,
   type GenerateOptions,
 } from "../cli/generate.ts";
+import {
+  assertHttpsPluginIntegrity,
+  assertPinnedPluginSpecifier,
+} from "../plugins/reference.ts";
 
 export interface WriteToolDeps {
   engine: DuneEngine;
@@ -312,11 +316,16 @@ const INSTALL_PLUGIN_META: McpTool = {
   description:
     "Add a plugin specifier to the plugins list in site.yaml. " +
     "The specifier may be a local path (./plugins/my-plugin/index.ts) or " +
-    "a remote specifier (jsr:@scope/plugin@^1.0.0, npm:plugin-name).",
+    "a remote specifier pinned to an exact version (jsr:@scope/plugin@1.0.0, npm:plugin-name@1.2.3). " +
+    "https: specifiers require integrity (sha256:<64 hex> or SRI sha256-<base64>).",
   inputSchema: {
     type: "object",
     properties: {
       src: { type: "string", description: "Plugin specifier, e.g. ./plugins/my-plugin/index.ts" },
+      integrity: {
+        type: "string",
+        description: "Required for https: src. sha256:<64 hex> or SRI sha256-<base64>.",
+      },
     },
     required: ["src"],
   },
@@ -326,6 +335,15 @@ function makeInstallPluginHandler(deps: WriteToolDeps): ToolHandler {
   return async (args) => {
     const src = String(args.src ?? "").trim();
     if (!src) return err("src is required");
+    const integrity = args.integrity !== undefined
+      ? String(args.integrity).trim()
+      : undefined;
+    try {
+      assertPinnedPluginSpecifier(src);
+      assertHttpsPluginIntegrity(src, integrity || undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e.message : String(e));
+    }
 
     const configPath = "site.yaml";
     try {
@@ -343,7 +361,7 @@ function makeInstallPluginHandler(deps: WriteToolDeps): ToolHandler {
       );
       if (alreadyInstalled) return ok(`Plugin already installed: ${src}`);
 
-      plugins.push({ src });
+      plugins.push(integrity ? { src, integrity } : { src });
       config.plugins = plugins;
 
       await deps.storage.write(configPath, new TextEncoder().encode(stringifyYaml(config)));

@@ -35,14 +35,25 @@ import { signTuple, verifyTuple } from "./authz-hmac.ts";
 import type { SignedTuple } from "./authz-hmac.ts";
 import { logger } from "../core/logger.ts";
 
-/** Read the DUNE_AUTHZ_HMAC_STRICT env flag ("1"/"true"). */
-function authzStrictHmacFromEnv(): boolean {
+/**
+ * Strict HMAC is the default when a key is configured. Escape hatches:
+ *   DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1  — accept tuples with no hmac field
+ *   DUNE_AUTHZ_HMAC_STRICT=0          — legacy equivalent
+ */
+export function authzStrictHmacFromEnv(): boolean {
   try {
-    const v = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
-    return v === "1" || v?.toLowerCase() === "true";
+    const allowUnsigned = Deno.env.get("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
+    if (allowUnsigned === "1" || allowUnsigned?.toLowerCase() === "true") {
+      return false;
+    }
+    const legacy = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
+    if (legacy === "0" || legacy?.toLowerCase() === "false") {
+      return false;
+    }
+    return true;
   } catch {
-    // Env access not granted — default to off.
-    return false;
+    // Env access not granted — stay strict.
+    return true;
   }
 }
 
@@ -72,16 +83,17 @@ export class AuthzLocalAdapter {
   private readonly permissionsDir: string;
   /**
    * Optional HMAC key for tuple file integrity verification.
-   * When set: new tuples are signed on write; existing tuples with a valid or
-   * missing `hmac` field are loaded; tuples with an invalid `hmac` are rejected.
-   * When null: signing and verification are skipped (fail-open).
+   * When set: new tuples are signed on write; tuples with a valid hmac are
+   * loaded; tuples with an invalid hmac are rejected; unsigned tuples are
+   * rejected unless strict mode is off. When null: signing and verification
+   * are skipped (no key configured).
    */
   private readonly hmacKey: CryptoKey | null;
   /**
    * Strict HMAC mode. When true and a key is configured, unsigned tuples (no
-   * `hmac` field) are rejected rather than accepted. Defaults from the
-   * DUNE_AUTHZ_HMAC_STRICT env var ("1"/"true"). Off by default so the
-   * migration path (sign existing files with `dune authz:sign`) still works.
+   * `hmac` field) are rejected. Defaults to on; set
+   * DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1 (or DUNE_AUTHZ_HMAC_STRICT=0) to
+   * accept unsigned files during `dune authz:sign` migration.
    */
   private readonly strictHmac: boolean;
   /** In-memory tuple index — rebuilt from disk on first access */

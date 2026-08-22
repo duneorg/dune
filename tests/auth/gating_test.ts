@@ -9,7 +9,16 @@ import {
   assertEquals,
   assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parseRolesSpec, checkRoles, enforceRoles } from "../../src/auth/gating.ts";
+import {
+  parseRolesSpec,
+  checkRoles,
+  enforceRoles,
+  isPublicIndexEntry,
+  canAccessIndexEntry,
+  filterAccessibleEntries,
+  findPageForMediaUrl,
+  navigationForRequest,
+} from "../../src/auth/gating.ts";
 import type { RolesSpec } from "../../src/auth/gating.ts";
 import type { User } from "../../src/auth/types.ts";
 
@@ -255,4 +264,58 @@ Deno.test("enforceRoles: null user on empty-array spec → 302 (not authenticate
   const req = makeRequest();
   const resp = await enforceRoles(req, null, []);
   assertEquals(resp?.status, 302);
+});
+
+Deno.test("isPublicIndexEntry: gated flag", () => {
+  assertEquals(isPublicIndexEntry({}), true);
+  assertEquals(isPublicIndexEntry({ gated: false }), true);
+  assertEquals(isPublicIndexEntry({ gated: true, roles: "member" }), false);
+});
+
+Deno.test("canAccessIndexEntry: ungated page is always visible", async () => {
+  assertEquals(await canAccessIndexEntry(makeRequest(), { route: "/about" }), true);
+});
+
+Deno.test("canAccessIndexEntry: gated page hidden from anonymous request", async () => {
+  const ok = await canAccessIndexEntry(makeRequest(), {
+    gated: true,
+    roles: "member",
+    route: "/members",
+  });
+  assertEquals(ok, false);
+});
+
+Deno.test("filterAccessibleEntries: drops gated rows, keeps public", async () => {
+  const pages = [
+    { route: "/", gated: false },
+    { route: "/staff", gated: true, roles: "member" },
+    { route: "/blog", gated: false },
+  ];
+  const visible = await filterAccessibleEntries(makeRequest(), pages);
+  assertEquals(visible.map((p) => p.route), ["/", "/blog"]);
+});
+
+Deno.test("findPageForMediaUrl: longest matching route prefix", () => {
+  const pages = [
+    { route: "/blog", gated: false },
+    { route: "/blog/hello", gated: true, roles: "member" },
+  ];
+  const owner = findPageForMediaUrl(pages, "/blog/hello/cover.jpg");
+  assertEquals(owner?.route, "/blog/hello");
+});
+
+Deno.test("findPageForMediaUrl: home page owns single-segment media", () => {
+  const pages = [{ route: "/", gated: true, roles: "member" }];
+  const owner = findPageForMediaUrl(pages, "/secret.pdf");
+  assertEquals(owner?.route, "/");
+});
+
+Deno.test("navigationForRequest: no req keeps only public entries", async () => {
+  const { nav, navAll } = await navigationForRequest(undefined, [
+    { route: "/", depth: 0, gated: false },
+    { route: "/staff", depth: 0, gated: true, roles: "member" },
+    { route: "/blog/a", depth: 1, gated: false },
+  ]);
+  assertEquals(nav.map((p) => p.route), ["/"]);
+  assertEquals(navAll.map((p) => p.route), ["/", "/blog/a"]);
 });

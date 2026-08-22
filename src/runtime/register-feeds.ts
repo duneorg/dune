@@ -44,7 +44,7 @@ export async function registerFeeds(
     const contentMode = feedConfig?.content ?? "summary";
     const siteBase = config.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
     const candidates = engine.pages
-      .filter((p) => p.published && p.routable && p.date !== null)
+      .filter((p) => p.published && p.routable && p.date !== null && !p.gated)
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, count);
 

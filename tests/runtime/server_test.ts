@@ -21,8 +21,11 @@ import {
   assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  assertInlineEditWsOrigin,
   checkInlineEditPermission,
   checkInlineEditPermissionForSiteUser,
+  isIndexedInlineEditPath,
+  isSafeInlineEditPath,
   stripUserHeader,
 } from "../../src/runtime/server.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
@@ -177,6 +180,57 @@ Deno.test("stripUserHeader: returns the same request instance when the header is
   });
   const result = stripUserHeader(req);
   assertStrictEquals(result, req);
+});
+
+Deno.test("assertInlineEditWsOrigin: missing Origin is rejected", async () => {
+  const denied = assertInlineEditWsOrigin(
+    new Request("https://example.com/api/inline-edit/ws"),
+  );
+  assertEquals(denied?.status, 403);
+  assertEquals(await denied!.text(), "Origin required");
+});
+
+Deno.test("assertInlineEditWsOrigin: cross-site Origin is rejected", async () => {
+  const denied = assertInlineEditWsOrigin(
+    new Request("https://example.com/api/inline-edit/ws", {
+      headers: { origin: "https://evil.example" },
+    }),
+  );
+  assertEquals(denied?.status, 403);
+  assertEquals(await denied!.text(), "Cross-origin WebSocket rejected");
+});
+
+Deno.test("assertInlineEditWsOrigin: same-origin Origin is allowed", () => {
+  assertEquals(
+    assertInlineEditWsOrigin(
+      new Request("https://example.com/api/inline-edit/ws", {
+        headers: { origin: "https://example.com" },
+      }),
+    ),
+    null,
+  );
+});
+
+Deno.test("isSafeInlineEditPath: accepts relative content files and rejects traversal", () => {
+  assertEquals(isSafeInlineEditPath("01.home/default.md"), true);
+  assertEquals(isSafeInlineEditPath("02.blog/01.post/default.mdx"), true);
+  assertEquals(isSafeInlineEditPath("page.tsx"), true);
+  assertEquals(isSafeInlineEditPath("../etc/passwd.md"), false);
+  assertEquals(isSafeInlineEditPath("foo/../../bar.md"), false);
+  assertEquals(isSafeInlineEditPath("no-extension"), false);
+  assertEquals(isSafeInlineEditPath(null), false);
+});
+
+Deno.test("isIndexedInlineEditPath: requires the path to be a page in the index", () => {
+  const pages = [
+    { sourcePath: "01.home/default.md" },
+    { sourcePath: "02.blog/01.post/default.md" },
+  ];
+  assertEquals(isIndexedInlineEditPath(pages, "01.home/default.md"), true);
+  assertEquals(isIndexedInlineEditPath(pages, "02.blog/01.post/default.md"), true);
+  assertEquals(isIndexedInlineEditPath(pages, "03.secret/sidecar.yaml"), false);
+  assertEquals(isIndexedInlineEditPath(pages, "planted.md"), false);
+  assertEquals(isIndexedInlineEditPath(pages, "../escape.md"), false);
 });
 
 Deno.test("stripUserHeader: preserves method, url, and other request properties", () => {

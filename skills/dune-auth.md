@@ -90,7 +90,7 @@ auth:
     rolesClaim: roles     # default "roles"
 ```
 
-There is no `userClaims: { id, email, name }` nested map — `userIdClaim`/`emailClaim`/`rolesClaim` are flat fields on `jwt:`, all optional with the defaults shown, and there is no name-claim option at all (name isn't extracted from the JWT in this mode). `issuer`/`audience` are strongly recommended — without them, any token signed by the same JWKS endpoint is accepted, including tokens minted for a different tenant on a shared IdP.
+There is no `userClaims: { id, email, name }` nested map — `userIdClaim`/`emailClaim`/`rolesClaim` are flat fields on `jwt:`, all optional with the defaults shown, and there is no name-claim option at all (name isn't extracted from the JWT in this mode). `issuer` and `audience` are required — `mountDuneAuth()` refuses to start without both. Without them, any token signed by the same JWKS endpoint is accepted, including tokens minted for a different tenant on a shared IdP.
 
 No routes generated. No sessions. No user records in Dune. Clients pass `Authorization: Bearer {token}`. Optionally, `auth.webhook` (only active with `mode: external-jwt` + `authzStore: local`) registers `POST /auth/webhook` to handle `user.deleted` events and revoke authz tuples — role changes don't need a webhook, they're reconciled per-request from the JWT claims automatically.
 

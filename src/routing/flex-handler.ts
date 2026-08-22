@@ -8,6 +8,7 @@ import type { FlexRecord, FlexSchema } from "../flex/types.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { createTranslator } from "../i18n/translate.ts";
 import { splitLanguagePrefix } from "./resolver.ts";
+import { navigationForRequest } from "../auth/gating.ts";
 
 /**
  * Props passed to a flex type list template.
@@ -71,6 +72,7 @@ export async function handleFlexRoute(
   flex: FlexEngine,
   render: (jsx: unknown, status?: number) => Response | Promise<Response>,
   contentApi?: ContentApi,
+  req?: Request,
 ): Promise<Response> {
   const { lang, path } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
   const parts = path.split("/").filter(Boolean); // ["flex", type, ...id]
@@ -88,8 +90,10 @@ export async function handleFlexRoute(
   const strings = await engine.themes.loadLocale(lang);
   const t = createTranslator(strings);
   const layout = await engine.themes.loadLayout("layout");
-  const nav = engine.router.getTopNavigation(lang);
-  const navAll = engine.router.getNavigation(lang);
+  const { nav, navAll } = await navigationForRequest(
+    req,
+    engine.router.getNavigation(lang),
+  );
   const baseProps = {
     type: flexType,
     schema,

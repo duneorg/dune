@@ -164,10 +164,9 @@ export async function assertOutboundUrlAllowed(
  * rather than re-resolving (which could now point at a private address).
  *
  * For `http:` the host is rewritten to the resolved IP with the original host
- * preserved in the `Host` header. For `https:` we cannot rewrite the host
- * without breaking TLS SNI / certificate validation, so we set `serverName`
- * via a pinned-resolver client when available and otherwise connect by
- * hostname immediately after validation (a narrow residual window).
+ * preserved in the `Host` header. For `https:` we dial the vetted IP via
+ * `Deno.createHttpClient({ proxy: { transport: "tcp", ... } })` so SNI and
+ * certificate validation still use the original hostname.
  *
  * Callers should treat any non-2xx (including 3xx, since redirects are manual)
  * as a failure.
@@ -184,7 +183,9 @@ export async function safeFetch(
     url.hostname.toLowerCase() !== resolvedAddress.toLowerCase();
 
   // Pin the resolved IP for plaintext HTTP by rewriting the host and carrying
-  // the original Host header. HTTPS keeps the hostname so TLS validation holds.
+  // the original Host header. HTTPS cannot rewrite the host (SNI / cert), so
+  // we dial the vetted IP via Deno.createHttpClient's tcp transport while
+  // fetch() still uses the original hostname for SNI and certificate checks.
   if (hostIsName && url.protocol === "http:") {
     const headers = new Headers(requestInit.headers ?? init.headers ?? undefined);
     if (!headers.has("host")) headers.set("Host", url.host);
@@ -192,6 +193,22 @@ export async function safeFetch(
     pinned.hostname = resolvedAddress!;
     requestInit.headers = headers;
     return fetch(pinned, requestInit);
+  }
+
+  if (hostIsName && url.protocol === "https:") {
+    const port = url.port ? Number(url.port) : 443;
+    const client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: resolvedAddress!,
+        port,
+      },
+    });
+    try {
+      return await fetch(url, { ...requestInit, client } as RequestInit);
+    } finally {
+      client.close();
+    }
   }
 
   return fetch(url, requestInit);

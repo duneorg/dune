@@ -3,7 +3,11 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createMagicLink, verifyMagicToken } from "../../src/auth/magic-link.ts";
+import {
+  createMagicLink,
+  InMemoryMagicTokenStore,
+  verifyMagicToken,
+} from "../../src/auth/magic-link.ts";
 
 const SECRET = "test-secret-for-magic-link";
 const BASE_URL = "https://example.com";
@@ -108,6 +112,25 @@ Deno.test("createMagicLink: different emails produce different tokens", async ()
   const link1 = await createMagicLink("a@example.com", SECRET, BASE_URL);
   const link2 = await createMagicLink("b@example.com", SECRET, BASE_URL);
   assertEquals(link1 !== link2, true);
+});
+
+Deno.test("verifyMagicToken: store.add is atomic — replay of the same token fails", async () => {
+  const store = new InMemoryMagicTokenStore();
+  const link = await createMagicLink("user@example.com", SECRET, BASE_URL);
+  const token = new URL(link).searchParams.get("token") ?? "";
+
+  const first = await verifyMagicToken(token, SECRET, store);
+  assertEquals(first?.email, "user@example.com");
+  const replay = await verifyMagicToken(token, SECRET, store);
+  assertEquals(replay, null);
+});
+
+Deno.test("InMemoryMagicTokenStore.add: second insert of a live nonce returns false", async () => {
+  const store = new InMemoryMagicTokenStore();
+  const exp = Date.now() + 60_000;
+  assertEquals(await store.add("nonce-1", exp), true);
+  assertEquals(await store.add("nonce-1", exp), false);
+  assertEquals(await store.has("nonce-1"), true);
 });
 
 Deno.test("verifyMagicToken: tokens from different secrets don't cross-verify", async () => {

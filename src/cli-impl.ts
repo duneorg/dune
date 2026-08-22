@@ -170,6 +170,8 @@ Commands:
   migrate:status      Show applied/pending migration status
 
   mcp:serve           Start MCP server over stdio (for Claude Code / Cursor / etc.)
+                      --readonly omits write/scaffold tools (opt-in; writes stay
+                      the default because that is the local-agent workflow)
 
   plugin:list         List installed plugins and their hook subscriptions
   plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name")
@@ -387,6 +389,10 @@ export async function main(args: string[] = Deno.args) {
       options.activate = true;
     } else if (args[i] === "--name" && args[i + 1]) {
       options.themeName = args[++i];
+    } else if (args[i] === "--integrity" && args[i + 1]) {
+      options.integrity = args[++i];
+    } else if (args[i] === "--readonly") {
+      options.readonly = true;
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
@@ -625,6 +631,7 @@ export async function main(args: string[] = Deno.args) {
         await mcpServeCommand(root, {
           debug: options.debug === true,
           search: options.noSearch !== true,
+          readonly: options.readonly === true,
         });
         break;
 
@@ -633,7 +640,9 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "plugin:install":
-        await pluginCommands.install(root, options.positional as string);
+        await pluginCommands.install(root, options.positional as string, {
+          integrity: options.integrity as string | undefined,
+        });
         break;
 
       case "plugin:remove":

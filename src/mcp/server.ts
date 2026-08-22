@@ -9,7 +9,7 @@
  * Protocol:  MCP 2024-11-05
  *
  * Usage:
- *   dune mcp:serve [--root <dir>] [--debug]
+ *   dune mcp:serve [--root <dir>] [--debug] [--readonly]
  *
  * Claude Code config (~/.claude.json or .mcp.json):
  *   {
@@ -40,6 +40,9 @@
  *   - To reduce blast radius, replace `-A` with the narrowest flag set that
  *     works for your site, e.g.
  *     `--allow-read=. --allow-write=. --allow-env --allow-net=jsr.io`.
+ *   - Pass `--readonly` to omit write/scaffold tools. Writes stay the default
+ *     because mcp:serve is the local-agent authoring workflow; readonly is
+ *     for CI or an untrusted agent, not a silent downgrade of existing configs.
  */
 
 /** @module */

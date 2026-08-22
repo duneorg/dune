@@ -133,6 +133,51 @@ function stripSetCookieOnAdmin(
 }
 
 /**
+ * Browsers always send Origin on WebSocket upgrade. Reject a missing or
+ * cross-site Origin so a non-browser client cannot open the collab socket
+ * with only a stolen cookie.
+ */
+export function assertInlineEditWsOrigin(req: Request): Response | null {
+  const origin = req.headers.get("origin");
+  if (!origin) {
+    return new Response("Origin required", { status: 403 });
+  }
+  try {
+    if (new URL(origin).host !== new URL(req.url).host) {
+      return new Response("Cross-origin WebSocket rejected", { status: 403 });
+    }
+  } catch {
+    return new Response("Cross-origin WebSocket rejected", { status: 403 });
+  }
+  return null;
+}
+
+const INLINE_EDIT_PATH_RE = /^[a-zA-Z0-9/_.-]+\.(?:md|mdx|yaml|yml|json|tsx)$/;
+
+/** True when `sourcePath` is a relative content file with no traversal. */
+export function isSafeInlineEditPath(
+  sourcePath: string | null,
+): sourcePath is string {
+  return !!sourcePath &&
+    INLINE_EDIT_PATH_RE.test(sourcePath) &&
+    !sourcePath.includes("..");
+}
+
+/**
+ * True when `sourcePath` is a safe relative content file that exists in the
+ * page index. The WS handler used to accept any filename matching the
+ * extension regex — including paths that are not pages (sidecars, planted
+ * files under content/) — and pass them to the collab document store.
+ */
+export function isIndexedInlineEditPath(
+  pages: ReadonlyArray<{ sourcePath: string }>,
+  sourcePath: string | null,
+): boolean {
+  return isSafeInlineEditPath(sourcePath) &&
+    pages.some((p) => p.sourcePath === sourcePath);
+}
+
+/**
  * Whether an authenticated admin session may perform inline edits
  * (`pages.update`). Checked against `authz` when configured — the sole
  * authority every other admin permission check follows
@@ -399,24 +444,14 @@ export async function createDuneApp(
     if (fc.req.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
     }
-    const origin = fc.req.headers.get("origin");
-    if (origin) {
-      try {
-        if (new URL(origin).host !== new URL(fc.req.url).host) {
-          return new Response("Cross-origin WebSocket rejected", {
-            status: 403,
-          });
-        }
-      } catch {
-        return new Response("Cross-origin WebSocket rejected", { status: 403 });
-      }
-    }
+    const originDenied = assertInlineEditWsOrigin(fc.req);
+    if (originDenied) return originDenied;
     const sourcePath = new URL(fc.req.url).searchParams.get("path");
-    const SAFE_PATH_RE = /^[a-zA-Z0-9/_.-]+\.(?:md|mdx|yaml|yml|json|tsx)$/;
-    if (
-      !sourcePath || !SAFE_PATH_RE.test(sourcePath) || sourcePath.includes("..")
-    ) {
+    if (!isSafeInlineEditPath(sourcePath)) {
       return new Response("Invalid path", { status: 400 });
+    }
+    if (!isIndexedInlineEditPath(engine.pages, sourcePath)) {
+      return new Response("Unknown path", { status: 404 });
     }
 
     let userId: string;

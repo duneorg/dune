@@ -26,7 +26,12 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
-import { enforceRolesFromRequest, parseRolesSpec } from "../auth/gating.ts";
+import {
+  canAccessIndexEntry,
+  enforceRolesFromRequest,
+  filterAccessibleEntries,
+  parseRolesSpec,
+} from "../auth/gating.ts";
 import { logger } from "../core/logger.ts";
 
 // Per-IP rate limit for public API. Generous enough for legitimate headless
@@ -230,7 +235,7 @@ async function routeApiRequest(
 ): Promise<unknown> {
   // GET /api/nav — navigation tree
   if (path === "/api/nav") {
-    const nav = engine.router.getNavigation();
+    const nav = await filterAccessibleEntries(req, engine.router.getNavigation());
     return {
       items: nav.map((p: PageIndex) => ({
         route: p.route,
@@ -276,9 +281,16 @@ async function routeApiRequest(
     // knowable without a separate total-count query — SearchEngine.search()
     // only returns a page of results, not a total, and adding one wouldn't
     // be free for every engine (a second Meilisearch request).
-    const fetched = await search.search(q, limit + 1, { sort, filter, offset });
-    const hasMore = fetched.length > limit;
-    const results = hasMore ? fetched.slice(0, limit) : fetched;
+    // Fetch a wide candidate window, then drop gated hits the caller cannot
+    // see, then apply offset/limit. Applying offset before the gate would
+    // let a client infer how many gated rows sit in front of public ones.
+    const fetched = await search.search(q, 500, { sort, filter, offset: 0 });
+    const visible: typeof fetched = [];
+    for (const r of fetched) {
+      if (await canAccessIndexEntry(req, r.page)) visible.push(r);
+    }
+    const hasMore = visible.length > offset + limit;
+    const results = visible.slice(offset, offset + limit);
     const facets = search.facetCounts ? await search.facetCounts(q, "subtype") : {};
     return {
       items: results.map((r) => ({
@@ -299,7 +311,7 @@ async function routeApiRequest(
 
   // GET /api/collections — query collections via query params
   if (path === "/api/collections") {
-    return handleCollectionQuery(url, collections);
+    return handleCollectionQuery(url, req, collections);
   }
 
   // GET /api/taxonomy — list all taxonomies
@@ -316,7 +328,7 @@ async function routeApiRequest(
   const taxValueMatch = path.match(/^\/api\/taxonomy\/([^/]+)\/(.+)$/);
   if (taxValueMatch) {
     const [, taxName, taxValue] = taxValueMatch;
-    const pages = taxonomy.find(taxName, taxValue);
+    const pages = await filterAccessibleEntries(req, taxonomy.find(taxName, taxValue));
     return {
       taxonomy: taxName,
       value: taxValue,
@@ -356,7 +368,7 @@ async function routeApiRequest(
 
   // GET /api/pages — list all pages
   if (path === "/api/pages") {
-    return handlePageList(url, engine);
+    return handlePageList(url, req, engine);
   }
 
   // GET /api/pages/:path — get single page
@@ -396,7 +408,7 @@ async function routeApiRequest(
   return null;
 }
 
-async function handlePageList(url: URL, engine: DuneEngine) {
+async function handlePageList(url: URL, req: Request, engine: DuneEngine) {
   const limit = clampInt(url.searchParams.get("limit"), 20, 1, 200);
   const offset = clampInt(url.searchParams.get("offset"), 0, 0, 1_000_000);
   const template = url.searchParams.get("template");
@@ -413,6 +425,7 @@ async function handlePageList(url: URL, engine: DuneEngine) {
   // (under requirePermission("pages.read")), not here.
   void published;
   items = items.filter((p) => p.published);
+  items = await filterAccessibleEntries(req, items);
 
   // Template filter
   if (template) {
@@ -517,8 +530,16 @@ async function handlePageChildren(pageRoute: string, req: Request, engine: DuneE
   }
 
   const children = await result.page.children();
+  const visible = [];
+  for (const c of children) {
+    const spec = parseRolesSpec(c.frontmatter?.roles);
+    if (spec !== null && (await enforceRolesFromRequest(req, spec)) !== null) {
+      continue;
+    }
+    visible.push(c);
+  }
   return {
-    items: children.map((c) => ({
+    items: visible.map((c) => ({
       route: c.route,
       title: c.frontmatter.title,
       date: c.frontmatter.date,
@@ -526,7 +547,7 @@ async function handlePageChildren(pageRoute: string, req: Request, engine: DuneE
       format: c.format,
       order: c.order,
     })),
-    total: children.length,
+    total: visible.length,
   };
 }
 
@@ -555,6 +576,7 @@ async function handlePageMedia(pageRoute: string, req: Request, engine: DuneEngi
 
 async function handleCollectionQuery(
   url: URL,
+  req: Request,
   collections: CollectionEngine,
 ) {
   // Build collection definition from query params
@@ -586,14 +608,23 @@ async function handleCollectionQuery(
       published: true,
       ...(template ? { template } : {}),
     },
-    limit,
-    offset,
+    limit: 200,
+    offset: 0,
   };
 
   const collection = await collections.query(definition);
+  const visible = [];
+  for (const p of collection.items) {
+    const spec = parseRolesSpec(p.frontmatter?.roles);
+    if (spec !== null && (await enforceRolesFromRequest(req, spec)) !== null) {
+      continue;
+    }
+    visible.push(p);
+  }
+  const sliced = visible.slice(offset, offset + limit);
 
   return {
-    items: collection.items.map((p) => ({
+    items: sliced.map((p) => ({
       route: p.route,
       title: p.frontmatter.title,
       date: p.frontmatter.date,
@@ -601,11 +632,11 @@ async function handleCollectionQuery(
       format: p.format,
     })),
     meta: {
-      total: collection.total,
-      page: collection.page,
-      pages: collection.pages,
-      hasNext: collection.hasNext,
-      hasPrev: collection.hasPrev,
+      total: visible.length,
+      page: Math.floor(offset / limit) + 1,
+      pages: Math.ceil(visible.length / limit) || 1,
+      hasNext: offset + limit < visible.length,
+      hasPrev: offset > 0,
     },
   };
 }

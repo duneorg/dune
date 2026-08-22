@@ -15,6 +15,7 @@ import { resolveCollectionForPage, resolveCollectionsForPage } from "./collectio
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { logger } from "../core/logger.ts";
+import { navigationForRequest } from "../auth/gating.ts";
 
 // Dedupe by template name so a broken theme configuration doesn't spam the
 // log on every page render — one warning per distinct missing template name
@@ -127,8 +128,7 @@ export async function handleMarkdownPage(
     pageTitle: buildPageTitle(page, engine.site.title),
     site: engine.site,
     config: engine.config,
-    nav: engine.router.getTopNavigation(page.language),
-    navAll: engine.router.getNavigation(page.language),
+    ...(await navigationForRequest(req, engine.router.getNavigation(page.language))),
     translations: engine.router.getTranslations(page.route),
     pathname: url.pathname,
     search: url.search,

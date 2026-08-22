@@ -512,6 +512,7 @@ function buildPageIndex(
       : getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},
     gated: parseRolesSpec(frontmatter.roles) !== null,
+    roles: frontmatter.roles,
     mtime,
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),

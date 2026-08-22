@@ -267,15 +267,16 @@ export interface SiteConfig {
       /** JWT claim containing role(s) (string or string[]). Default: "roles". */
       rolesClaim?: string;
       /**
-       * Expected `iss` claim. Strongly recommended in external-jwt mode:
-       * without it, any token signed by the same IdP (e.g. another tenant on a
-       * shared JWKS endpoint) is accepted.
+       * Expected `iss` claim. Required in external-jwt mode: without it,
+       * any token signed by the same IdP (e.g. another tenant on a shared
+       * JWKS endpoint) is accepted. Startup fails if this is missing.
        */
       issuer?: string;
       /**
-       * Expected `aud` claim. The token's audience (string or string[]) must
-       * contain this value, preventing tokens minted for a different app that
-       * shares the IdP's signing keys from being accepted.
+       * Expected `aud` claim. Required in external-jwt mode. The token's
+       * audience (string or string[]) must contain this value, preventing
+       * tokens minted for a different app that shares the IdP's signing
+       * keys from being accepted. Startup fails if this is missing.
        */
       audience?: string;
       /**

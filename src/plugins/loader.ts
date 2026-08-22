@@ -25,6 +25,14 @@
  */
 
 import { join } from "@std/path";
+import {
+  assertHttpsPluginIntegrity,
+  assertPinnedPluginSpecifier,
+  integrityMatches,
+  parsePluginIntegrity,
+  sha256Hex,
+} from "./reference.ts";
+import { safeFetch } from "../security/ssrf.ts";
 import type { DuneConfig, PluginEntry } from "../config/types.ts";
 import type {
   DunePlugin,
@@ -110,8 +118,16 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
   if (allEntries.length === 0) return;
 
   for (const entry of allEntries) {
+    // Pin check before import — validateConfig() already does this on the
+    // normal boot path, but callers like `dune plugin:list` use
+    // skipValidation and would otherwise dynamically import unpinned
+    // jsr:/npm: specifiers with full process privileges.
+    assertPinnedPluginSpecifier(entry.src);
+    assertHttpsPluginIntegrity(entry.src, entry.integrity);
     try {
-      const importUrl = resolvePluginUrl(entry.src, root);
+      const importUrl = entry.src.startsWith("https:")
+        ? await materializeHttpsPlugin(entry.src, entry.integrity!, root)
+        : resolvePluginUrl(entry.src, root);
       const mod = await import(importUrl); // lockfile-safe: discovery (plugin specifier from site config, handled by plugin discovery subprocess)
 
       const exported = mod.default;
@@ -287,6 +303,44 @@ export function isValidPluginIslandSpecifier(spec: unknown): spec is string {
  * - Local path starting with `.` or `/` — converted to `file://` URL
  * - Anything else — returned as-is and let Deno resolve it
  */
+/**
+ * Fetch an https: plugin, verify its SHA-256 pin, and import from a local
+ * cache so Deno never executes the remote URL directly.
+ */
+async function materializeHttpsPlugin(
+  src: string,
+  integrity: string,
+  root: string,
+): Promise<string> {
+  const expected = parsePluginIntegrity(integrity);
+  let res: Response;
+  try {
+    res = await safeFetch(src);
+  } catch (err) {
+    throw new Error(
+      `Failed to fetch https: plugin "${src}": ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch https: plugin "${src}": HTTP ${res.status}`);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const actual = await sha256Hex(bytes);
+  if (!integrityMatches(expected.hex, actual)) {
+    throw new Error(
+      `https: plugin integrity mismatch for "${src}" ` +
+        `(expected sha256:${expected.hex}, got sha256:${actual})`,
+    );
+  }
+  const cacheDir = join(root, ".dune", "plugin-cache");
+  await Deno.mkdir(cacheDir, { recursive: true });
+  const cachePath = join(cacheDir, `${expected.hex}.ts`);
+  await Deno.writeFile(cachePath, bytes);
+  return `file://${cachePath}`;
+}
+
 function resolvePluginUrl(src: string, root: string): string {
   if (src.startsWith("http:")) {
     // Plugins execute with full process privileges; loading their code over

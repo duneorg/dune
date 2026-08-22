@@ -19,15 +19,16 @@ export interface ExternalJwtOptions {
   emailClaim?: string;   // default "email"
   rolesClaim?: string;   // default "roles"
   /**
-   * Expected `iss` claim. When set, a token whose `iss` does not match exactly
-   * is rejected. Strongly recommended: without it, any token signed by the same
-   * IdP (e.g. another tenant on a shared JWKS) is accepted.
+   * Expected `iss` claim. Required in external-jwt mode: without it, any
+   * token signed by the same IdP (e.g. another tenant on a shared JWKS) is
+   * accepted. `mountDuneAuth()` refuses to start if this is missing.
    */
   issuer?: string;
   /**
-   * Expected `aud` claim. When set, the token's `aud` (string or string[]) must
-   * contain this value. Prevents tokens minted for a different application that
-   * shares the IdP's signing keys from being accepted here.
+   * Expected `aud` claim. Required in external-jwt mode. The token's `aud`
+   * (string or string[]) must contain this value, preventing tokens minted
+   * for a different application that shares the IdP's signing keys from
+   * being accepted here. `mountDuneAuth()` refuses to start if this is missing.
    */
   audience?: string;
   /**
@@ -43,6 +44,23 @@ export interface JwtVerifyResult {
   userId: string;
   email?: string;
   roles?: string[];
+}
+
+/**
+ * Refuse to start external-jwt mode unless both `issuer` and `audience` are
+ * set. A shared JWKS (Clerk, Auth0 multi-tenant, a company IdP) signs tokens
+ * for many apps; without these claims any of those tokens verify here.
+ */
+export function assertExternalJwtBound(
+  jwt: Pick<ExternalJwtOptions, "issuer" | "audience">,
+): void {
+  if (!jwt.issuer || !jwt.audience) {
+    throw new Error(
+      "external-jwt mode requires auth.jwt.issuer and auth.jwt.audience — " +
+        "without both, any token signed by the same IdP (e.g. another tenant " +
+        "on a shared JWKS) is accepted",
+    );
+  }
 }
 
 /**

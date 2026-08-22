@@ -28,6 +28,8 @@ import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../f
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { MDX_ERROR_CLASS } from "../content/formats/mdx.ts";
 import type { SSGOptions, SSGResult } from "./types.ts";
+import type { PageIndex } from "../content/types.ts";
+import { findPageForMediaUrl } from "../auth/gating.ts";
 import {
   newManifest,
   loadManifest,
@@ -188,7 +190,7 @@ export async function buildStatic(
 
   let assetsWritten = 0;
   assetsWritten += await copyStaticAssets(root, outDir, engine, pluginAssetDirs, sharedThemesDir);
-  assetsWritten += await copyContentMedia(contentDirPath, outDir);
+  assetsWritten += await copyContentMedia(contentDirPath, outDir, engine.pages);
 
   // ── Hybrid config ─────────────────────────────────────────────────────────
 
@@ -364,7 +366,7 @@ async function writeSpecialFiles(
       : undefined;
 
     const candidates = engine.pages
-      .filter((p) => p.published && p.routable && p.date !== null)
+      .filter((p) => p.published && p.routable && p.date !== null && !p.gated)
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, feedCount);
 
@@ -461,11 +463,20 @@ async function copyStaticAssets(
  * Copy co-located media files to their route-based output paths.
  * e.g. content/04.blog/01.post/image.jpg → outDir/blog/post/image.jpg
  */
-async function copyContentMedia(contentRoot: string, outDir: string): Promise<number> {
-  return copyMediaWithRoutes(contentRoot, contentRoot, outDir);
+async function copyContentMedia(
+  contentRoot: string,
+  outDir: string,
+  pages: PageIndex[],
+): Promise<number> {
+  return copyMediaWithRoutes(contentRoot, contentRoot, outDir, pages);
 }
 
-async function copyMediaWithRoutes(src: string, contentRoot: string, outDir: string): Promise<number> {
+async function copyMediaWithRoutes(
+  src: string,
+  contentRoot: string,
+  outDir: string,
+  pages: PageIndex[],
+): Promise<number> {
   let count = 0;
   try {
     const stat = await Deno.stat(src);
@@ -477,7 +488,7 @@ async function copyMediaWithRoutes(src: string, contentRoot: string, outDir: str
   for await (const entry of Deno.readDir(src)) {
     const srcPath = join(src, entry.name);
     if (entry.isDirectory) {
-      count += await copyMediaWithRoutes(srcPath, contentRoot, outDir);
+      count += await copyMediaWithRoutes(srcPath, contentRoot, outDir, pages);
     } else if (entry.isFile) {
       const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
       if (!CONTENT_EXTENSIONS.has(ext) && !entry.name.endsWith(".meta.yaml") && !entry.name.endsWith(".frontmatter.yaml")) {
@@ -487,6 +498,8 @@ async function copyMediaWithRoutes(src: string, contentRoot: string, outDir: str
           ? relDir.split("/").filter(Boolean).map((seg) => parseFolderName(seg).slug).join("/")
           : "";
         const destRelPath = routePrefix ? `${routePrefix}/${entry.name}` : entry.name;
+        const owner = findPageForMediaUrl(pages, `/${destRelPath}`);
+        if (owner?.gated) continue;
         const destPath = join(outDir, destRelPath);
         await ensureDir(dirname(destPath));
         await Deno.copyFile(srcPath, destPath);

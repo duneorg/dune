@@ -5,13 +5,14 @@
  * HMAC-SHA256 of the canonical tuple payload. When DUNE_AUTHZ_HMAC_SECRET
  * is set, AuthzLocalAdapter verifies this field on load and signs on write.
  *
- * Fail-open: if the env var is absent, signing and verification are skipped
- * (a startup warning is emitted but the server still starts).
+ * Fail-open without a key: if DUNE_AUTHZ_HMAC_SECRET is absent, signing and
+ * verification are skipped (a startup warning is emitted but the server still
+ * starts).
  *
- * Migration: unsigned files (no `hmac` field) are loaded by default even when
- * a key is configured. Run `dune authz:sign` to sign existing files after
- * setting DUNE_AUTHZ_HMAC_SECRET, then set DUNE_AUTHZ_HMAC_STRICT=1 to reject
- * unsigned tuples (closing the strip-the-hmac tamper bypass).
+ * When a key is configured, unsigned files (no `hmac` field) are rejected.
+ * Run `dune authz:sign` after setting the secret. To temporarily accept
+ * unsigned tuples during migration, set DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1
+ * (legacy: DUNE_AUTHZ_HMAC_STRICT=0).
  */
 
 import { logger } from "../core/logger.ts";

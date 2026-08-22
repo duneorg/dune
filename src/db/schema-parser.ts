@@ -30,6 +30,7 @@ interface RawApiBlock {
   auth?: unknown;
   methods?: unknown;
   ownerField?: unknown;
+  writable?: unknown;
 }
 
 interface RawSchema {
@@ -68,6 +69,7 @@ function parseApiBlock(
   raw: RawApiBlock,
   sourceHint: string,
   fieldNames: Set<string>,
+  autoFieldNames: Set<string>,
 ): DbSchemaApi {
   const enabled = raw.enabled !== undefined ? Boolean(raw.enabled) : true;
 
@@ -128,7 +130,52 @@ function parseApiBlock(
     }
   }
 
-  return { enabled, auth, methods, ownerField };
+  // writable — deny-by-default for create/update. Missing is an error so
+  // existing schemas fail loudly at parse/codegen instead of silently
+  // accepting every column. An empty list is allowed (no client fields).
+  const needsWritable = methods.includes("create") || methods.includes("update");
+  let writable: string[] = [];
+  if (raw.writable === undefined) {
+    if (needsWritable) {
+      throw new Error(
+        `${sourceHint}: api.writable is required when create or update is enabled ` +
+          `(deny-by-default). List the client-writable field names, or set ` +
+          `writable: [] if the handler should accept no client fields.`,
+      );
+    }
+  } else {
+    if (!Array.isArray(raw.writable)) {
+      throw new Error(`${sourceHint}: api.writable must be an array of field names`);
+    }
+    for (const item of raw.writable as unknown[]) {
+      if (typeof item !== "string" || !item.trim()) {
+        throw new Error(`${sourceHint}: api.writable entries must be non-empty strings`);
+      }
+      const name = item.trim();
+      if (!fieldNames.has(name)) {
+        throw new Error(
+          `${sourceHint}: api.writable field "${name}" is not a field in this schema`,
+        );
+      }
+      if (name === "id") {
+        throw new Error(`${sourceHint}: api.writable cannot include "id"`);
+      }
+      if (ownerField && name === ownerField) {
+        throw new Error(
+          `${sourceHint}: api.writable cannot include ownerField "${ownerField}" ` +
+            `(ownership is set server-side)`,
+        );
+      }
+      if (autoFieldNames.has(name)) {
+        throw new Error(
+          `${sourceHint}: api.writable cannot include auto-managed field "${name}"`,
+        );
+      }
+      if (!writable.includes(name)) writable.push(name);
+    }
+  }
+
+  return { enabled, auth, methods, ownerField, writable };
 }
 
 /** Convert a model name like "Comment" to a table name "comments". */
@@ -238,7 +285,14 @@ export function parseRawSchema(raw: unknown, sourceHint = "<unknown>"): DbSchema
       throw new Error(`${sourceHint}: schema "${model}" api block must be an object`);
     }
     const fieldNames = new Set(fields.map((f) => f.name));
-    api = parseApiBlock(r.api as RawApiBlock, sourceHint, fieldNames);
+    const autoFieldNames = new Set(
+      fields
+        .filter((f) =>
+          f.type === "datetime" && (f.default === "now" || f.onUpdate === "now")
+        )
+        .map((f) => f.name),
+    );
+    api = parseApiBlock(r.api as RawApiBlock, sourceHint, fieldNames, autoFieldNames);
   }
 
   return { model, table, fields, ...(api !== undefined ? { api } : {}) };

@@ -5,6 +5,7 @@
  */
 
 import type { MachineTranslator } from "./types.ts";
+import { safeFetch } from "../security/ssrf.ts";
 
 /**
  * LibreTranslate provider — supports self-hosted instances.
@@ -37,7 +38,7 @@ export class LibreTranslateTranslator implements MachineTranslator {
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      res = await safeFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

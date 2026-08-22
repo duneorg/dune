@@ -66,6 +66,12 @@ export function registerPluginPublicRoutes(
     "/api/contact",
     "/api/forms",
     "/api/webhook",
+    "/api/inline-edit",
+    "/api/pages",
+    "/api/search",
+    "/api/nav",
+    "/api/flex",
+    "/auth",
     "/_fresh",
     "/health",
   ];

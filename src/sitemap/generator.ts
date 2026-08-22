@@ -106,7 +106,8 @@ export function generateSitemap(
 
   const urlEntries = pages
     .filter((p) =>
-      p.published && p.routable && !p.isModule && !hasUnpublishedAncestor(p) &&
+      p.published && p.routable && !p.isModule && !p.gated &&
+      !hasUnpublishedAncestor(p) &&
       !isExcluded(p.route, options.exclude ?? []),
     )
     .map((p) => {
@@ -150,7 +151,7 @@ export function generateSitemap(
       return entry;
     });
 
-  const hasImages = pages.some((p) => p.published && p.routable && !p.isModule && p.coverImage &&
+  const hasImages = pages.some((p) => p.published && p.routable && !p.isModule && !p.gated && p.coverImage &&
     !isExcluded(p.route, options.exclude ?? []));
   const urlsetAttrs = [
     'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',

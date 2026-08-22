@@ -3,6 +3,7 @@
  */
 
 import type { MachineTranslator } from "./types.ts";
+import { safeFetch } from "../security/ssrf.ts";
 
 /** Google Cloud Translation API v2 (Basic) provider. */
 export class GoogleTranslator implements MachineTranslator {
@@ -20,7 +21,7 @@ export class GoogleTranslator implements MachineTranslator {
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      res = await safeFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

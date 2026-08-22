@@ -324,3 +324,98 @@ export async function enforceRolesFromRequest(
     : resolveAuthzForOrigin(origin);
   return enforceRoles(req, user, spec, effectiveAuthz);
 }
+
+// ── Public-surface filtering ──────────────────────────────────────────────────
+
+/** Index/list entry that may carry the derived `gated` flag and raw `roles`. */
+export interface GatedIndexEntry {
+  gated?: boolean;
+  roles?: unknown;
+  route?: string;
+}
+
+/**
+ * True when this index entry is public (no `roles:` spec). Sitemap, feeds,
+ * and static builds use this — they have no request to authorize against.
+ */
+export function isPublicIndexEntry(page: GatedIndexEntry): boolean {
+  return page.gated !== true;
+}
+
+/**
+ * Whether `req` may see this index entry. Ungated pages always pass.
+ * Gated pages use the same `enforceRolesFromRequest` decision as page HTML.
+ */
+export async function canAccessIndexEntry(
+  req: Request,
+  page: GatedIndexEntry,
+  authzOverride?: DuneAuthSystem | null,
+): Promise<boolean> {
+  if (page.gated !== true) return true;
+  const spec = parseRolesSpec(page.roles);
+  if (spec === null) return true;
+  const denied = await enforceRolesFromRequest(req, spec, authzOverride);
+  return denied === null;
+}
+
+/** Keep only the entries `req` is allowed to see, preserving order. */
+export async function filterAccessibleEntries<T extends GatedIndexEntry>(
+  req: Request,
+  pages: T[],
+  authzOverride?: DuneAuthSystem | null,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (const page of pages) {
+    if (await canAccessIndexEntry(req, page, authzOverride)) out.push(page);
+  }
+  return out;
+}
+
+/**
+ * Longest-prefix match from a media URL pathname (or `/`-prefixed dest path)
+ * onto a page route. Used to apply the parent page's `roles:` gate before
+ * serving or copying a co-located file.
+ */
+/**
+ * Filter a navigation list for a request. When `req` is absent (SSG, error
+ * fallbacks), only public (ungated) entries remain.
+ */
+export async function navigationForRequest<
+  T extends GatedIndexEntry & { depth: number },
+>(
+  req: Request | undefined,
+  navAll: T[],
+): Promise<{ nav: T[]; navAll: T[] }> {
+  const visible = req
+    ? await filterAccessibleEntries(req, navAll)
+    : navAll.filter(isPublicIndexEntry);
+  return { nav: visible.filter((p) => p.depth === 0), navAll: visible };
+}
+
+export function findPageForMediaUrl<T extends GatedIndexEntry & { route: string }>(
+  pages: T[],
+  pathname: string,
+): T | null {
+  const path = pathname.length > 1 && pathname.endsWith("/")
+    ? pathname.slice(0, -1)
+    : pathname;
+  let best: T | null = null;
+  let bestLen = -1;
+  for (const page of pages) {
+    if (!page.route) continue;
+    const route = page.route.length > 1 && page.route.endsWith("/")
+      ? page.route.slice(0, -1)
+      : page.route;
+    if (route === "/") continue;
+    if (path === route || path.startsWith(`${route}/`)) {
+      if (route.length > bestLen) {
+        best = page;
+        bestLen = route.length;
+      }
+    }
+  }
+  if (best) return best;
+  const home = pages.find((p) => p.route === "/" || p.route === "");
+  if (home && path.split("/").filter(Boolean).length === 1) return home;
+  return null;
+}

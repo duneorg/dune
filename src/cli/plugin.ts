@@ -13,6 +13,10 @@ import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
+import {
+  assertHttpsPluginIntegrity,
+  assertPinnedPluginSpecifier,
+} from "../plugins/reference.ts";
 
 // ─── plugin:list ──────────────────────────────────────────────────────────────
 
@@ -59,12 +63,21 @@ export async function pluginListCommand(root: string): Promise<void> {
 export async function pluginInstallCommand(
   root: string,
   src: string,
+  options: { integrity?: string } = {},
 ): Promise<void> {
   if (!src) {
-    console.error("Usage: dune plugin:install <src>");
+    console.error("Usage: dune plugin:install <src> [--integrity sha256:<hex>]");
     console.error(
-      '  <src>  Plugin source: "./plugins/my-plugin.ts", "jsr:@scope/name", ...',
+      '  <src>  Plugin source: "./plugins/my-plugin.ts", "jsr:@scope/name@1.0.0", ...',
     );
+    Deno.exit(1);
+  }
+
+  try {
+    assertPinnedPluginSpecifier(src);
+    assertHttpsPluginIntegrity(src, options.integrity);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     Deno.exit(1);
   }
 
@@ -87,7 +100,9 @@ export async function pluginInstallCommand(
     return;
   }
 
-  existing.push({ src });
+  existing.push(
+    options.integrity ? { src, integrity: options.integrity } : { src },
+  );
   parsed.plugins = existing;
 
   await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));

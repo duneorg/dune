@@ -18,6 +18,7 @@ import { directionOf } from "../i18n/rtl.ts";
 import { createTranslator } from "../i18n/translate.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { splitLanguagePrefix } from "./resolver.ts";
+import { navigationForRequest } from "../auth/gating.ts";
 
 const STATUS_TITLES: Record<number, string> = {
   404: "404 — Not Found",
@@ -35,12 +36,15 @@ export async function renderErrorPage(
   statusCode: number,
   message: string,
   contentApi?: ContentApi,
+  req?: Request,
 ): Promise<Response> {
   const title = STATUS_TITLES[statusCode] ?? `${statusCode} — Error`;
   const { lang } = splitLanguagePrefix(url.pathname, engine.config?.system?.languages);
   const dir = directionOf(lang, engine.config?.system?.languages?.rtl_override);
-  const nav = engine.router.getTopNavigation(lang);
-  const navAll = engine.router.getNavigation(lang);
+  const { nav, navAll } = await navigationForRequest(
+    req,
+    engine.router.getNavigation(lang),
+  );
   const translations = engine.router.getTranslations(url.pathname);
   const Layout = await engine.themes.loadLayout("layout");
 

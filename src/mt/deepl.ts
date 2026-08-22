@@ -4,6 +4,7 @@
  */
 
 import type { MachineTranslator } from "./types.ts";
+import { safeFetch } from "../security/ssrf.ts";
 
 /** DeepL target language special cases — map generic codes to preferred variants. */
 const TARGET_LANG_MAP: Record<string, string> = {
@@ -44,7 +45,7 @@ export class DeepLTranslator implements MachineTranslator {
   async translateBatch(texts: string[], sourceLang: string, targetLang: string): Promise<string[]> {
     let res: Response;
     try {
-      res = await fetch(this.endpoint, {
+      res = await safeFetch(this.endpoint, {
         method: "POST",
         headers: {
           "Authorization": `DeepL-Auth-Key ${this.apiKey}`,

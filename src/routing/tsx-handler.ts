@@ -11,6 +11,8 @@ import { renderErrorPage } from "./error-page.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { requireAuth } from "../auth/api-guard.ts";
+import { navigationForRequest } from "../auth/gating.ts";
+import { checkSameOriginCsrf } from "../security/csrf.ts";
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -59,8 +61,10 @@ export async function handleTsxPage(
               data,
               site: engine.site,
               config: engine.config,
-              nav: engine.router.getTopNavigation(page.language),
-              navAll: engine.router.getNavigation(page.language),
+              ...(await navigationForRequest(
+                req,
+                engine.router.getNavigation(page.language),
+              )),
               translations: engine.router.getTranslations(page.route),
               route: page.route,
               params: {},
@@ -71,28 +75,10 @@ export async function handleTsxPage(
         },
         /**
          * Same-origin CSRF guard for mutating handlers.
-         * Returns 403 if Origin is present and cross-site, null otherwise.
+         * Origin, then Sec-Fetch-Site, then Referer — fail-open only when
+         * all three are absent (curl / webhooks; SameSite is the backstop).
          */
-        csrfCheck: (): Response | null => {
-          const m = req.method;
-          if (m === "GET" || m === "HEAD" || m === "OPTIONS") return null;
-          const origin = req.headers.get("origin");
-          if (origin === null) return null;
-          try {
-            if (new URL(origin).host !== url.host) {
-              return Response.json(
-                { error: "Forbidden: cross-origin request rejected" },
-                { status: 403 },
-              );
-            }
-          } catch {
-            return Response.json(
-              { error: "Forbidden: cross-origin request rejected" },
-              { status: 403 },
-            );
-          }
-          return null;
-        },
+        csrfCheck: (): Response | null => checkSameOriginCsrf(req, url),
       };
       return methodFn(req, ctx);
     }
@@ -151,8 +137,10 @@ export async function handleTsxPage(
         pageTitle: buildPageTitle(page, engine.site.title),
         site: engine.site,
         config: engine.config,
-        nav: engine.router.getTopNavigation(page.language),
-        navAll: engine.router.getNavigation(page.language),
+        ...(await navigationForRequest(
+          req,
+          engine.router.getNavigation(page.language),
+        )),
         translations: engine.router.getTranslations(page.route),
         pathname: url.pathname,
         search: url.search,

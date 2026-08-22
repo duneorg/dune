@@ -170,11 +170,10 @@ export interface ContentHandlerContext {
   /**
    * Same-origin CSRF check for mutating requests (POST, PUT, DELETE, PATCH).
    *
-   * Returns a `403 Forbidden` response if the request carries an `Origin`
-   * header pointing at a different host, `null` otherwise.
-   *
-   * Safe methods (GET, HEAD, OPTIONS) and requests without an `Origin` header
-   * (server-to-server calls, webhooks, curl) always return `null`.
+   * Returns a `403 Forbidden` response if Origin, Sec-Fetch-Site, or Referer
+   * indicate a cross-site request. Safe methods (GET, HEAD, OPTIONS) always
+   * return `null`. Requests with none of those headers (curl, webhooks)
+   * also return `null` — SameSite cookies are the remaining backstop.
    *
    * Call this at the top of any handler that performs a state-changing
    * operation guarded by a session cookie. Skip it for endpoints that
@@ -276,6 +275,12 @@ export interface PageIndex {
    * that have no role-gating concept — treated as not gated.
    */
   gated?: boolean;
+  /**
+   * Raw `frontmatter.roles` value when the page is gated. Stored at index
+   * time so list/search/nav/media can run the same `parseRolesSpec` +
+   * `enforceRolesFromRequest` check without loading the page body.
+   */
+  roles?: unknown;
   /** File modification time — for incremental cache invalidation */
   mtime: number;
   /** Hash of frontmatter — for change detection */

@@ -107,6 +107,7 @@ export async function authzSignCommand(root: string, opts: AuthzSignOptions = {}
     console.log(`  Signed: ${signed}  Already signed: ${alreadySigned}  Skipped: ${skipped}`);
     if (signed > 0) {
       console.log(`\n  All tuple files are now signed with the current DUNE_AUTHZ_HMAC_SECRET.`);
+      console.log(`  Unsigned tuples are rejected on load (set DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1 to override).`);
     }
   }
 }

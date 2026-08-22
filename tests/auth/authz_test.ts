@@ -507,6 +507,31 @@ Deno.test("AuthzLocalAdapter: strict HMAC rejects unsigned tuples, accepts signe
     true,
   );
 
+  // Default (no strictHmac override, env unset) is now strict.
+  const prevAllow = Deno.env.get("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
+  const prevStrict = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
+  Deno.env.delete("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
+  Deno.env.delete("DUNE_AUTHZ_HMAC_STRICT");
+  try {
+    const defaulted = new AuthzLocalAdapter({
+      storage,
+      dataDir: "data",
+      hmacKey: key,
+    });
+    assertStrictEquals(
+      await defaulted.hasTuple({ type: "user", id: "mallory" }, "member", {
+        type: "group",
+        id: "admins",
+      }),
+      false,
+    );
+  } finally {
+    if (prevAllow === undefined) Deno.env.delete("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
+    else Deno.env.set("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED", prevAllow);
+    if (prevStrict === undefined) Deno.env.delete("DUNE_AUTHZ_HMAC_STRICT");
+    else Deno.env.set("DUNE_AUTHZ_HMAC_STRICT", prevStrict);
+  }
+
   // Migration (non-strict) mode: unsigned tuple is still accepted.
   const lenient = new AuthzLocalAdapter({
     storage,

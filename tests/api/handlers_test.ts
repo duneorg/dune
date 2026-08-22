@@ -113,8 +113,12 @@ function makeEngine(
     taxonomyMap,
     indexErrors: [],
     router: {
-      getNavigation: (_lang?: string) => [],
-      getTopNavigation: (_lang?: string) => [],
+      getNavigation: (_lang?: string) =>
+        pages.filter((p) => p.visible && p.published && p.routable && !p.isModule),
+      getTopNavigation: (_lang?: string) =>
+        pages.filter((p) =>
+          p.visible && p.published && p.routable && !p.isModule && p.depth === 0
+        ),
       resolve: (_pathname: string) => ({ type: "not-found" as const }),
     } as unknown as DuneEngine["router"],
     themes: {} as unknown as DuneEngine["themes"],
@@ -154,6 +158,43 @@ function makeHandler(
 }
 
 // ── GET /api/pages ───────────────────────────────────────────────────────────
+
+Deno.test("createApiHandler GET /api/pages: omits role-gated pages for anonymous callers", async () => {
+  const pages = [
+    makePageIndex({ sourcePath: "01.home/default.md", route: "/", title: "Home" }),
+    makePageIndex({
+      sourcePath: "02.staff/default.md",
+      route: "/staff",
+      title: "Staff",
+      gated: true,
+      roles: "member",
+    }),
+  ];
+  const handler = makeHandler(pages);
+  const res = await handler(new Request("http://localhost/api/pages"));
+  assertEquals(res!.status, 200);
+  const body = await res!.json();
+  assertEquals(body.meta.total, 1);
+  assertEquals(body.items.map((p: { route: string }) => p.route), ["/"]);
+});
+
+Deno.test("createApiHandler GET /api/nav: omits role-gated pages for anonymous callers", async () => {
+  const pages = [
+    makePageIndex({ sourcePath: "01.home/default.md", route: "/", title: "Home" }),
+    makePageIndex({
+      sourcePath: "02.staff/default.md",
+      route: "/staff",
+      title: "Staff",
+      gated: true,
+      roles: "member",
+    }),
+  ];
+  const handler = makeHandler(pages);
+  const res = await handler(new Request("http://localhost/api/nav"));
+  assertEquals(res!.status, 200);
+  const body = await res!.json();
+  assertEquals(body.items.map((p: { route: string }) => p.route), ["/"]);
+});
 
 Deno.test("createApiHandler GET /api/pages: returns published+routable pages", async () => {
   const pages = [

@@ -21,6 +21,10 @@ import {
   resolvePolicy,
 } from "../cache/mod.ts";
 import { isRtl } from "../i18n/rtl.ts";
+import {
+  canAccessIndexEntry,
+  findPageForMediaUrl,
+} from "../auth/gating.ts";
 
 type RenderJsx = (jsx: unknown, status?: number) => Promise<Response>;
 
@@ -95,17 +99,38 @@ export function registerContentCatchAll(
       // Serve co-located media before routing to the content handler.
       const lastSegment = url.pathname.split("/").pop() ?? "";
       if (lastSegment && isMediaFile(lastSegment)) {
+        const owner = findPageForMediaUrl(engine.pages, url.pathname);
+        if (owner && !(await canAccessIndexEntry(req, owner))) {
+          response = new Response("Not found", { status: 404 });
+          metrics?.recordRequest(
+            url.pathname,
+            performance.now() - startMs,
+            false,
+          );
+          return response;
+        }
         const mediaPath = url.pathname.slice(1);
         const media = await engine.serveMedia(mediaPath);
         if (media) {
           const imageResult = await imageHandler(req);
           if (imageResult) {
-            response = imageResult;
+            if (owner?.gated) {
+              const headers = new Headers(imageResult.headers);
+              headers.set("Cache-Control", "private, no-store");
+              response = new Response(imageResult.body, {
+                status: imageResult.status,
+                headers,
+              });
+            } else {
+              response = imageResult;
+            }
           } else {
             const headers: Record<string, string> = {
               "Content-Type": media.contentType,
               "Content-Length": String(media.size),
-              "Cache-Control": "public, max-age=3600",
+              "Cache-Control": owner?.gated
+                ? "private, no-store"
+                : "public, max-age=3600",
               "X-Content-Type-Options": "nosniff",
             };
             // Sandbox HTML/SVG media so user-uploaded content can't read

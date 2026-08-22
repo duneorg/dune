@@ -53,6 +53,11 @@ export interface PluginEntry {
    */
   src: string;
   /**
+   * Required when `src` is an `https:` URL — SHA-256 of the module bytes.
+   * Forms: `sha256:<64 hex>` or SRI `sha256-<base64>`.
+   */
+  integrity?: string;
+  /**
    * Static config for this plugin.
    * Merged into DuneConfig.plugins[plugin.name] and readable by the plugin
    * via ctx.config.plugins[name] inside hook handlers.

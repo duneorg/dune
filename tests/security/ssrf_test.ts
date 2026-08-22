@@ -57,3 +57,32 @@ Deno.test("safeFetch: pins resolved IP and preserves Host for http (M-3)", async
 Deno.test("safeFetch: rejects a blocked URL before connecting", async () => {
   await assertRejects(() => safeFetch("http://169.254.169.254/"), SsrfBlockedError);
 });
+
+Deno.test("Deno.createHttpClient tcp transport dials a pinned IP (L-4)", async () => {
+  // Proves the API safeFetch uses for HTTPS pinning: connect to this IP
+  // while the request URL keeps a different hostname (SNI / Host).
+  const ac = new AbortController();
+  let seenHost: string | null = null;
+  const server = Deno.serve(
+    { port: 0, hostname: "127.0.0.1", signal: ac.signal, onListen: () => {} },
+    (req) => {
+      seenHost = req.headers.get("host");
+      return new Response("pinned");
+    },
+  );
+  const { port } = server.addr as Deno.NetAddr;
+  const client = Deno.createHttpClient({
+    proxy: { transport: "tcp", hostname: "127.0.0.1", port },
+    allowHost: true,
+  });
+  try {
+    const resp = await fetch(`http://ssrf-pin.test:${port}/`, { client });
+    assertEquals(resp.status, 200);
+    assertEquals(await resp.text(), "pinned");
+    assertEquals(seenHost, `ssrf-pin.test:${port}`);
+  } finally {
+    client.close();
+    ac.abort();
+    await server.finished;
+  }
+});

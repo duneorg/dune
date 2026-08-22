@@ -4,8 +4,8 @@
  * RS256/JWKS is not tested end-to-end (requires network).
  */
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { verifyExternalJwt } from "../../src/auth/jwt.ts";
+import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertExternalJwtBound, verifyExternalJwt } from "../../src/auth/jwt.ts";
 import { encodeBase64Url } from "@std/encoding/base64url";
 import { crypto as stdCrypto } from "@std/crypto";
 
@@ -229,6 +229,28 @@ Deno.test("verifyExternalJwt: pinned algorithm rejects a mismatching alg (M-4)",
     (await verifyExternalJwt(token, { secret: SECRET, algorithm: "HS256" }))?.userId,
     "user-123",
   );
+});
+
+Deno.test("assertExternalJwtBound: requires both issuer and audience", () => {
+  assertThrows(
+    () => assertExternalJwtBound({}),
+    Error,
+    "auth.jwt.issuer and auth.jwt.audience",
+  );
+  assertThrows(
+    () => assertExternalJwtBound({ issuer: "https://idp.example.com" }),
+    Error,
+    "auth.jwt.issuer and auth.jwt.audience",
+  );
+  assertThrows(
+    () => assertExternalJwtBound({ audience: "dune-app" }),
+    Error,
+    "auth.jwt.issuer and auth.jwt.audience",
+  );
+  assertExternalJwtBound({
+    issuer: "https://idp.example.com",
+    audience: "dune-app",
+  });
 });
 
 Deno.test("verifyExternalJwt: unknown alg returns null when no matching options", async () => {

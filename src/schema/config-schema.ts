@@ -373,6 +373,11 @@ export const CONFIG_SCHEMA = {
                 type: "string",
                 description: "Local path or registry specifier (jsr:, npm:, https:)",
               },
+              integrity: {
+                type: "string",
+                description:
+                  "Required for https: src. sha256:<64 hex> or SRI sha256-<base64>.",
+              },
               config: {
                 type: "object",
                 additionalProperties: true,

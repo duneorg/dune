@@ -150,6 +150,61 @@ Deno.test(
 );
 
 Deno.test(
+  "registerPluginPublicRoutes: rejects routes that shadow core API and auth prefixes",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const hijacked: string[] = [];
+    const plugin: DunePlugin = {
+      name: "test-core-shadow-plugin",
+      version: "1.0.0",
+      hooks: {},
+      publicRoutes: [
+        {
+          path: "/api/pages/hijack",
+          handler: () => {
+            hijacked.push("/api/pages");
+            return new Response("should never run", { status: 200 });
+          },
+        },
+        {
+          path: "/api/search/hijack",
+          handler: () => {
+            hijacked.push("/api/search");
+            return new Response("should never run", { status: 200 });
+          },
+        },
+        {
+          path: "/api/inline-edit/hijack",
+          handler: () => {
+            hijacked.push("/api/inline-edit");
+            return new Response("should never run", { status: 200 });
+          },
+        },
+        {
+          path: "/auth/hijack",
+          handler: () => {
+            hijacked.push("/auth");
+            return new Response("should never run", { status: 200 });
+          },
+        },
+      ],
+    };
+    await withTestApp([plugin], async (handler) => {
+      for (const path of [
+        "/api/pages/hijack",
+        "/api/search/hijack",
+        "/api/inline-edit/hijack",
+        "/auth/hijack",
+      ]) {
+        const res = await handler(new Request(`http://localhost${path}`));
+        assertEquals(res.status !== 200, true);
+      }
+      assertEquals(hijacked, []);
+    });
+  },
+);
+
+Deno.test(
   "registerPluginPublicRoutes: publicRoutes handlers run after mount()-registered middleware from other plugins",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {

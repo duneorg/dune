@@ -27,6 +27,7 @@ import { setGatingAuthz } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 import { handleWebhook } from "./webhook.ts";
 import { logger } from "../core/logger.ts";
+import { assertExternalJwtBound } from "./jwt.ts";
 import type { SiteConfig } from "../config/site-config.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -62,6 +63,14 @@ export async function mountDuneAuth(
   const runtimeDir = adminCfg.runtimeDir ?? ".dune/admin";
 
   const mode = authConfig?.mode ?? "dune";
+  if (mode === "external-jwt") {
+    if (!authConfig?.jwt) {
+      throw new Error(
+        "external-jwt mode requires auth.jwt with issuer and audience",
+      );
+    }
+    assertExternalJwtBound(authConfig.jwt);
+  }
   const sessionLifetimeSec = authConfig?.sessionLifetime ?? 30 * 24 * 60 * 60;
   const userStoreType: "local" | "session" | "db" =
     (authConfig?.userStore ?? "local") as "local" | "session" | "db";
@@ -116,15 +125,6 @@ export async function mountDuneAuth(
   const jwtOpts = mode === "external-jwt" && authConfig?.jwt
     ? authConfig.jwt
     : undefined;
-
-  if (jwtOpts && (!jwtOpts.issuer || !jwtOpts.audience)) {
-    logger.warn("auth.jwt.unbound", {
-      reason:
-        "external-jwt mode is missing auth.jwt.issuer and/or auth.jwt.audience — " +
-        "any token signed by the same IdP (e.g. another tenant on a shared JWKS) will be accepted. " +
-        "Set both to bind verification to your application.",
-    });
-  }
 
   const authMiddleware = createSiteAuthMiddleware({
     userStore,

@@ -98,12 +98,28 @@ Deno.test("validator: accepts pinned jsr: plugin specifier", () => {
   assertEquals(errors.length, 0);
 });
 
-Deno.test("validator: accepts local and https plugin specifiers unpinned", () => {
+Deno.test("validator: accepts local plugin specifiers unpinned", () => {
   const config = cloneConfig();
   config.pluginList = [
     { src: "./plugins/my-plugin.ts" },
-    { src: "https://example.com/plugin.ts" },
   ];
+  const errors = validateConfig(config);
+  assertEquals(errors.length, 0);
+});
+
+Deno.test("validator: rejects https: plugin specifier without integrity", () => {
+  const config = cloneConfig();
+  config.pluginList = [{ src: "https://example.com/plugin.ts" }];
+  const errors = validateConfig(config);
+  assertEquals(errors.some((e) => e.includes("integrity")), true);
+});
+
+Deno.test("validator: accepts https: plugin specifier with sha256 integrity", () => {
+  const config = cloneConfig();
+  config.pluginList = [{
+    src: "https://example.com/plugin.ts",
+    integrity: `sha256:${"a".repeat(64)}`,
+  }];
   const errors = validateConfig(config);
   assertEquals(errors.length, 0);
 });

@@ -9,7 +9,7 @@
  * bootstrap()'d app to prove both the export and the mount actually work.
  */
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
@@ -68,5 +68,36 @@ Deno.test(
       const res = await handler(new Request("http://localhost/auth/me"));
       assertEquals(res.status, 401);
     });
+  },
+);
+
+Deno.test(
+  "mountDuneAuth: external-jwt without issuer and audience refuses to start",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const root = await Deno.makeTempDir({ prefix: "dune_test_auth_jwt_unbound_" });
+    try {
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\nHello\n",
+      );
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: external-jwt\n  jwt:\n    secret: test-secret\n",
+      );
+
+      const ctx = await bootstrap(root, {});
+      // deno-lint-ignore no-explicit-any
+      const app = new App() as any;
+      await assertRejects(
+        () => mountDuneAuth(app, ctx),
+        Error,
+        "auth.jwt.issuer and auth.jwt.audience",
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
   },
 );

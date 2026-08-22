@@ -36,10 +36,11 @@ export interface MagicTokenStore {
   /** Returns true if the nonce has already been used. */
   has(nonce: string): Promise<boolean>;
   /**
-   * Mark a nonce as used.
+   * Mark a nonce as used. Returns `true` if this caller newly recorded it
+   * (SET NX), `false` if it was already present and unexpired.
    * The store may evict entries once `expiresAtMs` has passed.
    */
-  add(nonce: string, expiresAtMs: number): Promise<void>;
+  add(nonce: string, expiresAtMs: number): Promise<boolean>;
 }
 
 /**
@@ -62,9 +63,12 @@ export class InMemoryMagicTokenStore implements MagicTokenStore {
     return true;
   }
 
-  async add(nonce: string, expiresAtMs: number): Promise<void> {
-    this.used.set(nonce, expiresAtMs);
+  async add(nonce: string, expiresAtMs: number): Promise<boolean> {
     this.evict();
+    const existing = this.used.get(nonce);
+    if (existing !== undefined && Date.now() < existing) return false;
+    this.used.set(nonce, expiresAtMs);
+    return true;
   }
 
   /** Evict all expired entries to prevent unbounded growth. */
@@ -145,12 +149,10 @@ export async function verifyMagicToken(
 
   if (!payload.email || typeof payload.email !== "string") return null;
 
-  // Single-use enforcement: check and mark the nonce in the store.
+  // Single-use enforcement: atomically claim the nonce (SET NX).
   if (store && payload.nonce) {
-    if (await store.has(payload.nonce)) {
-      return null; // already used
-    }
-    await store.add(payload.nonce, payload.exp);
+    const inserted = await store.add(payload.nonce, payload.exp);
+    if (!inserted) return null;
   }
 
   return { email: payload.email };

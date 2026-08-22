@@ -31,10 +31,12 @@ Deno.test("parseRawSchema: parses api block with all fields", () => {
       enabled: true,
       auth: "required",
       methods: ["get", "list", "create", "update", "delete"],
+      writable: ["body", "userId"],
     },
   });
 
   assertEquals(schema.api?.enabled, true);
+  assertEquals(schema.api?.writable, ["body", "userId"]);
   assertEquals(schema.api?.auth, "required");
   assertEquals(schema.api?.methods, [
     "get",
@@ -56,6 +58,7 @@ Deno.test("parseRawSchema: parses api block with owner auth", () => {
       auth: "owner",
       methods: ["get", "update", "delete"],
       ownerField: "userId",
+      writable: ["body"],
     },
   });
 
@@ -83,7 +86,7 @@ Deno.test("parseRawSchema: defaults methods to all five when omitted", () => {
   const schema = parseRawSchema({
     model: "Post",
     fields: { title: { type: "string", required: true } },
-    api: { enabled: true, auth: "required" },
+    api: { enabled: true, auth: "required", writable: ["title"] },
   });
 
   assertEquals(schema.api?.methods.sort(), [
@@ -119,6 +122,7 @@ api:
   auth: owner
   methods: [get, list, create, update, delete]
   ownerField: userId
+  writable: [body]
 `);
   assertEquals(schema.api?.auth, "owner");
   assertEquals(schema.api?.ownerField, "userId");
@@ -198,6 +202,38 @@ Deno.test("parseRawSchema: rejects invalid method name", () => {
   );
 });
 
+Deno.test("parseRawSchema: requires api.writable when create or update is enabled", () => {
+  assertThrows(
+    () =>
+      parseRawSchema({
+        model: "Comment",
+        fields: BASE_FIELDS,
+        api: { enabled: true, auth: "required", methods: ["create"] },
+      }),
+    Error,
+    "api.writable is required",
+  );
+});
+
+Deno.test("parseRawSchema: rejects ownerField in api.writable", () => {
+  assertThrows(
+    () =>
+      parseRawSchema({
+        model: "Comment",
+        fields: BASE_FIELDS,
+        api: {
+          enabled: true,
+          auth: "owner",
+          methods: ["create"],
+          ownerField: "userId",
+          writable: ["body", "userId"],
+        },
+      }),
+    Error,
+    "ownerField",
+  );
+});
+
 Deno.test("parseRawSchema: rejects empty methods array", () => {
   assertThrows(
     () =>
@@ -234,6 +270,7 @@ Deno.test("generateApiRoutes: writes index.ts and [id].ts for enabled schema", a
         enabled: true,
         auth: "required",
         methods: ["get", "list", "create", "update", "delete"],
+        writable: ["body", "userId"],
       },
     });
 
@@ -282,6 +319,7 @@ Deno.test("generateApiRoutes: owner mode includes ownership checks in [id].ts", 
         auth: "owner",
         methods: ["get", "update", "delete"],
         ownerField: "userId",
+        writable: ["body"],
       },
     });
 
@@ -308,6 +346,7 @@ Deno.test("generateApiRoutes: owner mode scopes list + forces ownership on creat
         auth: "owner",
         methods: ["list", "create"],
         ownerField: "userId",
+        writable: ["body"],
       },
     });
 
@@ -330,7 +369,7 @@ Deno.test("generateApiRoutes: owner mode scopes list + forces ownership on creat
     // Create must force ownership from the authenticated user, not the client body.
     assertStringIncludes(
       indexContent,
-      `db.comments.create({ ...body, userId: authResult.user!.id } as CommentCreate)`,
+      `db.comments.create({ ...data, userId: authResult.user!.id } as CommentCreate)`,
     );
   });
 });
@@ -346,6 +385,7 @@ Deno.test("generateApiRoutes: owner mode strips ownerField from update body", as
         auth: "owner",
         methods: ["update"],
         ownerField: "userId",
+        writable: ["body"],
       },
     });
 
@@ -354,10 +394,9 @@ Deno.test("generateApiRoutes: owner mode strips ownerField from update body", as
       `${dir}/src/routes/api/comments/[id].ts`,
     );
 
-    assertStringIncludes(
-      idContent,
-      `delete (body as Record<string, unknown>).userId;`,
-    );
+    assertStringIncludes(idContent, `["body"]`);
+    assertEquals(idContent.includes("userId"), true);
+    assertEquals(idContent.includes("allowed.has"), true);
   });
 });
 
@@ -371,6 +410,7 @@ Deno.test("generateApiRoutes: respects partial methods — only list and create"
         enabled: true,
         auth: "none",
         methods: ["list", "create"],
+        writable: ["title"],
       },
     });
 
@@ -425,6 +465,7 @@ Deno.test("generateApiRoutes: only [id].ts when methods are get/update/delete", 
         enabled: true,
         auth: "required",
         methods: ["get", "update", "delete"],
+        writable: ["body"],
       },
     });
 
@@ -525,6 +566,7 @@ Deno.test("generateCode/H2: POST handler emits required-field validation", () =>
       enabled: true,
       auth: "required" as const,
       methods: ["list" as const, "create" as const],
+      writable: ["title", "body"],
     },
   };
 
@@ -556,6 +598,7 @@ Deno.test("generateApiRoutes/H2: generated POST emits required, maxLength, enum 
         enabled: true,
         auth: "required" as const,
         methods: ["list" as const, "create" as const, "update" as const],
+        writable: ["title", "status", "body"],
       },
     };
 
@@ -565,11 +608,11 @@ Deno.test("generateApiRoutes/H2: generated POST emits required, maxLength, enum 
     );
 
     // Required field check
-    assertStringIncludes(indexContent, `body.title === undefined`);
+    assertStringIncludes(indexContent, `data.title === undefined`);
     assertStringIncludes(indexContent, `is required`);
 
     // maxLength check
-    assertStringIncludes(indexContent, `body.title.length > 200`);
+    assertStringIncludes(indexContent, `data.title.length > 200`);
     assertStringIncludes(indexContent, `exceeds maximum length`);
 
     // enum check
@@ -599,6 +642,7 @@ Deno.test("generateApiRoutes/H2: generated PUT emits validation for update handl
         enabled: true,
         auth: "required" as const,
         methods: ["update" as const, "get" as const],
+        writable: ["name"],
       },
     };
 
@@ -607,9 +651,8 @@ Deno.test("generateApiRoutes/H2: generated PUT emits validation for update handl
       `${dir}/src/routes/api/tags/[id].ts`,
     );
 
-    // Validation present in PUT handler too
-    assertStringIncludes(idContent, `body.name === undefined`);
-    assertStringIncludes(idContent, `body.name.length > 50`);
+    // Update is partial — required is not re-checked; maxLength still is.
+    assertStringIncludes(idContent, `data.name.length > 50`);
     assertStringIncludes(idContent, `status: 400`);
   });
 });

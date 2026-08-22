@@ -213,7 +213,8 @@ api:
   enabled: true          # optional, default true
   auth: required          # REQUIRED field — "none" | "required" | "owner" — no default, parser throws if omitted
   ownerField: authorId    # required when auth: "owner"
-  methods: [get, list]    # optional — restrict from the default five (get, list, create, update, delete)
+  methods: [get, list, create, update]  # optional — restrict from the default five
+  writable: [body]       # required when methods includes create or update (deny-by-default)
 ```
 
 `dune codegen` generates route handlers at `src/routes/api/{table}/index.ts` (list + create) and `src/routes/api/{table}/[id].ts` (get, update, delete). Update is `PUT`, not `PATCH`:
