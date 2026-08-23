@@ -1,117 +1,205 @@
 # Changelog
 
-All notable changes to Dune CMS are documented here.
-This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor releases may include breaking changes per semver convention. Stable API guarantees begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what "breaking" means and what doesn't count.
+All notable changes to Dune CMS are documented here. This project follows
+[Semantic Versioning](https://semver.org). Pre-1.0 minor releases may include
+breaking changes per semver convention. Stable API guarantees begin at v1.0.0 —
+see [VERSIONING.md](VERSIONING.md) for exactly what "breaking" means and what
+doesn't count.
 
 ---
 
-## [Unreleased]
+## [0.33.0] — 2026-08-23
 
 ### Breaking
 
-- **`ContentPageProps.siteUser` → `.user`** — dec-identity-unification
-  renamed `SiteUser` → `User` / `getSiteUser()` → `getUser()` /
-  `x-dune-site-user` → `x-dune-user` everywhere else on the public API;
-  this one field (published in `[0.32.0]` below) predated that pass and
-  was missed. Renamed now, one release after it shipped — a real, if
-  narrow, breaking change for anyone who already adopted the `.siteUser`
-  name in a TSX content page. `ctx.state.siteUser` (the Fresh-state key
-  `mountDuneAuth()`'s middleware sets) is unaffected — this only renames
-  the TSX content-page prop.
+- **Generated CRUD create/update now require `api.writable` on any schema with
+  `create` or `update` enabled — deny-by-default.** Previously every field in
+  the schema was client-writable via the generated `POST`/`PUT` handlers,
+  including any field an author happened to add (`status`, a custom role-like
+  column, etc.); the owner field was correctly stripped, but nothing else was.
+  `dune codegen`/`migrate:generate` now throws at generation time when
+  `create`/`update` is enabled and `api.writable` is unset, naming the schema
+  and requiring an explicit field list (or `writable: []` if the handler should
+  accept no client fields). Only affects schemas the next time their routes are
+  regenerated — does not run at `dune serve`/`dune build` startup, so existing
+  generated routes keep working until then. 1 new test covering the
+  missing-field case.
+
+- **`ContentPageProps.siteUser` → `.user`** — dec-identity-unification renamed
+  `SiteUser` → `User` / `getSiteUser()` → `getUser()` / `x-dune-site-user` →
+  `x-dune-user` everywhere else on the public API; this one field (published in
+  `[0.32.0]` below) predated that pass and was missed. Renamed now, one release
+  after it shipped — a real, if narrow, breaking change for anyone who already
+  adopted the `.siteUser` name in a TSX content page. `ctx.state.siteUser` (the
+  Fresh-state key `mountDuneAuth()`'s middleware sets) is unaffected — this only
+  renames the TSX content-page prop.
 
 ### Added
 
 - **`dune users:create <email> [--role x[,y]] [--name "..."]`** —
   admin-provisioned local user accounts. Creates a `User` record directly,
-  before the person has ever logged in, reusing the same `UserStore`
-  primitive `users:grant-role`/`users:revoke-role` already use; an
-  admin-tier role (`admin`/`editor`/`author`) syncs the `app:admin` authz
-  tuple immediately, same as those commands. The record is marked
-  `provider: "invited"`. The invited person's first magic-link login
-  matches it by email and just works; first login via OAuth does not —
-  the OAuth callback's account-takeover guard rejects an email-only match
-  from a different provider with a 409, and there's no "original method"
-  yet for a record this command creates. That's a deliberate scope
-  boundary, not a bug: closed/invite-only signup (which would need to
-  change the OAuth linking rules themselves) is a separate, larger
+  before the person has ever logged in, reusing the same `UserStore` primitive
+  `users:grant-role`/`users:revoke-role` already use; an admin-tier role
+  (`admin`/`editor`/`author`) syncs the `app:admin` authz tuple immediately,
+  same as those commands. The record is marked `provider: "invited"`. The
+  invited person's first magic-link login matches it by email and just works;
+  first login via OAuth does not — the OAuth callback's account-takeover guard
+  rejects an email-only match from a different provider with a 409, and there's
+  no "original method" yet for a record this command creates. That's a
+  deliberate scope boundary, not a bug: closed/invite-only signup (which would
+  need to change the OAuth linking rules themselves) is a separate, larger
   feature. 9 new tests.
 
 - **`DUNE_EMAIL_DEV_ALLOWED_DOMAINS`** — a safer middle ground for dev-mode
   email sends, alongside the existing unrestricted
   `DUNE_EMAIL_ALLOW_DEV_SEND=1`. When set (comma-separated domains),
-  `createEmailProvider()` constructs the real provider but wraps it in a
-  new `DevDomainFilterEmailProvider`: each `send()` checks every
-  recipient's domain against the list — all matching sends for real, any
-  not matching redirects the *whole* message to console instead of a
-  partial send to just the allowed recipients. Takes precedence over
-  `DUNE_EMAIL_ALLOW_DEV_SEND` when both are set. Guards against a dev
-  environment somehow pointed at production-like data (a seeded/cloned
-  dataset, a bug) — real sends stay bounded to known-safe domains instead
-  of "everyone the configured credentials can reach." 11 new tests.
+  `createEmailProvider()` constructs the real provider but wraps it in a new
+  `DevDomainFilterEmailProvider`: each `send()` checks every recipient's domain
+  against the list — all matching sends for real, any not matching redirects the
+  _whole_ message to console instead of a partial send to just the allowed
+  recipients. Takes precedence over `DUNE_EMAIL_ALLOW_DEV_SEND` when both are
+  set. Guards against a dev environment somehow pointed at production-like data
+  (a seeded/cloned dataset, a bug) — real sends stay bounded to known-safe
+  domains instead of "everyone the configured credentials can reach." 11 new
+  tests.
 
 - **A default 10-minute timeout on every background job.** A hung handler
-  (infinite loop, a `fetch()` that never resolves) previously ran forever
-  — and worse, left `JobState.status` stuck at `"running"` permanently,
-  silently blocking every future scheduled run of that job until process
-  restart. `JobDefinition.timeoutMs` overrides the default per job
-  (readable as an `export const timeoutMs` from a `jobs/*.ts` file,
-  mirroring the existing `schedule`/`handler` convention);
-  `JobSchedulerConfig.defaultTimeoutMs` overrides it globally. A timed-out
-  run is treated the same as any other handler error, unblocking future
-  runs. New `JobContext.signal` (`AbortSignal`) is aborted on timeout for
-  handlers that cooperate (e.g. pass it to `fetch()`) — JS has no true
-  cancellation otherwise. 11 new tests.
+  (infinite loop, a `fetch()` that never resolves) previously ran forever — and
+  worse, left `JobState.status` stuck at `"running"` permanently, silently
+  blocking every future scheduled run of that job until process restart.
+  `JobDefinition.timeoutMs` overrides the default per job (readable as an
+  `export const timeoutMs` from a `jobs/*.ts` file, mirroring the existing
+  `schedule`/`handler` convention); `JobSchedulerConfig.defaultTimeoutMs`
+  overrides it globally. A timed-out run is treated the same as any other
+  handler error, unblocking future runs. New `JobContext.signal` (`AbortSignal`)
+  is aborted on timeout for handlers that cooperate (e.g. pass it to `fetch()`)
+  — JS has no true cancellation otherwise. 11 new tests.
 
 - **`write_page` (MCP) now warns instead of silently writing malformed
-  frontmatter.** Previously wrote raw content verbatim with zero parsing
-  — broken YAML frontmatter landed on disk silently, only surfacing later
-  at render/index time. Still writes exactly what was given (deliberately
-  parse-and-warn, not reject — `write_page` is a trusted-agent primitive),
-  but the result now includes a warning when the frontmatter block isn't
-  valid YAML. 3 new tests.
+  frontmatter.** Previously wrote raw content verbatim with zero parsing —
+  broken YAML frontmatter landed on disk silently, only surfacing later at
+  render/index time. Still writes exactly what was given (deliberately
+  parse-and-warn, not reject — `write_page` is a trusted-agent primitive), but
+  the result now includes a warning when the frontmatter block isn't valid YAML.
+  3 new tests.
 
 - **Account linking — connect an additional OAuth provider to an existing
-  account.** `GET /auth/{provider}/link` (authenticated only) starts an
-  OAuth flow that attaches the resulting identity to the *current
-  session's* account via new `linkedProviders` on `User`, instead of
-  logging in as a separate/new one; `POST /auth/{provider}/unlink` removes
-  a previously-linked (non-primary) one. `UserStore.getByProvider()` now
-  checks both the account's original signup `provider`/`providerId` and
-  everything in `linkedProviders` — implemented for both the local
-  flat-file store and the `db`-backed store (a JSON column, matching how
-  `roles` is already stored there — no join table needed). The original
-  signup provider is never removable through this route. Closes the
-  `users:create` OAuth-first-login gap from earlier in this release: an
-  invited person can now log in via magic link and then connect their
-  preferred OAuth provider for future visits.
+  account.** `GET /auth/{provider}/link` (authenticated only) starts an OAuth
+  flow that attaches the resulting identity to the _current session's_ account
+  via new `linkedProviders` on `User`, instead of logging in as a separate/new
+  one; `POST /auth/{provider}/unlink` removes a previously-linked (non-primary)
+  one. `UserStore.getByProvider()` now checks both the account's original signup
+  `provider`/`providerId` and everything in `linkedProviders` — implemented for
+  both the local flat-file store and the `db`-backed store (a JSON column,
+  matching how `roles` is already stored there — no join table needed). The
+  original signup provider is never removable through this route. Closes the
+  `users:create` OAuth-first-login gap from earlier in this release: an invited
+  person can now log in via magic link and then connect their preferred OAuth
+  provider for future visits.
 
   Real design decisions made along the way, not just an obvious API:
   **exact-match-wins**, not a hard error, when the provider identity being
-  linked already belongs to a *different*, already-established account —
-  completing that provider's OAuth consent screen is real proof of
-  controlling it, so the flow logs into that account instead of erroring
-  (redirects with `?dune_link=linked_elsewhere`, never leaking the other
-  account's details). **Unlinking is blocked only when it would remove
-  your last additional identity while magic link is disabled site-wide**
-  — magic link needs no extra state (just a valid email) so it's always a
-  safe fallback when enabled. The OAuth callback re-verifies the active
-  session still matches who *started* the link flow (bound via a new
-  httpOnly `dune_oauth_link_user` cookie, unsigned like the existing state
-  cookie — its security is confidentiality, not a signature), refusing
-  rather than silently linking to whoever's logged in if the session
+  linked already belongs to a _different_, already-established account —
+  completing that provider's OAuth consent screen is real proof of controlling
+  it, so the flow logs into that account instead of erroring (redirects with
+  `?dune_link=linked_elsewhere`, never leaking the other account's details).
+  **Unlinking is blocked only when it would remove your last additional identity
+  while magic link is disabled site-wide** — magic link needs no extra state
+  (just a valid email) so it's always a safe fallback when enabled. The OAuth
+  callback re-verifies the active session still matches who _started_ the link
+  flow (bound via a new httpOnly `dune_oauth_link_user` cookie, unsigned like
+  the existing state cookie — its security is confidentiality, not a signature),
+  refusing rather than silently linking to whoever's logged in if the session
   changed mid-flow. Scoped to `userStore: local`/`db` only — `400`s under
-  `userStore: session` (no persistent record to attach a link to).
-  26 new tests.
+  `userStore: session` (no persistent record to attach a link to). 26 new tests.
 
-- **Fixed a real, pre-existing bug found while testing the above: every
-  `POST` route under `/auth/*` (including the existing `/auth/magic/send`)
-  500'd whenever it had a request body.** `mountDuneAuth()`'s resolve-user
-  middleware reconstructed the request twice via `new Request(fc.req,
-  ...)` from the same original `fc.req` — a Request's body can only be
-  the source of a `new Request()` once, so the second reconstruction
-  threw "Input request's body is unusable" for any request with a body.
-  Fixed by chaining the second reconstruction off the first (already-
-  rebuilt) request instead of the original. 1 new regression test.
+- **Fixed a real, pre-existing bug found while testing the above: every `POST`
+  route under `/auth/*` (including the existing `/auth/magic/send`) 500'd
+  whenever it had a request body.** `mountDuneAuth()`'s resolve-user middleware
+  reconstructed the request twice via `new Request(fc.req,
+  ...)` from the same
+  original `fc.req` — a Request's body can only be the source of a
+  `new Request()` once, so the second reconstruction threw "Input request's body
+  is unusable" for any request with a body. Fixed by chaining the second
+  reconstruction off the first (already- rebuilt) request instead of the
+  original. 1 new regression test.
+
+### Fixed
+
+- **`roles:`-gated pages were readable through search, feeds, media, the
+  navigation/list APIs, and static builds — only page HTML and
+  `GET /api/pages/:path` were actually gated.** A new shared gating helper
+  (`src/auth/gating.ts`) is now the single decision point: `/api/search` drops
+  gated hits from the result set after querying (before pagination, so the
+  response can't be used to infer how many gated rows exist); `/api/nav`,
+  `/api/collections`, `/api/taxonomy/*`, and the page-list API filter through
+  it; RSS/Atom feeds exclude gated pages entirely; a co-located media file (e.g.
+  an attachment next to a gated page) is now resolved to its parent page and
+  gated the same way before being served; and `dune build --static` excludes
+  gated pages from feeds, sitemap, and the media files it copies into `dist/`.
+- **External JWT mode accepted a token from any client of the same identity
+  provider unless `issuer`/`audience` were explicitly configured.** Both are now
+  required in `external-jwt` mode — missing either fails startup with a clear
+  error instead of a silent warning.
+- **An `https:` plugin specifier ran with full process privileges and no
+  integrity check**, unlike `jsr:`/`npm:` specifiers, which already pin an exact
+  version. Now requires an `integrity: sha256:<hex>` (or SRI-format) pin,
+  verified with a constant-time comparison before the plugin is imported.
+- **A plugin could register `publicRoutes` under `/api/inline-edit`,
+  `/api/pages`, `/api/search`, `/api/nav`, `/api/flex`, or `/auth`** — the
+  reserved-prefix list only covered the admin panel and a handful of specific
+  API paths. Widened to cover every core-owned route prefix.
+- **The inline-edit WebSocket accepted any path matching a filename pattern, not
+  just files actually in the content index** — an authenticated editor could
+  open an edit session against a frontmatter sidecar, Flex YAML, or other
+  non-content file the handler would still write to. Now resolved against the
+  live content index; also now rejects the upgrade outright when `Origin` is
+  missing, matching the same-origin contract collab WebSockets already enforce.
+- **The TSX content-page CSRF check only looked at `Origin`, silently passing
+  when it was absent**, unlike the admin panel's own CSRF helper (which already
+  falls back to `Sec-Fetch-Site` and `Referer`). Both now share the same check.
+- **Machine-translation providers (LibreTranslate, and custom DeepL/Google
+  endpoints) called `fetch()` directly**, unlike every other outbound call in
+  core, which goes through the SSRF-safe `safeFetch()` — an admin-configured or
+  compromised endpoint could reach loopback, RFC1918, or cloud-metadata
+  addresses. All three now route through `safeFetch()`.
+- **`dune plugin:install`, MCP's `install_plugin`, and `dune plugin:list` didn't
+  enforce the pinned-specifier requirement** `dune serve` already rejects at
+  boot — an unpinned `jsr:`/`npm:` plugin could be installed or listed (and
+  dynamically imported by `plugin:list`) without ever hitting the pin check.
+  Both write paths now call the same assertion `dune
+  serve` uses.
+- **Authz tuple files with a missing HMAC signature loaded silently when
+  `DUNE_AUTHZ_HMAC_SECRET` was set**, requiring a separate opt-in
+  (`DUNE_AUTHZ_HMAC_STRICT=1`) to actually reject them — an attacker able to
+  write `data/permissions/*.json` could omit the signature and grant themselves
+  any permission. Rejecting unsigned tuples is now the default once a key is
+  configured; `DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1` opts back into the old
+  migration-friendly behavior.
+- **`safeFetch()`'s SSRF protection pinned the vetted IP for `http:` requests
+  but not `https:`** — the hostname was preserved for TLS/SNI, leaving a
+  DNS-rebinding window between the allowlist check and the actual connection.
+  HTTPS requests now dial the vetted IP directly (via a pinned
+  `Deno.createHttpClient` TCP transport) while still presenting the original
+  hostname for SNI and certificate validation.
+- **Magic-link token redemption was check-then-act, not atomic** — two
+  concurrent requests redeeming the same token could both pass the "already
+  used" check before either marked it used. `MagicTokenStore.add()` now reports
+  whether it newly claimed the nonce (atomic insert), and a lost race is treated
+  as already-used.
+- **`clientIp()` returned `"unknown"` for every request unless a trusted reverse
+  proxy set `X-Forwarded-For`/`X-Real-IP`**, so session IP binding and per-IP
+  rate limiting had no real signal on a plain single-process deployment.
+  `Deno.serve`'s TCP peer address is now stamped onto each request at the
+  boundary and used as the fallback, correctly propagated across every place
+  core reconstructs a `Request` (header-stripping, hook sanitization, multisite
+  rewriting).
+- **`update_frontmatter` (MCP) silently corrupted a file with malformed existing
+  frontmatter** instead of surfacing the problem — the parser couldn't
+  distinguish "no frontmatter block" from "frontmatter present but invalid
+  YAML," so `update_frontmatter` merged into an empty object and prepended a
+  second, duplicate frontmatter block. The parser now reports malformed
+  frontmatter explicitly, and the tool errors out instead of writing back.
 
 ## [0.32.0] — 2026-08-22
 
@@ -120,409 +208,397 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 - **Renamed the internal user-identity header and its accessors**:
   `SITE_USER_HEADER` → `USER_HEADER`, its value `"x-dune-site-user"` →
   `"x-dune-user"`, `getSiteUser()` → `getUser()` (`@dune/core/auth/types`).
-  Finishes a rename `dec-identity-unification`'s `SiteUser` → `User` pass
-  left behind — every type reference was renamed at the time, but this
-  wire-level name and its own duplicate copy of the constant/resolver
-  logic (in `@dune/core/auth/api-guard`, now consolidated onto
-  `auth/types.ts` as the single source) were not. Generated `dune codegen`
-  CRUD routes are unaffected — they only ever import `requireAuth()`, not
-  these directly.
+  Finishes a rename `dec-identity-unification`'s `SiteUser` → `User` pass left
+  behind — every type reference was renamed at the time, but this wire-level
+  name and its own duplicate copy of the constant/resolver logic (in
+  `@dune/core/auth/api-guard`, now consolidated onto `auth/types.ts` as the
+  single source) were not. Generated `dune codegen` CRUD routes are unaffected —
+  they only ever import `requireAuth()`, not these directly.
 
 ### Fixed
 
 - **`transformResponse` plugins (e.g. `@dune/plugin-inline-edit`'s admin bar)
   never received `page` for a site's homepage.** `runPluginResponseTransforms()`
-  matched the current URL against the content index with a hand-rolled
-  exact `pathname === route` check — but a folder-based homepage's own
-  stored route is whatever folder maps to it (e.g. `/home`), not `/`, and
-  only the real router's `resolve()` knows the "/" → home-page mapping
-  (plus aliases and multilingual routing). Now takes a `resolve` callback
-  (wired to `engine.router.resolve`) instead of the raw page list, so it
-  matches identically to how the page itself was actually rendered. Every
-  site's homepage was affected — inline editing silently never worked
-  there. 1 new test.
+  matched the current URL against the content index with a hand-rolled exact
+  `pathname === route` check — but a folder-based homepage's own stored route is
+  whatever folder maps to it (e.g. `/home`), not `/`, and only the real router's
+  `resolve()` knows the "/" → home-page mapping (plus aliases and multilingual
+  routing). Now takes a `resolve` callback (wired to `engine.router.resolve`)
+  instead of the raw page list, so it matches identically to how the page itself
+  was actually rendered. Every site's homepage was affected — inline editing
+  silently never worked there. 1 new test.
 
 - **A `data/users/*.json` record written before the `role: string` →
-  `roles: string[]` migration (dec-identity-unification Phase 3/4) crashed
-  any code that read `.roles` unguarded — including inside
-  `@dune/plugin-admin`'s `mount()`, where an uncaught throw silently
-  aborted the rest of admin panel setup (everything registered before that
-  point still worked; every `adminPages`/`publicRoutes` collected after it
-  in the same `mount()` call silently never registered, no visible error to
-  a site visitor). `createLocalUserStore()`'s four read paths (`getById`,
-  `getByUsername`, `getByProvider`, `list`) now normalize a legacy
-  `role: string` record to `roles: [role]` (or `roles: []` if neither field
-  is present) once, centrally, at read time — cheaper and safer than
-  guarding every one of `@dune/plugin-admin`'s ~20 unguarded
-  `.roles.includes(...)` call sites individually. 4 new tests.
+  `roles: string[]` migration (dec-identity-unification Phase 3/4) crashed any
+  code that read `.roles` unguarded — including inside `@dune/plugin-admin`'s
+  `mount()`, where an uncaught throw silently aborted the rest of admin panel
+  setup (everything registered before that point still worked; every
+  `adminPages`/`publicRoutes` collected after it in the same `mount()` call
+  silently never registered, no visible error to a site visitor).
+  `createLocalUserStore()`'s four read paths (`getById`, `getByUsername`,
+  `getByProvider`, `list`) now normalize a legacy `role: string` record to
+  `roles: [role]` (or `roles: []` if neither field is present) once, centrally,
+  at read time — cheaper and safer than guarding every one of
+  `@dune/plugin-admin`'s ~20 unguarded `.roles.includes(...)` call sites
+  individually. 4 new tests.
 
 - **`site.yaml`'s `plugins:` list had no pinning gate — a `jsr:`/`npm:` plugin
-  specifier could be an unpinned caret range or bare name, unlike the
-  equivalent theme specifier check.** Plugins execute with full process
-  privileges at load time (`loadPlugins()`'s dynamic `import()`), so a
-  crafted or compromised `site.yaml` could point at a typosquatted or
-  unreviewed newer release with nothing rejecting it before that import
-  runs. Added `src/plugins/reference.ts` (`assertPinnedPluginSpecifier()`,
-  mirroring `src/themes/reference.ts`'s theme-specifier check) and wired it
-  into `validateConfig()` via a new `validatePluginList()` — local paths and
-  `https:` URLs are unaffected, only `jsr:`/`npm:` specifiers must pin an
-  exact version. `loadConfig()` already throws on any validation error
-  before plugins are ever imported, so this closes the gap at config-load
-  time rather than at import time. 7 new tests.
+  specifier could be an unpinned caret range or bare name, unlike the equivalent
+  theme specifier check.** Plugins execute with full process privileges at load
+  time (`loadPlugins()`'s dynamic `import()`), so a crafted or compromised
+  `site.yaml` could point at a typosquatted or unreviewed newer release with
+  nothing rejecting it before that import runs. Added `src/plugins/reference.ts`
+  (`assertPinnedPluginSpecifier()`, mirroring `src/themes/reference.ts`'s
+  theme-specifier check) and wired it into `validateConfig()` via a new
+  `validatePluginList()` — local paths and `https:` URLs are unaffected, only
+  `jsr:`/`npm:` specifiers must pin an exact version. `loadConfig()` already
+  throws on any validation error before plugins are ever imported, so this
+  closes the gap at config-load time rather than at import time. 7 new tests.
 
-- **`/api/inline-edit/ws` only ever authenticated via the admin session
-  cookie, so `@dune/plugin-inline-edit` could not actually work without
-  `@dune/plugin-admin` installed — despite the WS route itself having lived
-  in core (not the admin plugin's route tree) since v0.26.0.** This was the
-  known-deferred half of the inline-edit auth-decoupling item (v0.25's own
-  notes flagged it explicitly at the time). The route now prefers the
-  public-auth session (`src/auth/`, `getUser(req)`) set by `mountDuneAuth()`
-  when a site has `auth:` configured, falling back to the admin session
-  when it doesn't — today's still-common case, unchanged in behavior.
-  New `checkInlineEditPermissionForSiteUser()` makes the same `pages.update`
+- **`/api/inline-edit/ws` only ever authenticated via the admin session cookie,
+  so `@dune/plugin-inline-edit` could not actually work without
+  `@dune/plugin-admin` installed — despite the WS route itself having lived in
+  core (not the admin plugin's route tree) since v0.26.0.** This was the
+  known-deferred half of the inline-edit auth-decoupling item (v0.25's own notes
+  flagged it explicitly at the time). The route now prefers the public-auth
+  session (`src/auth/`, `getUser(req)`) set by `mountDuneAuth()` when a site has
+  `auth:` configured, falling back to the admin session when it doesn't —
+  today's still-common case, unchanged in behavior. New
+  `checkInlineEditPermissionForSiteUser()` makes the same `pages.update`
   decision `checkInlineEditPermission()` already made for admin sessions:
-  `authz.check()` when configured (the same shared tuple store admin and
-  public users already sit in, post dec-identity-unification), falling back
-  to a direct `roles.includes("editor" | "admin")` check — there's no
-  `ROLE_PERMISSIONS` table for public-auth users, that fallback only ever
-  made sense for admin sessions. 9 new tests.
+  `authz.check()` when configured (the same shared tuple store admin and public
+  users already sit in, post dec-identity-unification), falling back to a direct
+  `roles.includes("editor" | "admin")` check — there's no `ROLE_PERMISSIONS`
+  table for public-auth users, that fallback only ever made sense for admin
+  sessions. 9 new tests.
 
-- **`mountPlugins()`'s `mount()` error handler logged only the error
-  message, no stack** — under `DUNE_DEV`, now logs the full stack, matching
-  the existing pattern in `content/formats/mdx.ts`'s MDX render-error
-  logging (message-only by default, since a stack can leak filesystem
-  paths; full detail when an operator has shell access and asked for it).
+- **`mountPlugins()`'s `mount()` error handler logged only the error message, no
+  stack** — under `DUNE_DEV`, now logs the full stack, matching the existing
+  pattern in `content/formats/mdx.ts`'s MDX render-error logging (message-only
+  by default, since a stack can leak filesystem paths; full detail when an
+  operator has shell access and asked for it).
 
-- **Incoming requests could set the internal user-identity header
-  themselves under some configurations.** The only code that stripped an
+- **Incoming requests could set the internal user-identity header themselves
+  under some configurations.** The only code that stripped an
   externally-supplied copy of this header lived inside `mountDuneAuth()`'s
-  middleware, which only registers when `site.auth` is configured —
-  independent of whether `db:` CRUD routes (which read the header via
-  `requireAuth()`) are in use. `createDuneApp()` now strips it
-  unconditionally as its first middleware step, regardless of `site.auth`.
+  middleware, which only registers when `site.auth` is configured — independent
+  of whether `db:` CRUD routes (which read the header via `requireAuth()`) are
+  in use. `createDuneApp()` now strips it unconditionally as its first
+  middleware step, regardless of `site.auth`.
 
 - **A validly configured live email provider sent real mail under
-  `DUNE_ENV=dev`, exactly as in production.** `createEmailProvider()` had
-  no dev-mode awareness of its own — the only dev-aware behavior lived
-  inside `ConsoleEmailProvider`, which never applied once a real
-  `smtp`/`resend`/`postmark`/`sendgrid` provider was configured. Now
-  refuses to construct a live provider under `DUNE_ENV=dev` and falls
-  back to the console provider instead, logging a loud warning. Opt out
-  with `DUNE_EMAIL_ALLOW_DEV_SEND=1` for the rare case dev genuinely
-  needs to verify real delivery. Outside dev, unchanged. 13 new tests.
+  `DUNE_ENV=dev`, exactly as in production.** `createEmailProvider()` had no
+  dev-mode awareness of its own — the only dev-aware behavior lived inside
+  `ConsoleEmailProvider`, which never applied once a real
+  `smtp`/`resend`/`postmark`/`sendgrid` provider was configured. Now refuses to
+  construct a live provider under `DUNE_ENV=dev` and falls back to the console
+  provider instead, logging a loud warning. Opt out with
+  `DUNE_EMAIL_ALLOW_DEV_SEND=1` for the rare case dev genuinely needs to verify
+  real delivery. Outside dev, unchanged. 13 new tests.
 
 - **`/api/inline-edit/ws` (the real-time editing WebSocket handler) also
   bypassed `authz`, missed by the admin-bar-gate fix below.** Same flat
   `ROLE_PERMISSIONS`-only `adminAuth.hasPermission()` call, in a second,
-  separate spot — the literal handler `backlog.md`'s "Inline-edit: auth
-  still coupled to admin sessions" entry names. Extracted the decision
-  into `checkInlineEditPermission()` (`src/runtime/server.ts`, exported)
-  — `authz.check()` as sole authority when configured, the flat table
-  only as the narrow-case fallback — and unit-tested it directly rather
-  than standing up a full WebSocket-upgrade harness. 4 new tests.
+  separate spot — the literal handler `backlog.md`'s "Inline-edit: auth still
+  coupled to admin sessions" entry names. Extracted the decision into
+  `checkInlineEditPermission()` (`src/runtime/server.ts`, exported) —
+  `authz.check()` as sole authority when configured, the flat table only as the
+  narrow-case fallback — and unit-tested it directly rather than standing up a
+  full WebSocket-upgrade harness. 4 new tests.
 
-- **Inline editing's admin-bar gate bypassed the polizy `authz` system,
-  checking the flat `ROLE_PERMISSIONS` table directly.**
-  `runPluginResponseTransforms()` — which decides whether to inject the
-  admin bar and keep `data-dune-*` inline-edit markers — called
-  `auth.hasPermission()` straight from a loosely-typed
-  `ctx.adminContext?.auth` interface, the one remaining permission check
-  that hadn't been cut over to `authz.check()` (dec-identity-unification
-  Phase 7 — every other admin permission check already had been, in
-  Phase 5c). Added an `authz` option (`BootstrapResult.authz`, already
-  available) that's now the sole authority for the `pages.update` check
-  when configured; `auth.hasPermission()` is only the fallback for the
-  narrow case where authz creation itself failed at startup. 4 new tests.
+- **Inline editing's admin-bar gate bypassed the polizy `authz` system, checking
+  the flat `ROLE_PERMISSIONS` table directly.** `runPluginResponseTransforms()`
+  — which decides whether to inject the admin bar and keep `data-dune-*`
+  inline-edit markers — called `auth.hasPermission()` straight from a
+  loosely-typed `ctx.adminContext?.auth` interface, the one remaining permission
+  check that hadn't been cut over to `authz.check()` (dec-identity-unification
+  Phase 7 — every other admin permission check already had been, in Phase 5c).
+  Added an `authz` option (`BootstrapResult.authz`, already available) that's
+  now the sole authority for the `pages.update` check when configured;
+  `auth.hasPermission()` is only the fallback for the narrow case where authz
+  creation itself failed at startup. 4 new tests.
 
 - **`dune migrate:roles-to-tuples` silently found zero users on every run.**
   `dataDir` was built by joining the site root into `config.admin?.dataDir`,
-  producing an absolute path — but `StorageAdapter` requires paths relative
-  to its own rootDir and rejects absolute ones with a `PathEscapeError`,
-  which `userStore.list()`'s try/catch silently swallowed into an empty
-  result (indistinguishable from "no users have roles"). This command
-  reported "No users with roles found — nothing to migrate" on every real
-  site, every time it ran, regardless of actual data — a real,
-  previously-latent bug with zero test coverage to catch it. Fixed by
-  making `dataDir` relative, matching the convention `@dune/plugin-admin`'s
-  `mod.ts` already used correctly. Found while building `users:grant-role`
-  (below), which hit the identical bug in new code before it was ever
-  committed. 6 new tests — the first coverage this command has ever had.
+  producing an absolute path — but `StorageAdapter` requires paths relative to
+  its own rootDir and rejects absolute ones with a `PathEscapeError`, which
+  `userStore.list()`'s try/catch silently swallowed into an empty result
+  (indistinguishable from "no users have roles"). This command reported "No
+  users with roles found — nothing to migrate" on every real site, every time it
+  ran, regardless of actual data — a real, previously-latent bug with zero test
+  coverage to catch it. Fixed by making `dataDir` relative, matching the
+  convention `@dune/plugin-admin`'s `mod.ts` already used correctly. Found while
+  building `users:grant-role` (below), which hit the identical bug in new code
+  before it was ever committed. 6 new tests — the first coverage this command
+  has ever had.
 
 - **`SQLiteAdapter` silently truncated large integers to 32 bits on read.**
   `jsr:@db/sqlite`'s `Database` constructor defaults its `int64` option to
-  `false`, which the adapter never overrode — any `INTEGER` column value
-  beyond 32 bits (millisecond epoch timestamps included) came back from
-  `SELECT` masked to its lower 32 bits, silently corrupting `createdAt` /
-  `updatedAt` / `lastSeenAt` and any other large integer stored via the
-  SQLite db tier. Affects every feature routed through `SQLiteAdapter`, not
-  just user records. Fixed by passing `{ int64: true }` when opening the
-  database. Found while adding the first test coverage for
-  `createDbUserStore()` (`tests/auth/user_store_db_test.ts`, 14 tests,
-  previously none).
+  `false`, which the adapter never overrode — any `INTEGER` column value beyond
+  32 bits (millisecond epoch timestamps included) came back from `SELECT` masked
+  to its lower 32 bits, silently corrupting `createdAt` / `updatedAt` /
+  `lastSeenAt` and any other large integer stored via the SQLite db tier.
+  Affects every feature routed through `SQLiteAdapter`, not just user records.
+  Fixed by passing `{ int64: true }` when opening the database. Found while
+  adding the first test coverage for `createDbUserStore()`
+  (`tests/auth/user_store_db_test.ts`, 14 tests, previously none).
 
 - **The db-tier `UserStore` didn't translate a duplicate-email write into
   `DuplicateEmailError`,** unlike the local (flat-file) tier — a conflicting
   `create()`/`update()` surfaced a raw driver error instead. `jsr:@db/sqlite`
-  turned out to give the detailed `"UNIQUE constraint failed: <table>.
-  <column>"` message only when the failing call happens at a script's top
-  level; routed through any wrapping function (this adapter's `query()`
-  included), the same failure instead reports a generic `SQLITE_CONSTRAINT`
-  code with no way to identify which column caused it, and the driver
-  exposes no API to enable SQLite's extended result codes. Rather than
-  depend on message parsing that's unreliable for one of the two drivers,
-  `create()`/`update()` now re-check reality after a write fails — if a
+  turned out to give the detailed
+  `"UNIQUE constraint failed: <table>.
+  <column>"` message only when the
+  failing call happens at a script's top level; routed through any wrapping
+  function (this adapter's `query()` included), the same failure instead reports
+  a generic `SQLITE_CONSTRAINT` code with no way to identify which column caused
+  it, and the driver exposes no API to enable SQLite's extended result codes.
+  Rather than depend on message parsing that's unreliable for one of the two
+  drivers, `create()`/`update()` now re-check reality after a write fails — if a
   different row now holds the email being written, it's reported as
   `DuplicateEmailError`; any other failure is rethrown unchanged.
 
 - **`SiteUser.create()` had a TOCTOU race that could orphan an account.**
-  `create()`/`saveUser()` wrote the user record and the by-email index as
-  two separate, non-atomic `storage.write()` calls, with no existence check
-  before the final write. Callers in `src/auth/routes.ts` do check
+  `create()`/`saveUser()` wrote the user record and the by-email index as two
+  separate, non-atomic `storage.write()` calls, with no existence check before
+  the final write. Callers in `src/auth/routes.ts` do check
   `getByEmail()`/`getByProvider()` before calling `create()`, but that
   check-then-act wasn't atomic: two near-simultaneous requests with the same
   email (a double-clicked OAuth button, two magic-link redeems racing) could
   both pass the check as `null`, both call `create()`, and the second write
   would silently win — the first `SiteUser` record still exists on disk but
-  becomes permanently unreachable by email lookup, and any future login by
-  that email lands on the second account instead. Added an in-process async
-  lock (keyed by lowercased email) around `create()`, re-checking
-  `getByEmail()` inside the lock before writing — a losing concurrent
-  `create()` now throws a new `DuplicateEmailError` instead of silently
-  overwriting the index, and both callers in `routes.ts` catch it and
-  re-fetch the winner's record. The `db`-tier store already has a real
-  `UNIQUE` constraint on email and isn't affected — this was specific to the
-  flat-file `local` tier. Real regression test in
-  `tests/auth/user_store_test.ts`: fires two concurrent `create()` calls
+  becomes permanently unreachable by email lookup, and any future login by that
+  email lands on the second account instead. Added an in-process async lock
+  (keyed by lowercased email) around `create()`, re-checking `getByEmail()`
+  inside the lock before writing — a losing concurrent `create()` now throws a
+  new `DuplicateEmailError` instead of silently overwriting the index, and both
+  callers in `routes.ts` catch it and re-fetch the winner's record. The
+  `db`-tier store already has a real `UNIQUE` constraint on email and isn't
+  affected — this was specific to the flat-file `local` tier. Real regression
+  test in `tests/auth/user_store_test.ts`: fires two concurrent `create()` calls
   with the same email and asserts exactly one account results, reachable by
   email, with no orphan.
 
 - **`DunePlugin.publicRoutes` was only ever wired up by `@dune/plugin-admin`'s
   `mount()` — never by `@dune/core` itself, despite being a core-declared
   type.** `bootstrap()` always collected every plugin's `publicRoutes` onto
-  `BootstrapResult.pluginPublicRoutes`, but nothing turned that list into
-  live `app.get()`/etc. registrations unless `@dune/plugin-admin`'s
-  `mountDuneAdmin()` happened to run — meaning `admin.enabled: false`,
-  headless mode without an explicit `mountDuneAdmin()` call, and any
-  `bootstrap()`-only tool (e.g. `dune mcp:serve`) silently dropped every
-  plugin's `publicRoutes`, no error. Moved the registration logic
-  (reserved-prefix shadowing validation included) into `@dune/core` itself
-  — new `registerPluginPublicRoutes()` in `src/runtime/register-plugin-routes.ts`,
-  called directly from `createDuneApp()`. `@dune/plugin-admin`'s
-  `mountDuneAdmin()` now delegates to the same core function instead of
-  re-implementing it, so the headless-mode path (calling `mountDuneAdmin()`
-  without `createDuneApp()`) still gets `publicRoutes` too. A `WeakSet`
-  keyed by the bootstrap's `ctx` makes calling it twice for the same
-  bootstrap (which happens in the normal `dune serve` path — once from
-  `createDuneApp()` directly, once via `mountPlugins()` → plugin-admin's own
-  `mount()` → `mountDuneAdmin()`) a safe no-op instead of a duplicate
-  registration.
+  `BootstrapResult.pluginPublicRoutes`, but nothing turned that list into live
+  `app.get()`/etc. registrations unless `@dune/plugin-admin`'s
+  `mountDuneAdmin()` happened to run — meaning `admin.enabled: false`, headless
+  mode without an explicit `mountDuneAdmin()` call, and any `bootstrap()`-only
+  tool (e.g. `dune mcp:serve`) silently dropped every plugin's `publicRoutes`,
+  no error. Moved the registration logic (reserved-prefix shadowing validation
+  included) into `@dune/core` itself — new `registerPluginPublicRoutes()` in
+  `src/runtime/register-plugin-routes.ts`, called directly from
+  `createDuneApp()`. `@dune/plugin-admin`'s `mountDuneAdmin()` now delegates to
+  the same core function instead of re-implementing it, so the headless-mode
+  path (calling `mountDuneAdmin()` without `createDuneApp()`) still gets
+  `publicRoutes` too. A `WeakSet` keyed by the bootstrap's `ctx` makes calling
+  it twice for the same bootstrap (which happens in the normal `dune serve` path
+  — once from `createDuneApp()` directly, once via `mountPlugins()` →
+  plugin-admin's own `mount()` → `mountDuneAdmin()`) a safe no-op instead of a
+  duplicate registration.
 
   `DunePlugin.adminPages` is **not** part of this fix and stays
-  `@dune/plugin-admin`-owned — its registration enforces each page's
-  declared `permission` via the admin panel's own auth system, which core
-  has no reason to depend on. Corrected the `AdminPageRegistration` type
-  docstring, which previously (and inaccurately) claimed "the bootstrap
-  process" wires it — it's `@dune/plugin-admin`'s `mountDuneAdmin()`, and
-  core's own `bootstrap()` doesn't even collect it.
+  `@dune/plugin-admin`-owned — its registration enforces each page's declared
+  `permission` via the admin panel's own auth system, which core has no reason
+  to depend on. Corrected the `AdminPageRegistration` type docstring, which
+  previously (and inaccurately) claimed "the bootstrap process" wires it — it's
+  `@dune/plugin-admin`'s `mountDuneAdmin()`, and core's own `bootstrap()`
+  doesn't even collect it.
 
   Real end-to-end tests, not just type-checks:
   `tests/runtime/register_plugin_routes_test.ts` — a plugin route resolving
   through `createDuneApp()` alone with no admin package present at all, a
-  non-GET method, the reserved-prefix rejection, and the double-call/no-op
-  dedup behavior via a real `App.handler()`.
+  non-GET method, the reserved-prefix rejection, and the double-call/no-op dedup
+  behavior via a real `App.handler()`.
 
 - **The admin panel's own Polizy authz instance was created based on
   `site.auth`'s (public-auth) mode/`authzStore`, not any admin-specific
-  setting.** A site running `site.auth.mode: "external-jwt"` with no
-  explicit `site.auth.authzStore` — a valid, common setup where an
-  external IdP owns public-user roles — silently ended up with no
-  admin-panel authz instance either, even though admin-user tuples
-  (`bootstrapAdminTuples()`) are an unrelated identity concern from
-  site-user tuples. `requirePermission()` would then silently fall back
-  to the flat `ROLE_PERMISSIONS` table with no warning. Added
-  `AdminConfig.authzStore?: "local"` (`src/config/admin-config.ts`) as
-  the admin panel's own, independent setting (default `"local"`, created
-  whenever `admin.enabled !== false`); `bootstrap.ts`'s admin-side authz
-  creation no longer reads `site.auth` at all. Also properly typed
+  setting.** A site running `site.auth.mode: "external-jwt"` with no explicit
+  `site.auth.authzStore` — a valid, common setup where an external IdP owns
+  public-user roles — silently ended up with no admin-panel authz instance
+  either, even though admin-user tuples (`bootstrapAdminTuples()`) are an
+  unrelated identity concern from site-user tuples. `requirePermission()` would
+  then silently fall back to the flat `ROLE_PERMISSIONS` table with no warning.
+  Added `AdminConfig.authzStore?: "local"` (`src/config/admin-config.ts`) as the
+  admin panel's own, independent setting (default `"local"`, created whenever
+  `admin.enabled !== false`); `bootstrap.ts`'s admin-side authz creation no
+  longer reads `site.auth` at all. Also properly typed
   `SiteConfig.auth.authzStore?: "local" | "db"` on the public-auth side
   (`src/config/site-config.ts`) — previously only described in doc-comment
   prose, read via `as any` casts everywhere — and removed a hand-duplicated
-  `SiteAuthConfig` interface in `src/auth/mount.ts` that had already
-  drifted from the (until now, incomplete) canonical type. Real regression
-  test in `tests/runtime/bootstrap_admin_authz_test.ts`, verified to fail
-  against the pre-fix code: boots a real site in `external-jwt` mode with
-  no `authzStore` set and asserts `ctx.authz`/`ctx.authzAdapter` are still
-  populated.
+  `SiteAuthConfig` interface in `src/auth/mount.ts` that had already drifted
+  from the (until now, incomplete) canonical type. Real regression test in
+  `tests/runtime/bootstrap_admin_authz_test.ts`, verified to fail against the
+  pre-fix code: boots a real site in `external-jwt` mode with no `authzStore`
+  set and asserts `ctx.authz`/`ctx.authzAdapter` are still populated.
 
 ### Added
 
 - **`ContentPageProps.siteUser`** — hand-written `.tsx` content pages now
-  receive the resolved public-site user (or `null`) as a prop, the same
-  `User` a Fresh route handler gets via `fc.state.siteUser` or a generated
-  CRUD route via `requireAuth()`. Previously a TSX page had to read the
-  internal user header itself to get this. Resolved once per request in
-  `handleTsxPage()`.
+  receive the resolved public-site user (or `null`) as a prop, the same `User` a
+  Fresh route handler gets via `fc.state.siteUser` or a generated CRUD route via
+  `requireAuth()`. Previously a TSX page had to read the internal user header
+  itself to get this. Resolved once per request in `handleTsxPage()`.
 
 - **`content` on Flex Object list/detail template props.**
   `FlexListTemplateProps` and `FlexDetailTemplateProps` (the props a theme's
   `templates/flex/{type}-list.tsx` / `templates/flex/{type}.tsx` receive) now
-  carry `content?: ContentApi`, the same content-query instance already
-  threaded into `TemplateProps` and `ContentPageProps` — Flex templates
-  previously had no way to query the content index (e.g. to link a record to
-  a related page). 2 new tests.
+  carry `content?: ContentApi`, the same content-query instance already threaded
+  into `TemplateProps` and `ContentPageProps` — Flex templates previously had no
+  way to query the content index (e.g. to link a record to a related page). 2
+  new tests.
 
-- **`dune dev`/`dune serve` workspace-link sibling plugin packages, not
-  just `@dune/core`.** Previously, running the CLI from a local source
-  checkout only ever re-exec'd with dune's own (member) `deno.json`, or a
-  temp config merging it with the site's — neither carries a `"workspace"`
-  field (Deno only accepts one in a workspace-*root* config), so a local
-  checkout of `@dune/plugin-admin`/`@dune/plugin-orama`/etc. silently fell
-  back to the published JSR package even when developing them side by side
-  in the same multi-repo checkout. `resolveConfig()` now walks up from
-  dune's own directory looking for an ancestor workspace root
-  (`findWorkspaceRoot()`, `src/cli/local-checkout-detect.ts`), and when
-  found, writes the merged config as a temp *file* directly inside that
-  root directory (member paths in `"workspace"` only resolve when nested
-  under the config file's own directory) instead of an arbitrary OS
-  tempdir, carrying the root's own member list and import layer through
-  (`buildMergedConfig()`, lowest priority: root → dune → site). Applies
-  even when the site has no deno.json of its own — workspace-linking no
-  longer requires a site-side merge to piggyback on. 6 new tests, including
-  a real `deno run --no-remote` spawn proving a `jsr:` specifier actually
-  resolves to the local sibling checkout.
+- **`dune dev`/`dune serve` workspace-link sibling plugin packages, not just
+  `@dune/core`.** Previously, running the CLI from a local source checkout only
+  ever re-exec'd with dune's own (member) `deno.json`, or a temp config merging
+  it with the site's — neither carries a `"workspace"` field (Deno only accepts
+  one in a workspace-_root_ config), so a local checkout of
+  `@dune/plugin-admin`/`@dune/plugin-orama`/etc. silently fell back to the
+  published JSR package even when developing them side by side in the same
+  multi-repo checkout. `resolveConfig()` now walks up from dune's own directory
+  looking for an ancestor workspace root (`findWorkspaceRoot()`,
+  `src/cli/local-checkout-detect.ts`), and when found, writes the merged config
+  as a temp _file_ directly inside that root directory (member paths in
+  `"workspace"` only resolve when nested under the config file's own directory)
+  instead of an arbitrary OS tempdir, carrying the root's own member list and
+  import layer through (`buildMergedConfig()`, lowest priority: root → dune →
+  site). Applies even when the site has no deno.json of its own —
+  workspace-linking no longer requires a site-side merge to piggyback on. 6 new
+  tests, including a real `deno run --no-remote` spawn proving a `jsr:`
+  specifier actually resolves to the local sibling checkout.
 
 - **CI guard against workspace-member `@dune/core` pin drift.**
-  `scripts/check-core-pin-drift.ts` checks the latest published version of
-  every known sibling `@dune/*` package on JSR against this checkout's own
-  `deno.json` version, failing when a pin no longer covers it — the 2026-07-16
-  incident class, where a sibling's `@dune/core` range silently stopped
-  covering a real core version and Deno's workspace auto-linking (or plain
-  JSR resolution) fell back to a stale published core for real runtime
-  imports, with only a passive console warning. New `deno task
-  check:core-pin-drift` and CI step (kept separate from the offline `check`
-  task since this one needs network). 8 new tests for the pure parsing
-  logic.
+  `scripts/check-core-pin-drift.ts` checks the latest published version of every
+  known sibling `@dune/*` package on JSR against this checkout's own `deno.json`
+  version, failing when a pin no longer covers it — the 2026-07-16 incident
+  class, where a sibling's `@dune/core` range silently stopped covering a real
+  core version and Deno's workspace auto-linking (or plain JSR resolution) fell
+  back to a stale published core for real runtime imports, with only a passive
+  console warning. New `deno task
+  check:core-pin-drift` and CI step (kept
+  separate from the offline `check` task since this one needs network). 8 new
+  tests for the pure parsing logic.
 
-- **`dune users:grant-role <email> <role>` / `dune users:revoke-role <email>
-  <role>`.** dec-identity-unification Phase 6's CLI leg for the
-  role-granting mechanism — grants or revokes an admin-tier role
-  (`admin`/`editor`/`author`) on an existing unified `User` identified by
+- **`dune users:grant-role <email> <role>` /
+  `dune users:revoke-role <email>
+  <role>`.** dec-identity-unification Phase
+  6's CLI leg for the role-granting mechanism — grants or revokes an admin-tier
+  role (`admin`/`editor`/`author`) on an existing unified `User` identified by
   email, updating `roles[]` and syncing the `app:admin` authz tuple
-  `authz.check()` reads, the same two things the admin panel's `PUT
+  `authz.check()` reads, the same two things the admin panel's
+  `PUT
   /admin/api/users/:id` route already does over HTTP. For operators
-  without (or before) web access: first-admin bootstrap on a headless
-  install, scripted/CI-driven site provisioning, or granting access to an
-  existing OAuth/magic-link account that has never had an admin-tier
-  role. The API and UI legs of Phase 6's original DOD turned out to
-  already be satisfied as an emergent consequence of Phase 5 — plugin-admin's
-  `UserManager` and public auth now share one unified `data/users/` store,
-  so the existing users API/UI already work against every account
-  regardless of origin. 16 new tests.
+  without (or before) web access: first-admin bootstrap on a headless install,
+  scripted/CI-driven site provisioning, or granting access to an existing
+  OAuth/magic-link account that has never had an admin-tier role. The API and UI
+  legs of Phase 6's original DOD turned out to already be satisfied as an
+  emergent consequence of Phase 5 — plugin-admin's `UserManager` and public auth
+  now share one unified `data/users/` store, so the existing users API/UI
+  already work against every account regardless of origin. 16 new tests.
 
 ### Changed
 
-- **`AuthzLocalAdapter`'s `hasTuple()`/`findSubjects()`/`findObjects()` are
-  now indexed instead of doing a full linear scan over every permission
-  tuple on every call.** `decisions/dec-auth-storage.md` specified three
-  composite-key indexes (subject+relation, object+relation,
-  subject+object+relation) for exactly these hot paths — none of them
-  existed; every polizy permission check re-scanned the entire in-memory
-  tuple set regardless of how many tuples actually matched. Added three
-  `Map<string, Set<string>>` indexes, kept in sync on every `write()`,
-  `delete()`, and the initial disk-load path, with no change to any public
-  method's signature or semantics. `findTuples()`/`delete()` keep their
-  full-scan behavior deliberately — their filters can be genuinely partial
-  in a way that doesn't map onto a single fixed composite key, which was
-  the original spec's scope, not something missed here. Real tests in
-  `tests/auth/authz_test.ts`: correctness across ~45 tuples spanning
-  multiple relations/objects, `subjectType`/`objectType` option filtering,
-  index correctness after deletes, and index correctness when a second
-  adapter instance reloads the same tuples from disk. Full existing
-  26-test suite passes unchanged.
+- **`AuthzLocalAdapter`'s `hasTuple()`/`findSubjects()`/`findObjects()` are now
+  indexed instead of doing a full linear scan over every permission tuple on
+  every call.** `decisions/dec-auth-storage.md` specified three composite-key
+  indexes (subject+relation, object+relation, subject+object+relation) for
+  exactly these hot paths — none of them existed; every polizy permission check
+  re-scanned the entire in-memory tuple set regardless of how many tuples
+  actually matched. Added three `Map<string, Set<string>>` indexes, kept in sync
+  on every `write()`, `delete()`, and the initial disk-load path, with no change
+  to any public method's signature or semantics. `findTuples()`/`delete()` keep
+  their full-scan behavior deliberately — their filters can be genuinely partial
+  in a way that doesn't map onto a single fixed composite key, which was the
+  original spec's scope, not something missed here. Real tests in
+  `tests/auth/authz_test.ts`: correctness across ~45 tuples spanning multiple
+  relations/objects, `subjectType`/`objectType` option filtering, index
+  correctness after deletes, and index correctness when a second adapter
+  instance reloads the same tuples from disk. Full existing 26-test suite passes
+  unchanged.
 
 - **Renamed `AdminRole` → `Role`, `SiteUserCreate` → `UserCreate`.**
   `decisions/dec-identity-unification.md`'s Phase 3: `AdminRole` read as
   admin-scoped on its face — a likely root cause of why the public-auth
   `SiteUser` system forked into a wholly separate store from
-  `@dune/plugin-admin`'s user records instead of extending them, even
-  though the original project intent specced one unified user/role system
-  from the start. Bare `Role` (matching Django/Rails/Laravel/WordPress
-  convention) removes that false signal ahead of a later phase that
-  unifies the two stores. `@dune/plugin-admin`'s equivalent `AdminUser` →
-  `User` rename ships as a **breaking 2.0.0** change in that package (past
-  its 1.0 API-stability line); this side is non-breaking — `@dune/core` is
-  still pre-1.0, and `SiteUserCreate`/`SiteUser` aren't part of any
-  published subpath export in the first place. Full 1504-test suite and
-  `deno task check` pass unchanged — purely a rename, no behavioral
-  change.
+  `@dune/plugin-admin`'s user records instead of extending them, even though the
+  original project intent specced one unified user/role system from the start.
+  Bare `Role` (matching Django/Rails/Laravel/WordPress convention) removes that
+  false signal ahead of a later phase that unifies the two stores.
+  `@dune/plugin-admin`'s equivalent `AdminUser` → `User` rename ships as a
+  **breaking 2.0.0** change in that package (past its 1.0 API-stability line);
+  this side is non-breaking — `@dune/core` is still pre-1.0, and
+  `SiteUserCreate`/`SiteUser` aren't part of any published subpath export in the
+  first place. Full 1504-test suite and `deno task check` pass unchanged —
+  purely a rename, no behavioral change.
 
-- **Unified `SiteUser`/`SiteUserStore` into `User`/`UserStore` — the first
-  of three ordered sub-phases merging `@dune/plugin-admin`'s password-based
-  admin accounts with public site visitors into one record and store**
-  (`decisions/dec-identity-unification.md`'s Phase 5a; Phase 5b will handle
-  the actual `data/site-users/` → `data/users/` data migration and
+- **Unified `SiteUser`/`SiteUserStore` into `User`/`UserStore` — the first of
+  three ordered sub-phases merging `@dune/plugin-admin`'s password-based admin
+  accounts with public site visitors into one record and store**
+  (`decisions/dec-identity-unification.md`'s Phase 5a; Phase 5b will handle the
+  actual `data/site-users/` → `data/users/` data migration and
   `@dune/plugin-admin` cutover, Phase 5c the session-mechanism unification).
   `User` gained `username?`, `passwordHash?`, and `updatedAt` — the fields
-  admin's pre-merge `User` had that `SiteUser` didn't. No closed `Role`
-  union survives on the type: `"admin"`/`"editor"`/`"author"` are just
-  conventional `roles[]` string values now, interpreted by
-  `@dune/plugin-admin`'s existing rank/escalation logic rather than
-  enforced by the type. Added `UserStore.getByUsername()` (both tiers).
-  The db tier's physical table stays named `site_users` for now — a live
-  db-tier deployment already has data under that name, and renaming it is
-  explicitly Phase 5b's job; an additive `ALTER TABLE` step backfills the
-  new nullable columns onto an existing table without a destructive
-  rebuild. `@dune/plugin-admin`'s own `User`/`UserManager` are untouched in
-  this step. 6 new tests for the added fields/method; full 1510-test suite
-  and `deno task check` pass.
+  admin's pre-merge `User` had that `SiteUser` didn't. No closed `Role` union
+  survives on the type: `"admin"`/`"editor"`/`"author"` are just conventional
+  `roles[]` string values now, interpreted by `@dune/plugin-admin`'s existing
+  rank/escalation logic rather than enforced by the type. Added
+  `UserStore.getByUsername()` (both tiers). The db tier's physical table stays
+  named `site_users` for now — a live db-tier deployment already has data under
+  that name, and renaming it is explicitly Phase 5b's job; an additive
+  `ALTER TABLE` step backfills the new nullable columns onto an existing table
+  without a destructive rebuild. `@dune/plugin-admin`'s own `User`/`UserManager`
+  are untouched in this step. 6 new tests for the added fields/method; full
+  1510-test suite and `deno task check` pass.
 
-- **`UserStore.update()` now accepts `email`** (`decisions/dec-identity-
-  unification.md`'s Phase 5b). A real gap found mid-cutover of
-  `@dune/plugin-admin` to this store: its existing PUT
-  `/admin/api/users/:id` route already let operators change a user's
-  email, but the store never supported it — email is the by-email index
-  key on the local tier, so changing it wasn't a simple field write. Local
-  tier: lock-protected the same way `create()` is, throws
-  `DuplicateEmailError` on conflict with another user, cleans up the stale
-  index entry for the old address. Db tier: column added to the `UPDATE`;
-  no `DuplicateEmailError` translation there yet, matching `create()`'s
-  existing (pre-existing, not newly introduced) gap on that tier. Added
-  `./auth/types`, `./auth/user-store`, `./auth/user-store-db` subpath
-  exports so `@dune/plugin-admin` has real public-API access instead of
+- **`UserStore.update()` now accepts `email`**
+  (`decisions/dec-identity-
+  unification.md`'s Phase 5b). A real gap found
+  mid-cutover of `@dune/plugin-admin` to this store: its existing PUT
+  `/admin/api/users/:id` route already let operators change a user's email, but
+  the store never supported it — email is the by-email index key on the local
+  tier, so changing it wasn't a simple field write. Local tier: lock-protected
+  the same way `create()` is, throws `DuplicateEmailError` on conflict with
+  another user, cleans up the stale index entry for the old address. Db tier:
+  column added to the `UPDATE`; no `DuplicateEmailError` translation there yet,
+  matching `create()`'s existing (pre-existing, not newly introduced) gap on
+  that tier. Added `./auth/types`, `./auth/user-store`, `./auth/user-store-db`
+  subpath exports so `@dune/plugin-admin` has real public-API access instead of
   reaching into `src/` internals. 3 new tests. Full 1513-test suite and
   `deno task check` pass.
 
 - **`mountDuneAuth()`'s public-auth `UserStore` now points at `data/users/`
-  instead of `data/site-users/`, completing Phase 5b's store cutover.**
-  There's no migration for the old location — `data/site-users/` is
-  pre-1.0 and unreleased, so it never accumulated real-world data; the
-  public side just switches directly to the unified directory. `data/
-  users/` on an *upgrading* install still has old-shape admin accounts
-  (`role` field, no `provider`/`lastSeenAt`, no `by-email/` index) —
-  reshaping those is the new `dune migrate:users` CLI's job. It's
-  idempotent, supports `--dry-run`, and detects (with a warning, not a
-  silent pick) accounts that share an email — admin accounts never had
-  uniqueness enforcement before this cutover, unlike site users since
-  Phase 0. `migrate-roles-to-tuples`/`migrate-auth-to-db` updated to read
-  from `data/users/` too. 8 new tests for the migration command. Full
-  1521-test suite and `deno task check` pass.
+  instead of `data/site-users/`, completing Phase 5b's store cutover.** There's
+  no migration for the old location — `data/site-users/` is pre-1.0 and
+  unreleased, so it never accumulated real-world data; the public side just
+  switches directly to the unified directory. `data/
+  users/` on an _upgrading_
+  install still has old-shape admin accounts (`role` field, no
+  `provider`/`lastSeenAt`, no `by-email/` index) — reshaping those is the new
+  `dune migrate:users` CLI's job. It's idempotent, supports `--dry-run`, and
+  detects (with a warning, not a silent pick) accounts that share an email —
+  admin accounts never had uniqueness enforcement before this cutover, unlike
+  site users since Phase 0. `migrate-roles-to-tuples`/`migrate-auth-to-db`
+  updated to read from `data/users/` too. 8 new tests for the migration command.
+  Full 1521-test suite and `deno task check` pass.
 
-- **Unified admin and public-site sessions onto one mechanism, completing
-  Phase 5 (`decisions/dec-identity-unification.md`).** Public auth
-  sessions had their own hand-rolled, file-only implementation
-  (`SiteSessionManager`) — a second, independently-maintained stack with
-  no KV/Redis support, unlike admin sessions. `AdminSession` → `Session`
-  (bare name, matching the `User`/`Role` precedent — no longer
-  admin-specific), gained `embeddedUser?: User` for public auth's
-  `userStore: "session"` mode. New `createSessionManager(store,
-  lifetimeMs)` factory in `@dune/core/session` — the actual shared
-  mechanism, not just a shared type. `mountDuneAuth()`'s site sessions now
-  go through `createSessionStore()` + this factory, reading
-  `system.session_store` the same way admin sessions already do — site
-  sessions on Deno Deploy or behind a load balancer now actually work via
-  KV/Redis, which they never could before. The hand-rolled
-  `SiteSessionManager`/`SiteSession` are gone entirely. 9 new tests. Full
-  1530-test suite and `deno task check` pass.
+- **Unified admin and public-site sessions onto one mechanism, completing Phase
+  5 (`decisions/dec-identity-unification.md`).** Public auth sessions had their
+  own hand-rolled, file-only implementation (`SiteSessionManager`) — a second,
+  independently-maintained stack with no KV/Redis support, unlike admin
+  sessions. `AdminSession` → `Session` (bare name, matching the `User`/`Role`
+  precedent — no longer admin-specific), gained `embeddedUser?: User` for public
+  auth's `userStore: "session"` mode. New
+  `createSessionManager(store,
+  lifetimeMs)` factory in `@dune/core/session` —
+  the actual shared mechanism, not just a shared type. `mountDuneAuth()`'s site
+  sessions now go through `createSessionStore()` + this factory, reading
+  `system.session_store` the same way admin sessions already do — site sessions
+  on Deno Deploy or behind a load balancer now actually work via KV/Redis, which
+  they never could before. The hand-rolled `SiteSessionManager`/`SiteSession`
+  are gone entirely. 9 new tests. Full 1530-test suite and `deno task check`
+  pass.
 
 ---
 
@@ -530,89 +606,84 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Fixed
 
-- **`@self.children` collections returned nothing on folder-index pages**
-  (e.g. `/arbeitswelt/`). The route's own trailing slash plus the code
-  that appends one for the child-route prefix produced a double slash
-  that never matched a real route.
-- **`dune generate:theme` produced a theme that failed `deno check` and
-  never rendered a title or body.** The generated `default.tsx` imported
-  a `PageProps` type `@dune/core` doesn't export, and read `page.title`/
-  `page.html` — neither exists on the real `TemplateProps.page` (title is
-  under `page.frontmatter.title`; the rendered body is the separate
-  `children` prop, not a page field).
+- **`@self.children` collections returned nothing on folder-index pages** (e.g.
+  `/arbeitswelt/`). The route's own trailing slash plus the code that appends
+  one for the child-route prefix produced a double slash that never matched a
+  real route.
+- **`dune generate:theme` produced a theme that failed `deno check` and never
+  rendered a title or body.** The generated `default.tsx` imported a `PageProps`
+  type `@dune/core` doesn't export, and read `page.title`/ `page.html` — neither
+  exists on the real `TemplateProps.page` (title is under
+  `page.frontmatter.title`; the rendered body is the separate `children` prop,
+  not a page field).
 - **`dune generate:form`/the MCP `scaffold_form` tool write to
-  `forms/{name}.yaml`**, matching what the form-serving runtime
-  (`loadForm()`, backing `GET`/`POST /api/forms/:name`) actually reads.
-  Previously wrote to `schemas/{name}.yaml`, which that runtime never
-  read — every generated form 404'd. If you generated a form on an older
-  version, move it from `schemas/{name}.yaml` to `forms/{name}.yaml` by
-  hand.
-- **`mountDuneAuth()` is exported from `@dune/core/auth/mount`** and
-  auto-wired into `createDuneApp()` whenever `site.yaml` configures
-  `auth:`. Previously it had no public export path at all, so a
-  configured `auth:` block silently had no effect — `ctx.state.siteUser`
-  stayed `null`, no `/auth/*` routes existed. Gated strictly on `auth:`
-  being present: an unconfigured site sees no behavior change. New
-  `DuneAppOptions.mountAuth` (default `true`) opts out; `dune build
-  --static` passes `mountAuth: false` automatically, since a static build
-  has no request flow to serve `/auth/*` from. Headless-mode sites
+  `forms/{name}.yaml`**, matching what the form-serving runtime (`loadForm()`,
+  backing `GET`/`POST /api/forms/:name`) actually reads. Previously wrote to
+  `schemas/{name}.yaml`, which that runtime never read — every generated form
+  404'd. If you generated a form on an older version, move it from
+  `schemas/{name}.yaml` to `forms/{name}.yaml` by hand.
+- **`mountDuneAuth()` is exported from `@dune/core/auth/mount`** and auto-wired
+  into `createDuneApp()` whenever `site.yaml` configures `auth:`. Previously it
+  had no public export path at all, so a configured `auth:` block silently had
+  no effect — `ctx.state.siteUser` stayed `null`, no `/auth/*` routes existed.
+  Gated strictly on `auth:` being present: an unconfigured site sees no behavior
+  change. New `DuneAppOptions.mountAuth` (default `true`) opts out;
+  `dune build
+  --static` passes `mountAuth: false` automatically, since a
+  static build has no request flow to serve `/auth/*` from. Headless-mode sites
   continue to call `mountDuneAuth()` themselves.
 - **`dune new`/`dune update:skills` install `.claude/skills/README.md`**
-  alongside the topic skill files when run against a published
-  `jsr:@dune/core` — it was missing from the remote-install allowlist.
-- **`dune new` writes a `theme:` block into `config/site.yaml`.**
-  Previously a fresh scaffold had no `theme:` config, so it silently fell
-  back to a nonexistent `"default"` theme and rendered through a bare
-  unstyled fallback. That fallback path now also logs a warning (deduped
-  by template name) whenever a site's `theme.name` doesn't resolve.
-- **MDX pages support GFM** (tables, strikethrough, task lists,
-  autolinks) via `remark-gfm`. Plain `.md` pages already supported it
-  through `marked`; MDX was the one format that didn't.
-- **`collection:` blocks and `Collection.order()` default to ascending
-  order for every `by` value except `date`.** `date` still defaults to
-  newest-first; other fields (`title`, folder-prefix `order`, etc.)
-  previously defaulted to descending too.
-- **`dune build --static` reports a page with a broken MDX body as a
-  build error**, instead of writing the rendered error placeholder to
-  `dist/` and counting it as a success.
+  alongside the topic skill files when run against a published `jsr:@dune/core`
+  — it was missing from the remote-install allowlist.
+- **`dune new` writes a `theme:` block into `config/site.yaml`.** Previously a
+  fresh scaffold had no `theme:` config, so it silently fell back to a
+  nonexistent `"default"` theme and rendered through a bare unstyled fallback.
+  That fallback path now also logs a warning (deduped by template name) whenever
+  a site's `theme.name` doesn't resolve.
+- **MDX pages support GFM** (tables, strikethrough, task lists, autolinks) via
+  `remark-gfm`. Plain `.md` pages already supported it through `marked`; MDX was
+  the one format that didn't.
+- **`collection:` blocks and `Collection.order()` default to ascending order for
+  every `by` value except `date`.** `date` still defaults to newest-first; other
+  fields (`title`, folder-prefix `order`, etc.) previously defaulted to
+  descending too.
+- **`dune build --static` reports a page with a broken MDX body as a build
+  error**, instead of writing the rendered error placeholder to `dist/` and
+  counting it as a success.
 
 ### Added
 
 - **`dune content:check --render`** — opt-in pass that compiles every
-  `.md`/`.mdx` page body and reports render failures, not just
-  frontmatter issues. Off by default (renders the whole site, slower than
-  a plain check).
+  `.md`/`.mdx` page body and reports render failures, not just frontmatter
+  issues. Off by default (renders the whole site, slower than a plain check).
 - **`onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`,
   `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`,
   `onApiRequest`, `onApiResponse` now fire.** `onCollectionResolved`,
   `onMarkdownProcess`/`onMarkdownProcessed`, and `onApiResponse` honor
-  `setData()` to replace the resolved collection, rewrite Markdown
-  before/after compilation, or replace the API `Response` outright.
-  `onBeforeRender` fires with the fully-assembled template props right
-  before rendering and also honors `setData()`.
-  `onRouteResolved`, `onPageLoaded`, `onAfterRender`, `onResponse` remain
-  declared but intentionally unfired, documented as such directly on the
-  `HookEvent` union in `src/hooks/types.ts`: route/page resolution
-  happens in one step with no intermediate data to fire from, and
-  after-render/response hooks would need buffering every response body
-  into memory — a cost paid on every request whether or not anything's
-  listening — since Fresh's `render()` returns a `Response` directly, not
-  an HTML string.
+  `setData()` to replace the resolved collection, rewrite Markdown before/after
+  compilation, or replace the API `Response` outright. `onBeforeRender` fires
+  with the fully-assembled template props right before rendering and also honors
+  `setData()`. `onRouteResolved`, `onPageLoaded`, `onAfterRender`, `onResponse`
+  remain declared but intentionally unfired, documented as such directly on the
+  `HookEvent` union in `src/hooks/types.ts`: route/page resolution happens in
+  one step with no intermediate data to fire from, and after-render/response
+  hooks would need buffering every response body into memory — a cost paid on
+  every request whether or not anything's listening — since Fresh's `render()`
+  returns a `Response` directly, not an HTML string.
 - **`HookContext.content`, `JobContext.contentApi`, and
   `TemplateProps.content`/`ContentPageProps.content`** expose the same
-  `ContentApi` (`.pages()`, `.page()`, `.search()`, `.taxonomy()`) across
-  hooks, jobs, and templates/TSX pages. `HookContext.content` is
-  `undefined` for the hooks that fire before `bootstrap()` finishes
-  (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`,
-  `onSearchRecordsCollect`, `onSearchEngineCreate`) and for the
-  lightweight `HookRegistry` instances `content:create`/`migrate:*
-  --fire-hooks` build outside a full `bootstrap()`; populated for every
-  other hook. `JobContext.contentApi` is always populated (jobs only run
-  post-bootstrap) alongside the existing, unchanged
-  `JobContext.content: DuneEngine`. `TemplateProps.content`/
-  `ContentPageProps.content` are optional on the type — a couple of
-  no-theme fallback paths skip templates entirely — but populated on
-  every normal render.
+  `ContentApi` (`.pages()`, `.page()`, `.search()`, `.taxonomy()`) across hooks,
+  jobs, and templates/TSX pages. `HookContext.content` is `undefined` for the
+  hooks that fire before `bootstrap()` finishes (`onConfigLoaded`,
+  `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`,
+  `onSearchEngineCreate`) and for the lightweight `HookRegistry` instances
+  `content:create`/`migrate:*
+  --fire-hooks` build outside a full
+  `bootstrap()`; populated for every other hook. `JobContext.contentApi` is
+  always populated (jobs only run post-bootstrap) alongside the existing,
+  unchanged `JobContext.content: DuneEngine`. `TemplateProps.content`/
+  `ContentPageProps.content` are optional on the type — a couple of no-theme
+  fallback paths skip templates entirely — but populated on every normal render.
 
 ---
 
@@ -621,50 +692,51 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 ### Added
 
 - **`content:create`/`content:delete` fire `onPageCreate`/`onPageDelete`.**
-  These are single, explicit, human-invoked page mutations — the same
-  conceptual action as creating/deleting a page through the admin UI, which
-  already fired these hooks. `content:delete` reuses the hook registry from
-  the `bootstrap()` call it already makes to resolve the route.
+  These are single, explicit, human-invoked page mutations — the same conceptual
+  action as creating/deleting a page through the admin UI, which already fired
+  these hooks. `content:delete` reuses the hook registry from the `bootstrap()`
+  call it already makes to resolve the route.
 - **`migrate:from-{grav,wordpress,markdown,hugo} --fire-hooks`** opts into
-  firing `onPageCreate` per imported page. Off by default: a bulk import
-  running per-page hooks (webhooks, derived-content regeneration) is far
-  more likely to be an unwanted surprise than a wanted feature.
-- **`DuneEngine.indexErrors`** exposes `buildIndex()`'s per-file parse
-  errors, which previously went nowhere past a debug-log line. `dune
-  validate` now reports each as a "content" category error finding; `dune
+  firing `onPageCreate` per imported page. Off by default: a bulk import running
+  per-page hooks (webhooks, derived-content regeneration) is far more likely to
+  be an unwanted surprise than a wanted feature.
+- **`DuneEngine.indexErrors`** exposes `buildIndex()`'s per-file parse errors,
+  which previously went nowhere past a debug-log line. `dune
+  validate` now
+  reports each as a "content" category error finding;
+  `dune
   content:list`/`content:check` surface them too.
 - **CI now runs `deno task check`** on PRs and pushes to `main`. The
-  `lint-dynamic-imports` guard (shipped in v0.25) had never actually run in
-  CI — the only workflow triggered on tag push and only ran `deno publish`.
+  `lint-dynamic-imports` guard (shipped in v0.25) had never actually run in CI —
+  the only workflow triggered on tag push and only ran `deno publish`.
 
 ### Fixed
 
 - **`dune serve` now starts the workflow scheduler's polling loop.**
-  `@dune/plugin-admin`'s scheduled publish/unpublish/archive feature has
-  always supported scheduling, cancelling, and listing pending actions —
-  the admin panel's UI and API routes all worked. But nothing ever executed
-  a due action: a page scheduled to publish next Friday would sit there
-  forever, silently, with no error anywhere. `serve` now starts the
-  scheduler after `createDuneApp()` populates `adminContext`, exactly like
-  it already does for the unrelated background-jobs scheduler. Requires
-  `@dune/plugin-admin` ≥1.1.4 (see that package's changelog).
-- **A content file with malformed frontmatter was silently dropped from
-  routing, search, and the sitemap** with zero signal beyond a debug log —
+  `@dune/plugin-admin`'s scheduled publish/unpublish/archive feature has always
+  supported scheduling, cancelling, and listing pending actions — the admin
+  panel's UI and API routes all worked. But nothing ever executed a due action:
+  a page scheduled to publish next Friday would sit there forever, silently,
+  with no error anywhere. `serve` now starts the scheduler after
+  `createDuneApp()` populates `adminContext`, exactly like it already does for
+  the unrelated background-jobs scheduler. Requires `@dune/plugin-admin` ≥1.1.4
+  (see that package's changelog).
+- **A content file with malformed frontmatter was silently dropped from routing,
+  search, and the sitemap** with zero signal beyond a debug log —
   `dune validate` reported a clean pass with a silently-shrunk page count.
-- **gray-matter's content-keyed cache could make a broken file "heal"
-  itself after the first encounter in a process's lifetime.** It caches its
-  mutable result object *before* parsing the YAML block, only when called
-  without an options argument — a parse that throws still leaves the
-  half-populated object cached, so a second parse of the identical string
-  (e.g. two `bootstrap()` calls in the same process) silently returns the
-  cached object instead of re-throwing. Both content format handlers now
-  pass an explicit (empty) options object, bypassing the cache entirely.
+- **gray-matter's content-keyed cache could make a broken file "heal" itself
+  after the first encounter in a process's lifetime.** It caches its mutable
+  result object _before_ parsing the YAML block, only when called without an
+  options argument — a parse that throws still leaves the half-populated object
+  cached, so a second parse of the identical string (e.g. two `bootstrap()`
+  calls in the same process) silently returns the cached object instead of
+  re-throwing. Both content format handlers now pass an explicit (empty) options
+  object, bypassing the cache entirely.
 
 ### Changed
 
-- **`@dune/testing`'s stale `@dune/core@^0.25` pin bumped to `^0.31`** —
-  the last workspace member still on the old range; the others were
-  already current.
+- **`@dune/testing`'s stale `@dune/core@^0.25` pin bumped to `^0.31`** — the
+  last workspace member still on the old range; the others were already current.
 
 ---
 
@@ -672,90 +744,85 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Added
 
-- **`AdminServicesContext.hooks`** — admin-service factories that write
-  content outside the standard admin CRUD routes (e.g. a real-time editing
-  session) previously had no path to the hook registry at all, so
+- **`AdminServicesContext.hooks`** — admin-service factories that write content
+  outside the standard admin CRUD routes (e.g. a real-time editing session)
+  previously had no path to the hook registry at all, so
   `onPageCreate`/`onPageUpdate`/`onPageDelete` never fired for edits made
-  through such a service — the admin CRUD routes fire these inline
-  themselves, but a service instantiated via `adminServices()` had no
-  other way to. Now exposes the engine's `HookRegistry` so those factories
-  can fire the matching event themselves after a successful write.
+  through such a service — the admin CRUD routes fire these inline themselves,
+  but a service instantiated via `adminServices()` had no other way to. Now
+  exposes the engine's `HookRegistry` so those factories can fire the matching
+  event themselves after a successful write.
 
 ## [0.31.4] — 2026-08-02
 
 ### Fixed
 
-- **`t(key, fallback)` never honored an explicit fallback.** The theme
-  UI-string translator returned the key itself on a miss with no way to
-  opt into anything else, so every theme's local `tr(key, fallback)`
-  wrapper — written assuming `t(key)` returned nullish on a miss so its
-  own `?? fallback` could kick in — had dead fallback logic. Practical
-  symptom: raw locale keys (e.g. `"cta.learn_more"`) rendering verbatim on
-  real pages instead of the intended text.
-  New contract, centralizing what had been 6 duplicated
-  `(key) => strings[key] ?? key` closures into one `createTranslator()`
-  helper: `t(key)` with a match returns it, unchanged; `t(key, fallback)`
-  with no match returns `fallback`, no warning — the normal, expected path
-  while a locale file is incrementally filled in; `t(key)` with no match
-  and no fallback warns once per distinct key (deduped, not per render)
-  and renders the raw key outside production, or an empty string when
-  `DUNE_ENV=production`.
-  Also formally documents `t` on `TemplateProps` (it was always passed at
-  render time but never part of the typed contract) and threads a real
-  translator into the error page's bare-layout fallback path, which
-  previously rendered with no `t` at all.
+- **`t(key, fallback)` never honored an explicit fallback.** The theme UI-string
+  translator returned the key itself on a miss with no way to opt into anything
+  else, so every theme's local `tr(key, fallback)` wrapper — written assuming
+  `t(key)` returned nullish on a miss so its own `?? fallback` could kick in —
+  had dead fallback logic. Practical symptom: raw locale keys (e.g.
+  `"cta.learn_more"`) rendering verbatim on real pages instead of the intended
+  text. New contract, centralizing what had been 6 duplicated
+  `(key) => strings[key] ?? key` closures into one `createTranslator()` helper:
+  `t(key)` with a match returns it, unchanged; `t(key, fallback)` with no match
+  returns `fallback`, no warning — the normal, expected path while a locale file
+  is incrementally filled in; `t(key)` with no match and no fallback warns once
+  per distinct key (deduped, not per render) and renders the raw key outside
+  production, or an empty string when `DUNE_ENV=production`. Also formally
+  documents `t` on `TemplateProps` (it was always passed at render time but
+  never part of the typed contract) and threads a real translator into the error
+  page's bare-layout fallback path, which previously rendered with no `t` at
+  all.
 
 ## [0.31.3] — 2026-07-23
 
 ### Fixed
 
-- **`dune theme:install` didn't resolve a theme's declared `parent:`.** A
-  theme can extend another via `parent: {name}` in `theme.yaml`, but the
-  loader only resolves that reference against a package already registered
-  under that exact name in `site.themes` (or a local `themes/{name}/`
-  dir) — `theme:install` never populated that, so installing a theme whose
-  parent wasn't already installed left the inheritance silently unresolved
-  at runtime (e.g. `sirocco` → `dune-minimal`).
-  Now walks the parent chain and installs any missing ancestor, recursing
-  through multi-level chains, idempotent on repeat installs. There's no
-  recorded "install source" for a parent slug, so one is derived by
-  convention: a sibling package directory (`theme-{parent}` next to the
-  child's own package dir) for local path installs, or a same-scope
-  `theme-{parent}` JSR package resolved to its latest published version for
-  remote installs. Fails with an actionable error if the sibling directory
-  doesn't exist or the JSR parent isn't published yet.
+- **`dune theme:install` didn't resolve a theme's declared `parent:`.** A theme
+  can extend another via `parent: {name}` in `theme.yaml`, but the loader only
+  resolves that reference against a package already registered under that exact
+  name in `site.themes` (or a local `themes/{name}/` dir) — `theme:install`
+  never populated that, so installing a theme whose parent wasn't already
+  installed left the inheritance silently unresolved at runtime (e.g. `sirocco`
+  → `dune-minimal`). Now walks the parent chain and installs any missing
+  ancestor, recursing through multi-level chains, idempotent on repeat installs.
+  There's no recorded "install source" for a parent slug, so one is derived by
+  convention: a sibling package directory (`theme-{parent}` next to the child's
+  own package dir) for local path installs, or a same-scope `theme-{parent}` JSR
+  package resolved to its latest published version for remote installs. Fails
+  with an actionable error if the sibling directory doesn't exist or the JSR
+  parent isn't published yet.
 
 ## [0.31.2] — 2026-07-21
 
 ### Added
 
-- **`--env-file[=path]` flag for `dune dev`/`serve`.** Off by default —
-  loads a simple `KEY=VALUE` dotenv file into the process environment
-  before any plugin/config loading reads it, so a plugin needing a secret
-  (e.g. `plugin-meilisearch`'s `MEILI_API_KEY`) doesn't silently get no
-  value when running `dune dev` directly instead of through a wrapper that
-  manually exports a project's `.env`. A value already set in the
-  environment always wins over the file; an explicitly-requested file that
-  doesn't exist is a hard error.
-- **`SearchOptions` gains `offset`, and `/api/search`/the SSR `/search`
-  route gain `offset`/`hasMore`/`system.search.page_size`.** Lets a caller
-  page through a result set instead of only ever getting the first page.
-  `hasMore` is computed by fetching one extra result and slicing it off, so
-  "is there another page" is knowable without a separate total-count query.
-  `page_size` sets a site-wide default for both routes, applied identically
-  once set; unset, the existing defaults are unchanged (20 for
-  `/api/search`, 50 for the SSR page). `SearchEngine.search()`'s return
-  type is unchanged.
+- **`--env-file[=path]` flag for `dune dev`/`serve`.** Off by default — loads a
+  simple `KEY=VALUE` dotenv file into the process environment before any
+  plugin/config loading reads it, so a plugin needing a secret (e.g.
+  `plugin-meilisearch`'s `MEILI_API_KEY`) doesn't silently get no value when
+  running `dune dev` directly instead of through a wrapper that manually exports
+  a project's `.env`. A value already set in the environment always wins over
+  the file; an explicitly-requested file that doesn't exist is a hard error.
+- **`SearchOptions` gains `offset`, and `/api/search`/the SSR `/search` route
+  gain `offset`/`hasMore`/`system.search.page_size`.** Lets a caller page
+  through a result set instead of only ever getting the first page. `hasMore` is
+  computed by fetching one extra result and slicing it off, so "is there another
+  page" is knowable without a separate total-count query. `page_size` sets a
+  site-wide default for both routes, applied identically once set; unset, the
+  existing defaults are unchanged (20 for `/api/search`, 50 for the SSR page).
+  `SearchEngine.search()`'s return type is unchanged.
 
 ### Fixed
 
-- **A site's `minimumDependencyAge` setting was silently dropped from the
-  merged config used for `dune dev`'s re-exec.** `buildMergedConfig()` only
-  copied `imports`/`scopes`/`compilerOptions`/`unstable`/`nodeModulesDir`
-  into the temp workspace-root config — a site pinning a package to an
-  exact version and declaring a `minimumDependencyAge` exclude for it kept
-  getting rejected as "too new" under `dune dev`, since the process that
-  actually ran the freshness check never had the exclude at all.
+- **A site's `minimumDependencyAge` setting was silently dropped from the merged
+  config used for `dune dev`'s re-exec.** `buildMergedConfig()` only copied
+  `imports`/`scopes`/`compilerOptions`/`unstable`/`nodeModulesDir` into the temp
+  workspace-root config — a site pinning a package to an exact version and
+  declaring a `minimumDependencyAge` exclude for it kept getting rejected as
+  "too new" under `dune dev`, since the process that actually ran the freshness
+  check never had the exclude at all.
 
 ## [0.31.1] — 2026-07-20
 
@@ -768,9 +835,9 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   `site.yaml`); `sort` orders by `"relevance"` (default) or `"date"`.
   `facetCounts(query, field)` returns a value→count map across all matches,
   independent of `limit`/`filter` — used to render facet tabs with counts.
-- **`GET /api/search` and the built-in `/search` page** gained `sort` and
-  `type` query params (`type` filters on the `subtype` facet field) and a
-  `facets` field in the response/template props. See
+- **`GET /api/search` and the built-in `/search` page** gained `sort` and `type`
+  query params (`type` filters on the `subtype` facet field) and a `facets`
+  field in the response/template props. See
   [Search](docs/content/07.reference/04.search) for details.
 - **`SearchFilter`, `SearchOptions`, `FacetCounts`** exported from
   `@dune/core/search` for plugins implementing an alternative `SearchEngine`
@@ -780,176 +847,169 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Added
 
-- **`CORE_VERSION` and `CORE_INSTANCE`** exported from `@dune/core/plugins`
-  — identify which `@dune/core` module instance a plugin's own dependency
-  resolution landed on. `CORE_INSTANCE` is a reference sentinel, compared
-  by identity rather than version string, so it catches a same-version
-  dual-load (e.g. a site running core from a local path while a plugin
-  resolves it from JSR) that version comparison alone would miss.
-- **Boot-time core-instance handshake for the admin plugin.** After
-  bootstrap's dynamic import of `@dune/plugin-admin`, compare the
-  sentinel the plugin resolved (re-exported by plugin ≥1.1.3) against
-  this process's own. On mismatch, warn loudly with both versions and a
-  hint — never fail the boot, since a dual-core process degrades subtly
-  rather than catastrophically. Plugins that predate the handshake
-  exports are skipped (no warning). Should never fire once the plugin's
-  floating `@0` core range ships; this is the tripwire for the day that
-  silently stops being true.
-- **The section registry is now exposed on `BootstrapResult`.** Plugins
-  can read `sections` from the injected `AdminContext`/bootstrap result
-  instead of importing the module-level singleton directly, avoiding a
-  split-registry surface when a plugin resolves a different core copy
-  than the host site (see the handshake above).
+- **`CORE_VERSION` and `CORE_INSTANCE`** exported from `@dune/core/plugins` —
+  identify which `@dune/core` module instance a plugin's own dependency
+  resolution landed on. `CORE_INSTANCE` is a reference sentinel, compared by
+  identity rather than version string, so it catches a same-version dual-load
+  (e.g. a site running core from a local path while a plugin resolves it from
+  JSR) that version comparison alone would miss.
+- **Boot-time core-instance handshake for the admin plugin.** After bootstrap's
+  dynamic import of `@dune/plugin-admin`, compare the sentinel the plugin
+  resolved (re-exported by plugin ≥1.1.3) against this process's own. On
+  mismatch, warn loudly with both versions and a hint — never fail the boot,
+  since a dual-core process degrades subtly rather than catastrophically.
+  Plugins that predate the handshake exports are skipped (no warning). Should
+  never fire once the plugin's floating `@0` core range ships; this is the
+  tripwire for the day that silently stops being true.
+- **The section registry is now exposed on `BootstrapResult`.** Plugins can read
+  `sections` from the injected `AdminContext`/bootstrap result instead of
+  importing the module-level singleton directly, avoiding a split-registry
+  surface when a plugin resolves a different core copy than the host site (see
+  the handshake above).
 
 ### Changed
 
-- **`polizy` dependency bumped `0.2.0` → `0.6.0`** (the stale pin was 4
-  minor versions behind npm). Audited every 0.3.0 breaking change against
-  dune's actual usage before bumping: no Prisma adapter (dune uses its
-  own `AuthzLocalAdapter`/`AuthzDbAdapter`), no `throwOnMaxDepth` usage,
-  no `fieldLevelObjects`/`#` ids, exactly one group relation and zero
-  hierarchy relations, and no dangling relation/action refs in
-  `duneAuthzSchema`. The one real gap: polizy 0.3+ stops writing to
-  `console` unless a `logger` is passed — `createDuneAuthSystem` now
-  wires in dune's existing structured logger.
+- **`polizy` dependency bumped `0.2.0` → `0.6.0`** (the stale pin was 4 minor
+  versions behind npm). Audited every 0.3.0 breaking change against dune's
+  actual usage before bumping: no Prisma adapter (dune uses its own
+  `AuthzLocalAdapter`/`AuthzDbAdapter`), no `throwOnMaxDepth` usage, no
+  `fieldLevelObjects`/`#` ids, exactly one group relation and zero hierarchy
+  relations, and no dangling relation/action refs in `duneAuthzSchema`. The one
+  real gap: polizy 0.3+ stops writing to `console` unless a `logger` is passed —
+  `createDuneAuthSystem` now wires in dune's existing structured logger.
 
 ## [0.30.1] — 2026-07-17
 
 ### Fixed
 
-- **`dune migrate:entrypoint` silently dropped any flags a site had
-  customized on its old `dev`/`build`/`serve` tasks** (e.g. a non-default
-  `--port`, `--frozen`) — the new task string replaced the old one
-  wholesale instead of preserving anything after the subcommand name. A
-  site's `serve` task could go from `... cli serve --port 8080 --frozen`
-  to a bare `deno run -A main.ts serve` with no signal that flags had been
-  lost short of noticing the server came up wrong. Extra args are now
-  extracted from the old task string and appended to the new one.
-  **Sites that already ran `migrate:entrypoint` under 0.30.0** are not
-  self-healed by this fix or by re-running the command — the idempotency
-  check only looks for `"main.ts"` in the task string, and the
-  pre-migration task (the only place the dropped flags existed) has
-  already been overwritten. If that's you, recover the flags from git
-  history (`git log -p -- deno.json`, the commit before the migration)
-  and re-apply them by hand.
+- **`dune migrate:entrypoint` silently dropped any flags a site had customized
+  on its old `dev`/`build`/`serve` tasks** (e.g. a non-default `--port`,
+  `--frozen`) — the new task string replaced the old one wholesale instead of
+  preserving anything after the subcommand name. A site's `serve` task could go
+  from `... cli serve --port 8080 --frozen` to a bare
+  `deno run -A main.ts serve` with no signal that flags had been lost short of
+  noticing the server came up wrong. Extra args are now extracted from the old
+  task string and appended to the new one. **Sites that already ran
+  `migrate:entrypoint` under 0.30.0** are not self-healed by this fix or by
+  re-running the command — the idempotency check only looks for `"main.ts"` in
+  the task string, and the pre-migration task (the only place the dropped flags
+  existed) has already been overwritten. If that's you, recover the flags from
+  git history (`git log -p -- deno.json`, the commit before the migration) and
+  re-apply them by hand.
 
 ## [0.30.0] — 2026-07-17
 
 ### Added
 
-- **`dune migrate:entrypoint`** moves an existing site from the re-exec
-  path onto the generated `main.ts` entrypoint pattern: writes `main.ts`,
-  merges in any of dune-core's runtime import-map entries the site is
-  missing, and rewrites `dev`/`build`/`serve` tasks (and `.mcp.json` if
-  present) to invoke it directly. Idempotent; refuses to touch a
-  hand-edited `main.ts`; `--dry-run` previews without writing. Run `dune
-  validate` and soak-test a site after migrating before doing the rest of
-  a fleet — see `claudedocs/plan-site-entrypoint.md`'s migration runbook.
+- **`dune migrate:entrypoint`** moves an existing site from the re-exec path
+  onto the generated `main.ts` entrypoint pattern: writes `main.ts`, merges in
+  any of dune-core's runtime import-map entries the site is missing, and
+  rewrites `dev`/`build`/`serve` tasks (and `.mcp.json` if present) to invoke it
+  directly. Idempotent; refuses to touch a hand-edited `main.ts`; `--dry-run`
+  previews without writing. Run `dune
+  validate` and soak-test a site after
+  migrating before doing the rest of a fleet — see
+  `claudedocs/plan-site-entrypoint.md`'s migration runbook.
 
 ### Changed
 
-- **`dune new` now scaffolds a generated `main.ts` site entrypoint** and
-  points `deno.json`'s `dev`/`build`/`serve` tasks and `.mcp.json` at it
-  directly (`deno run -A main.ts <command>`), instead of the global `dune`
-  shim or a `jsr:@dune/core@X.Y.Z/cli` re-exec. The site's own
-  `deno.json`/`deno.lock` now govern the process natively — no re-exec, no
-  synthesized temp config, no two-process resolution to keep consistent.
-  `main.ts` is a one-liner (`import { cli } from "@dune/core/cli"; await
-  cli({ root: import.meta.dirname });`) — treat it as generated, not a
-  place to customize; `dune upgrade` will refuse to touch it if its
-  contents diverge from the template. The scaffold's import map now also
-  includes dune-core's own internal runtime dependencies (previously
-  supplied for free by the re-exec's config merge — see
-  `claudedocs/plan-site-entrypoint.md` for the full design and cost
-  breakdown). Existing sites are unaffected until migrated via `dune
-  migrate:entrypoint`; the old re-exec paths still work.
-- **`dune serve --frozen` is reverted to opt-in.** 0.29.0 briefly made it
-  the default (see below) but that shipped a live regression: Deno's
-  `--frozen` validation, at least as observed on Deno 2.7.14, refuses to
-  boot against a lockfile containing entries only reachable through the
-  built-in admin plugin's variable-argument dynamic import — even a
-  lockfile `dune lockfile sync` reports as complete. Every site with the
-  admin plugin enabled (the default) failed to start under the 0.29.0
-  default. Root cause is unresolved and most likely implicates Deno's npm
-  dependency hoisting being computed globally rather than scoped to what's
-  statically reachable; see `src/cli/lock-policy.ts`'s module doc for the
-  investigation. **`@dune/core@0.29.0` is yanked on JSR — do not deploy
-  it.** Sites already pinned to it are unaffected by the yank itself (JSR
-  yanking only removes a version from search/latest resolution) but should
-  not enable `--frozen`/`DUNE_FROZEN=1` on `serve` until this is resolved.
+- **`dune new` now scaffolds a generated `main.ts` site entrypoint** and points
+  `deno.json`'s `dev`/`build`/`serve` tasks and `.mcp.json` at it directly
+  (`deno run -A main.ts <command>`), instead of the global `dune` shim or a
+  `jsr:@dune/core@X.Y.Z/cli` re-exec. The site's own `deno.json`/`deno.lock` now
+  govern the process natively — no re-exec, no synthesized temp config, no
+  two-process resolution to keep consistent. `main.ts` is a one-liner
+  (`import { cli } from "@dune/core/cli"; await
+  cli({ root: import.meta.dirname });`)
+  — treat it as generated, not a place to customize; `dune upgrade` will refuse
+  to touch it if its contents diverge from the template. The scaffold's import
+  map now also includes dune-core's own internal runtime dependencies
+  (previously supplied for free by the re-exec's config merge — see
+  `claudedocs/plan-site-entrypoint.md` for the full design and cost breakdown).
+  Existing sites are unaffected until migrated via `dune
+  migrate:entrypoint`;
+  the old re-exec paths still work.
+- **`dune serve --frozen` is reverted to opt-in.** 0.29.0 briefly made it the
+  default (see below) but that shipped a live regression: Deno's `--frozen`
+  validation, at least as observed on Deno 2.7.14, refuses to boot against a
+  lockfile containing entries only reachable through the built-in admin plugin's
+  variable-argument dynamic import — even a lockfile `dune lockfile sync`
+  reports as complete. Every site with the admin plugin enabled (the default)
+  failed to start under the 0.29.0 default. Root cause is unresolved and most
+  likely implicates Deno's npm dependency hoisting being computed globally
+  rather than scoped to what's statically reachable; see
+  `src/cli/lock-policy.ts`'s module doc for the investigation.
+  **`@dune/core@0.29.0` is yanked on JSR — do not deploy it.** Sites already
+  pinned to it are unaffected by the yank itself (JSR yanking only removes a
+  version from search/latest resolution) but should not enable
+  `--frozen`/`DUNE_FROZEN=1` on `serve` until this is resolved.
 
 ## [0.29.0] — 2026-07-16 (yanked — see Unreleased above)
 
 ### Changed
 
-- **`dune serve` now enforces `deno.lock` at the Deno runtime level by
-  default** and fails closed — with a pointer to `dune lockfile sync` —
-  when the lockfile is missing or out of date. Opt out with `--no-frozen`
-  or `DUNE_FROZEN=0`; opt other commands in with `--frozen` or
-  `DUNE_FROZEN=1`. Previously the CLI's internal re-exec dropped all
-  Deno-level lockfile flags, so no invocation pattern of `serve` had real
-  enforcement. Sites deploying with `serve` should run
-  `dune lockfile check` before upgrading and sync/commit `deno.lock` if
-  it reports gaps.
-- **No dune command implicitly writes `deno.lock` anymore.** When
-  lockfile enforcement is off, the CLI's re-exec now runs with
-  `--no-lock` instead of letting Deno auto-discover and rewrite the
-  site's lockfile as a side effect of module resolution — previously the
-  recommended `deno run --config=deno.json jsr:@dune/core/cli serve`
-  pattern silently dirtied `deno.lock` on server working trees.
-  `dune lockfile sync` is the only thing that writes the lockfile.
+- **`dune serve` now enforces `deno.lock` at the Deno runtime level by default**
+  and fails closed — with a pointer to `dune lockfile sync` — when the lockfile
+  is missing or out of date. Opt out with `--no-frozen` or `DUNE_FROZEN=0`; opt
+  other commands in with `--frozen` or `DUNE_FROZEN=1`. Previously the CLI's
+  internal re-exec dropped all Deno-level lockfile flags, so no invocation
+  pattern of `serve` had real enforcement. Sites deploying with `serve` should
+  run `dune lockfile check` before upgrading and sync/commit `deno.lock` if it
+  reports gaps.
+- **No dune command implicitly writes `deno.lock` anymore.** When lockfile
+  enforcement is off, the CLI's re-exec now runs with `--no-lock` instead of
+  letting Deno auto-discover and rewrite the site's lockfile as a side effect of
+  module resolution — previously the recommended
+  `deno run --config=deno.json jsr:@dune/core/cli serve` pattern silently
+  dirtied `deno.lock` on server working trees. `dune lockfile sync` is the only
+  thing that writes the lockfile.
 
 ### Fixed
 
-- **`dune serve --frozen` was inert.** The flag was documented and
-  forwarded but never parsed, so it neither enabled the app-level
-  staleness check nor any runtime enforcement. It now enables full
-  Deno-level enforcement (and is the default for `serve` — see Changed).
+- **`dune serve --frozen` was inert.** The flag was documented and forwarded but
+  never parsed, so it neither enabled the app-level staleness check nor any
+  runtime enforcement. It now enables full Deno-level enforcement (and is the
+  default for `serve` — see Changed).
 - **`dune lockfile sync` didn't record the built-in admin plugin's
-  dependencies**, so a synced lockfile still failed `--frozen` the moment
-  the server loaded the admin plugin (enabled by default). The admin
-  plugin is loaded via a dynamic import Deno's graph builder can't follow
-  statically; the sync discovery now reports it explicitly for
-  admin-enabled sites.
+  dependencies**, so a synced lockfile still failed `--frozen` the moment the
+  server loaded the admin plugin (enabled by default). The admin plugin is
+  loaded via a dynamic import Deno's graph builder can't follow statically; the
+  sync discovery now reports it explicitly for admin-enabled sites.
 - **The lockfile staleness hint misfired on caret version ranges.** The
   pre-start check compared the site's `@dune/core` import string against
   lockfile keys exactly, but Deno stores a canonicalized form (`^0.28` as
-  `0.28`), so freshly scaffolded sites were reported stale even with a
-  complete lockfile. The check now matches at the package level.
-- **Monolingual sites' homepage was sitemapped at its literal route**
-  (e.g. `/home`) instead of `/`, even though that's where the content is
-  actually served — the homeSlug-to-`/` collapse only applied on the
-  multilingual branch of `pageToUrl`. Exclude patterns with a trailing
-  slash (`/posts/`) also matched zero routes instead of behaving like
-  `/posts`; both now normalize.
-- **The home-route collapse still didn't fire for directory-index home
-  pages** (e.g. `01.home/default.md`), the common shape for a homepage —
-  those pages get a trailing-slash route (`/home/`) that didn't
-  exact-match the trailing-slash-free `homeRoute` the collapse compared
-  against.
+  `0.28`), so freshly scaffolded sites were reported stale even with a complete
+  lockfile. The check now matches at the package level.
+- **Monolingual sites' homepage was sitemapped at its literal route** (e.g.
+  `/home`) instead of `/`, even though that's where the content is actually
+  served — the homeSlug-to-`/` collapse only applied on the multilingual branch
+  of `pageToUrl`. Exclude patterns with a trailing slash (`/posts/`) also
+  matched zero routes instead of behaving like `/posts`; both now normalize.
+- **The home-route collapse still didn't fire for directory-index home pages**
+  (e.g. `01.home/default.md`), the common shape for a homepage — those pages get
+  a trailing-slash route (`/home/`) that didn't exact-match the
+  trailing-slash-free `homeRoute` the collapse compared against.
 
 ## [0.28.4] — 2026-07-16
 
 ### Security
 
-- **Role-gated content pages could be served from the shared page
-  cache to unauthenticated visitors.** The cache wasn't partitioned by
-  authorization, and its one bypass signal only covered admin-panel
-  sessions, not the separate site-user (member) auth system that
-  `roles:`-gated pages rely on. Gated pages are now excluded from both
-  the cache read and write paths (derived from the content index, so
-  it holds regardless of authentication method) and get
+- **Role-gated content pages could be served from the shared page cache to
+  unauthenticated visitors.** The cache wasn't partitioned by authorization, and
+  its one bypass signal only covered admin-panel sessions, not the separate
+  site-user (member) auth system that `roles:`-gated pages rely on. Gated pages
+  are now excluded from both the cache read and write paths (derived from the
+  content index, so it holds regardless of authentication method) and get
   `Cache-Control: private, no-store`.
 
 ### Fixed
 
-- **`dune validate` flagged TSX content pages' template as a missing
-  theme template.** The 0.28.3 fix that made the template check walk
-  a theme's parent inheritance chain only excluded `"default"` from
-  the templates-used set, not `"self"` — the sentinel value a `.tsx`
-  content page's template resolves to (the page is its own template).
-  Any site with a TSX content page failed validation looking for a
-  theme template literally named `"self"`.
+- **`dune validate` flagged TSX content pages' template as a missing theme
+  template.** The 0.28.3 fix that made the template check walk a theme's parent
+  inheritance chain only excluded `"default"` from the templates-used set, not
+  `"self"` — the sentinel value a `.tsx` content page's template resolves to
+  (the page is its own template). Any site with a TSX content page failed
+  validation looking for a theme template literally named `"self"`.
 
 ---
 
@@ -959,71 +1019,65 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 - **Declarative collection pagination didn't actually paginate.**
   `buildCollection()` computed `page`/`pages`/`hasNext`/`hasPrev` from
-  `pagination.size`, but item slicing used the unrelated
-  `offset`/`limit` fields (which default to 0/total) — every paginated
-  collection returned the full unsliced item list while `hasNext`
-  reported as if a next page existed, so no theme's "Older" pagination
-  link ever changed what was rendered. There was also no route-level
-  handling for a `/page:N` segment, so even correct slicing couldn't
-  have known which page a request was for. Both are fixed: item
-  slicing now derives from `pagination.size` and the requested page
-  number, and a trailing `/page:N` segment is now resolved before
-  routing.
-- **`dune validate`'s template check ignored theme inheritance.** A
-  theme that inherits a template from its parent via `theme.yaml`'s
-  `parent:` field rendered correctly at request time, but `validate`
-  only checked the active theme's own `templates/` directory and
-  reported the inherited template as missing — a false-positive
-  failure that could block a release's CI gate for a perfectly valid
-  site. Now delegates to the same parent-chain resolution the runtime
-  template loader already uses.
+  `pagination.size`, but item slicing used the unrelated `offset`/`limit` fields
+  (which default to 0/total) — every paginated collection returned the full
+  unsliced item list while `hasNext` reported as if a next page existed, so no
+  theme's "Older" pagination link ever changed what was rendered. There was also
+  no route-level handling for a `/page:N` segment, so even correct slicing
+  couldn't have known which page a request was for. Both are fixed: item slicing
+  now derives from `pagination.size` and the requested page number, and a
+  trailing `/page:N` segment is now resolved before routing.
+- **`dune validate`'s template check ignored theme inheritance.** A theme that
+  inherits a template from its parent via `theme.yaml`'s `parent:` field
+  rendered correctly at request time, but `validate` only checked the active
+  theme's own `templates/` directory and reported the inherited template as
+  missing — a false-positive failure that could block a release's CI gate for a
+  perfectly valid site. Now delegates to the same parent-chain resolution the
+  runtime template loader already uses.
 
 ## [0.28.2] — 2026-07-08
 
 ### Added
 
 - **`dune dev`/`dune serve` warn when silently locked into the published
-  package.** `deno run jsr:@dune/core/cli` only workspace-links the
-  entrypoint when `--config` explicitly names (an ancestor of) the
-  workspace root — without it, the CLI silently ran the published
-  `@dune/core` forever even with a usable local workspace checkout on
-  disk. A filesystem walk-up check now warns in that case; it only fires
-  when a real local checkout would have been usable, so ordinary
-  end users running an installed `dune` never see it.
+  package.** `deno run jsr:@dune/core/cli` only workspace-links the entrypoint
+  when `--config` explicitly names (an ancestor of) the workspace root — without
+  it, the CLI silently ran the published `@dune/core` forever even with a usable
+  local workspace checkout on disk. A filesystem walk-up check now warns in that
+  case; it only fires when a real local checkout would have been usable, so
+  ordinary end users running an installed `dune` never see it.
 
 ## [0.28.1] — 2026-07-07
 
 ### Fixed
 
-- **`jsr:@dune/plugin-admin` dynamic import specifiers were bare** (no
-  version constraint), unlike the equivalent import-map entry. These
-  specifiers are intentionally non-literal strings (to avoid a
-  publish-time circular dependency between `@dune/core` and
-  `@dune/plugin-admin`), which meant nothing pinned them to a version —
-  a fresh environment with no matching `deno.lock` entry had no
-  guarantee of resolving the latest published `@dune/plugin-admin`.
-  Both call sites now pin `@^1.0`, matching the import map, and a static
-  regression test asserts the specifiers aren't bare.
+- **`jsr:@dune/plugin-admin` dynamic import specifiers were bare** (no version
+  constraint), unlike the equivalent import-map entry. These specifiers are
+  intentionally non-literal strings (to avoid a publish-time circular dependency
+  between `@dune/core` and `@dune/plugin-admin`), which meant nothing pinned
+  them to a version — a fresh environment with no matching `deno.lock` entry had
+  no guarantee of resolving the latest published `@dune/plugin-admin`. Both call
+  sites now pin `@^1.0`, matching the import map, and a static regression test
+  asserts the specifiers aren't bare.
 
 ## [0.28.0] — 2026-07-07
 
 ### Added
 
-- **Per-page `theme_config:` frontmatter override.** Pages and sections can
-  now override theme config for themselves and their descendants, resolved
-  the same way as the existing `collections:` frontmatter feature:
-  site-level config, shallow-merged with the nearest ancestor section's
-  override, shallow-merged with the page's own override. Wired into both
-  markdown and TSX content pages — search and error pages intentionally stay
-  on site-level config since they render synthetic non-tree pages.
+- **Per-page `theme_config:` frontmatter override.** Pages and sections can now
+  override theme config for themselves and their descendants, resolved the same
+  way as the existing `collections:` frontmatter feature: site-level config,
+  shallow-merged with the nearest ancestor section's override, shallow-merged
+  with the page's own override. Wired into both markdown and TSX content pages —
+  search and error pages intentionally stay on site-level config since they
+  render synthetic non-tree pages.
 
 ### Changed
 
 - **`data/theme-config.json` is now namespaced by theme name**
-  (`{"caravan": {...}, "blox": {...}}`), so `switchTheme()` reloading the
-  file for a new theme no longer risks another theme's settings being wiped
-  on the next admin save (`@dune/plugin-admin`'s save handler was updated to
-  match).
+  (`{"caravan": {...}, "blox": {...}}`), so `switchTheme()` reloading the file
+  for a new theme no longer risks another theme's settings being wiped on the
+  next admin save (`@dune/plugin-admin`'s save handler was updated to match).
 - The in-process page cache is now invalidated on `rebuild()` and on the
   `onCacheInvalidate` hook, since stale cached HTML would otherwise mask both
   ordinary content edits and the new section-level theme-config overrides.
@@ -1034,73 +1088,72 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 - **`src/cli/bootstrap.ts` and `src/cli/fresh-app.ts` re-export shims.** These
   moved to `src/runtime/bootstrap.ts` / `src/runtime/server.ts` in v0.26 and
-  were kept as shims for one minor version, as planned. The `@dune/core/bootstrap`
-  and `@dune/core/fresh-app` subpath exports are unaffected — they already
-  pointed at the new runtime files. Anything importing the old `src/cli/`
-  paths directly needs to switch to `src/runtime/`.
+  were kept as shims for one minor version, as planned. The
+  `@dune/core/bootstrap` and `@dune/core/fresh-app` subpath exports are
+  unaffected — they already pointed at the new runtime files. Anything importing
+  the old `src/cli/` paths directly needs to switch to `src/runtime/`.
 - **`SessionStoreOptions.lifetime` / `LocalSessionStoreConfig.lifetime` / the
   `lifetime` param on `createSiteSessionManager`** (seconds, deprecated since
-  v0.26). `lifetimeMs` (milliseconds) is now the only accepted field. The
-  YAML `session_store.lifetime` config field (seconds) is unaffected — that
+  v0.26). `lifetimeMs` (milliseconds) is now the only accepted field. The YAML
+  `session_store.lifetime` config field (seconds) is unaffected — that
   conversion happens elsewhere and was never deprecated.
 - **`getContent()` / `initContent()`** — the content-API singleton. Headless
-  Fresh routes now reach the content API via `ctx.state.contentApi`, wired by
-  a small piece of middleware in `main.ts` (`mountDuneAdmin` callers add one
-  `app.use()` line; see the headless-mode guide). This is strictly better
-  than the singleton it replaces: it works correctly in multi-site setups
-  (each site's own middleware sets its own `contentApi`, no shared global),
-  and in tests. `createContentApi()` and `BootstrapResult.contentApi` are
-  unaffected — they were already the preferred path since v0.26.
+  Fresh routes now reach the content API via `ctx.state.contentApi`, wired by a
+  small piece of middleware in `main.ts` (`mountDuneAdmin` callers add one
+  `app.use()` line; see the headless-mode guide). This is strictly better than
+  the singleton it replaces: it works correctly in multi-site setups (each
+  site's own middleware sets its own `contentApi`, no shared global), and in
+  tests. `createContentApi()` and `BootstrapResult.contentApi` are unaffected —
+  they were already the preferred path since v0.26.
 
 ### Added
 
 - **JSR/npm theme packages.** Themes can now be installed as version-pinned
   packages via a `themes:` registry entry, with package-aware loader
-  inheritance, static asset serving, and `theme:*` CLI commands, alongside
-  the existing local-override and ZIP-install theme mechanisms.
-- **Async template components.** Fresh's `ctx.render` renders synchronously,
-  so an `async function` template component previously produced a silently
-  empty page. `resolveTemplateVNode()` now invokes and awaits async-function
-  templates before handing the vnode to the renderer, applied at every
-  top-level template render site.
+  inheritance, static asset serving, and `theme:*` CLI commands, alongside the
+  existing local-override and ZIP-install theme mechanisms.
+- **Async template components.** Fresh's `ctx.render` renders synchronously, so
+  an `async function` template component previously produced a silently empty
+  page. `resolveTemplateVNode()` now invokes and awaits async-function templates
+  before handing the vnode to the renderer, applied at every top-level template
+  render site.
 - **`navAll` in `TemplateProps`.** The full ordered page index (depth, order,
-  parentPath — the same data as `/api/nav`) is now available to templates,
-  so docs-style themes can server-render sidebar filetrees and prev/next
-  links instead of fetching `/api/nav` client-side. The existing `nav`
-  (top-level only) is unchanged.
+  parentPath — the same data as `/api/nav`) is now available to templates, so
+  docs-style themes can server-render sidebar filetrees and prev/next links
+  instead of fetching `/api/nav` client-side. The existing `nav` (top-level
+  only) is unchanged.
 - **`translations` in `TemplateProps`.** Lists the languages the current page
   actually exists in, with the language-prefixed URL for each (respects
   `include_default_in_url`), backed by a new `RouteResolver.getTranslations()`
-  helper. Powers language-switcher UI in themes. Empty on single-language
-  sites.
+  helper. Powers language-switcher UI in themes. Empty on single-language sites.
 - **Named collections map on page frontmatter.** Pages can declare a
-  `collections:` map (name → collection definition) in frontmatter; each
-  entry resolves independently and templates receive them as
-  `props.collections: Record<string, Collection>`. Enables block-based
-  landing pages that show several distinct page lists.
-- **`content.src` config field.** Mirrors `theme.src`: content can now point
-  at an arbitrary local path instead of a subdirectory under the site root,
-  via a separately contained storage adapter that never widens the site's
-  own storage boundary. Useful for multisite setups sharing one content
-  source across many sites without symlinks.
-- **Theme-declared MDX sanitizer allowances.** Themes whose MDX components
-  emit markup outside the sanitizer's default allowlist (`aside`/`section`/
+  `collections:` map (name → collection definition) in frontmatter; each entry
+  resolves independently and templates receive them as
+  `props.collections: Record<string, Collection>`. Enables block-based landing
+  pages that show several distinct page lists.
+- **`content.src` config field.** Mirrors `theme.src`: content can now point at
+  an arbitrary local path instead of a subdirectory under the site root, via a
+  separately contained storage adapter that never widens the site's own storage
+  boundary. Useful for multisite setups sharing one content source across many
+  sites without symlinks.
+- **Theme-declared MDX sanitizer allowances.** Themes whose MDX components emit
+  markup outside the sanitizer's default allowlist (`aside`/`section`/
   `svg`/custom elements, `role`/`aria-*` attributes) can now declare a
-  `sanitize` export widening just the tag/attribute allowlist their
-  components need, instead of sites having to set `trusted_html: true` and
-  disable MDX output sanitization entirely.
+  `sanitize` export widening just the tag/attribute allowlist their components
+  need, instead of sites having to set `trusted_html: true` and disable MDX
+  output sanitization entirely.
 - **Multisite `path_prefix` base-path support.** Prefix-routed sites
   (`path_prefix: /docs`) previously had the prefix stripped from incoming
-  requests but never re-added to anything the site generated — nav links,
-  theme static asset hrefs, search, redirects, and co-located media URLs all
-  came out root-relative, breaking navigation under the subpath. Server
-  responses are now rewritten to carry the prefix on all root-relative
-  `href`/`src`/`action` attributes.
+  requests but never re-added to anything the site generated — nav links, theme
+  static asset hrefs, search, redirects, and co-located media URLs all came out
+  root-relative, breaking navigation under the subpath. Server responses are now
+  rewritten to carry the prefix on all root-relative `href`/`src`/`action`
+  attributes.
 - **Custom error templates.** Themes can provide `templates/error.tsx` to
-  customize 404/500 pages; `renderErrorPage()` tries the theme error
-  template first (passing `statusCode` and `message` via synthetic page
-  frontmatter plus the usual `TemplateProps`), then falls back to
-  layout-wrapped markup, then a bare HTML document.
+  customize 404/500 pages; `renderErrorPage()` tries the theme error template
+  first (passing `statusCode` and `message` via synthetic page frontmatter plus
+  the usual `TemplateProps`), then falls back to layout-wrapped markup, then a
+  bare HTML document.
 
 ### Fixed
 
@@ -1108,50 +1161,47 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   (local-source) re-exec always used dune's own `deno.json`, so theme TSX
   dynamic imports failed with "not in import map" for bare specifiers like
   `preact` — dune's `deno.json` is a workspace member, and its import map
-  doesn't apply to files outside the workspace. When the site root has its
-  own `deno.json`, the CLI now re-execs with a temporary merged config (dune
+  doesn't apply to files outside the workspace. When the site root has its own
+  `deno.json`, the CLI now re-execs with a temporary merged config (dune
   imports + site imports, site wins) instead.
-- **Re-exec'd server processes were orphaned on shutdown.** Both re-exec
-  shims (local-source and JSR paths) awaited the child process's exit
-  without forwarding signals, so killing the shim (SIGTERM from a process
-  manager, SIGHUP on session close) left the actual server running and
-  still listening — the cause of intermittent "address already in use"
-  errors and systemd restarts appearing to do nothing. SIGTERM/SIGINT/SIGHUP
-  are now relayed to the child.
+- **Re-exec'd server processes were orphaned on shutdown.** Both re-exec shims
+  (local-source and JSR paths) awaited the child process's exit without
+  forwarding signals, so killing the shim (SIGTERM from a process manager,
+  SIGHUP on session close) left the actual server running and still listening —
+  the cause of intermittent "address already in use" errors and systemd restarts
+  appearing to do nothing. SIGTERM/SIGINT/SIGHUP are now relayed to the child.
 - **Locale files only inherited from the nearest theme in the chain that had
   one.** `loadLocale()` returned at the first theme with a
-  `locales/{lang}.json`, so a child theme with a single-key locale file
-  shadowed the parent's entire file. Every locale file in the chain is now
-  merged parent-most first, child-most last (child wins per key), with the
-  chain-merged `en` locale layered underneath as fallback for other
-  languages.
+  `locales/{lang}.json`, so a child theme with a single-key locale file shadowed
+  the parent's entire file. Every locale file in the chain is now merged
+  parent-most first, child-most last (child wins per key), with the chain-merged
+  `en` locale layered underneath as fallback for other languages.
 - **UI language was hardcoded to English on `/search`, flex pages, and error
-  pages.** These three render sites ignored the URL's language prefix for
-  theme locale strings and navigation, so multilingual sites always got
-  English chrome there. A new `splitLanguagePrefix()` resolver helper is now
-  used at all three, so `/de/search` and `/de/flex/...` render with German
-  locale/nav, and a 404 under a language prefix keeps that language's chrome.
-- **Page-folders named `plugins` or `themes` were unreachable at their
-  canonical trailing-slash URL.** `findPageByRoute` didn't normalize a
-  trailing slash before comparing against the reserved `/plugins/*` and
-  `/themes/*` wildcard prefixes, so a content page at exactly `/plugins/`
-  (or `/themes/`) was shadowed by the wildcard static/plugin-asset routes.
+  pages.** These three render sites ignored the URL's language prefix for theme
+  locale strings and navigation, so multilingual sites always got English chrome
+  there. A new `splitLanguagePrefix()` resolver helper is now used at all three,
+  so `/de/search` and `/de/flex/...` render with German locale/nav, and a 404
+  under a language prefix keeps that language's chrome.
+- **Page-folders named `plugins` or `themes` were unreachable at their canonical
+  trailing-slash URL.** `findPageByRoute` didn't normalize a trailing slash
+  before comparing against the reserved `/plugins/*` and `/themes/*` wildcard
+  prefixes, so a content page at exactly `/plugins/` (or `/themes/`) was
+  shadowed by the wildcard static/plugin-asset routes.
 
 ### Changed
 
-- **JSR doc-coverage: 100% documented symbols across all 40 public
-  entrypoints** (score component was 77.2%, `allEntrypointsDocs: false`).
-  Two distinct causes: 26 entrypoints had a good top-of-file comment but no
-  `@module` tag, which `deno_doc` requires to recognize it as the module
-  doc; and re-exported symbols whose origin file is itself a separate
-  `deno.json` entrypoint collapse to an unresolved reference in `deno_doc`,
-  discarding any doc comment placed above the whole export statement — a
-  comment placed *inside* the export braces, immediately before the
-  specifier, survives and was the fix applied across `mod.ts` and its
-  barrel files. A further ~15 symbols (UI components, DB adapters, MT
-  translator classes, the staging/flex engines, `MultisiteManager`,
-  `JobScheduler`, `AuditLogger`, and a handful of security helpers) had no
-  doc comment at their actual declaration and needed one written.
+- **JSR doc-coverage: 100% documented symbols across all 40 public entrypoints**
+  (score component was 77.2%, `allEntrypointsDocs: false`). Two distinct causes:
+  26 entrypoints had a good top-of-file comment but no `@module` tag, which
+  `deno_doc` requires to recognize it as the module doc; and re-exported symbols
+  whose origin file is itself a separate `deno.json` entrypoint collapse to an
+  unresolved reference in `deno_doc`, discarding any doc comment placed above
+  the whole export statement — a comment placed _inside_ the export braces,
+  immediately before the specifier, survives and was the fix applied across
+  `mod.ts` and its barrel files. A further ~15 symbols (UI components, DB
+  adapters, MT translator classes, the staging/flex engines, `MultisiteManager`,
+  `JobScheduler`, `AuditLogger`, and a handful of security helpers) had no doc
+  comment at their actual declaration and needed one written.
 - **`@dune/plugin-admin` dependency raised to `^1.0`** — plugin-admin shipped
   1.0.0 in this cycle.
 
@@ -1161,11 +1211,28 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Changed
 
-- **Runtime module** — `bootstrap.ts` and `fresh-app.ts` have moved from `src/cli/` to a new `src/runtime/` module. The `@dune/core/bootstrap` and `@dune/core/fresh-app` export names are unchanged and keep working; the old `src/cli/` file locations remain as re-export shims until v0.27. `createDuneApp` has been decomposed into focused registration modules (health, feeds, static assets, content middleware).
-- **`BootstrapResult.contentApi`** — the bootstrap result now exposes the content API directly, replacing the previous `initContent()` singleton pattern.
-- **Session lifetime in milliseconds** — `SessionStoreOptions`, `LocalSessionStoreConfig`, and `createSiteSessionManager` now take `lifetimeMs` (milliseconds) as the canonical field, matching the KV backend. The old `lifetime` (seconds) field still works with a deprecation warning and will be removed in v0.27. The YAML `session_store.lifetime` config field (seconds) is unchanged.
-- **Config types split** — the monolithic `config/types.ts` has been split into `site-config.ts`, `system-config.ts`, `admin-config.ts`, and `dune-config.ts`. All types remain re-exported from `config/types.ts`, so existing imports keep working.
-- **Routing handlers extracted** — content, flex, TSX, link-rewriting, and collection-resolution logic moved out of `routes.ts` into dedicated modules under `src/routing/`.
+- **Runtime module** — `bootstrap.ts` and `fresh-app.ts` have moved from
+  `src/cli/` to a new `src/runtime/` module. The `@dune/core/bootstrap` and
+  `@dune/core/fresh-app` export names are unchanged and keep working; the old
+  `src/cli/` file locations remain as re-export shims until v0.27.
+  `createDuneApp` has been decomposed into focused registration modules (health,
+  feeds, static assets, content middleware).
+- **`BootstrapResult.contentApi`** — the bootstrap result now exposes the
+  content API directly, replacing the previous `initContent()` singleton
+  pattern.
+- **Session lifetime in milliseconds** — `SessionStoreOptions`,
+  `LocalSessionStoreConfig`, and `createSiteSessionManager` now take
+  `lifetimeMs` (milliseconds) as the canonical field, matching the KV backend.
+  The old `lifetime` (seconds) field still works with a deprecation warning and
+  will be removed in v0.27. The YAML `session_store.lifetime` config field
+  (seconds) is unchanged.
+- **Config types split** — the monolithic `config/types.ts` has been split into
+  `site-config.ts`, `system-config.ts`, `admin-config.ts`, and `dune-config.ts`.
+  All types remain re-exported from `config/types.ts`, so existing imports keep
+  working.
+- **Routing handlers extracted** — content, flex, TSX, link-rewriting, and
+  collection-resolution logic moved out of `routes.ts` into dedicated modules
+  under `src/routing/`.
 - **Admin plugin pin** — `@dune/plugin-admin` dependency raised to `^0.25`.
 
 ---
@@ -1174,25 +1241,53 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Security
 
-- **REST API content gating** — role-based access controls are now enforced on public REST API endpoints, consistent with content gating elsewhere in the framework
-- **Codegen input validation** — generated API route handlers now validate request body fields against schema constraints before executing database writes
-- **DB schema identifier safety** — model and table names from schema definitions are validated against a safe-identifier allowlist before code generation
-- **SSG traversal guard** — static site generation now validates slug values to prevent path traversal; HTML redirect targets are entity-escaped
-- **Per-origin authorization** — the authorization map is now keyed per site origin rather than a shared singleton, preventing cross-site authorization bleed in multisite deployments
-- **Plugin path traversal** — plugin specifiers are percent-decoded before traversal boundary checks
-- **SQL LIKE escaping** — repository LIKE-clause parameters are escaped before query execution
-- **KV cache key sanitization** — storage keys are sanitized before use in the KV cache layer
-- **Webhook timestamp enforcement** — webhook handlers now reject requests missing a timestamp header
+- **REST API content gating** — role-based access controls are now enforced on
+  public REST API endpoints, consistent with content gating elsewhere in the
+  framework
+- **Codegen input validation** — generated API route handlers now validate
+  request body fields against schema constraints before executing database
+  writes
+- **DB schema identifier safety** — model and table names from schema
+  definitions are validated against a safe-identifier allowlist before code
+  generation
+- **SSG traversal guard** — static site generation now validates slug values to
+  prevent path traversal; HTML redirect targets are entity-escaped
+- **Per-origin authorization** — the authorization map is now keyed per site
+  origin rather than a shared singleton, preventing cross-site authorization
+  bleed in multisite deployments
+- **Plugin path traversal** — plugin specifiers are percent-decoded before
+  traversal boundary checks
+- **SQL LIKE escaping** — repository LIKE-clause parameters are escaped before
+  query execution
+- **KV cache key sanitization** — storage keys are sanitized before use in the
+  KV cache layer
+- **Webhook timestamp enforcement** — webhook handlers now reject requests
+  missing a timestamp header
 
 ### Fixed
-- **Form validator email length** — min/max length constraints on email fields were silently skipped due to a switch-case ordering issue; the email case now falls through to the shared string-length check correctly
+
+- **Form validator email length** — min/max length constraints on email fields
+  were silently skipped due to a switch-case ordering issue; the email case now
+  falls through to the shared string-length check correctly
 
 ### Changed
-- **API routing refactor** — REST API handler logic (pages, search, taxonomy, collections, nav, config) has been moved out of `routes.ts` into a dedicated `src/api/handlers.ts` module. The `apiHandler` method is removed from the `DuneRoutes` interface; the framework mount handles API routing automatically. Sites calling `routes.apiHandler()` directly should remove those calls.
-- **Search analytics removed from `duneRoutes()`** — the `analyticsPath` parameter has been removed; sites passing it should remove the argument.
-- **Flex page index extraction** — `flexRecordToPageIndex()` and `FlexPageIndexInput` have been moved to `src/flex/page-index.ts` for cleaner module boundaries.
-- **Dead code removal** — internal helper functions that were no longer called anywhere (`slugify`, `xmlAll`, `dotGet`, `text`) have been removed, along with unused imports and unused parameters throughout the codebase.
-- **Test improvements** — DNS resolution in CDN provider tests is now stubbed for hermeticity; new test coverage added for form validation, API handlers, and upload routing.
+
+- **API routing refactor** — REST API handler logic (pages, search, taxonomy,
+  collections, nav, config) has been moved out of `routes.ts` into a dedicated
+  `src/api/handlers.ts` module. The `apiHandler` method is removed from the
+  `DuneRoutes` interface; the framework mount handles API routing automatically.
+  Sites calling `routes.apiHandler()` directly should remove those calls.
+- **Search analytics removed from `duneRoutes()`** — the `analyticsPath`
+  parameter has been removed; sites passing it should remove the argument.
+- **Flex page index extraction** — `flexRecordToPageIndex()` and
+  `FlexPageIndexInput` have been moved to `src/flex/page-index.ts` for cleaner
+  module boundaries.
+- **Dead code removal** — internal helper functions that were no longer called
+  anywhere (`slugify`, `xmlAll`, `dotGet`, `text`) have been removed, along with
+  unused imports and unused parameters throughout the codebase.
+- **Test improvements** — DNS resolution in CDN provider tests is now stubbed
+  for hermeticity; new test coverage added for form validation, API handlers,
+  and upload routing.
 
 ---
 
@@ -1201,43 +1296,48 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 ### Added
 
 - **Deno KV storage adapter (`KvStorageAdapter`).** A new `src/storage/kv.ts`
-  implements the full `StorageAdapter` interface on top of `Deno.openKv()`, making
-  Dune deployable on Deno Deploy without a persistent filesystem. `createStorageAsync()`
-  in `mod.ts` auto-selects the KV adapter when `DENO_KV_URL` is set; the synchronous
-  `createStorage()` continues to return the filesystem adapter for CLI commands.
-  `bootstrap()` now calls `createStorageAsync()` instead of `createStorage()`. Key
-  schema uses multi-segment keys (`["f", ...pathSegments]` for files, `["m", ...]`
-  for metadata, `["c", key]` for cache) to enable efficient prefix scans. Limitations:
-  `watch()` is a no-op on Deno Deploy; files larger than 64 KiB are not supported
-  (use external object storage for large assets).
+  implements the full `StorageAdapter` interface on top of `Deno.openKv()`,
+  making Dune deployable on Deno Deploy without a persistent filesystem.
+  `createStorageAsync()` in `mod.ts` auto-selects the KV adapter when
+  `DENO_KV_URL` is set; the synchronous `createStorage()` continues to return
+  the filesystem adapter for CLI commands. `bootstrap()` now calls
+  `createStorageAsync()` instead of `createStorage()`. Key schema uses
+  multi-segment keys (`["f", ...pathSegments]` for files, `["m", ...]` for
+  metadata, `["c", key]` for cache) to enable efficient prefix scans.
+  Limitations: `watch()` is a no-op on Deno Deploy; files larger than 64 KiB are
+  not supported (use external object storage for large assets).
 
-- **`MemoryStorageAdapter` in `@dune/core/storage`.** An in-memory `StorageAdapter`
-  backed by `Map<string, Uint8Array>` for use in tests and serverless cold-start
-  scenarios. Exposes a `set(path, data)` helper for pre-populating files. All
-  `StorageAdapter` methods are implemented; `watch()` is a no-op.
+- **`MemoryStorageAdapter` in `@dune/core/storage`.** An in-memory
+  `StorageAdapter` backed by `Map<string, Uint8Array>` for use in tests and
+  serverless cold-start scenarios. Exposes a `set(path, data)` helper for
+  pre-populating files. All `StorageAdapter` methods are implemented; `watch()`
+  is a no-op.
 
 - **`BootstrapOptions.storage` — injected storage adapter.** Pass a custom
-  `StorageAdapter` (e.g. `MemoryStorageAdapter`) directly to `bootstrap()` to skip
-  filesystem initialisation. When provided, `resolve()` and `createStorageAsync()` are
-  skipped; `loadConfig()` runs with `skipConfigTs: true`.
+  `StorageAdapter` (e.g. `MemoryStorageAdapter`) directly to `bootstrap()` to
+  skip filesystem initialisation. When provided, `resolve()` and
+  `createStorageAsync()` are skipped; `loadConfig()` runs with
+  `skipConfigTs: true`.
 
-- **`BootstrapOptions.plugins` — pre-registered plugins.** Plugins passed here are
-  registered before any lifecycle hooks fire, so they participate in the full hook
-  chain including `onSearchEngineCreate` and `onContentIndexReady`.
+- **`BootstrapOptions.plugins` — pre-registered plugins.** Plugins passed here
+  are registered before any lifecycle hooks fire, so they participate in the
+  full hook chain including `onSearchEngineCreate` and `onContentIndexReady`.
 
 - **`BootstrapOptions.configOverrides` — top-level config injection.** Apply
-  `Partial<DuneConfig>` overrides after all YAML config is loaded but before plugins
-  run. Useful for disabling admin in test environments without a `dune.config.ts`.
+  `Partial<DuneConfig>` overrides after all YAML config is loaded but before
+  plugins run. Useful for disabling admin in test environments without a
+  `dune.config.ts`.
 
-- **TSX content gating (`config.system.content.allowTsxFormat`).** TSX-format pages
-  are only accepted from roles listed in `allowTsxFormat` (default: `["admin"]`).
-  Enforced in `POST /admin/api/pages`; the page editor shows a warning badge for
-  TSX-format pages viewed by non-admin roles.
+- **TSX content gating (`config.system.content.allowTsxFormat`).** TSX-format
+  pages are only accepted from roles listed in `allowTsxFormat` (default:
+  `["admin"]`). Enforced in `POST /admin/api/pages`; the page editor shows a
+  warning badge for TSX-format pages viewed by non-admin roles.
 
 - **`@dune/plugin-orama` — in-process full-text search plugin.** New first-party
-  package (`jsr:@dune/plugin-orama@^0.1`) providing an Orama 3 search engine with
-  typo tolerance. Registers as `"orama"` via the `onSearchEngineCreate` hook and
-  sets itself as the active engine by default. Configure via `site.yaml`:
+  package (`jsr:@dune/plugin-orama@^0.1`) providing an Orama 3 search engine
+  with typo tolerance. Registers as `"orama"` via the `onSearchEngineCreate`
+  hook and sets itself as the active engine by default. Configure via
+  `site.yaml`:
   ```yaml
   search:
     engine: orama
@@ -1248,8 +1348,8 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 - **`@dune/testing` — in-process test harness.** New first-party package
   (`jsr:@dune/testing@^0.1`) for plugin and theme authors. `createTestHarness()`
-  boots a full Dune engine backed by `MemoryStorageAdapter` — no filesystem access
-  required. Fixture content and plugins are injected before hooks fire:
+  boots a full Dune engine backed by `MemoryStorageAdapter` — no filesystem
+  access required. Fixture content and plugins are injected before hooks fire:
   ```ts
   const h = await createTestHarness({
     content: { "01.home/default.md": "---\ntitle: Home\n---\nHello" },
@@ -1260,30 +1360,33 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   ```
 
 - **Playwright E2E test suite for the admin panel.** A `playwright.config.ts`
-  + five spec files in `@dune/plugin-admin/tests/e2e/` cover the admin panel's
-  critical paths in a real Chromium browser against a live Dune server:
-  - `auth.spec.ts` — login (correct/wrong credentials, enumeration safety, logout)
-  - `pages.spec.ts` — page CRUD (create, edit, delete)
-  - `workflow.spec.ts` — status picker presence and transition API
-  - `media.spec.ts` — media library page load and file upload
-  - `users.spec.ts` — user creation, role change, and disable (via API)
-  - `settings.spec.ts` — config page load and save
-  Global setup starts a `dune serve` subprocess against a fixture site with a
-  pre-seeded admin user (`admin` / `test-password`). Run with:
-  `deno task test:e2e:install && deno task test:e2e` from the `plugin-admin/`
-  directory. Requires Chromium; CI uses the same task.
+  - five spec files in `@dune/plugin-admin/tests/e2e/` cover the admin panel's
+    critical paths in a real Chromium browser against a live Dune server:
+  * `auth.spec.ts` — login (correct/wrong credentials, enumeration safety,
+    logout)
+  * `pages.spec.ts` — page CRUD (create, edit, delete)
+  * `workflow.spec.ts` — status picker presence and transition API
+  * `media.spec.ts` — media library page load and file upload
+  * `users.spec.ts` — user creation, role change, and disable (via API)
+  * `settings.spec.ts` — config page load and save Global setup starts a
+    `dune serve` subprocess against a fixture site with a pre-seeded admin user
+    (`admin` / `test-password`). Run with:
+    `deno task test:e2e:install && deno task test:e2e` from the `plugin-admin/`
+    directory. Requires Chromium; CI uses the same task.
 
 - **`@dune/plugin-meilisearch` 0.3.0** — updated to use the `register()` /
-  `setActiveEngine()` API introduced in v0.24's `SearchEngineCreateContext`. Imports
-  core types (`SearchEngine`, `SearchResult`, `PageIndex`, `InjectedSearchRecord`)
-  from `@dune/core/search` rather than bundling its own. Adds `config.active` option
-  (default `true`) to control whether meilisearch becomes the active engine on register.
+  `setActiveEngine()` API introduced in v0.24's `SearchEngineCreateContext`.
+  Imports core types (`SearchEngine`, `SearchResult`, `PageIndex`,
+  `InjectedSearchRecord`) from `@dune/core/search` rather than bundling its own.
+  Adds `config.active` option (default `true`) to control whether meilisearch
+  becomes the active engine on register.
 
 - **Search admin UI (`/admin/search`).** New page and `SearchPanel` island in
-  `@dune/plugin-admin` exposing the search engine toggle API. Shows all registered
-  engines with a radio-select to switch the active engine, and a parallel-mode
-  checkbox when multiple engines are registered. Available to any user with the
-  `config.read` permission. Nav entry added to the Settings group in the sidebar.
+  `@dune/plugin-admin` exposing the search engine toggle API. Shows all
+  registered engines with a radio-select to switch the active engine, and a
+  parallel-mode checkbox when multiple engines are registered. Available to any
+  user with the `config.read` permission. Nav entry added to the Settings group
+  in the sidebar.
 
 - **`h.fetch()` and `h.render()` in `@dune/testing`.** The test harness now
   supports in-process HTTP assertions without a real server:
@@ -1291,32 +1394,35 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
   const res = await h.fetch("/api/pages");
   const body = await h.render("/api/config/site");
   ```
-  Backed by `createApiHandler` from the new `@dune/core/api` subpath export. Covers
-  all routes under `/api/*` (pages, search, taxonomy, collections, config, nav, flex).
-  Admin and full-stack routes require the Playwright E2E suite.
+  Backed by `createApiHandler` from the new `@dune/core/api` subpath export.
+  Covers all routes under `/api/*` (pages, search, taxonomy, collections,
+  config, nav, flex). Admin and full-stack routes require the Playwright E2E
+  suite.
 
 - **Lockfile CI lint guard (`scripts/lint-dynamic-imports.ts`).** A Deno script
   that scans `src/` for non-literal `import()` calls that could silently escape
-  `dune lockfile:sync`'s static graph trace. Existing intentional non-literal imports
-  are annotated `// lockfile-safe: <reason>` (10 sites: config loader, plugin loader,
-  theme loader, job scanner, email templates, admin/multisite constant aliases).
-  Wired into `deno task check`; exits non-zero on any unannotated new violation.
+  `dune lockfile:sync`'s static graph trace. Existing intentional non-literal
+  imports are annotated `// lockfile-safe: <reason>` (10 sites: config loader,
+  plugin loader, theme loader, job scanner, email templates, admin/multisite
+  constant aliases). Wired into `deno task check`; exits non-zero on any
+  unannotated new violation.
 
 - **Deploy guide: `ExecStartPre` pre-flight gate.** Added an "Optional:
-  `ExecStartPre` pre-flight gate" section to the deployment invocation-patterns doc
-  explaining the `--no-lock` flag on the `lockfile:check` line and `--frozen` on
-  `ExecStart`, with a copy-pasteable systemd `[Service]` ini snippet.
+  `ExecStartPre` pre-flight gate" section to the deployment invocation-patterns
+  doc explaining the `--no-lock` flag on the `lockfile:check` line and
+  `--frozen` on `ExecStart`, with a copy-pasteable systemd `[Service]` ini
+  snippet.
 
 - **Inline-edit WebSocket decoupled to `/api/inline-edit/ws`.** The inline-edit
-  WebSocket endpoint moves from `/admin/collab/edit-ws` (inside `@dune/plugin-admin`)
-  to `/api/inline-edit/ws` (registered by core in `fresh-app.ts`). This removes the
-  dependency on `@dune/plugin-admin` being installed for inline editing to work.
-  `@dune/plugin-inline-edit` now hardcodes `/api/inline-edit/ws` as the WS path.
-  `BootstrapResult.adminServices` (new field, type `AdminServices | null`) exposes
-  the merged plugin admin-services map after `mountPlugins()` runs; core uses it to
-  access `inlineEdit` without importing `@dune/plugin-admin`. The old
-  `/admin/collab/edit-ws` route remains in `@dune/plugin-admin` for backwards
-  compatibility.
+  WebSocket endpoint moves from `/admin/collab/edit-ws` (inside
+  `@dune/plugin-admin`) to `/api/inline-edit/ws` (registered by core in
+  `fresh-app.ts`). This removes the dependency on `@dune/plugin-admin` being
+  installed for inline editing to work. `@dune/plugin-inline-edit` now hardcodes
+  `/api/inline-edit/ws` as the WS path. `BootstrapResult.adminServices` (new
+  field, type `AdminServices | null`) exposes the merged plugin admin-services
+  map after `mountPlugins()` runs; core uses it to access `inlineEdit` without
+  importing `@dune/plugin-admin`. The old `/admin/collab/edit-ws` route remains
+  in `@dune/plugin-admin` for backwards compatibility.
 
 - **New `@dune/core` subpath exports: `./api` and `./fresh-app`.**
   - `./api` — `createApiHandler`, `ApiHandlerOptions` (used by `@dune/testing`)
@@ -1324,16 +1430,17 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Changed
 
-- `bootstrap()` is now async end-to-end: it calls `createStorageAsync()` internally.
-  The call signature is unchanged; existing `await bootstrap(root, opts)` calls
-  continue to work.
+- `bootstrap()` is now async end-to-end: it calls `createStorageAsync()`
+  internally. The call signature is unchanged; existing
+  `await bootstrap(root, opts)` calls continue to work.
 
 - **`BootstrapResult.adminServices`** (new field) is `AdminServices | null`.
-  `null` until `mountPlugins()` runs. Plugins do not need to do anything; the field
-  is set automatically during `createDuneApp()`.
+  `null` until `mountPlugins()` runs. Plugins do not need to do anything; the
+  field is set automatically during `createDuneApp()`.
 
-- **`mountPlugins()` stores `adminServices` on `BootstrapResult`** after collecting
-  it, so both `mount()` hooks and post-mount core code can read the merged services.
+- **`mountPlugins()` stores `adminServices` on `BootstrapResult`** after
+  collecting it, so both `mount()` hooks and post-mount core code can read the
+  merged services.
 
 ---
 
@@ -1341,16 +1448,18 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Security
 
-- **High: Path traversal via plugin `islandSpecifiers` (build-time).** Plugin-supplied
-  `islandSpecifiers` were spread into the client JS bundler without the path-validation
-  guard already applied to `publicRoutes[].island`. Added `isValidPluginIslandSpecifier()`
-  validation in both `serve.ts` and `dev.ts`; invalid specifiers are rejected with a
-  warning log. Affects `@dune/core` ≥ 0.24.0.
+- **High: Path traversal via plugin `islandSpecifiers` (build-time).**
+  Plugin-supplied `islandSpecifiers` were spread into the client JS bundler
+  without the path-validation guard already applied to `publicRoutes[].island`.
+  Added `isValidPluginIslandSpecifier()` validation in both `serve.ts` and
+  `dev.ts`; invalid specifiers are rejected with a warning log. Affects
+  `@dune/core` ≥ 0.24.0.
 
-- **High: Stored XSS via unvalidated grid column value in page-builder renderer.**
-  The `columns` frontmatter field accepted by `renderFeatures`, `renderGallery`, and
-  `renderColumns` was interpolated directly into an HTML class attribute without
-  sanitization. Introduced `safeGridCols()` which allowlists values before interpolation.
+- **High: Stored XSS via unvalidated grid column value in page-builder
+  renderer.** The `columns` frontmatter field accepted by `renderFeatures`,
+  `renderGallery`, and `renderColumns` was interpolated directly into an HTML
+  class attribute without sanitization. Introduced `safeGridCols()` which
+  allowlists values before interpolation.
 
 ---
 
@@ -1358,65 +1467,67 @@ This project follows [Semantic Versioning](https://semver.org). Pre-1.0 minor re
 
 ### Added
 
-- **`@dune/plugin-admin` — the Dune admin panel is now a standalone JSR package.**
-  The admin panel, block editor, user management, auth middleware, audit logging,
-  machine translation, staging engine, workflow, collab, submissions, and all admin
-  Fresh routes have been extracted from `@dune/core` into
-  [`jsr:@dune/plugin-admin`](https://jsr.io/@dune/plugin-admin). Core is now a pure
-  content engine with no admin-specific code. Existing sites continue to work without
-  changes — the plugin is auto-registered by `bootstrap()`.
+- **`@dune/plugin-admin` — the Dune admin panel is now a standalone JSR
+  package.** The admin panel, block editor, user management, auth middleware,
+  audit logging, machine translation, staging engine, workflow, collab,
+  submissions, and all admin Fresh routes have been extracted from `@dune/core`
+  into [`jsr:@dune/plugin-admin`](https://jsr.io/@dune/plugin-admin). Core is
+  now a pure content engine with no admin-specific code. Existing sites continue
+  to work without changes — the plugin is auto-registered by `bootstrap()`.
 
-- **`DunePlugin.mount(api: MountApi)` lifecycle hook.** Plugins that need to register
-  Fresh routes, middleware, or layouts can now do so in `mount()`, which is called
-  after `bootstrap()` once the Fresh `App` instance is available. `setup()` continues
-  to run at bootstrap time (before the app exists). `MountApi` provides `{ app,
+- **`DunePlugin.mount(api: MountApi)` lifecycle hook.** Plugins that need to
+  register Fresh routes, middleware, or layouts can now do so in `mount()`,
+  which is called after `bootstrap()` once the Fresh `App` instance is
+  available. `setup()` continues to run at bootstrap time (before the app
+  exists). `MountApi` provides `{ app,
   bootstrap, adminServices }`.
 
 - **`mountPlugins(app, ctx)` in `@dune/core/plugins`.** Replaces the direct
-  `mountDuneAdmin(app, ctx)` call in headless setups. Calls `collectAdminServices()`
-  then iterates all plugins invoking their `mount()` hooks in registration order.
-  Headless developers: replace `mountDuneAdmin` with `mountPlugins`.
+  `mountDuneAdmin(app, ctx)` call in headless setups. Calls
+  `collectAdminServices()` then iterates all plugins invoking their `mount()`
+  hooks in registration order. Headless developers: replace `mountDuneAdmin`
+  with `mountPlugins`.
 
 - **25 new subpath exports from `@dune/core`** — exposes internal modules that
-  first-party plugins (and custom admin implementations) depend on:
-  `./hooks`, `./config`, `./storage`, `./staging`, `./workflow`, `./session`,
-  `./audit`, `./mt`, `./security`, `./history`, `./metrics`, `./flex`, `./images`,
+  first-party plugins (and custom admin implementations) depend on: `./hooks`,
+  `./config`, `./storage`, `./staging`, `./workflow`, `./session`, `./audit`,
+  `./mt`, `./security`, `./history`, `./metrics`, `./flex`, `./images`,
   `./forms`, `./jobs`, `./blueprints`, `./search`, `./nav`, `./types`,
   `./auth/passwords`, `./auth/provisioner`, `./auth/authz-adapter-local`,
   `./auth/authz-adapter-db`, `./bootstrap`, `./content/types`.
 
-- **`ContentEditorPlugin` decoupled from `AdminState`.** The interface moved from
-  `src/admin/types.ts` to `src/hooks/types.ts` and now uses `FreshContext<any>`
-  instead of `FreshContext<AdminState>`, so it is expressible in core without
-  importing admin-internal types. The change is backwards-compatible: the type
-  becomes more permissive, not less.
+- **`ContentEditorPlugin` decoupled from `AdminState`.** The interface moved
+  from `src/admin/types.ts` to `src/hooks/types.ts` and now uses
+  `FreshContext<any>` instead of `FreshContext<AdminState>`, so it is
+  expressible in core without importing admin-internal types. The change is
+  backwards-compatible: the type becomes more permissive, not less.
 
 ### Changed
 
 - **`BootstrapResult` is significantly slimmer.** Twelve fields that were
   admin-specific (`users`, `sessions`, `auth`, `authProvider`, `workflow`,
-  `scheduler`, `submissionManager`, `stagingEngine`, `collabManager`, `auditLogger`,
-  `mt`, `pluginAdminPages`) have been removed. `adminContext` remains but is `null`
-  until `mountPlugins()` runs; it is then set by `@dune/plugin-admin`'s `mount()`
-  hook. `history` and `flexEngine` stay in `BootstrapResult` — both are core-level
-  concerns used outside the admin panel.
+  `scheduler`, `submissionManager`, `stagingEngine`, `collabManager`,
+  `auditLogger`, `mt`, `pluginAdminPages`) have been removed. `adminContext`
+  remains but is `null` until `mountPlugins()` runs; it is then set by
+  `@dune/plugin-admin`'s `mount()` hook. `history` and `flexEngine` stay in
+  `BootstrapResult` — both are core-level concerns used outside the admin panel.
 
 - **`./admin` subpath export removed from `@dune/core`.** Imports from
   `jsr:@dune/core/admin` (previously `mount.ts`) are now available from
-  `jsr:@dune/plugin-admin/admin/mount`. This is a breaking change for any code that
-  imported `mountDuneAdmin` or `registerAdminRoutes` from `@dune/core/admin` —
-  update those imports to `@dune/plugin-admin/admin/mount`.
+  `jsr:@dune/plugin-admin/admin/mount`. This is a breaking change for any code
+  that imported `mountDuneAdmin` or `registerAdminRoutes` from
+  `@dune/core/admin` — update those imports to `@dune/plugin-admin/admin/mount`.
 
 ### Migration
 
-No changes to `site.yaml` are required for existing sites. `bootstrap()` continues to
-auto-register the admin plugin when `admin.enabled` is not `false`. Sites that want to
-opt out of the admin panel entirely can now do so cleanly by setting
-`admin: { enabled: false }` in `system.yaml` — no admin routes, user pool, or
-auth overhead will be initialised.
+No changes to `site.yaml` are required for existing sites. `bootstrap()`
+continues to auto-register the admin plugin when `admin.enabled` is not `false`.
+Sites that want to opt out of the admin panel entirely can now do so cleanly by
+setting `admin: { enabled: false }` in `system.yaml` — no admin routes, user
+pool, or auth overhead will be initialised.
 
-Headless developers who called `mountDuneAdmin(app, ctx)` directly should replace it
-with `mountPlugins(app, ctx)` from `@dune/core/plugins`.
+Headless developers who called `mountDuneAdmin(app, ctx)` directly should
+replace it with `mountPlugins(app, ctx)` from `@dune/core/plugins`.
 
 ---
 
@@ -1424,41 +1535,77 @@ with `mountPlugins(app, ctx)` from `@dune/core/plugins`.
 
 ### Added
 
-- **Pluggable search backends.** Two new plugin hooks make the search engine extensible:
-  - `onSearchRecordsCollect` — plugins push extra records (each with its own result `route`, indexed from memory) to include in the search index.
-  - `onSearchEngineCreate` — plugins provide an alternative `SearchEngine` (e.g. a Meilisearch backend) in place of the built-in in-memory engine. The hook payload includes a `loadText(page)` helper so an alternative engine can index the same plain-text bodies the built-in engine does.
+- **Pluggable search backends.** Two new plugin hooks make the search engine
+  extensible:
+  - `onSearchRecordsCollect` — plugins push extra records (each with its own
+    result `route`, indexed from memory) to include in the search index.
+  - `onSearchEngineCreate` — plugins provide an alternative `SearchEngine` (e.g.
+    a Meilisearch backend) in place of the built-in in-memory engine. The hook
+    payload includes a `loadText(page)` helper so an alternative engine can
+    index the same plain-text bodies the built-in engine does.
 
-- **`createSearchEngine` accepts `injectedRecords`** — plugin-contributed records are indexed alongside content pages and retained across rebuilds. Exposed via `onSearchRecordsCollect`.
+- **`createSearchEngine` accepts `injectedRecords`** — plugin-contributed
+  records are indexed alongside content pages and retained across rebuilds.
+  Exposed via `onSearchRecordsCollect`.
 
-- **Exported `loadPageBodyText` and `stripSearchMarkup`** from `@dune/core` search — reusable helpers for loading and plain-text-stripping a page's body, used by the built-in engine and available to alternative engines.
+- **Exported `loadPageBodyText` and `stripSearchMarkup`** from `@dune/core`
+  search — reusable helpers for loading and plain-text-stripping a page's body,
+  used by the built-in engine and available to alternative engines.
 
-These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF serving + text search) and `@dune/plugin-meilisearch` (Meilisearch backend), both of which now enable from `site.yaml` with no manual wiring.
+These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF
+serving + text search) and `@dune/plugin-meilisearch` (Meilisearch backend),
+both of which now enable from `site.yaml` with no manual wiring.
 
-- **`dune plugin:install` prints setup guidance for first-party plugins.** Installing `@dune/plugin-pdf` creates `static/pdfs/` and prints the `site.yaml` config block; installing `@dune/plugin-meilisearch` prints the required environment variables and config keys.
+- **`dune plugin:install` prints setup guidance for first-party plugins.**
+  Installing `@dune/plugin-pdf` creates `static/pdfs/` and prints the
+  `site.yaml` config block; installing `@dune/plugin-meilisearch` prints the
+  required environment variables and config keys.
 
-- **`generate:plugin` scaffold updated** — the generated plugin now uses the `hooks: {}` object form (the previous scaffold omitted the required `hooks` field) and includes commented `onSearchRecordsCollect` / `onSearchEngineCreate` examples.
+- **`generate:plugin` scaffold updated** — the generated plugin now uses the
+  `hooks: {}` object form (the previous scaffold omitted the required `hooks`
+  field) and includes commented `onSearchRecordsCollect` /
+  `onSearchEngineCreate` examples.
 
 ### Fixed
 
-- **Marketplace plugin registry now lists only real, published plugins** (`@dune/plugin-inline-edit`, `@dune/plugin-pdf`, `@dune/plugin-meilisearch`). The previous registry advertised fabricated entries (nonexistent `dune-cms` GitHub org, fake download counts, unpublished JSR packages) that would 404 on install, and omitted the real plugins.
+- **Marketplace plugin registry now lists only real, published plugins**
+  (`@dune/plugin-inline-edit`, `@dune/plugin-pdf`, `@dune/plugin-meilisearch`).
+  The previous registry advertised fabricated entries (nonexistent `dune-cms`
+  GitHub org, fake download counts, unpublished JSR packages) that would 404 on
+  install, and omitted the real plugins.
 
-- **`plugin:create` scaffold import corrected** from the nonexistent `jsr:@dune-cms/core/hooks` to `jsr:@dune/core/plugins`, so generated plugins resolve `DunePlugin`.
+- **`plugin:create` scaffold import corrected** from the nonexistent
+  `jsr:@dune-cms/core/hooks` to `jsr:@dune/core/plugins`, so generated plugins
+  resolve `DunePlugin`.
 
 ## [0.22.0] — 2026-06-29
 
 ### Added
 
-- **`dune serve --frozen`** exits with a clear message pointing to `dune lockfile sync` when the lockfile is incomplete for the current `deno.json`. Previously, running without `--frozen` would silently drift; now the Dune-level flag makes lockfile staleness a hard, actionable error in production deployments.
+- **`dune serve --frozen`** exits with a clear message pointing to
+  `dune lockfile sync` when the lockfile is incomplete for the current
+  `deno.json`. Previously, running without `--frozen` would silently drift; now
+  the Dune-level flag makes lockfile staleness a hard, actionable error in
+  production deployments.
 
-- **Startup staleness hint in `dune dev` and `dune serve`.** At startup, Dune checks whether the lockfile contains an entry for the current `@dune/core` version. If not, it prints a clear warning before continuing — catching manual `deno.json` edits or upgrades made outside `dune upgrade` before they cause a surprise deployment failure. The check is fast (no subprocess) and non-blocking in dev mode.
+- **Startup staleness hint in `dune dev` and `dune serve`.** At startup, Dune
+  checks whether the lockfile contains an entry for the current `@dune/core`
+  version. If not, it prints a clear warning before continuing — catching manual
+  `deno.json` edits or upgrades made outside `dune upgrade` before they cause a
+  surprise deployment failure. The check is fast (no subprocess) and
+  non-blocking in dev mode.
 
-- **`dune upgrade` auto-runs `lockfile sync`** after bumping the `@dune/core` version, so the lockfile stays consistent without a separate manual step.
+- **`dune upgrade` auto-runs `lockfile sync`** after bumping the `@dune/core`
+  version, so the lockfile stays consistent without a separate manual step.
 
-- **`dune add` auto-runs `lockfile sync`** after adding a new import to `deno.json`, for the same reason.
+- **`dune add` auto-runs `lockfile sync`** after adding a new import to
+  `deno.json`, for the same reason.
 
 ### Fixed
 
-- **Plugin marketplace registry entry corrected for `@dune/plugin-meilisearch`.** The entry had the wrong package name and JSR specifier from an earlier draft.
+- **Plugin marketplace registry entry corrected for
+  `@dune/plugin-meilisearch`.** The entry had the wrong package name and JSR
+  specifier from an earlier draft.
 
 ---
 
@@ -1466,9 +1613,40 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **`lockfile:sync` recorded an incomplete dependency block for `@dune/core`, so a `--frozen serve` could still fail right after a successful sync.** The discovery pass only traced the narrow slice of dune-core that plugin loading touches (`storage`/`config`/`hooks`/`plugin-loader`) — about three dependencies — whereas actually running `serve` exercises far more of dune-core's own graph (the DB drivers, mailer, image processing, multisite manager, etc., reached via dynamic imports `cli-impl.ts` pulls in for every command). Deno records a package's dependency block from whatever graph was traced during resolution, so the synced lockfile's `@dune/core` entry was well-formed but missing ~15 dependencies, and the next `--frozen serve` rejected it as out of date. `sync` now also caches the site's pinned `@dune/core@X/cli` entrypoint — the same module `serve` itself loads — so the recorded closure matches what `serve` will actually need, independent of which plugins are configured. (Deno follows literal-string dynamic imports statically, so this captures the config-gated runtime branches too; only variable-argument imports of site-local files are excluded, and those are the site's own surface, handled separately by plugin discovery.)
+- **`lockfile:sync` recorded an incomplete dependency block for `@dune/core`, so
+  a `--frozen serve` could still fail right after a successful sync.** The
+  discovery pass only traced the narrow slice of dune-core that plugin loading
+  touches (`storage`/`config`/`hooks`/`plugin-loader`) — about three
+  dependencies — whereas actually running `serve` exercises far more of
+  dune-core's own graph (the DB drivers, mailer, image processing, multisite
+  manager, etc., reached via dynamic imports `cli-impl.ts` pulls in for every
+  command). Deno records a package's dependency block from whatever graph was
+  traced during resolution, so the synced lockfile's `@dune/core` entry was
+  well-formed but missing ~15 dependencies, and the next `--frozen serve`
+  rejected it as out of date. `sync` now also caches the site's pinned
+  `@dune/core@X/cli` entrypoint — the same module `serve` itself loads — so the
+  recorded closure matches what `serve` will actually need, independent of which
+  plugins are configured. (Deno follows literal-string dynamic imports
+  statically, so this captures the config-gated runtime branches too; only
+  variable-argument imports of site-local files are excluded, and those are the
+  site's own surface, handled separately by plugin discovery.)
 
-- **Just invoking `dune lockfile:check`/`lockfile:sync` could itself dirty `deno.lock` before either command's own code ran, regardless of git state.** The CLI auto re-execs itself with `--config=<site deno.json>` whenever the site root has its own config, so dynamically-imported theme TSX files can resolve the site's import map — but it did this unconditionally, including for the lockfile commands, which don't render anything and already manage their own properly-scoped (scratch-lockfile) subprocess internally. That re-exec resolved the CLI's own module graph against the site's real `deno.lock`, unfrozen, before `lockfile:check`/`lockfile:sync` ever got a chance to read "original" — the exact incidental-drift problem these commands exist to prevent, and the actual root cause of inconsistent results seen across repeated runs. `lockfile:check`/`lockfile:sync` are now excluded from the auto re-exec, and the "original" baseline is read directly from disk — the previous preference for a git-committed copy (added in 0.21.2 to work around this same symptom) is removed; it was treating a downstream effect as if it were the cause.
+- **Just invoking `dune lockfile:check`/`lockfile:sync` could itself dirty
+  `deno.lock` before either command's own code ran, regardless of git state.**
+  The CLI auto re-execs itself with `--config=<site deno.json>` whenever the
+  site root has its own config, so dynamically-imported theme TSX files can
+  resolve the site's import map — but it did this unconditionally, including for
+  the lockfile commands, which don't render anything and already manage their
+  own properly-scoped (scratch-lockfile) subprocess internally. That re-exec
+  resolved the CLI's own module graph against the site's real `deno.lock`,
+  unfrozen, before `lockfile:check`/`lockfile:sync` ever got a chance to read
+  "original" — the exact incidental-drift problem these commands exist to
+  prevent, and the actual root cause of inconsistent results seen across
+  repeated runs. `lockfile:check`/`lockfile:sync` are now excluded from the auto
+  re-exec, and the "original" baseline is read directly from disk — the previous
+  preference for a git-committed copy (added in 0.21.2 to work around this same
+  symptom) is removed; it was treating a downstream effect as if it were the
+  cause.
 
 ---
 
@@ -1476,7 +1654,18 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **A content page-folder whose slug matched a reserved path prefix (`static`, `themes`, or `plugins`) was unreachable at its own canonical URL.** Found live in production: a page at `content/plugins/` correctly 301-redirected `/plugins` → `/plugins/` (the content router knew the page existed), but requesting `/plugins/` itself 404'd, because the wildcard static-asset and plugin-asset routes (registered before the content catch-all) intercepted it first and never found a matching file. This became reachable specifically once page-folders started serving at a trailing slash (0.20.0) — before that, the non-slash canonical form didn't collide with the wildcard pattern. The `/static/*`, `/themes/*`, and `/plugins/*` handlers now fall through to content resolution when no static or plugin asset matches, instead of 404ing immediately.
+- **A content page-folder whose slug matched a reserved path prefix (`static`,
+  `themes`, or `plugins`) was unreachable at its own canonical URL.** Found live
+  in production: a page at `content/plugins/` correctly 301-redirected
+  `/plugins` → `/plugins/` (the content router knew the page existed), but
+  requesting `/plugins/` itself 404'd, because the wildcard static-asset and
+  plugin-asset routes (registered before the content catch-all) intercepted it
+  first and never found a matching file. This became reachable specifically once
+  page-folders started serving at a trailing slash (0.20.0) — before that, the
+  non-slash canonical form didn't collide with the wildcard pattern. The
+  `/static/*`, `/themes/*`, and `/plugins/*` handlers now fall through to
+  content resolution when no static or plugin asset matches, instead of 404ing
+  immediately.
 
 ---
 
@@ -1484,7 +1673,15 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **`lockfile:check` could silently destroy an uncommitted `lockfile:sync` result.** 0.21.2 made `check` restore the on-disk lockfile to its git-committed state afterward, to avoid leaving a surprise dirty working tree from the outer process's own module-graph resolution. That's indistinguishable from "an uncommitted `sync` run sitting on disk" — running `check` between `sync` and committing silently reverted the sync. `check` no longer touches the lockfile at all, regardless of how it differs from git HEAD; there is no way to tell incidental taint apart from legitimate uncommitted work from where this command runs, so it doesn't try.
+- **`lockfile:check` could silently destroy an uncommitted `lockfile:sync`
+  result.** 0.21.2 made `check` restore the on-disk lockfile to its
+  git-committed state afterward, to avoid leaving a surprise dirty working tree
+  from the outer process's own module-graph resolution. That's indistinguishable
+  from "an uncommitted `sync` run sitting on disk" — running `check` between
+  `sync` and committing silently reverted the sync. `check` no longer touches
+  the lockfile at all, regardless of how it differs from git HEAD; there is no
+  way to tell incidental taint apart from legitimate uncommitted work from where
+  this command runs, so it doesn't try.
 
 ---
 
@@ -1492,7 +1689,12 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **`lockfile:check`/`lockfile:sync` surface the underlying `--frozen` error when the merge isn't self-consistent.** Previously, when no blocked entries explained the inconsistency, the report just said "this likely indicates a gap in the merge algorithm" with nothing to act on. The raw validation error is now included (in both human-readable and `--json` output) so a real cause can actually be diagnosed instead of guessed at.
+- **`lockfile:check`/`lockfile:sync` surface the underlying `--frozen` error
+  when the merge isn't self-consistent.** Previously, when no blocked entries
+  explained the inconsistency, the report just said "this likely indicates a gap
+  in the merge algorithm" with nothing to act on. The raw validation error is
+  now included (in both human-readable and `--json` output) so a real cause can
+  actually be diagnosed instead of guessed at.
 
 ---
 
@@ -1500,7 +1702,18 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **`lockfile:check`/`lockfile:sync` could diff against an already-tainted lockfile** — merely invoking `dune` via `deno run jsr:@dune/core@X/cli ...` resolves the running CLI's own module graph into whichever lockfile is ambient for the project, unconditionally, before any of the command's own code runs. That side effect could silently bump already-pinned shared entries — exactly the incidental-drift problem these commands exist to prevent — before the merge ever read "original" from disk. Both commands now read the lockfile as last committed to git (falling back to disk only when there's no git history to compare against), so the merge is protected regardless of what the outer process load did to the working copy. `lockfile:check` additionally restores the on-disk file to its committed state afterward, since a read-only diagnostic shouldn't leave a surprise dirty working tree behind.
+- **`lockfile:check`/`lockfile:sync` could diff against an already-tainted
+  lockfile** — merely invoking `dune` via `deno run jsr:@dune/core@X/cli ...`
+  resolves the running CLI's own module graph into whichever lockfile is ambient
+  for the project, unconditionally, before any of the command's own code runs.
+  That side effect could silently bump already-pinned shared entries — exactly
+  the incidental-drift problem these commands exist to prevent — before the
+  merge ever read "original" from disk. Both commands now read the lockfile as
+  last committed to git (falling back to disk only when there's no git history
+  to compare against), so the merge is protected regardless of what the outer
+  process load did to the working copy. `lockfile:check` additionally restores
+  the on-disk file to its committed state afterward, since a read-only
+  diagnostic shouldn't leave a surprise dirty working tree behind.
 
 ---
 
@@ -1508,7 +1721,16 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **`dune lockfile check` crashed instead of reporting a conflict** — found immediately while rolling 0.21.0 out to a real site: when the merge would leave the lockfile internally inconsistent (the disambiguation edge case from 0.21.0's own release notes), `check` — a read-only diagnostic that never writes anything — threw a raw internal error with a multi-thousand-line diff dump instead of reporting it cleanly. The consistency check now only gates `sync` (which actually writes); `check` reports `consistent: false` like any other finding. `sync` also now explains *why* a blocked entry exists and points at the exact `--upgrade <specifier>` to resolve it, rather than implying it's always a bug to report.
+- **`dune lockfile check` crashed instead of reporting a conflict** — found
+  immediately while rolling 0.21.0 out to a real site: when the merge would
+  leave the lockfile internally inconsistent (the disambiguation edge case from
+  0.21.0's own release notes), `check` — a read-only diagnostic that never
+  writes anything — threw a raw internal error with a multi-thousand-line diff
+  dump instead of reporting it cleanly. The consistency check now only gates
+  `sync` (which actually writes); `check` reports `consistent: false` like any
+  other finding. `sync` also now explains _why_ a blocked entry exists and
+  points at the exact `--upgrade <specifier>` to resolve it, rather than
+  implying it's always a bug to report.
 
 ---
 
@@ -1516,9 +1738,23 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **`dune lockfile check` / `dune lockfile sync`** — a site's `deno.lock` only gains entries for a plugin's dependencies (and, via the bundling subprocess, its browser-side npm packages) the first time `serve` actually starts after that plugin or a version bump is installed. Until then, the running process resolves them itself against an unfrozen lockfile, which is what silently dirties `deno.lock` on disk after a deploy.
-  - `dune lockfile sync` runs that same resolution ahead of time and writes the result, but **only ever adds genuinely missing entries** — an already-pinned entry that would resolve to a different value (e.g. the registry now serves a newer match for an already-locked semver range) is left exactly as committed. Pass `--upgrade <specifier>` (repeatable, or comma-separated) to intentionally allow a specific pin to change; the exact key to pass is printed in the "left unchanged" list.
-  - `dune lockfile check` runs the same comparison read-only and exits non-zero if anything is missing, without writing. Suitable as a pre-restart gate (e.g. an `ExecStartPre=` step in a systemd unit) so a deploy never gets partway through restarting before discovering the lockfile is stale.
+- **`dune lockfile check` / `dune lockfile sync`** — a site's `deno.lock` only
+  gains entries for a plugin's dependencies (and, via the bundling subprocess,
+  its browser-side npm packages) the first time `serve` actually starts after
+  that plugin or a version bump is installed. Until then, the running process
+  resolves them itself against an unfrozen lockfile, which is what silently
+  dirties `deno.lock` on disk after a deploy.
+  - `dune lockfile sync` runs that same resolution ahead of time and writes the
+    result, but **only ever adds genuinely missing entries** — an already-pinned
+    entry that would resolve to a different value (e.g. the registry now serves
+    a newer match for an already-locked semver range) is left exactly as
+    committed. Pass `--upgrade <specifier>` (repeatable, or comma-separated) to
+    intentionally allow a specific pin to change; the exact key to pass is
+    printed in the "left unchanged" list.
+  - `dune lockfile check` runs the same comparison read-only and exits non-zero
+    if anything is missing, without writing. Suitable as a pre-restart gate
+    (e.g. an `ExecStartPre=` step in a systemd unit) so a deploy never gets
+    partway through restarting before discovering the lockfile is stale.
   - Both commands support `--json` for machine-readable output.
 
 ---
@@ -1527,7 +1763,15 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **Infinite redirect loop on multilingual trailing-slash page-folder URLs** — requesting `/fr/ecosystem/` (or any `/{lang}/{page-folder}/` URL) caused a redirect loop. The language-prefix stripping used `split("/").filter(Boolean).join("/")` which dropped the trailing slash, producing route `/ecosystem` instead of `/ecosystem/`. The canonical-redirect step then found `/ecosystem/` at the "other form" and issued a 301 back to `/fr/ecosystem/` — the same URL. Fixed by slicing the language prefix off the normalised string directly (`normalized.slice(1 + lang.length)`), which preserves the trailing slash.
+- **Infinite redirect loop on multilingual trailing-slash page-folder URLs** —
+  requesting `/fr/ecosystem/` (or any `/{lang}/{page-folder}/` URL) caused a
+  redirect loop. The language-prefix stripping used
+  `split("/").filter(Boolean).join("/")` which dropped the trailing slash,
+  producing route `/ecosystem` instead of `/ecosystem/`. The canonical-redirect
+  step then found `/ecosystem/` at the "other form" and issued a 301 back to
+  `/fr/ecosystem/` — the same URL. Fixed by slicing the language prefix off the
+  normalised string directly (`normalized.slice(1 + lang.length)`), which
+  preserves the trailing slash.
 
 ---
 
@@ -1535,15 +1779,40 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Trailing-slash canonical URLs for page-folder pages** — pages backed by a folder on disk (`04.blog/01.my-post/default.md`) now serve at `/blog/my-post/` (with trailing slash) instead of `/blog/my-post`. Flat content files (`articles/my-article.md`) are unaffected and continue to serve without a trailing slash. The `<link rel="canonical">`, sitemap `<loc>`, and feed `<link>` entries all emit the correct form automatically, since they derive from `PageIndex.route`.
+- **Trailing-slash canonical URLs for page-folder pages** — pages backed by a
+  folder on disk (`04.blog/01.my-post/default.md`) now serve at `/blog/my-post/`
+  (with trailing slash) instead of `/blog/my-post`. Flat content files
+  (`articles/my-article.md`) are unaffected and continue to serve without a
+  trailing slash. The `<link rel="canonical">`, sitemap `<loc>`, and feed
+  `<link>` entries all emit the correct form automatically, since they derive
+  from `PageIndex.route`.
 
-- **Canonical-form redirects (both directions)** — if a visitor arrives at the wrong slash form, Dune issues a 301 to the correct canonical URL. The redirect is symmetric and evidence-based: it only fires when a resource is found at the other form. If both forms exist independently (a flat `about.md` and a page-folder `about/default.md`), each URL serves its own resource with no redirect.
+- **Canonical-form redirects (both directions)** — if a visitor arrives at the
+  wrong slash form, Dune issues a 301 to the correct canonical URL. The redirect
+  is symmetric and evidence-based: it only fires when a resource is found at the
+  other form. If both forms exist independently (a flat `about.md` and a
+  page-folder `about/default.md`), each URL serves its own resource with no
+  redirect.
 
-- **Relative cross-page links via URL arithmetic** — `RenderContext` gains `pageRoute?: string` (populated from `PageIndex.route` in the page loader). In `media-resolve.ts`, after a media lookup misses, relative `href` values in both markdown links and `<a>` tags are resolved using `new URL(href, base)` URL arithmetic. The resulting root-relative path then flows through `rewriteInternalLinks()`, so multilingual relative links (`./related/`) automatically gain the correct language prefix — fixing a long-standing silent breakage.
+- **Relative cross-page links via URL arithmetic** — `RenderContext` gains
+  `pageRoute?: string` (populated from `PageIndex.route` in the page loader). In
+  `media-resolve.ts`, after a media lookup misses, relative `href` values in
+  both markdown links and `<a>` tags are resolved using `new URL(href, base)`
+  URL arithmetic. The resulting root-relative path then flows through
+  `rewriteInternalLinks()`, so multilingual relative links (`./related/`)
+  automatically gain the correct language prefix — fixing a long-standing silent
+  breakage.
 
 ### Breaking Changes
 
-- **Page-folder routes now include a trailing slash.** Any hardcoded root-relative link (`[see](/blog/my-post)`) or `href="/contact"` pointing at a page-folder will 301 to the trailing-slash form — no manual change required for visitors. For a clean audit: search `content/` for `](/` patterns and update links to add `/`; update any `href="..."` in theme templates; update `site.yaml` `redirects:` target URLs; update `homeRoute` derivations in themes to append `/`; update `isActiveRoute` prefix checks to handle routes that already end with `/`.
+- **Page-folder routes now include a trailing slash.** Any hardcoded
+  root-relative link (`[see](/blog/my-post)`) or `href="/contact"` pointing at a
+  page-folder will 301 to the trailing-slash form — no manual change required
+  for visitors. For a clean audit: search `content/` for `](/` patterns and
+  update links to add `/`; update any `href="..."` in theme templates; update
+  `site.yaml` `redirects:` target URLs; update `homeRoute` derivations in themes
+  to append `/`; update `isActiveRoute` prefix checks to handle routes that
+  already end with `/`.
 
 ---
 
@@ -1551,7 +1820,15 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **Admin bar missing on language-prefixed routes (`/de/`, `/fr/`, etc.)** — the plugin response-transform pipeline matched pages using `url.pathname` directly, but language-variant routes carry a two-letter prefix (`/de/page`) while the page index stores bare routes (`/page`). The pipeline now strips the language prefix before matching and also prefers the correct language variant from the index, fixing both the missing admin bar on localised pages and the wrong-language markdown being loaded into the inline editor when editing an English page that shares a route with a German variant. The RTL-direction injector in `fresh-app.ts` had the same bug and is fixed in the same way.
+- **Admin bar missing on language-prefixed routes (`/de/`, `/fr/`, etc.)** — the
+  plugin response-transform pipeline matched pages using `url.pathname`
+  directly, but language-variant routes carry a two-letter prefix (`/de/page`)
+  while the page index stores bare routes (`/page`). The pipeline now strips the
+  language prefix before matching and also prefers the correct language variant
+  from the index, fixing both the missing admin bar on localised pages and the
+  wrong-language markdown being loaded into the inline editor when editing an
+  English page that shares a route with a German variant. The RTL-direction
+  injector in `fresh-app.ts` had the same bug and is fixed in the same way.
 
 ---
 
@@ -1559,7 +1836,16 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **Routing regression: Grav-style page folders now work in plain (non-numeric) directories** — since 0.15.0, a content file with a non-reserved stem inside a plain folder (e.g. `blog/my-post/post.md`) was always treated as a flat content file, routing to `/blog/my-post/post` instead of `/blog/my-post`. Dune now checks the file's stem against the theme's actual template names: if the stem matches a template (e.g. `post.md` when `templates/post.tsx` exists), the folder is treated as a page folder and the folder path becomes the route. Files whose stems don't match any template continue to route as flat files. This restores the behaviour present before 0.15.0 without regressing any existing flat-file archives.
+- **Routing regression: Grav-style page folders now work in plain (non-numeric)
+  directories** — since 0.15.0, a content file with a non-reserved stem inside a
+  plain folder (e.g. `blog/my-post/post.md`) was always treated as a flat
+  content file, routing to `/blog/my-post/post` instead of `/blog/my-post`. Dune
+  now checks the file's stem against the theme's actual template names: if the
+  stem matches a template (e.g. `post.md` when `templates/post.tsx` exists), the
+  folder is treated as a page folder and the folder path becomes the route.
+  Files whose stems don't match any template continue to route as flat files.
+  This restores the behaviour present before 0.15.0 without regressing any
+  existing flat-file archives.
 
 ---
 
@@ -1567,12 +1853,34 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Plugin client entries** — plugins can declare browser entry points via `DunePlugin.clientEntries` (name → module specifier). Each entry is bundled at startup with `deno bundle --platform browser` — resolving the plugin's own npm/jsr dependency graph, so e.g. an editor plugin's TipTap stack never appears outside that plugin — and served at `/plugins/{name}/{entry}.js` with content-hash ETags and 304 handling. Bundles are cached in `.dune/client-bundles/` keyed by plugin name+version (superseded versions are pruned at startup); production bundling runs with `--frozen`, so what ships to browsers depends on the committed lock file, not registry state at boot. Bundle failures log and skip without blocking app start.
-- **Inline-edit marker components** — `@dune/core/ui/editable` returns as `EditableText`, `EditableMarkdown`, `EditableField`, `EditableDate`, `EditableImage`: **server-only** components that render the `data-dune-*` marker attributes and nothing else (no JavaScript, no editor implied — not the pre-0.17 island kit). Markers are the contract between themes and editor plugins: raw attributes and components are interchangeable, and templates never import from an editor plugin. The starter template marks its body wrapper with `data-dune-body`.
+- **Plugin client entries** — plugins can declare browser entry points via
+  `DunePlugin.clientEntries` (name → module specifier). Each entry is bundled at
+  startup with `deno bundle --platform browser` — resolving the plugin's own
+  npm/jsr dependency graph, so e.g. an editor plugin's TipTap stack never
+  appears outside that plugin — and served at `/plugins/{name}/{entry}.js` with
+  content-hash ETags and 304 handling. Bundles are cached in
+  `.dune/client-bundles/` keyed by plugin name+version (superseded versions are
+  pruned at startup); production bundling runs with `--frozen`, so what ships to
+  browsers depends on the committed lock file, not registry state at boot.
+  Bundle failures log and skip without blocking app start.
+- **Inline-edit marker components** — `@dune/core/ui/editable` returns as
+  `EditableText`, `EditableMarkdown`, `EditableField`, `EditableDate`,
+  `EditableImage`: **server-only** components that render the `data-dune-*`
+  marker attributes and nothing else (no JavaScript, no editor implied — not the
+  pre-0.17 island kit). Markers are the contract between themes and editor
+  plugins: raw attributes and components are interchangeable, and templates
+  never import from an editor plugin. The starter template marks its body
+  wrapper with `data-dune-body`.
 
 ### Security
 
-- **`data-dune-*` markers are scrubbed from responses without an editing session** — markers are baked into templates, but the response pipeline now strips them from HTML served to anyone without a validated session holding `pages.update`. Anonymous visitors and crawlers never see content source paths (`data-dune-source`) or an editable-regions fingerprint; the scrub decision rests on the validated session, not cookie presence. Themes must not use `data-dune-*` attributes as CSS/JS hooks for public styling.
+- **`data-dune-*` markers are scrubbed from responses without an editing
+  session** — markers are baked into templates, but the response pipeline now
+  strips them from HTML served to anyone without a validated session holding
+  `pages.update`. Anonymous visitors and crawlers never see content source paths
+  (`data-dune-source`) or an editable-regions fingerprint; the scrub decision
+  rests on the validated session, not cookie presence. Themes must not use
+  `data-dune-*` attributes as CSS/JS hooks for public styling.
 
 ---
 
@@ -1580,7 +1888,13 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **0.18.1 crashed on boot when served from JSR** — the manifest-based island registration passed `https://` specifiers to Fresh's Builder, whose build cache only accepts local file paths (`Path must be absolute`). Remote island specifiers (admin islands on JSR installs, and `jsr:`/`npm:` plugin islands) are now materialized as local wrapper modules under `.dune/remote-islands/` before registration. Local checkouts were unaffected. If you upgraded to 0.18.1, skip directly to 0.18.2.
+- **0.18.1 crashed on boot when served from JSR** — the manifest-based island
+  registration passed `https://` specifiers to Fresh's Builder, whose build
+  cache only accepts local file paths (`Path must be absolute`). Remote island
+  specifiers (admin islands on JSR installs, and `jsr:`/`npm:` plugin islands)
+  are now materialized as local wrapper modules under `.dune/remote-islands/`
+  before registration. Local checkouts were unaffected. If you upgraded to
+  0.18.1, skip directly to 0.18.2.
 
 ---
 
@@ -1588,13 +1902,25 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **Admin panel restored on JSR-served sites** — `/admin` had been silently 404ing on every site running Dune from JSR since 0.10.0. Fresh's `fsRoutes()` discovers route files by crawling a local directory; when running from JSR there is no local directory, so no admin routes were ever registered and `/admin` requests fell through to the content router. Admin routes and islands are now registered from a generated static manifest (`src/admin/manifest.gen.ts`, regenerated via `deno task gen:admin-manifest`), which works identically from JSR and a local checkout. Local dev was never affected.
-- Removed a stale import of the extracted inline-edit module from the admin content API (latent since 0.17.0 — admin route files were previously outside the static import graph, so it went undetected).
+- **Admin panel restored on JSR-served sites** — `/admin` had been silently
+  404ing on every site running Dune from JSR since 0.10.0. Fresh's `fsRoutes()`
+  discovers route files by crawling a local directory; when running from JSR
+  there is no local directory, so no admin routes were ever registered and
+  `/admin` requests fell through to the content router. Admin routes and islands
+  are now registered from a generated static manifest
+  (`src/admin/manifest.gen.ts`, regenerated via `deno task gen:admin-manifest`),
+  which works identically from JSR and a local checkout. Local dev was never
+  affected.
+- Removed a stale import of the extracted inline-edit module from the admin
+  content API (latent since 0.17.0 — admin route files were previously outside
+  the static import graph, so it went undetected).
 
 ### Changed
 
-- `src/cli.ts` now carries a `@module` doc tag, completing module docs on all entrypoints.
-- Publishing workflow re-enables provenance attestation (the upstream JSR publish bug, jsr-io/jsr#1448, is fixed).
+- `src/cli.ts` now carries a `@module` doc tag, completing module docs on all
+  entrypoints.
+- Publishing workflow re-enables provenance attestation (the upstream JSR
+  publish bug, jsr-io/jsr#1448, is fixed).
 
 ---
 
@@ -1602,12 +1928,23 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Breaking Changes
 
-- **`@dune/core/ui/editable` removed** — the entire inline-editing component kit (`EditableText`, `EditableMarkdown`, `EditableImage`, `EditableDate`, `EditableField`, `AdminBar`, the field editor registry, and the edit-mode context helpers) now lives in `@dune/plugin-inline-edit/ui/editable`. Update theme imports accordingly. This keeps the TipTap/Y.js dependency tree — and the plugin's WebSocket endpoint knowledge — entirely out of core.
-- **`@dune/core/inline-edit` reduced to the service port** — it now exports only what core's admin endpoints consume: `InlineEditManager`, `ActiveEditor`, `DocumentPresence`. The implementation types (`InlineEditClient`, `InlineEditSession`, `InlineEditManagerOptions`) moved to `@dune/plugin-inline-edit`.
+- **`@dune/core/ui/editable` removed** — the entire inline-editing component kit
+  (`EditableText`, `EditableMarkdown`, `EditableImage`, `EditableDate`,
+  `EditableField`, `AdminBar`, the field editor registry, and the edit-mode
+  context helpers) now lives in `@dune/plugin-inline-edit/ui/editable`. Update
+  theme imports accordingly. This keeps the TipTap/Y.js dependency tree — and
+  the plugin's WebSocket endpoint knowledge — entirely out of core.
+- **`@dune/core/inline-edit` reduced to the service port** — it now exports only
+  what core's admin endpoints consume: `InlineEditManager`, `ActiveEditor`,
+  `DocumentPresence`. The implementation types (`InlineEditClient`,
+  `InlineEditSession`, `InlineEditManagerOptions`) moved to
+  `@dune/plugin-inline-edit`.
 
 ### Added
 
-- **`DunePlugin` and the other hook types are now exported from `@dune/core/plugins`** — plugin authors can type their plugin against the plugin API subpath alone, without importing the main `@dune/core` barrel.
+- **`DunePlugin` and the other hook types are now exported from
+  `@dune/core/plugins`** — plugin authors can type their plugin against the
+  plugin API subpath alone, without importing the main `@dune/core` barrel.
 
 ---
 
@@ -1615,29 +1952,58 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Breaking Changes
 
-- **Inline editing requires `@dune/plugin-inline-edit`** — the built-in Y.js/WebSocket inline editor has been moved to the separate `jsr:@dune/plugin-inline-edit` package. Sites using inline editing must add it to their `plugins:` list in `site.yaml`. Core no longer depends on yjs, y-protocols, or lib0.
+- **Inline editing requires `@dune/plugin-inline-edit`** — the built-in
+  Y.js/WebSocket inline editor has been moved to the separate
+  `jsr:@dune/plugin-inline-edit` package. Sites using inline editing must add it
+  to their `plugins:` list in `site.yaml`. Core no longer depends on yjs,
+  y-protocols, or lib0.
 
 ### Added
 
-- **`DunePlugin.transformResponse`** — new plugin hook for transforming HTTP responses before they are sent to the client. Core pre-resolves the authenticated user and the matched content page; plugins do not need to re-authenticate. Plugins are called in registration order and compose cleanly. See `ResponseTransformContext` in `@dune/core/plugins`.
-- **`DunePlugin.adminServices`** — factory hook called during bootstrap for plugins that contribute admin-context services (e.g. a custom inline editing manager). See `AdminServicesContext` and `AdminServices` in `@dune/core/plugins`.
-- **Transform pipeline ETag fingerprinting** — each transform plugin's `name@version` is folded into page ETags, so adding, removing, or upgrading a transform plugin invalidates page-cache entries and browser-cached copies automatically.
-- **`isAdminPath()` helper** in `serve-utils.ts` — boundary-aware admin path check used by all guards so sibling content routes (e.g. `/administrivia` when prefix is `/admin`) are not incorrectly treated as admin paths.
+- **`DunePlugin.transformResponse`** — new plugin hook for transforming HTTP
+  responses before they are sent to the client. Core pre-resolves the
+  authenticated user and the matched content page; plugins do not need to
+  re-authenticate. Plugins are called in registration order and compose cleanly.
+  See `ResponseTransformContext` in `@dune/core/plugins`.
+- **`DunePlugin.adminServices`** — factory hook called during bootstrap for
+  plugins that contribute admin-context services (e.g. a custom inline editing
+  manager). See `AdminServicesContext` and `AdminServices` in
+  `@dune/core/plugins`.
+- **Transform pipeline ETag fingerprinting** — each transform plugin's
+  `name@version` is folded into page ETags, so adding, removing, or upgrading a
+  transform plugin invalidates page-cache entries and browser-cached copies
+  automatically.
+- **`isAdminPath()` helper** in `serve-utils.ts` — boundary-aware admin path
+  check used by all guards so sibling content routes (e.g. `/administrivia` when
+  prefix is `/admin`) are not incorrectly treated as admin paths.
 
 ### Fixed
 
-- Plugin `transformResponse` auth context now correctly enforces the `pages.update` permission gate. Previously any authenticated admin session populated `ctx.auth` as non-null regardless of permissions; read-only accounts could receive edit chrome from plugins that trusted the documented contract.
-- Plugin `onRequest` responses and `Set-Cookie` headers are no longer dropped for content routes whose path starts with but is not under the admin prefix (e.g. `/administrivia` with a `/admin` prefix).
+- Plugin `transformResponse` auth context now correctly enforces the
+  `pages.update` permission gate. Previously any authenticated admin session
+  populated `ctx.auth` as non-null regardless of permissions; read-only accounts
+  could receive edit chrome from plugins that trusted the documented contract.
+- Plugin `onRequest` responses and `Set-Cookie` headers are no longer dropped
+  for content routes whose path starts with but is not under the admin prefix
+  (e.g. `/administrivia` with a `/admin` prefix).
 
 ### Security
 
-- **`transformResponse` auth contract** — `ctx.auth` is now null for sessions that lack `pages.update`, matching the documented contract and preventing plugins from exposing edit chrome or content API URLs to read-only roles.
-- **Transform pipeline caching contract** — documented that transform output must depend only on `ctx.auth` and `ctx.page`; removed A/B testing as a suggested use case (output cached under pathname key, served to all visitors).
+- **`transformResponse` auth contract** — `ctx.auth` is now null for sessions
+  that lack `pages.update`, matching the documented contract and preventing
+  plugins from exposing edit chrome or content API URLs to read-only roles.
+- **Transform pipeline caching contract** — documented that transform output
+  must depend only on `ctx.auth` and `ctx.page`; removed A/B testing as a
+  suggested use case (output cached under pathname key, served to all visitors).
 
 ### Changed
 
-- `--unstable-kv` is now declared in `deno.json` under `"unstable"` rather than on the test task CLI flag, so it applies to `deno check`, the LSP, and bare `deno test` invocations.
-- `admin-bar-inject.ts` is now a single-function module (`hasAdminSessionCookie`); all admin bar HTML and injection logic lives in `@dune/plugin-inline-edit`.
+- `--unstable-kv` is now declared in `deno.json` under `"unstable"` rather than
+  on the test task CLI flag, so it applies to `deno check`, the LSP, and bare
+  `deno test` invocations.
+- `admin-bar-inject.ts` is now a single-function module
+  (`hasAdminSessionCookie`); all admin bar HTML and injection logic lives in
+  `@dune/plugin-inline-edit`.
 
 ---
 
@@ -1647,26 +2013,56 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 **Critical**
 
-- **Database column allowlisting** — column identifiers used in repository update and upsert operations are now validated against the model's field schema before being incorporated into SQL.
+- **Database column allowlisting** — column identifiers used in repository
+  update and upsert operations are now validated against the model's field
+  schema before being incorporated into SQL.
 
 **High**
 
-- **Admin-bar cache isolation** — responses rendered for requests carrying an admin session cookie are no longer stored in or served from the shared page cache. Such responses are marked `Cache-Control: private, no-store` and carry no `ETag`. The admin bar injection now routes through the full authentication middleware and requires the `pages.update` permission; revoked or read-only accounts no longer receive edit chrome.
-- **External-JWT claim validation** — when external-JWT mode is configured, the token's `iss`, `aud`, and `nbf` claims are now validated against the configured values. A startup warning is emitted when neither `issuer` nor `audience` is set.
+- **Admin-bar cache isolation** — responses rendered for requests carrying an
+  admin session cookie are no longer stored in or served from the shared page
+  cache. Such responses are marked `Cache-Control: private, no-store` and carry
+  no `ETag`. The admin bar injection now routes through the full authentication
+  middleware and requires the `pages.update` permission; revoked or read-only
+  accounts no longer receive edit chrome.
+- **External-JWT claim validation** — when external-JWT mode is configured, the
+  token's `iss`, `aud`, and `nbf` claims are now validated against the
+  configured values. A startup warning is emitted when neither `issuer` nor
+  `audience` is set.
 
 **Medium**
 
-- **Database ORDER BY and WHERE column allowlisting** — column identifiers in dynamically-constructed `ORDER BY` and `WHERE` clauses are now validated against the schema's field list before use in SQL.
-- **SSRF-hardened outbound fetch** — webhook dispatch, CDN provider calls, and theme installation now use a fetch wrapper that pins the resolved IP address and disables transparent redirects, closing a DNS-rebinding window between resolution and connection.
-- **Migration DDL identifier quoting** — SQL identifiers and literal values in generated migration statements are now properly quoted rather than interpolated verbatim.
-- **JWT algorithm pinning** — an optional `algorithm` field on the external-JWT config (`"HS256"` or `"RS256"`) allows operators to pin the accepted signing algorithm; tokens carrying a different `alg` header are rejected before any key material is consulted.
-- **Plugin source scheme restriction** — plugin specifiers using a cleartext `http:` scheme are now rejected at both load time and island-specifier validation. `https:`, `jsr:`, `npm:`, and local paths remain supported.
+- **Database ORDER BY and WHERE column allowlisting** — column identifiers in
+  dynamically-constructed `ORDER BY` and `WHERE` clauses are now validated
+  against the schema's field list before use in SQL.
+- **SSRF-hardened outbound fetch** — webhook dispatch, CDN provider calls, and
+  theme installation now use a fetch wrapper that pins the resolved IP address
+  and disables transparent redirects, closing a DNS-rebinding window between
+  resolution and connection.
+- **Migration DDL identifier quoting** — SQL identifiers and literal values in
+  generated migration statements are now properly quoted rather than
+  interpolated verbatim.
+- **JWT algorithm pinning** — an optional `algorithm` field on the external-JWT
+  config (`"HS256"` or `"RS256"`) allows operators to pin the accepted signing
+  algorithm; tokens carrying a different `alg` header are rejected before any
+  key material is consulted.
+- **Plugin source scheme restriction** — plugin specifiers using a cleartext
+  `http:` scheme are now rejected at both load time and island-specifier
+  validation. `https:`, `jsr:`, `npm:`, and local paths remain supported.
 
 **Low**
 
-- **Media-picker postMessage origin check** — the inline-edit media-picker message handler now validates `event.origin` against the current window's origin before processing the message.
-- **CSRF check header fallbacks** — when the `Origin` request header is absent, the CSRF check now consults `Sec-Fetch-Site` and `Referer` as additional signals rather than passing the request unconditionally.
-- **Strict HMAC mode for authorization tuples** — setting `DUNE_AUTHZ_HMAC_STRICT=1` (or the `strictHmac` constructor option) causes unsigned authorization tuple files to be rejected rather than loaded when an HMAC key is configured. The default remains permissive to preserve the documented `dune authz:sign` migration path.
+- **Media-picker postMessage origin check** — the inline-edit media-picker
+  message handler now validates `event.origin` against the current window's
+  origin before processing the message.
+- **CSRF check header fallbacks** — when the `Origin` request header is absent,
+  the CSRF check now consults `Sec-Fetch-Site` and `Referer` as additional
+  signals rather than passing the request unconditionally.
+- **Strict HMAC mode for authorization tuples** — setting
+  `DUNE_AUTHZ_HMAC_STRICT=1` (or the `strictHmac` constructor option) causes
+  unsigned authorization tuple files to be rejected rather than loaded when an
+  HMAC key is configured. The default remains permissive to preserve the
+  documented `dune authz:sign` migration path.
 
 ---
 
@@ -1674,7 +2070,11 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- **JSR re-exec** — when `dune dev`/`serve` is run from the global JSR install in a site directory, the re-exec with the site's `deno.json` now correctly targets `cli.ts` (which calls `main()` at module level) instead of `cli-impl.ts` (which only exports it). Previously the re-exec'd process exited immediately without starting the server.
+- **JSR re-exec** — when `dune dev`/`serve` is run from the global JSR install
+  in a site directory, the re-exec with the site's `deno.json` now correctly
+  targets `cli.ts` (which calls `main()` at module level) instead of
+  `cli-impl.ts` (which only exports it). Previously the re-exec'd process exited
+  immediately without starting the server.
 
 ---
 
@@ -1682,14 +2082,28 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Collection `excerpt` field** — `PageIndex` now has an `excerpt?: string` field, pre-computed synchronously at collection load time. Templates can read `item.excerpt` directly without `await`; `summary()` remains available for non-collection contexts. `summary()` also now truncates at word boundaries with an ellipsis rather than mid-word.
-- **`htmlToMarkdown` converter** — lightweight HTML→Markdown utility used by the admin bar to round-trip rendered content back to Markdown for the body editor.
+- **Collection `excerpt` field** — `PageIndex` now has an `excerpt?: string`
+  field, pre-computed synchronously at collection load time. Templates can read
+  `item.excerpt` directly without `await`; `summary()` remains available for
+  non-collection contexts. `summary()` also now truncates at word boundaries
+  with an ellipsis rather than mid-word.
+- **`htmlToMarkdown` converter** — lightweight HTML→Markdown utility used by the
+  admin bar to round-trip rendered content back to Markdown for the body editor.
 
 ### Fixed
 
-- **Admin overlay UX** — click directly on the annotated `<h1>` or body element to edit inline; no separate button needed. Dropped `<main>` from body annotation selector; tightened class regex to avoid false matches on hyphenated names like `content-header`; stale Escape keydown listener now removed correctly on cancel; body-location fetch deferred until first interaction.
-- **CLI shim** — `cli.ts` split into a zero-dependency shim and `cli-impl.ts`. The shim re-execs with the live `deno.json` when running from local source, preventing stale import-map snapshots after adding dependencies.
-- **Fresh update nag suppressed** — `FRESH_NO_UPDATE_CHECK=true` set at CLI startup so site users never see Fresh's version-available banner (Fresh is an internal Dune dep, not a site dependency).
+- **Admin overlay UX** — click directly on the annotated `<h1>` or body element
+  to edit inline; no separate button needed. Dropped `<main>` from body
+  annotation selector; tightened class regex to avoid false matches on
+  hyphenated names like `content-header`; stale Escape keydown listener now
+  removed correctly on cancel; body-location fetch deferred until first
+  interaction.
+- **CLI shim** — `cli.ts` split into a zero-dependency shim and `cli-impl.ts`.
+  The shim re-execs with the live `deno.json` when running from local source,
+  preventing stale import-map snapshots after adding dependencies.
+- **Fresh update nag suppressed** — `FRESH_NO_UPDATE_CHECK=true` set at CLI
+  startup so site users never see Fresh's version-available banner (Fresh is an
+  internal Dune dep, not a site dependency).
 
 ---
 
@@ -1697,15 +2111,31 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Inline editing** — collaborative in-place editing for admin users visiting public pages. When a valid admin session cookie is present, the admin bar is injected before `</body>` with Save, Edit/Preview toggle, and Open-in-admin controls. No template changes required — the auto-overlay pass annotates the first `<h1>` and the `<article>`/`<main>` container automatically.
-- **Component kit** (`@dune/core/ui/editable`) — Preact island components for explicit inline editing in TSX templates: `EditableText`, `EditableMarkdown` (TipTap WYSIWYG, Y.js backed), `EditableImage`, `EditableDate`, `EditableField` (generic with registry lookup).
-- **Field editor registry** — `registerFieldEditor(type, component)` for custom blueprint field types; lookup priority: render prop > registry > built-in fallback.
-- **Y.js collaboration backend** — WebSocket sync endpoint at `GET /admin/collab/edit-ws?path=`; in-memory Y.js document manager with `commit-to-history` flush via `POST /admin/api/content/:path/commit`; frontmatter field patching via `PATCH /admin/api/content/:path/fields`.
-- **Presence indicators** — admin pages list shows live colour-dot badges (`{N} editing`) next to any page that has active inline-edit sessions; polled every 30 s via `GET /admin/api/inline-edit/presence`.
+- **Inline editing** — collaborative in-place editing for admin users visiting
+  public pages. When a valid admin session cookie is present, the admin bar is
+  injected before `</body>` with Save, Edit/Preview toggle, and Open-in-admin
+  controls. No template changes required — the auto-overlay pass annotates the
+  first `<h1>` and the `<article>`/`<main>` container automatically.
+- **Component kit** (`@dune/core/ui/editable`) — Preact island components for
+  explicit inline editing in TSX templates: `EditableText`, `EditableMarkdown`
+  (TipTap WYSIWYG, Y.js backed), `EditableImage`, `EditableDate`,
+  `EditableField` (generic with registry lookup).
+- **Field editor registry** — `registerFieldEditor(type, component)` for custom
+  blueprint field types; lookup priority: render prop > registry > built-in
+  fallback.
+- **Y.js collaboration backend** — WebSocket sync endpoint at
+  `GET /admin/collab/edit-ws?path=`; in-memory Y.js document manager with
+  `commit-to-history` flush via `POST /admin/api/content/:path/commit`;
+  frontmatter field patching via `PATCH /admin/api/content/:path/fields`.
+- **Presence indicators** — admin pages list shows live colour-dot badges
+  (`{N} editing`) next to any page that has active inline-edit sessions; polled
+  every 30 s via `GET /admin/api/inline-edit/presence`.
 
 ### Fixed
 
-- Stale `createAdminHandler` / `AdminServerConfig` exports removed from `@dune/core` barrel (`src/admin/mod.ts`); the monolithic handler was deleted in an earlier refactor but the re-exports remained.
+- Stale `createAdminHandler` / `AdminServerConfig` exports removed from
+  `@dune/core` barrel (`src/admin/mod.ts`); the monolithic handler was deleted
+  in an earlier refactor but the re-exports remained.
 
 ### Security
 
@@ -1719,7 +2149,10 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- Startup hang (100% CPU) on sites using flat-file content layouts (e.g. `blog/post-slug/post.md`). The sitemap generator's ancestor traversal would find a page as its own parent and spin indefinitely. A cycle guard now breaks out when the same page is visited twice.
+- Startup hang (100% CPU) on sites using flat-file content layouts (e.g.
+  `blog/post-slug/post.md`). The sitemap generator's ancestor traversal would
+  find a page as its own parent and spin indefinitely. A cycle guard now breaks
+  out when the same page is visited twice.
 
 ---
 
@@ -1727,7 +2160,12 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- Server startup crash when running from JSR — `Deno.chdir()` in `serve`, `dev`, and multisite manager was deriving a local path from `import.meta.url`, which is an HTTPS URL (not `file://`) under JSR. The path computed to `/@dune/core/0.15.x/` which doesn't exist. Guard added: chdir only runs when `import.meta.url` starts with `file://`; JSR deployments rely on the site's own `deno.json` for preact import resolution.
+- Server startup crash when running from JSR — `Deno.chdir()` in `serve`, `dev`,
+  and multisite manager was deriving a local path from `import.meta.url`, which
+  is an HTTPS URL (not `file://`) under JSR. The path computed to
+  `/@dune/core/0.15.x/` which doesn't exist. Guard added: chdir only runs when
+  `import.meta.url` starts with `file://`; JSR deployments rely on the site's
+  own `deno.json` for preact import resolution.
 
 ---
 
@@ -1735,7 +2173,8 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- JSR score: added JSDoc to 115+ previously undocumented exported symbols across 54 files, bringing documented-symbol coverage to near 100%.
+- JSR score: added JSDoc to 115+ previously undocumented exported symbols across
+  54 files, bringing documented-symbol coverage to near 100%.
 
 ---
 
@@ -1743,9 +2182,13 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Fixed
 
-- JSR score: add explicit return types (`JSX.Element` / `JSX.Element | null`) to all exported UI components so the package passes fast-check without `--allow-slow-types`.
-- JSR score: add explicit `AuthSchema` type annotation to `duneAuthzSchema` export.
-- JSR score: add `@module` JSDoc tag to `src/auth/authz.ts` and `src/core/logger.ts` entry points.
+- JSR score: add explicit return types (`JSX.Element` / `JSX.Element | null`) to
+  all exported UI components so the package passes fast-check without
+  `--allow-slow-types`.
+- JSR score: add explicit `AuthSchema` type annotation to `duneAuthzSchema`
+  export.
+- JSR score: add `@module` JSDoc tag to `src/auth/authz.ts` and
+  `src/core/logger.ts` entry points.
 
 ---
 
@@ -1753,19 +2196,43 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Flat content files** — `.md` and `.tsx` files placed directly in a plain (non-numeric) folder route by filename stem: `articles/my-post.md → /articles/my-post`. Reserved stems (`default`, `index`) continue to represent the folder's own page. `@self.children` and `@self.descendants` in collections now include flat files.
-- **TSX `handler` export** — TSX content pages can export a `handler: Handlers<Data>` object alongside the default component, mirroring Fresh's route handler idiom. `GET`, `POST`, and other methods dispatch through it before rendering. `ctx.render(data)` passes data to the component as `PageProps<Data>.data`. The content catch-all now accepts all HTTP methods so POST requests reach the handler.
-- **`@frontmatter` collection source** — Resolves collection items from a frontmatter array field on the current page. Each entry is a slug string or an object with a `slug` property; order follows the frontmatter declaration. Useful for curated lists where editors control exact selection and order.
-- **Themed 404 pages** — When the active theme exposes a `layout` component, 404 responses are rendered through it so the site header, nav, and footer are present. Falls back to the existing bare-HTML 404 when no layout is found.
-- **Island discoverability** — `dune new` scaffold now creates `themes/starter/islands/NavToggle.tsx` (a working hamburger toggle) and adds the required esbuild import map entries to `deno.json`. The new `skills/dune-themes.md` agent skill documents the full islands pattern and is installable via `dune update:skills`.
+- **Flat content files** — `.md` and `.tsx` files placed directly in a plain
+  (non-numeric) folder route by filename stem:
+  `articles/my-post.md → /articles/my-post`. Reserved stems (`default`, `index`)
+  continue to represent the folder's own page. `@self.children` and
+  `@self.descendants` in collections now include flat files.
+- **TSX `handler` export** — TSX content pages can export a
+  `handler: Handlers<Data>` object alongside the default component, mirroring
+  Fresh's route handler idiom. `GET`, `POST`, and other methods dispatch through
+  it before rendering. `ctx.render(data)` passes data to the component as
+  `PageProps<Data>.data`. The content catch-all now accepts all HTTP methods so
+  POST requests reach the handler.
+- **`@frontmatter` collection source** — Resolves collection items from a
+  frontmatter array field on the current page. Each entry is a slug string or an
+  object with a `slug` property; order follows the frontmatter declaration.
+  Useful for curated lists where editors control exact selection and order.
+- **Themed 404 pages** — When the active theme exposes a `layout` component, 404
+  responses are rendered through it so the site header, nav, and footer are
+  present. Falls back to the existing bare-HTML 404 when no layout is found.
+- **Island discoverability** — `dune new` scaffold now creates
+  `themes/starter/islands/NavToggle.tsx` (a working hamburger toggle) and adds
+  the required esbuild import map entries to `deno.json`. The new
+  `skills/dune-themes.md` agent skill documents the full islands pattern and is
+  installable via `dune update:skills`.
 
 ### Fixed
 
-- Orphan protection (`&nbsp;`) was replacing the last space inside HTML attribute values (e.g. `class="cta-button cta-secondary"` → broken CSS selector). Fixed by walking the string at tag-depth 0 — only spaces in text nodes are considered.
+- Orphan protection (`&nbsp;`) was replacing the last space inside HTML
+  attribute values (e.g. `class="cta-button cta-secondary"` → broken CSS
+  selector). Fixed by walking the string at tag-depth 0 — only spaces in text
+  nodes are considered.
 
 ### Breaking
 
-- **`SearchEngine.search()` and `suggest()` are now async** (return `Promise`). The built-in in-memory engine wraps synchronous results in `Promise.resolve()` — no behavior change. Custom search engine implementations must update their signatures.
+- **`SearchEngine.search()` and `suggest()` are now async** (return `Promise`).
+  The built-in in-memory engine wraps synchronous results in `Promise.resolve()`
+  — no behavior change. Custom search engine implementations must update their
+  signatures.
 
 ---
 
@@ -1773,17 +2240,34 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **`termPageFor` frontmatter** — Any published page can declare itself the editorial home for a taxonomy term. Shorthand (`termPageFor: deno` → implies the `tag` vocabulary) or explicit map (`termPageFor: { category: tutorials }`). Stored as `PageIndex.termPageFor` (normalised at index time).
-- **`termPage(vocab, value)` content API** — Look up the editorial page for a taxonomy term. Returns a `ResolvedPage` or `null`. Available as `page.termPage()` in templates and via `content.termPage()` in plugins.
-- **`TaxonomyTerm.pageRoute`** — Populated from the `termPageFor` index; `null` when no editorial page exists for the term.
-- **`PageIndex.extra`** — Custom facet field values are now extracted at index time into `PageIndex.extra`, enabling `facet[field]=value` filters on arbitrary frontmatter fields without loading full page frontmatter.
+- **`termPageFor` frontmatter** — Any published page can declare itself the
+  editorial home for a taxonomy term. Shorthand (`termPageFor: deno` → implies
+  the `tag` vocabulary) or explicit map
+  (`termPageFor: { category: tutorials }`). Stored as `PageIndex.termPageFor`
+  (normalised at index time).
+- **`termPage(vocab, value)` content API** — Look up the editorial page for a
+  taxonomy term. Returns a `ResolvedPage` or `null`. Available as
+  `page.termPage()` in templates and via `content.termPage()` in plugins.
+- **`TaxonomyTerm.pageRoute`** — Populated from the `termPageFor` index; `null`
+  when no editorial page exists for the term.
+- **`PageIndex.extra`** — Custom facet field values are now extracted at index
+  time into `PageIndex.extra`, enabling `facet[field]=value` filters on
+  arbitrary frontmatter fields without loading full page frontmatter.
 
 ### Fixed
 
-- Browser cache not invalidated on content-only updates — `mtime` is now included in the ETag hash, so any file modification produces a new ETag after a server restart.
-- Custom facet fields (non-taxonomy, non-template) were not resolved in facet filter and count queries — `p.extra` is now applied correctly in both the filter and aggregation paths.
-- `termPage()` lookup key collision when taxonomy vocabulary names contain `:` — replaced flat `"vocab:value"` composite key with a nested `Map<vocab, Map<value, route>>`.
-- Custom facet field values in `p.extra` could shadow standard `PageIndex` fields (`template`, `published`, `language`, etc.) in facet queries — explicit fields now always take precedence.
+- Browser cache not invalidated on content-only updates — `mtime` is now
+  included in the ETag hash, so any file modification produces a new ETag after
+  a server restart.
+- Custom facet fields (non-taxonomy, non-template) were not resolved in facet
+  filter and count queries — `p.extra` is now applied correctly in both the
+  filter and aggregation paths.
+- `termPage()` lookup key collision when taxonomy vocabulary names contain `:` —
+  replaced flat `"vocab:value"` composite key with a nested
+  `Map<vocab, Map<value, route>>`.
+- Custom facet field values in `p.extra` could shadow standard `PageIndex`
+  fields (`template`, `published`, `language`, etc.) in facet queries — explicit
+  fields now always take precedence.
 
 ---
 
@@ -1791,16 +2275,38 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Background jobs** — Cron-scheduled server-side tasks defined as TypeScript files in `jobs/`. Export a `JobDefinition` with `name`, `schedule` (standard 5-field cron), and `handler`. Handlers receive a `JobContext` with access to `content`, `config`, `storage`, `logger`, and `email`. State persisted to `runtimeDir/jobs/`. Uses `Deno.cron()` on Deno Deploy; minute-tick interval elsewhere. Manual trigger via `POST /admin/api/jobs/{name}/run`.
-- **MCP write tools** — Nine new tools added to the MCP server: `write_page`, `delete_page`, `update_frontmatter`, `update_config`, `install_plugin`, `scaffold_plugin`, `scaffold_route`, `scaffold_form`, `scaffold_theme`. Write tools modify content and config on disk; scaffold tools invoke the same generators as `dune generate:*`.
-- **`dune add <package>`** — Add an npm or JSR package to the site's `deno.json` import map. Accepts bare names, versioned names, and explicit specifiers (`npm:`, `jsr:@scope/`).
-- **`userStore: db`** — Database-backed site user store (SQLite or PostgreSQL). Requires `DUNE_DB_PATH` or `DUNE_DB_URL`.
-- **`authzStore: db`** — Database-backed authorization tuple storage. The `authz_tuples` table is created automatically. Same API as `authzStore: local`.
-- **`POST /auth/webhook`** — IdP user-lifecycle webhook. Active in `external-jwt + authzStore: local` mode. Handles `user.deleted` events by revoking all authorization tuples for the deleted user. Supports Clerk, Auth0, and generic HMAC-signed payloads.
-- **Authz tuple HMAC integrity** — `authzStore: local` tuple files are signed with a per-installation HMAC key; tampered files are rejected on load.
-- **Dev-mode email preview** — In development, all outgoing emails are intercepted and stored in `runtimeDir/dev-email/` rather than sent. Browse at `/admin/email-preview` or via `GET /admin/api/email-preview`.
-- **`dune generate:admin-route <name>`** — Scaffold a custom admin panel route with handler stub and auth guard.
-- **`dune validate` skill-code sync check** — Validates that `.claude/skills/` files match the versions bundled in the installed package.
+- **Background jobs** — Cron-scheduled server-side tasks defined as TypeScript
+  files in `jobs/`. Export a `JobDefinition` with `name`, `schedule` (standard
+  5-field cron), and `handler`. Handlers receive a `JobContext` with access to
+  `content`, `config`, `storage`, `logger`, and `email`. State persisted to
+  `runtimeDir/jobs/`. Uses `Deno.cron()` on Deno Deploy; minute-tick interval
+  elsewhere. Manual trigger via `POST /admin/api/jobs/{name}/run`.
+- **MCP write tools** — Nine new tools added to the MCP server: `write_page`,
+  `delete_page`, `update_frontmatter`, `update_config`, `install_plugin`,
+  `scaffold_plugin`, `scaffold_route`, `scaffold_form`, `scaffold_theme`. Write
+  tools modify content and config on disk; scaffold tools invoke the same
+  generators as `dune generate:*`.
+- **`dune add <package>`** — Add an npm or JSR package to the site's `deno.json`
+  import map. Accepts bare names, versioned names, and explicit specifiers
+  (`npm:`, `jsr:@scope/`).
+- **`userStore: db`** — Database-backed site user store (SQLite or PostgreSQL).
+  Requires `DUNE_DB_PATH` or `DUNE_DB_URL`.
+- **`authzStore: db`** — Database-backed authorization tuple storage. The
+  `authz_tuples` table is created automatically. Same API as
+  `authzStore: local`.
+- **`POST /auth/webhook`** — IdP user-lifecycle webhook. Active in
+  `external-jwt + authzStore: local` mode. Handles `user.deleted` events by
+  revoking all authorization tuples for the deleted user. Supports Clerk, Auth0,
+  and generic HMAC-signed payloads.
+- **Authz tuple HMAC integrity** — `authzStore: local` tuple files are signed
+  with a per-installation HMAC key; tampered files are rejected on load.
+- **Dev-mode email preview** — In development, all outgoing emails are
+  intercepted and stored in `runtimeDir/dev-email/` rather than sent. Browse at
+  `/admin/email-preview` or via `GET /admin/api/email-preview`.
+- **`dune generate:admin-route <name>`** — Scaffold a custom admin panel route
+  with handler stub and auth guard.
+- **`dune validate` skill-code sync check** — Validates that `.claude/skills/`
+  files match the versions bundled in the installed package.
 
 ---
 
@@ -1808,9 +2314,17 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Polizy-backed authorization** — relationship-based access control via [polizy](https://github.com/bratsos/polizy). `createDuneAuthSystem()` returns an `authz` handle with `check()`, `allow()`, `addMember()`, and `delete()`. Admin permissions are now enforced through `authz.check()` rather than static role constants. Configure via `auth.authzStore` in `site.yaml`.
-- **`auth.mode: external-jwt` with local authz** — combine an external identity provider (via JWT) for authentication with Dune's polizy authz store for authorization. Role tuples are seeded from JWT claims on first sign-in and kept in sync on role changes.
-- **`@dune/core/auth/authz` export** — `AuthzLocalAdapter` and related types are now part of the public package surface.
+- **Polizy-backed authorization** — relationship-based access control via
+  [polizy](https://github.com/bratsos/polizy). `createDuneAuthSystem()` returns
+  an `authz` handle with `check()`, `allow()`, `addMember()`, and `delete()`.
+  Admin permissions are now enforced through `authz.check()` rather than static
+  role constants. Configure via `auth.authzStore` in `site.yaml`.
+- **`auth.mode: external-jwt` with local authz** — combine an external identity
+  provider (via JWT) for authentication with Dune's polizy authz store for
+  authorization. Role tuples are seeded from JWT claims on first sign-in and
+  kept in sync on role changes.
+- **`@dune/core/auth/authz` export** — `AuthzLocalAdapter` and related types are
+  now part of the public package surface.
 
 ---
 
@@ -1818,41 +2332,111 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **Public site user authentication** — OAuth providers (GitHub, Google, Discord), magic-link email, and external JWT. Configurable under `auth:` in `site.yaml`. Exposes `SiteUser` to templates and plugins via the auth context.
-- **Role-based content gating** — `roles:` frontmatter key restricts pages to specific roles. Unauthenticated visitors are redirected; unauthorized users receive 403.
-- **DB schema layer** — Schema-first data modelling via `schema:` YAML files. `Repository<T>` API with `create`, `find`, `findOne`, `update`, `delete`, `count`, and `upsert`. Adapters for Deno KV, SQLite, and PostgreSQL. Schema migrations via `dune migrate:generate`, `migrate:run`, and `migrate:status`.
-- **CRUD API generation** — `dune generate:schema <name>` scaffolds schema YAML, repository, and API route handler in one step.
-- **Session and rate-limit store abstraction** — Session and rate-limit counters are backed by pluggable store interfaces (KV and Redis implementations), enabling multi-process and multi-machine deployments.
-- **Payments** — `PaymentProvider` plugin interface with a Stripe implementation. Covers checkout session creation, webhook handling (role assignment on successful payment), and billing portal. Configurable under `payments:` in `site.yaml`.
-- **Public file upload** — `POST /api/upload` endpoint with configurable size limits, allowed types, and storage subpath. Secured by optional auth and per-type permission.
-- **Runtime feature flags** — `flag(name)` and `allFlags()` helpers; `env:` value syntax reads flags from environment variables at runtime. Configurable under `flags:` in `site.yaml`.
-- **Transactional email** — `email.send()` plugin API with Markdown template support. Provider implementations for SMTP, Resend, Postmark, SendGrid, and a console (dev) sink. Configurable under `email:` in `site.yaml`.
-- **Search improvements** — Configurable per-field weights, faceted search (config + API + response), snippet highlights, configurable `excerpt_length`, and Flex Object indexing. Existing `GET /api/search` response extended with `facets` and `highlights` fields.
-- **CDN cache invalidation** — Plugin hooks trigger cache purge requests on content publish/update. Built-in support for Cloudflare, Fastly, Bunny, and a custom webhook target. Configurable under `system.cdn`.
-- **Zero-downtime graceful shutdown** — The server drains in-flight requests before exiting. Drain timeout is configurable; integrates with systemd, Docker, Kubernetes, and Fly.io lifecycle hooks.
-- **Structured logging** — Configurable log format (`text` or `json`), log level (`debug`, `info`, `warn`, `error`), and per-environment overrides. JSON output includes request IDs and trace correlation. Configurable under `system.logging`.
-- **Distributed tracing** — OTLP trace export to any compatible backend (Jaeger, Tempo, Honeycomb, Datadog). Configurable sampling rate and service name under `system.tracing`. Log entries include `traceId` for correlation.
-- **Backup and restore** — `dune backup` archives content, config, flex data, schemas, and uploads to a timestamped `.tar.gz`. `dune restore <file>` unpacks into the site root. Both support `--dry-run`.
-- **`dune migrate:flex`** — Migrate Flex Object records to a new schema version. Supports lazy write-through (on next read) or eager migration via the CLI.
-- **`dune generate:*` scaffolding** — `generate:plugin`, `generate:route`, `generate:form`, `generate:theme`, and `generate:schema` scaffold the respective component into the project.
-- **`@dune/core/ui` component package** — Public-site Preact components: `SearchBar`, `LoginForm`, `ProfileCard`, `CommentSection`, `SubscriptionForm`, and `FormRenderer`. Importable from `@dune/core/ui` in theme TSX.
-- **yaml-language-server schema annotation** — Generated `site.yaml` files now include a `# yaml-language-server: $schema=…` comment for in-editor validation and autocompletion.
+- **Public site user authentication** — OAuth providers (GitHub, Google,
+  Discord), magic-link email, and external JWT. Configurable under `auth:` in
+  `site.yaml`. Exposes `SiteUser` to templates and plugins via the auth context.
+- **Role-based content gating** — `roles:` frontmatter key restricts pages to
+  specific roles. Unauthenticated visitors are redirected; unauthorized users
+  receive 403.
+- **DB schema layer** — Schema-first data modelling via `schema:` YAML files.
+  `Repository<T>` API with `create`, `find`, `findOne`, `update`, `delete`,
+  `count`, and `upsert`. Adapters for Deno KV, SQLite, and PostgreSQL. Schema
+  migrations via `dune migrate:generate`, `migrate:run`, and `migrate:status`.
+- **CRUD API generation** — `dune generate:schema <name>` scaffolds schema YAML,
+  repository, and API route handler in one step.
+- **Session and rate-limit store abstraction** — Session and rate-limit counters
+  are backed by pluggable store interfaces (KV and Redis implementations),
+  enabling multi-process and multi-machine deployments.
+- **Payments** — `PaymentProvider` plugin interface with a Stripe
+  implementation. Covers checkout session creation, webhook handling (role
+  assignment on successful payment), and billing portal. Configurable under
+  `payments:` in `site.yaml`.
+- **Public file upload** — `POST /api/upload` endpoint with configurable size
+  limits, allowed types, and storage subpath. Secured by optional auth and
+  per-type permission.
+- **Runtime feature flags** — `flag(name)` and `allFlags()` helpers; `env:`
+  value syntax reads flags from environment variables at runtime. Configurable
+  under `flags:` in `site.yaml`.
+- **Transactional email** — `email.send()` plugin API with Markdown template
+  support. Provider implementations for SMTP, Resend, Postmark, SendGrid, and a
+  console (dev) sink. Configurable under `email:` in `site.yaml`.
+- **Search improvements** — Configurable per-field weights, faceted search
+  (config + API + response), snippet highlights, configurable `excerpt_length`,
+  and Flex Object indexing. Existing `GET /api/search` response extended with
+  `facets` and `highlights` fields.
+- **CDN cache invalidation** — Plugin hooks trigger cache purge requests on
+  content publish/update. Built-in support for Cloudflare, Fastly, Bunny, and a
+  custom webhook target. Configurable under `system.cdn`.
+- **Zero-downtime graceful shutdown** — The server drains in-flight requests
+  before exiting. Drain timeout is configurable; integrates with systemd,
+  Docker, Kubernetes, and Fly.io lifecycle hooks.
+- **Structured logging** — Configurable log format (`text` or `json`), log level
+  (`debug`, `info`, `warn`, `error`), and per-environment overrides. JSON output
+  includes request IDs and trace correlation. Configurable under
+  `system.logging`.
+- **Distributed tracing** — OTLP trace export to any compatible backend (Jaeger,
+  Tempo, Honeycomb, Datadog). Configurable sampling rate and service name under
+  `system.tracing`. Log entries include `traceId` for correlation.
+- **Backup and restore** — `dune backup` archives content, config, flex data,
+  schemas, and uploads to a timestamped `.tar.gz`. `dune restore <file>` unpacks
+  into the site root. Both support `--dry-run`.
+- **`dune migrate:flex`** — Migrate Flex Object records to a new schema version.
+  Supports lazy write-through (on next read) or eager migration via the CLI.
+- **`dune generate:*` scaffolding** — `generate:plugin`, `generate:route`,
+  `generate:form`, `generate:theme`, and `generate:schema` scaffold the
+  respective component into the project.
+- **`@dune/core/ui` component package** — Public-site Preact components:
+  `SearchBar`, `LoginForm`, `ProfileCard`, `CommentSection`, `SubscriptionForm`,
+  and `FormRenderer`. Importable from `@dune/core/ui` in theme TSX.
+- **yaml-language-server schema annotation** — Generated `site.yaml` files now
+  include a `# yaml-language-server: $schema=…` comment for in-editor validation
+  and autocompletion.
 
 ### Security
 
-- **OAuth account takeover via email matching** — An attacker controlling an OAuth provider account with a matching email could silently take over a local user account. Provider identity is now bound to the original sign-in provider; cross-provider email matching is blocked. (Critical)
-- **Magic link tokens not enforced as single-use** — Tokens could be reused after the first redemption. A nonce store now marks tokens consumed on first use. (High)
-- **Broken constant-time comparison in magic-link verification** — The HMAC comparison used a non-constant-time equality check, enabling timing-based token recovery. Replaced with `timingSafeEqual`. (High)
-- **Forged site-user identity header accepted** — Requests could supply a crafted `x-dune-site-user` header to impersonate any user. The header is now stripped from all inbound requests before auth middleware runs. (High)
-- **IDOR in billing portal** — The portal endpoint accepted a client-supplied Stripe customer ID, allowing access to another user's billing session. The stored `stripeCustomerId` is now used exclusively. (High)
-- **Stripe webhook replay attack** — Webhook events lacked timestamp validation, allowing indefinite replay of captured events. Stripe's `Webhook-Timestamp` header is now validated against a configurable tolerance window. (High)
-- **Upload path traversal via URL-normalisation** — URL-encoded path components in the upload subpath could escape the configured storage directory after normalisation. The resolved path is now containment-checked against the storage root. (High)
-- **Open-redirect in auth callback** — The `next` query parameter in auth flows was not validated, enabling redirect to an arbitrary external URL after login. `sanitizeNext()` now restricts the target to same-origin paths. (Medium)
-- **Magic links usable without `DUNE_AUTH_SECRET`** — If the secret was absent, magic links fell back to an insecure derivation. Startup now aborts if magic links are enabled and `DUNE_AUTH_SECRET` is not set. (Medium)
-- **Email template value injection** — Interpolated values in Markdown email templates were rendered without escaping, allowing injection of arbitrary Markdown or HTML. Values are now HTML-escaped before interpolation. (Medium)
-- **Redis rate-limit counter race condition** — `INCR` followed by `EXPIRE` was not atomic; a crash between the two commands left keys without TTL. Replaced with a single `SET NX EX` command. (Medium)
-- **Raw SQL in PostgreSQL adapter error messages** — Failed query errors included the full SQL statement, which could leak schema or data details in logs. Error messages are now scrubbed to query type and table name only. (Low)
-- **Tracing `currentTraceId` not request-scoped** — The tracer uses a closure-level variable for `currentTraceId`; under concurrent requests the value reflects the most-recently-started span across all in-flight requests. Documented as best-effort log correlation; an `AsyncLocalStorage`-based fix is tracked for a future release. (Low)
+- **OAuth account takeover via email matching** — An attacker controlling an
+  OAuth provider account with a matching email could silently take over a local
+  user account. Provider identity is now bound to the original sign-in provider;
+  cross-provider email matching is blocked. (Critical)
+- **Magic link tokens not enforced as single-use** — Tokens could be reused
+  after the first redemption. A nonce store now marks tokens consumed on first
+  use. (High)
+- **Broken constant-time comparison in magic-link verification** — The HMAC
+  comparison used a non-constant-time equality check, enabling timing-based
+  token recovery. Replaced with `timingSafeEqual`. (High)
+- **Forged site-user identity header accepted** — Requests could supply a
+  crafted `x-dune-site-user` header to impersonate any user. The header is now
+  stripped from all inbound requests before auth middleware runs. (High)
+- **IDOR in billing portal** — The portal endpoint accepted a client-supplied
+  Stripe customer ID, allowing access to another user's billing session. The
+  stored `stripeCustomerId` is now used exclusively. (High)
+- **Stripe webhook replay attack** — Webhook events lacked timestamp validation,
+  allowing indefinite replay of captured events. Stripe's `Webhook-Timestamp`
+  header is now validated against a configurable tolerance window. (High)
+- **Upload path traversal via URL-normalisation** — URL-encoded path components
+  in the upload subpath could escape the configured storage directory after
+  normalisation. The resolved path is now containment-checked against the
+  storage root. (High)
+- **Open-redirect in auth callback** — The `next` query parameter in auth flows
+  was not validated, enabling redirect to an arbitrary external URL after login.
+  `sanitizeNext()` now restricts the target to same-origin paths. (Medium)
+- **Magic links usable without `DUNE_AUTH_SECRET`** — If the secret was absent,
+  magic links fell back to an insecure derivation. Startup now aborts if magic
+  links are enabled and `DUNE_AUTH_SECRET` is not set. (Medium)
+- **Email template value injection** — Interpolated values in Markdown email
+  templates were rendered without escaping, allowing injection of arbitrary
+  Markdown or HTML. Values are now HTML-escaped before interpolation. (Medium)
+- **Redis rate-limit counter race condition** — `INCR` followed by `EXPIRE` was
+  not atomic; a crash between the two commands left keys without TTL. Replaced
+  with a single `SET NX EX` command. (Medium)
+- **Raw SQL in PostgreSQL adapter error messages** — Failed query errors
+  included the full SQL statement, which could leak schema or data details in
+  logs. Error messages are now scrubbed to query type and table name only. (Low)
+- **Tracing `currentTraceId` not request-scoped** — The tracer uses a
+  closure-level variable for `currentTraceId`; under concurrent requests the
+  value reflects the most-recently-started span across all in-flight requests.
+  Documented as best-effort log correlation; an `AsyncLocalStorage`-based fix is
+  tracked for a future release. (Low)
 
 ---
 
@@ -1860,110 +2444,220 @@ These hooks back the v0.23 plugin-API integration of `@dune/plugin-pdf` (PDF ser
 
 ### Added
 
-- **MCP server** (`dune mcp:serve`) — JSON-RPC 2.0 over stdio, compatible with Claude Code, Cursor, and any MCP-capable agent. Exposes nine tools (`list_pages`, `get_page`, `get_page_source`, `search_content`, `get_taxonomy`, `get_config`, `get_runtime_info`, `list_templates`, `list_blueprints`) and five resources (`dune://site/config`, `dune://site/schema`, `dune://content/pages`, `dune://content/taxonomy`, `dune://content/blueprints`).
-- **`dune upgrade`** — Updates the `@dune/core` specifier in `deno.json` to the latest JSR release. When running from a local source clone, prints the current version and the appropriate `git pull` command instead.
-- **`dune validate`** — Whole-project lint: config structure, plugin spec pinning, template references, schema files, and content integrity (missing titles, duplicate routes, future dates). Supports `--json`.
-- **`dune content:create <route>`** — Scaffold a new content page. Options: `--title`, `--template`, `--flat`, `--publish`, `--json`.
-- **`dune content:delete <route>`** — Delete a content page. Requires `--confirm` or `--dry-run`.
-- **`dune blueprint:list` / `blueprint:show` / `blueprint:validate`** — Inspect per-template frontmatter schemas from the CLI.
-- **`dune deploy:init <target>`** — Scaffold deployment configuration for `fly`, `docker`, or `deno-deploy`.
-- **`dune update:skills`** — Reinstall AI agent skill files from the current package into `.claude/skills/`.
+- **MCP server** (`dune mcp:serve`) — JSON-RPC 2.0 over stdio, compatible with
+  Claude Code, Cursor, and any MCP-capable agent. Exposes nine tools
+  (`list_pages`, `get_page`, `get_page_source`, `search_content`,
+  `get_taxonomy`, `get_config`, `get_runtime_info`, `list_templates`,
+  `list_blueprints`) and five resources (`dune://site/config`,
+  `dune://site/schema`, `dune://content/pages`, `dune://content/taxonomy`,
+  `dune://content/blueprints`).
+- **`dune upgrade`** — Updates the `@dune/core` specifier in `deno.json` to the
+  latest JSR release. When running from a local source clone, prints the current
+  version and the appropriate `git pull` command instead.
+- **`dune validate`** — Whole-project lint: config structure, plugin spec
+  pinning, template references, schema files, and content integrity (missing
+  titles, duplicate routes, future dates). Supports `--json`.
+- **`dune content:create <route>`** — Scaffold a new content page. Options:
+  `--title`, `--template`, `--flat`, `--publish`, `--json`.
+- **`dune content:delete <route>`** — Delete a content page. Requires
+  `--confirm` or `--dry-run`.
+- **`dune blueprint:list` / `blueprint:show` / `blueprint:validate`** — Inspect
+  per-template frontmatter schemas from the CLI.
+- **`dune deploy:init <target>`** — Scaffold deployment configuration for `fly`,
+  `docker`, or `deno-deploy`.
+- **`dune update:skills`** — Reinstall AI agent skill files from the current
+  package into `.claude/skills/`.
 - **`dune schema:export`** — Print the JSON Schema for `site.yaml` to stdout.
-- **`GET /_dune/schema/config`** — HTTP equivalent of `schema:export`; returns the JSON Schema for `site.yaml`.
-- **`GET /admin/api/introspect`** — Live runtime snapshot: page counts, plugins, theme, forms, and config summary. Requires admin auth.
-- **`GET /admin/api/page-source`** — Return raw source (frontmatter + body) for a page by path. Requires `pages.read`.
-- **`POST /admin/api/render-markdown`** — Server-side markdown-to-HTML conversion through the full rendering pipeline. Requires `pages.read`.
-- **`POST /admin/api/dev/apply`** — Batched content and config mutations (`write`, `delete`, `frontmatter`, `config`, `plugin.install`). Dev mode only.
-- **`GET /health/live` and `/health/ready`** — Split liveness and readiness probes for container and load balancer health checks.
-- **`--json` flag** — Machine-readable output on `build`, `validate`, `content:list`, `content:check`, `content:create`, `content:delete`, `config:show`, `config:validate`, and all `blueprint:*` commands.
-- **Agent skill files** — `dune new` now installs `.claude/skills/` files covering content, MCP, plugin authoring, schemas, auth, authz, email, and jobs conventions. `dune update:skills` reinstalls them.
-- **`llms.txt` and `llms-full.txt`** — Served at `/_llms.txt` and `/_llms-full.txt`; structured documentation for agent ingestion.
-- **`DuneEngine.storage`** — `StorageAdapter` is now part of the public `DuneEngine` interface, accessible to plugins and tooling.
+- **`GET /_dune/schema/config`** — HTTP equivalent of `schema:export`; returns
+  the JSON Schema for `site.yaml`.
+- **`GET /admin/api/introspect`** — Live runtime snapshot: page counts, plugins,
+  theme, forms, and config summary. Requires admin auth.
+- **`GET /admin/api/page-source`** — Return raw source (frontmatter + body) for
+  a page by path. Requires `pages.read`.
+- **`POST /admin/api/render-markdown`** — Server-side markdown-to-HTML
+  conversion through the full rendering pipeline. Requires `pages.read`.
+- **`POST /admin/api/dev/apply`** — Batched content and config mutations
+  (`write`, `delete`, `frontmatter`, `config`, `plugin.install`). Dev mode only.
+- **`GET /health/live` and `/health/ready`** — Split liveness and readiness
+  probes for container and load balancer health checks.
+- **`--json` flag** — Machine-readable output on `build`, `validate`,
+  `content:list`, `content:check`, `content:create`, `content:delete`,
+  `config:show`, `config:validate`, and all `blueprint:*` commands.
+- **Agent skill files** — `dune new` now installs `.claude/skills/` files
+  covering content, MCP, plugin authoring, schemas, auth, authz, email, and jobs
+  conventions. `dune update:skills` reinstalls them.
+- **`llms.txt` and `llms-full.txt`** — Served at `/_llms.txt` and
+  `/_llms-full.txt`; structured documentation for agent ingestion.
+- **`DuneEngine.storage`** — `StorageAdapter` is now part of the public
+  `DuneEngine` interface, accessible to plugins and tooling.
 
 ### Fixed
 
 - TSX content page components now receive `page.route` correctly.
-- `dune upgrade` detects local source installs and redirects to `git pull` rather than attempting a `deno.json` rewrite.
+- `dune upgrade` detects local source installs and redirects to `git pull`
+  rather than attempting a `deno.json` rewrite.
 
 ### Security
 
-- **Flex Object endpoint access control** — Role-based access control enforced on all Flex Object routes. (H1)
-- **i18n endpoint permission checks** — All i18n admin routes now require the appropriate permission. (M2, L3)
-- **Preview content handling hardened** — Preview fallback rendering and page access checks tightened. (M3, M5)
-- **Plugin specifier allowlist tightened** — Allowed URL schemes for plugin install and apply restricted. (M4)
-- **Migration importer path validation** — Path-containment checks added to all migration import handlers. (M6)
-- **Rate limit IP bucketing hardened** — IP resolution for rate-limit keys tightened. (L1)
-- **Dashboard endpoint permission check** — The admin dashboard endpoint now requires `pages.read`. (L2)
-- **Upload body size limit** — Oversized request bodies are now rejected during streaming, before buffering. (L4)
-- **Webhook delivery log sanitization** — Sensitive payload data is no longer written to delivery logs. (L5)
+- **Flex Object endpoint access control** — Role-based access control enforced
+  on all Flex Object routes. (H1)
+- **i18n endpoint permission checks** — All i18n admin routes now require the
+  appropriate permission. (M2, L3)
+- **Preview content handling hardened** — Preview fallback rendering and page
+  access checks tightened. (M3, M5)
+- **Plugin specifier allowlist tightened** — Allowed URL schemes for plugin
+  install and apply restricted. (M4)
+- **Migration importer path validation** — Path-containment checks added to all
+  migration import handlers. (M6)
+- **Rate limit IP bucketing hardened** — IP resolution for rate-limit keys
+  tightened. (L1)
+- **Dashboard endpoint permission check** — The admin dashboard endpoint now
+  requires `pages.read`. (L2)
+- **Upload body size limit** — Oversized request bodies are now rejected during
+  streaming, before buffering. (L4)
+- **Webhook delivery log sanitization** — Sensitive payload data is no longer
+  written to delivery logs. (L5)
 
 ---
 
 ## [0.9.1] — 2026-05-07
 
-Security release. All findings are from the May 2026 internal audit. No breaking changes to public APIs.
+Security release. All findings are from the May 2026 internal audit. No breaking
+changes to public APIs.
 
 ### Critical
 
-- **Path traversal in submission file download** — insufficient path validation on the file download endpoint allowed escape from the submissions directory. (CRIT-1)
-- **Path traversal in flex object API** — same class of issue in the flex content read endpoint. (CRIT-2)
-- **Collab WebSocket document scope not enforced** — authenticated users could open a collab session for paths outside the content index. Sessions are now bound to known page paths. (CRIT-3)
-- **Admin context leak in public API handlers (multisite)** — in multisite deployments, public REST handlers could resolve to the wrong site's admin context. Threaded through request state instead of a global. (CRIT-4)
-- **MDX co-located imports not path-contained** — import paths in MDX content were not restricted to the page's own directory. Confined to the page directory at load time. (CRIT-5)
-- **Plugin `onRequest` cookie access** — plugins could read the admin session cookie via `onRequest`. Access restricted; plugin trust model documented. (CRIT-6)
+- **Path traversal in submission file download** — insufficient path validation
+  on the file download endpoint allowed escape from the submissions directory.
+  (CRIT-1)
+- **Path traversal in flex object API** — same class of issue in the flex
+  content read endpoint. (CRIT-2)
+- **Collab WebSocket document scope not enforced** — authenticated users could
+  open a collab session for paths outside the content index. Sessions are now
+  bound to known page paths. (CRIT-3)
+- **Admin context leak in public API handlers (multisite)** — in multisite
+  deployments, public REST handlers could resolve to the wrong site's admin
+  context. Threaded through request state instead of a global. (CRIT-4)
+- **MDX co-located imports not path-contained** — import paths in MDX content
+  were not restricted to the page's own directory. Confined to the page
+  directory at load time. (CRIT-5)
+- **Plugin `onRequest` cookie access** — plugins could read the admin session
+  cookie via `onRequest`. Access restricted; plugin trust model documented.
+  (CRIT-6)
 
 ### High
 
-- **Admin path validation hardened** — the page path validator was strengthened against bypass techniques and re-applied consistently across all path-bearing admin handlers. (HIGH-1, HIGH-2)
-- **Internal error details exposed on public routes** — unhandled exceptions returned internal error strings to unauthenticated callers. Responses scrubbed to generic messages; permission errors now return 403. (HIGH-3, HIGH-7)
-- **Missing CSRF checks on mutation endpoints** — several admin mutation handlers (preview, editor save, submissions, logout) lacked CSRF validation. (HIGH-4, LOW-1)
-- **Security headers missing on admin routes** — admin responses now emit a full set of security headers (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`). (HIGH-5, HIGH-6)
-- **Webhook token comparison not constant-time** — replaced with a constant-time comparison to prevent timing-based token recovery. (HIGH-8)
-- **Webhook body size uncapped** — incoming webhook payloads are now size-limited before parsing. (HIGH-9)
-- **iframe auto-resize `postMessage` origin not validated** — the resize listener accepted messages from any origin and replied without pinning the target origin. Both tightened to the document origin. (HIGH-10, HIGH-11)
-- **Inline HTML and SVG media not sandboxed** — HTML and SVG files served from the media store now include restrictive `Content-Security-Policy` headers; SVG served with correct content type. (HIGH-12, HIGH-13)
-- **MDX output not sanitized for non-admin authors** — MDX rendered output now goes through the same `trusted_html`-gated sanitizer as markdown. Also fixed a double-encoding bug in the sanitizer that corrupted image URLs containing query parameters. (HIGH-14)
-- **Collab WebSocket upgrade missing auth and origin checks** — the upgrade handshake now requires a matching `Origin` header and the `pages.update` permission. (HIGH-15, HIGH-16)
-- **`adminPages.permission` field not enforced at request time** — the permission declared on `AdminPageRegistration` was stored but never checked. Now validated on each request. (HIGH-17)
-- **Plugin-registered route paths not validated** — `publicRoutes.path` entries are now checked against reserved prefixes at bootstrap. (HIGH-18)
-- **Plugin island specifiers not path-contained** — island file paths supplied by plugins are now validated against path-containment rules. (HIGH-19)
-- **SSRF on outbound webhook delivery** — webhook target URLs are now checked against a scheme and host allowlist before delivery. (HIGH-20)
-- **`X-Forwarded-For` trusted by default** — forwarding headers are no longer used for rate-limiting or session IP binding unless `trusted_proxies` is explicitly configured. (HIGH-20, HIGH-21)
-- **Unimplemented `auth_provider.type` silently fell back to local auth** — startup now refuses if the configured auth provider type has no implementation. (HIGH-21)
-- **Search API query size unbounded** — query string length and result count are now capped. (HIGH-23)
+- **Admin path validation hardened** — the page path validator was strengthened
+  against bypass techniques and re-applied consistently across all path-bearing
+  admin handlers. (HIGH-1, HIGH-2)
+- **Internal error details exposed on public routes** — unhandled exceptions
+  returned internal error strings to unauthenticated callers. Responses scrubbed
+  to generic messages; permission errors now return 403. (HIGH-3, HIGH-7)
+- **Missing CSRF checks on mutation endpoints** — several admin mutation
+  handlers (preview, editor save, submissions, logout) lacked CSRF validation.
+  (HIGH-4, LOW-1)
+- **Security headers missing on admin routes** — admin responses now emit a full
+  set of security headers (`Content-Security-Policy`, `X-Frame-Options`,
+  `X-Content-Type-Options`, `Referrer-Policy`). (HIGH-5, HIGH-6)
+- **Webhook token comparison not constant-time** — replaced with a constant-time
+  comparison to prevent timing-based token recovery. (HIGH-8)
+- **Webhook body size uncapped** — incoming webhook payloads are now
+  size-limited before parsing. (HIGH-9)
+- **iframe auto-resize `postMessage` origin not validated** — the resize
+  listener accepted messages from any origin and replied without pinning the
+  target origin. Both tightened to the document origin. (HIGH-10, HIGH-11)
+- **Inline HTML and SVG media not sandboxed** — HTML and SVG files served from
+  the media store now include restrictive `Content-Security-Policy` headers; SVG
+  served with correct content type. (HIGH-12, HIGH-13)
+- **MDX output not sanitized for non-admin authors** — MDX rendered output now
+  goes through the same `trusted_html`-gated sanitizer as markdown. Also fixed a
+  double-encoding bug in the sanitizer that corrupted image URLs containing
+  query parameters. (HIGH-14)
+- **Collab WebSocket upgrade missing auth and origin checks** — the upgrade
+  handshake now requires a matching `Origin` header and the `pages.update`
+  permission. (HIGH-15, HIGH-16)
+- **`adminPages.permission` field not enforced at request time** — the
+  permission declared on `AdminPageRegistration` was stored but never checked.
+  Now validated on each request. (HIGH-17)
+- **Plugin-registered route paths not validated** — `publicRoutes.path` entries
+  are now checked against reserved prefixes at bootstrap. (HIGH-18)
+- **Plugin island specifiers not path-contained** — island file paths supplied
+  by plugins are now validated against path-containment rules. (HIGH-19)
+- **SSRF on outbound webhook delivery** — webhook target URLs are now checked
+  against a scheme and host allowlist before delivery. (HIGH-20)
+- **`X-Forwarded-For` trusted by default** — forwarding headers are no longer
+  used for rate-limiting or session IP binding unless `trusted_proxies` is
+  explicitly configured. (HIGH-20, HIGH-21)
+- **Unimplemented `auth_provider.type` silently fell back to local auth** —
+  startup now refuses if the configured auth provider type has no
+  implementation. (HIGH-21)
+- **Search API query size unbounded** — query string length and result count are
+  now capped. (HIGH-23)
 
 ### Medium
 
-- **Page frontmatter serialized via string interpolation** — switched to `@std/yaml` stringify for safe YAML output on page create. (MED-1)
-- **`admin.path` config not validated at startup** — malformed admin path values are now rejected at bootstrap. (MED-2)
-- **CORS origin reflected unconditionally** — the public API now requires a valid, matching `site.url` before reflecting the `Origin` header. (MED-3)
-- **Audit log coverage gaps** — auth denial events (CSRF failures, permission checks) are now logged. Audit log path is contained within the site root. (MED-4, MED-5)
-- **Public API pagination not bounds-checked** — `limit` and `offset` parameters are now clamped to safe integer ranges. (MED-7)
-- **Unpublished page existence enumerable via public API** — 404 responses for unpublished pages are now indistinguishable from absent paths. (MED-8)
-- **External auth provider role claims not validated** — LDAP/SAML provisioner now validates role claims against the configured allowed role list. (MED-9)
-- **PBKDF2 iterations below OWASP 2024 minimum** — bumped to 600 000 iterations; existing hashes are transparently rehashed on next successful login. (MED-10)
-- **No per-account login lockout** — added a per-account lockout counter alongside the existing IP-based rate limit. (MED-11)
-- **Plugin install accepted unpinned versions** — `dune plugin:install` now requires a pinned version specifier. (MED-12)
-- **Theme install SSRF and integrity** — theme installation is now restricted to local registry slugs, with SSRF guards and archive hash verification. (MED-13)
-- **Plugin `onRequest` could intercept admin responses** — admin-prefix paths are now excluded from plugin `onRequest` short-circuit. (MED-14)
-- **Media URL rewriter gaps** — the href/src rewriter now handles single-quoted attributes and rejects unsafe URL schemes. (MED-15, MED-16)
-- **Image processing without input size limits** — uploaded images are now size-checked before being passed to the processing pipeline. (MED-17)
-- **Submission body size checked after parse** — the payload size cap now applies before JSON parsing. (MED-19)
-- **`FormDefinition.enabled` flag** — forms can now be disabled via `enabled: false`; the public submissions API returns 404 for disabled forms. (MED-20)
-- **`FileSystemAdapter` path-containment guard** — all storage operations now verify the resolved path remains within `rootDir`. (MED-21)
-- **Collab WebSocket resource limits** — per-connection limits added for frame size, simultaneous connections, and message rate. (MED-22)
-- **`withGuards()` helper for admin route handlers** — new utility composing auth, permission, and CSRF checks into a single call. (MED-23)
-- **Open redirect on post-login `?next=`** — redirect target is now restricted to same-origin paths. (MED-24)
+- **Page frontmatter serialized via string interpolation** — switched to
+  `@std/yaml` stringify for safe YAML output on page create. (MED-1)
+- **`admin.path` config not validated at startup** — malformed admin path values
+  are now rejected at bootstrap. (MED-2)
+- **CORS origin reflected unconditionally** — the public API now requires a
+  valid, matching `site.url` before reflecting the `Origin` header. (MED-3)
+- **Audit log coverage gaps** — auth denial events (CSRF failures, permission
+  checks) are now logged. Audit log path is contained within the site root.
+  (MED-4, MED-5)
+- **Public API pagination not bounds-checked** — `limit` and `offset` parameters
+  are now clamped to safe integer ranges. (MED-7)
+- **Unpublished page existence enumerable via public API** — 404 responses for
+  unpublished pages are now indistinguishable from absent paths. (MED-8)
+- **External auth provider role claims not validated** — LDAP/SAML provisioner
+  now validates role claims against the configured allowed role list. (MED-9)
+- **PBKDF2 iterations below OWASP 2024 minimum** — bumped to 600 000 iterations;
+  existing hashes are transparently rehashed on next successful login. (MED-10)
+- **No per-account login lockout** — added a per-account lockout counter
+  alongside the existing IP-based rate limit. (MED-11)
+- **Plugin install accepted unpinned versions** — `dune plugin:install` now
+  requires a pinned version specifier. (MED-12)
+- **Theme install SSRF and integrity** — theme installation is now restricted to
+  local registry slugs, with SSRF guards and archive hash verification. (MED-13)
+- **Plugin `onRequest` could intercept admin responses** — admin-prefix paths
+  are now excluded from plugin `onRequest` short-circuit. (MED-14)
+- **Media URL rewriter gaps** — the href/src rewriter now handles single-quoted
+  attributes and rejects unsafe URL schemes. (MED-15, MED-16)
+- **Image processing without input size limits** — uploaded images are now
+  size-checked before being passed to the processing pipeline. (MED-17)
+- **Submission body size checked after parse** — the payload size cap now
+  applies before JSON parsing. (MED-19)
+- **`FormDefinition.enabled` flag** — forms can now be disabled via
+  `enabled: false`; the public submissions API returns 404 for disabled forms.
+  (MED-20)
+- **`FileSystemAdapter` path-containment guard** — all storage operations now
+  verify the resolved path remains within `rootDir`. (MED-21)
+- **Collab WebSocket resource limits** — per-connection limits added for frame
+  size, simultaneous connections, and message rate. (MED-22)
+- **`withGuards()` helper for admin route handlers** — new utility composing
+  auth, permission, and CSRF checks into a single call. (MED-23)
+- **Open redirect on post-login `?next=`** — redirect target is now restricted
+  to same-origin paths. (MED-24)
 
 ### Low
 
-- **`/api/nav` and `/api/config/site` unrate-limited** — rate limits added to the remaining unguarded public read endpoints. (LOW-2)
-- **`/health` information disclosure** — the health endpoint now returns a minimal response by default; detailed stats require a configurable `health_token`. (LOW-3)
-- **Log injection via request paths** — paths written to error logs are now sanitized (control characters removed, length capped). (LOW-4)
-- **Plugin name parameter validation tightened** — the plugin name segment in admin API routes enforces a strict allowlist and rejects path traversal via dot-segments. (LOW-5)
-- **Filesystem paths in MDX error logs** — internal paths are redacted from error logs in production. (LOW-6)
-- **Submission read endpoints missing permission check** — GET routes for submission data now require the `submissions.read` permission. (LOW-8)
-- **User-supplied YAML parsed with extended schema** — all user-facing YAML parsing now uses the `"core"` schema, disabling implicit type coercions. (LOW-10)
+- **`/api/nav` and `/api/config/site` unrate-limited** — rate limits added to
+  the remaining unguarded public read endpoints. (LOW-2)
+- **`/health` information disclosure** — the health endpoint now returns a
+  minimal response by default; detailed stats require a configurable
+  `health_token`. (LOW-3)
+- **Log injection via request paths** — paths written to error logs are now
+  sanitized (control characters removed, length capped). (LOW-4)
+- **Plugin name parameter validation tightened** — the plugin name segment in
+  admin API routes enforces a strict allowlist and rejects path traversal via
+  dot-segments. (LOW-5)
+- **Filesystem paths in MDX error logs** — internal paths are redacted from
+  error logs in production. (LOW-6)
+- **Submission read endpoints missing permission check** — GET routes for
+  submission data now require the `submissions.read` permission. (LOW-8)
+- **User-supplied YAML parsed with extended schema** — all user-facing YAML
+  parsing now uses the `"core"` schema, disabling implicit type coercions.
+  (LOW-10)
 
 ---
 
@@ -1971,20 +2665,45 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Breaking
 
-- **Admin panel rewritten as Fresh 2 file-system routes** — The monolithic `createAdminHandler` and its 16 supporting `src/admin/ui/*.ts` files have been deleted (~12 700 lines removed). The admin panel is now implemented via `src/admin/routes/` (80 route files) with proper Fresh 2 middleware, layout, and 12 Preact island components. The admin URL structure and all existing functionality are preserved; only the internal implementation changed.
-  - `createAdminHandler` / `AdminServerConfig` removed from `@dune/core` public API.
-  - `src/cli/site-handler.ts` deleted. Framework integrators previously using `createProductionSiteHandler` or `createDevSiteContext` directly should migrate to `createDuneApp()` from `src/cli/fresh-app.ts`.
-- **`PLUGIN_API_VERSION` bumped to `"0.7"`** — Plugins that check for `"0.6"` with strict equality should update their guard.
+- **Admin panel rewritten as Fresh 2 file-system routes** — The monolithic
+  `createAdminHandler` and its 16 supporting `src/admin/ui/*.ts` files have been
+  deleted (~12 700 lines removed). The admin panel is now implemented via
+  `src/admin/routes/` (80 route files) with proper Fresh 2 middleware, layout,
+  and 12 Preact island components. The admin URL structure and all existing
+  functionality are preserved; only the internal implementation changed.
+  - `createAdminHandler` / `AdminServerConfig` removed from `@dune/core` public
+    API.
+  - `src/cli/site-handler.ts` deleted. Framework integrators previously using
+    `createProductionSiteHandler` or `createDevSiteContext` directly should
+    migrate to `createDuneApp()` from `src/cli/fresh-app.ts`.
+- **`PLUGIN_API_VERSION` bumped to `"0.7"`** — Plugins that check for `"0.6"`
+  with strict equality should update their guard.
 
 ### Added
 
-- **`DunePlugin.publicRoutes`** — Plugins can register public-facing Fresh routes via `publicRoutes` instead of the `onRequest` hook. Each route is a proper Fresh handler with `ctx.render()`, middleware, and island support. Preferred for stable named endpoints.
-- **`DunePlugin.adminPages`** — Plugins can contribute pages to the admin panel. Each page is rendered inside the admin shell (sidebar, header, auth) automatically.
-- **Theme island auto-discovery** — `collectThemeIslands()` walks the full theme inheritance chain and registers all `islands/*.tsx` files automatically. Child themes can use parent islands without manual configuration.
-- **TSX content page island support** — `collectContentIslands()` scans TSX content pages for relative imports that resolve into any `islands/` directory and adds them to the bundle automatically.
-- **Headless mode** — `dune new --headless` scaffolds a headless Dune site. `mountDuneAdmin(app, ctx)` and `getDuneAdminIslands()` in `@dune/core/admin` let Fresh developers add Dune's admin panel to their own app without surrendering the `/*` catch-all. `getContent()` / `ContentApi` in `@dune/core/content` provide typed access to the content engine.
-- **Auth provider wired from config** — `admin.auth_provider` in `system.yaml` (`ldap` / `saml`) is now actually honoured at bootstrap. Previously `LocalAuthProvider` was always used regardless of config.
-- **`BootstrapOptions.authProvider`** — Pass a custom auth provider at startup to override both config and the local default (useful for OIDC, SSO).
+- **`DunePlugin.publicRoutes`** — Plugins can register public-facing Fresh
+  routes via `publicRoutes` instead of the `onRequest` hook. Each route is a
+  proper Fresh handler with `ctx.render()`, middleware, and island support.
+  Preferred for stable named endpoints.
+- **`DunePlugin.adminPages`** — Plugins can contribute pages to the admin panel.
+  Each page is rendered inside the admin shell (sidebar, header, auth)
+  automatically.
+- **Theme island auto-discovery** — `collectThemeIslands()` walks the full theme
+  inheritance chain and registers all `islands/*.tsx` files automatically. Child
+  themes can use parent islands without manual configuration.
+- **TSX content page island support** — `collectContentIslands()` scans TSX
+  content pages for relative imports that resolve into any `islands/` directory
+  and adds them to the bundle automatically.
+- **Headless mode** — `dune new --headless` scaffolds a headless Dune site.
+  `mountDuneAdmin(app, ctx)` and `getDuneAdminIslands()` in `@dune/core/admin`
+  let Fresh developers add Dune's admin panel to their own app without
+  surrendering the `/*` catch-all. `getContent()` / `ContentApi` in
+  `@dune/core/content` provide typed access to the content engine.
+- **Auth provider wired from config** — `admin.auth_provider` in `system.yaml`
+  (`ldap` / `saml`) is now actually honoured at bootstrap. Previously
+  `LocalAuthProvider` was always used regardless of config.
+- **`BootstrapOptions.authProvider`** — Pass a custom auth provider at startup
+  to override both config and the local default (useful for OIDC, SSO).
 
 ---
 
@@ -1992,7 +2711,11 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Fixed
 
-- **Co-located audio and video not rewritten** — `<source src="./file.mp3">`, `<audio src="./file.mp3">`, and `<video src="./file.mp4">` relative references were not rewritten to absolute URLs, causing 404s in the browser. A new media resolver pass handles these elements identically to the existing `<img>`, `<a>`, and `<iframe>` passes.
+- **Co-located audio and video not rewritten** — `<source src="./file.mp3">`,
+  `<audio src="./file.mp3">`, and `<video src="./file.mp4">` relative references
+  were not rewritten to absolute URLs, causing 404s in the browser. A new media
+  resolver pass handles these elements identically to the existing `<img>`,
+  `<a>`, and `<iframe>` passes.
 
 ---
 
@@ -2000,9 +2723,16 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Fixed
 
-- **Co-located iframe src not rewritten** — `.html` was missing from `MEDIA_EXTENSIONS`, so HTML files were never indexed by `discoverMedia()`. `ctx.media.get('file.html')` always returned null, silently skipping the iframe src rewrite introduced in 0.8.2.
+- **Co-located iframe src not rewritten** — `.html` was missing from
+  `MEDIA_EXTENSIONS`, so HTML files were never indexed by `discoverMedia()`.
+  `ctx.media.get('file.html')` always returned null, silently skipping the
+  iframe src rewrite introduced in 0.8.2.
 
-- **Iframe regex failed on multiline tags** — The previous `[^>](?!src=)` pattern did not match `<iframe>` opening tags where attributes span multiple lines (e.g. `width`, `height`, and `src` on separate lines). Replaced with `[\s\S]*?` (lazy dotall) which handles both inline and multiline tags correctly.
+- **Iframe regex failed on multiline tags** — The previous `[^>](?!src=)`
+  pattern did not match `<iframe>` opening tags where attributes span multiple
+  lines (e.g. `width`, `height`, and `src` on separate lines). Replaced with
+  `[\s\S]*?` (lazy dotall) which handles both inline and multiline tags
+  correctly.
 
 ---
 
@@ -2010,13 +2740,28 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Added
 
-- **MDX co-located imports** — MDX files can now import components using relative paths co-located alongside the post file (`import Chart from './Chart.tsx'`). Relative imports are resolved server-side and merged into the MDX component scope alongside the theme registry. Co-located imports take precedence over registry components, so a post can override a theme-wide component for its own use. All three import forms are supported: default, named, and namespace.
+- **MDX co-located imports** — MDX files can now import components using
+  relative paths co-located alongside the post file
+  (`import Chart from './Chart.tsx'`). Relative imports are resolved server-side
+  and merged into the MDX component scope alongside the theme registry.
+  Co-located imports take precedence over registry components, so a post can
+  override a theme-wide component for its own use. All three import forms are
+  supported: default, named, and namespace.
 
-- **Co-located iframe embeds with automatic height synchronisation** — Co-located `.html` files can be embedded as iframes using a relative `<iframe src="./file.html">` in content. Dune rewrites the src to an absolute URL, serves the file as `text/html`, and automatically injects scripts on both sides of the frame boundary so the iframe resizes to fit its content exactly — no fixed height needed. Multiple iframes on the same page resize independently. Requires `trusted_html: true` at page or site level.
+- **Co-located iframe embeds with automatic height synchronisation** —
+  Co-located `.html` files can be embedded as iframes using a relative
+  `<iframe src="./file.html">` in content. Dune rewrites the src to an absolute
+  URL, serves the file as `text/html`, and automatically injects scripts on both
+  sides of the frame boundary so the iframe resizes to fit its content exactly —
+  no fixed height needed. Multiple iframes on the same page resize
+  independently. Requires `trusted_html: true` at page or site level.
 
 ### Fixed
 
-- **Spurious route collision warnings** — When a route collision involves an unpublished page, Dune now silently prefers the published one without logging a warning. Eliminates false positives for intentional cases such as a `README.md` sitting alongside a `default.md` in a submodule.
+- **Spurious route collision warnings** — When a route collision involves an
+  unpublished page, Dune now silently prefers the published one without logging
+  a warning. Eliminates false positives for intentional cases such as a
+  `README.md` sitting alongside a `default.md` in a submodule.
 
 ---
 
@@ -2024,11 +2769,20 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Fixed
 
-- **Preact import map** — the `preact/` trailing-slash catch-all entry has been removed from Dune's `deno.json`. `npm:` specifiers are not hierarchical URLs and esbuild's `@deno/loader` was failing to resolve subpath imports (e.g. `preact/hooks`) against the prefix. Explicit entries for `preact/hooks`, `preact/jsx-runtime`, and `preact/jsx-dev-runtime` cover all subpaths used internally and in theme islands.
+- **Preact import map** — the `preact/` trailing-slash catch-all entry has been
+  removed from Dune's `deno.json`. `npm:` specifiers are not hierarchical URLs
+  and esbuild's `@deno/loader` was failing to resolve subpath imports (e.g.
+  `preact/hooks`) against the prefix. Explicit entries for `preact/hooks`,
+  `preact/jsx-runtime`, and `preact/jsx-dev-runtime` cover all subpaths used
+  internally and in theme islands.
 
 ### Internal
 
-- `createProductionSiteHandler`, `createDevSiteContext`, and `buildSitePrebuilt` in `src/cli/site-handler.ts` are now marked deprecated. They remain in place for the multisite manager and SSG builder but are no longer used by the single-site `dune serve` and `dune dev` paths, which route through `createDuneApp()` instead.
+- `createProductionSiteHandler`, `createDevSiteContext`, and `buildSitePrebuilt`
+  in `src/cli/site-handler.ts` are now marked deprecated. They remain in place
+  for the multisite manager and SSG builder but are no longer used by the
+  single-site `dune serve` and `dune dev` paths, which route through
+  `createDuneApp()` instead.
 
 ---
 
@@ -2036,17 +2790,35 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Added
 
-- **Island components** — themes can now place Preact components in `themes/{name}/islands/` and they will be automatically bundled with esbuild and hydrated client-side via Fresh's boot script. Any Preact hooks are available; props must be JSON-serialisable. In dev mode, Fresh watches the `islands/` directory and rebuilds the bundle on save without requiring a server restart.
+- **Island components** — themes can now place Preact components in
+  `themes/{name}/islands/` and they will be automatically bundled with esbuild
+  and hydrated client-side via Fresh's boot script. Any Preact hooks are
+  available; props must be JSON-serialisable. In dev mode, Fresh watches the
+  `islands/` directory and rebuilds the bundle on save without requiring a
+  server restart.
 
-- **`onRequest` hook now fires for request interception** — the `onRequest` lifecycle hook fires at the start of every request, before Dune's routing pipeline. Plugins can call `setData(response)` + `stopPropagation()` to short-circuit routing and return a custom response immediately — enabling custom API endpoints, auth guards, and per-request middleware without forking the serve command.
+- **`onRequest` hook now fires for request interception** — the `onRequest`
+  lifecycle hook fires at the start of every request, before Dune's routing
+  pipeline. Plugins can call `setData(response)` + `stopPropagation()` to
+  short-circuit routing and return a custom response immediately — enabling
+  custom API endpoints, auth guards, and per-request middleware without forking
+  the serve command.
 
 ### Changed
 
-- **Fresh-first architecture** — Fresh now owns the server and the full request lifecycle. Dune's routing, admin panel, API, feeds, static files, and plugin hooks are assembled as Fresh middleware via the new internal `createDuneApp()` factory. This supersedes the previous passthrough pattern and is a new foundation for island hydration. Behaviour is identical for site authors; `dune serve` and `dune dev` work as before.
+- **Fresh-first architecture** — Fresh now owns the server and the full request
+  lifecycle. Dune's routing, admin panel, API, feeds, static files, and plugin
+  hooks are assembled as Fresh middleware via the new internal `createDuneApp()`
+  factory. This supersedes the previous passthrough pattern and is a new
+  foundation for island hydration. Behaviour is identical for site authors;
+  `dune serve` and `dune dev` work as before.
 
 ### Fixed
 
-- **Plugin loading with relative root** — `dune serve .` (or any relative root path) was constructing `file://plugins/api.ts` instead of `file:///abs/path/plugins/api.ts`, causing dynamic plugin imports to fail. Root is now resolved to an absolute path at bootstrap entry.
+- **Plugin loading with relative root** — `dune serve .` (or any relative root
+  path) was constructing `file://plugins/api.ts` instead of
+  `file:///abs/path/plugins/api.ts`, causing dynamic plugin imports to fail.
+  Root is now resolved to an absolute path at bootstrap entry.
 
 ---
 
@@ -2054,17 +2826,33 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Changed
 
-- **Fresh 2 render pipeline** — `dune serve` and `dune dev` now route HTML requests through a Fresh 2 `App` instance. Pages are rendered via `ctx.render()` instead of raw `preact-render-to-string`, so Fresh can inject its boot script and manage client-side hydration. This is the foundational step for island support.
+- **Fresh 2 render pipeline** — `dune serve` and `dune dev` now route HTML
+  requests through a Fresh 2 `App` instance. Pages are rendered via
+  `ctx.render()` instead of raw `preact-render-to-string`, so Fresh can inject
+  its boot script and manage client-side hydration. This is the foundational
+  step for island support.
 
-  Non-HTML requests (API, admin, static assets, POST/PUT/DELETE) bypass Fresh and are handled directly by the Dune handler, so existing behaviour is unchanged.
+  Non-HTML requests (API, admin, static assets, POST/PUT/DELETE) bypass Fresh
+  and are handled directly by the Dune handler, so existing behaviour is
+  unchanged.
 
-  **For site authors**: no changes required. Sites serve and behave identically; the boot script added to HTML pages is a benign no-op until islands are registered.
+  **For site authors**: no changes required. Sites serve and behave identically;
+  the boot script added to HTML pages is a benign no-op until islands are
+  registered.
 
-  **For framework integrators** using `createProductionSiteHandler` or `createDevSiteContext` directly: both now return handlers typed `(req: Request, renderJsx?: RenderJsx) => Promise<Response>`. Pass a custom `renderJsx` (e.g. `ctx.render` from a Fresh route context) to override rendering per-request; omit it to use the default preact-render-to-string fallback.
+  **For framework integrators** using `createProductionSiteHandler` or
+  `createDevSiteContext` directly: both now return handlers typed
+  `(req: Request, renderJsx?: RenderJsx) => Promise<Response>`. Pass a custom
+  `renderJsx` (e.g. `ctx.render` from a Fresh route context) to override
+  rendering per-request; omit it to use the default preact-render-to-string
+  fallback.
 
-- **`RenderJsx` type exported** from `@dune/core` (`src/cli/site-handler.ts`) — `(jsx: unknown, statusCode?: number) => Response | Promise<Response>`.
+- **`RenderJsx` type exported** from `@dune/core` (`src/cli/site-handler.ts`) —
+  `(jsx: unknown, statusCode?: number) => Response | Promise<Response>`.
 
-- **`DuneRoutes.contentHandler`** now accepts an async `renderJsx` (return type `Response | Promise<Response>`), enabling use of `ctx.render()` which is inherently async in Fresh 2.
+- **`DuneRoutes.contentHandler`** now accepts an async `renderJsx` (return type
+  `Response | Promise<Response>`), enabling use of `ctx.render()` which is
+  inherently async in Fresh 2.
 
 ---
 
@@ -2072,31 +2860,96 @@ Security release. All findings are from the May 2026 internal audit. No breaking
 
 ### Security
 
-Full audit of new attack surface added since v1.0. No exploited issues; every finding below is defence in depth against author/editor-role compromise, hostile migration input, or cheap DoS. See `/Users/xrs/.claude/plans/it-s-time-to-once-buzzing-fog.md` for the findings matrix.
+Full audit of new attack surface added since v1.0. No exploited issues; every
+finding below is defence in depth against author/editor-role compromise, hostile
+migration input, or cheap DoS. See
+`/Users/xrs/.claude/plans/it-s-time-to-once-buzzing-fog.md` for the findings
+matrix.
 
-- **HTML sanitizer** (`src/security/sanitize-html.ts`) — hand-rolled tokenizer sanitiser with an allowlist of tags and per-tag attributes. Strips `<script>`, `<iframe>`, event handlers, `style`, and any attribute whose value contains `javascript:` / `data:text/html`. Applied to:
-  - `renderText` and `renderColumns` in the page-builder sections renderer (fixes H1 — stored XSS via richtext section fields).
-  - `MarkdownHandler.renderToHtml` (fixes H2 — marked v15 passes raw HTML through by default). Opt-out via `site.trusted_html: true` in `site.yaml` or `trusted_html: true` in a page's own frontmatter.
-  - WordPress WXR importer in `src/cli/migrate.ts` (fixes H3 — imported post bodies were written unsanitised). Opt-out via `--trust-source`.
-- **Fixed: `trusted_html` opt-out was silently ignored** — `ctx.site` was always `undefined` in the markdown renderer because `buildMinimalRenderContext` never received the site config, and per-page frontmatter was not read either. Fixed by threading `site?: SiteConfig` through `PageLoaderOptions` → engine → `buildMinimalRenderContext`, pre-resolving the flag as `trustedHtml?: boolean` on `RenderContext`, and checking `ctx.trustedHtml` in the renderer. Both `site.trusted_html` (site.yaml) and `trusted_html` (page frontmatter) now work correctly.
-- **URL scheme allowlist** (`src/security/urls.ts`) — `isSafeUrl` / `safeUrl` accept only `http:`, `https:`, `mailto:`, `tel:`, anchor fragments, and relative paths. Rejects `javascript:`, `data:`, `vbscript:`, `file:`, tab/newline obfuscation, and leading whitespace. Applied to every CTA/image URL in page-builder sections and to marketplace repository/demo links (fixes H4).
-- **Template name validation** — `ThemeLoader.loadTemplate` rejects any name that doesn't match `/^[a-zA-Z0-9_-]+$/` before using it in a path join. Frontmatter can no longer request `../../etc/passwd` (fixes M1).
-- **CSP tightened** — admin `img-src` narrowed from `'self' data: blob: *` to `'self' data: blob: https:`. Rejects attacker-host `http://` exfil pixels (fixes M2).
-- **Rate limiting on public API** — extracted the admin rate limiter into `src/security/rate-limit.ts` and applied a 120 req/min per-IP budget to `/api/search`, `/api/collections`, `/api/taxonomy/*`, `/api/pages`, `/api/flex/*`, and the `/search` page (fixes M3).
-- **Audit log sharding** — `AuditLogger` rotates to `{runtimeDir}/audit/YYYY-MM-DD.jsonl`. Queries read only the shards within the requested date range instead of slurping the full file on every request. Legacy single-file logs continue to be read as a fallback so no history is lost on upgrade (fixes M4).
-- **Password strength** — new `src/security/password-strength.ts` rejects a small blocklist of common passwords, single-character runs, and trivial sequential patterns in addition to the existing 12-char minimum. Applied to user create and password-change endpoints (fixes M5).
-- **Metrics redaction** — slow-query strings are truncated to 80 characters before being stored, preventing arbitrarily long user-supplied search / filter text from surfacing on the admin metrics dashboard (fixes M6).
-- **Plugin auto-discovery is opt-in** — `plugins/*.ts` are no longer auto-loaded unless `auto_discover_plugins: true` is set at the top level of `site.yaml`. Reduces blast radius of a rogue file dropped into the plugins directory (fixes L1).
-- **Form-validator ReDoS guard** — blueprint `validate.pattern` patterns with nested quantifiers (`(x+)+`, `(x*)+`, etc.) are rejected at validation time, and the input length fed to `RegExp#test` is capped at 10 000 characters (fixes L2).
-- **CORS misconfiguration warning** — the API layer emits a one-shot warning when `site.url` is missing or invalid and the origin is being reflected back, surfacing the misconfiguration (fixes L3).
-- **Marketplace image URL validation** — plugin `iconUrl` and theme `screenshotUrl` are now accepted only when they resolve to `https:` (or protocol-relative); all other schemes are silently dropped (fixes L4).
-- **Form upload hardening** — new `src/security/uploads.ts` gates form-submission file uploads behind a server-side extension allowlist (images, PDF, office docs, txt, csv, zip). The stored content-type is derived from the extension, discarding the attacker-controlled `file.type`. `.php`, `.sh`, `.exe`, `.html`, `.svg`, `.js`, and other script/executable formats are rejected. Submission file downloads now set `X-Content-Type-Options: nosniff` so a tampered content-type can't be reinterpreted by the browser.
-- **Form-submission body size cap** — form submission handlers now reject requests whose `Content-Length` exceeds 55 MB with a `413 Request too large` response, before `req.formData()` buffers the body into memory. Closes a cheap memory-DoS where a client could stream a multi-hundred-MB multipart body and rely on the per-file cap only being applied post-parse.
-- **Admin media upload body size cap** — `POST /admin/api/upload-media` now applies the same `Content-Length` pre-check, gated by a new `admin.maxUploadMb` config setting (default 100 MB). Defence in depth against compromised-credential or CSRF-driven DoS; operators with large media libraries can raise the ceiling without touching code.
+- **HTML sanitizer** (`src/security/sanitize-html.ts`) — hand-rolled tokenizer
+  sanitiser with an allowlist of tags and per-tag attributes. Strips `<script>`,
+  `<iframe>`, event handlers, `style`, and any attribute whose value contains
+  `javascript:` / `data:text/html`. Applied to:
+  - `renderText` and `renderColumns` in the page-builder sections renderer
+    (fixes H1 — stored XSS via richtext section fields).
+  - `MarkdownHandler.renderToHtml` (fixes H2 — marked v15 passes raw HTML
+    through by default). Opt-out via `site.trusted_html: true` in `site.yaml` or
+    `trusted_html: true` in a page's own frontmatter.
+  - WordPress WXR importer in `src/cli/migrate.ts` (fixes H3 — imported post
+    bodies were written unsanitised). Opt-out via `--trust-source`.
+- **Fixed: `trusted_html` opt-out was silently ignored** — `ctx.site` was always
+  `undefined` in the markdown renderer because `buildMinimalRenderContext` never
+  received the site config, and per-page frontmatter was not read either. Fixed
+  by threading `site?: SiteConfig` through `PageLoaderOptions` → engine →
+  `buildMinimalRenderContext`, pre-resolving the flag as `trustedHtml?: boolean`
+  on `RenderContext`, and checking `ctx.trustedHtml` in the renderer. Both
+  `site.trusted_html` (site.yaml) and `trusted_html` (page frontmatter) now work
+  correctly.
+- **URL scheme allowlist** (`src/security/urls.ts`) — `isSafeUrl` / `safeUrl`
+  accept only `http:`, `https:`, `mailto:`, `tel:`, anchor fragments, and
+  relative paths. Rejects `javascript:`, `data:`, `vbscript:`, `file:`,
+  tab/newline obfuscation, and leading whitespace. Applied to every CTA/image
+  URL in page-builder sections and to marketplace repository/demo links (fixes
+  H4).
+- **Template name validation** — `ThemeLoader.loadTemplate` rejects any name
+  that doesn't match `/^[a-zA-Z0-9_-]+$/` before using it in a path join.
+  Frontmatter can no longer request `../../etc/passwd` (fixes M1).
+- **CSP tightened** — admin `img-src` narrowed from `'self' data: blob: *` to
+  `'self' data: blob: https:`. Rejects attacker-host `http://` exfil pixels
+  (fixes M2).
+- **Rate limiting on public API** — extracted the admin rate limiter into
+  `src/security/rate-limit.ts` and applied a 120 req/min per-IP budget to
+  `/api/search`, `/api/collections`, `/api/taxonomy/*`, `/api/pages`,
+  `/api/flex/*`, and the `/search` page (fixes M3).
+- **Audit log sharding** — `AuditLogger` rotates to
+  `{runtimeDir}/audit/YYYY-MM-DD.jsonl`. Queries read only the shards within the
+  requested date range instead of slurping the full file on every request.
+  Legacy single-file logs continue to be read as a fallback so no history is
+  lost on upgrade (fixes M4).
+- **Password strength** — new `src/security/password-strength.ts` rejects a
+  small blocklist of common passwords, single-character runs, and trivial
+  sequential patterns in addition to the existing 12-char minimum. Applied to
+  user create and password-change endpoints (fixes M5).
+- **Metrics redaction** — slow-query strings are truncated to 80 characters
+  before being stored, preventing arbitrarily long user-supplied search / filter
+  text from surfacing on the admin metrics dashboard (fixes M6).
+- **Plugin auto-discovery is opt-in** — `plugins/*.ts` are no longer auto-loaded
+  unless `auto_discover_plugins: true` is set at the top level of `site.yaml`.
+  Reduces blast radius of a rogue file dropped into the plugins directory (fixes
+  L1).
+- **Form-validator ReDoS guard** — blueprint `validate.pattern` patterns with
+  nested quantifiers (`(x+)+`, `(x*)+`, etc.) are rejected at validation time,
+  and the input length fed to `RegExp#test` is capped at 10 000 characters
+  (fixes L2).
+- **CORS misconfiguration warning** — the API layer emits a one-shot warning
+  when `site.url` is missing or invalid and the origin is being reflected back,
+  surfacing the misconfiguration (fixes L3).
+- **Marketplace image URL validation** — plugin `iconUrl` and theme
+  `screenshotUrl` are now accepted only when they resolve to `https:` (or
+  protocol-relative); all other schemes are silently dropped (fixes L4).
+- **Form upload hardening** — new `src/security/uploads.ts` gates
+  form-submission file uploads behind a server-side extension allowlist (images,
+  PDF, office docs, txt, csv, zip). The stored content-type is derived from the
+  extension, discarding the attacker-controlled `file.type`. `.php`, `.sh`,
+  `.exe`, `.html`, `.svg`, `.js`, and other script/executable formats are
+  rejected. Submission file downloads now set `X-Content-Type-Options: nosniff`
+  so a tampered content-type can't be reinterpreted by the browser.
+- **Form-submission body size cap** — form submission handlers now reject
+  requests whose `Content-Length` exceeds 55 MB with a `413 Request too large`
+  response, before `req.formData()` buffers the body into memory. Closes a cheap
+  memory-DoS where a client could stream a multi-hundred-MB multipart body and
+  rely on the per-file cap only being applied post-parse.
+- **Admin media upload body size cap** — `POST /admin/api/upload-media` now
+  applies the same `Content-Length` pre-check, gated by a new
+  `admin.maxUploadMb` config setting (default 100 MB). Defence in depth against
+  compromised-credential or CSRF-driven DoS; operators with large media
+  libraries can raise the ceiling without touching code.
 
 ### Tests
 
-- New test suites under `tests/security/` covering the sanitiser, URL allowlist, rate limiter, password strength, upload allowlist, and body-size gate. 75 new tests; 679 total passing.
+- New test suites under `tests/security/` covering the sanitiser, URL allowlist,
+  rate limiter, password strength, upload allowlist, and body-size gate. 75 new
+  tests; 679 total passing.
 
 ---
 
@@ -2104,7 +2957,10 @@ Full audit of new attack surface added since v1.0. No exploited issues; every fi
 
 ### Fixed
 
-- **Raw HTML media refs in markdown** — `<img src="file.jpg">` and `<a href="doc.pdf">` tags embedded in markdown content are now rewritten to absolute route-based URLs, matching the existing behaviour for markdown `![](src)` and `[](href)` syntax.
+- **Raw HTML media refs in markdown** — `<img src="file.jpg">` and
+  `<a href="doc.pdf">` tags embedded in markdown content are now rewritten to
+  absolute route-based URLs, matching the existing behaviour for markdown
+  `![](src)` and `[](href)` syntax.
 
 ---
 
@@ -2112,8 +2968,15 @@ Full audit of new attack surface added since v1.0. No exploited issues; every fi
 
 ### Fixed
 
-- **Relative links in markdown** — bare relative hrefs (`myfile.pdf`, `./doc.pdf`) are now rewritten to absolute route-based URLs before rendering. Fixes broken links caused by Dune's no-trailing-slash URL scheme resolving relative paths against the wrong parent. Non-relative URLs (`http://`, `/root`, `mailto:`, `#anchor`) and unknown filenames pass through untouched.
-- **Template cache auto-invalidation** — templates in production (`dune serve`) are now reloaded automatically when their file changes, without requiring a server restart. Mtime is rechecked on each cache hit; stale entries are evicted and re-imported.
+- **Relative links in markdown** — bare relative hrefs (`myfile.pdf`,
+  `./doc.pdf`) are now rewritten to absolute route-based URLs before rendering.
+  Fixes broken links caused by Dune's no-trailing-slash URL scheme resolving
+  relative paths against the wrong parent. Non-relative URLs (`http://`,
+  `/root`, `mailto:`, `#anchor`) and unknown filenames pass through untouched.
+- **Template cache auto-invalidation** — templates in production (`dune serve`)
+  are now reloaded automatically when their file changes, without requiring a
+  server restart. Mtime is rechecked on each cache hit; stale entries are
+  evicted and re-imported.
 
 ---
 
@@ -2121,118 +2984,186 @@ Full audit of new attack surface added since v1.0. No exploited issues; every fi
 
 ### Breaking
 
-- **Media URLs changed.** Co-located media is now served at route-equivalent paths with numeric prefixes stripped — `02.blog/01.post/cover.jpg` is served at `/blog/post/cover.jpg`. The old `/content-media/` prefix is still accepted by the dev and production servers for backward compatibility, but the SSG static build outputs files at the new paths only. Update any hardcoded `/content-media/` URLs in templates or content.
+- **Media URLs changed.** Co-located media is now served at route-equivalent
+  paths with numeric prefixes stripped — `02.blog/01.post/cover.jpg` is served
+  at `/blog/post/cover.jpg`. The old `/content-media/` prefix is still accepted
+  by the dev and production servers for backward compatibility, but the SSG
+  static build outputs files at the new paths only. Update any hardcoded
+  `/content-media/` URLs in templates or content.
 
 ### Added
 
-- **Flat-file pages.** Pages no longer require their own folder. A file named `01.my-post.md` inside a parent folder is treated as an ordered leaf page at `/parent/my-post`. Folders win on route collision.
-- **`order` frontmatter field.** Set sort position explicitly without renaming files — `order: 3` in frontmatter overrides the numeric folder/filename prefix. Pages without a prefix and without `order` sort alphabetically after all explicitly-ordered pages.
-- **`dune --version` / `-V`.** Prints version and install source (`jsr:@dune/core` or `source: /path/to/clone`) for easy diagnosis of local-vs-JSR mismatches.
+- **Flat-file pages.** Pages no longer require their own folder. A file named
+  `01.my-post.md` inside a parent folder is treated as an ordered leaf page at
+  `/parent/my-post`. Folders win on route collision.
+- **`order` frontmatter field.** Set sort position explicitly without renaming
+  files — `order: 3` in frontmatter overrides the numeric folder/filename
+  prefix. Pages without a prefix and without `order` sort alphabetically after
+  all explicitly-ordered pages.
+- **`dune --version` / `-V`.** Prints version and install source
+  (`jsr:@dune/core` or `source: /path/to/clone`) for easy diagnosis of
+  local-vs-JSR mismatches.
 
 ### Fixed
 
-- Multilingual page variants (`default.md`, `default.fr.md`, `default.de.md`) were incorrectly treated as route collisions and dropped from the index. They now correctly coexist as separate language variants of the same route.
-- Contact form redirect failed behind a reverse proxy due to missing `X-Forwarded-Proto` header handling.
-- Form handlers did not collect multi-value fields (e.g. checkboxes with the same name) — only the last value was kept.
+- Multilingual page variants (`default.md`, `default.fr.md`, `default.de.md`)
+  were incorrectly treated as route collisions and dropped from the index. They
+  now correctly coexist as separate language variants of the same route.
+- Contact form redirect failed behind a reverse proxy due to missing
+  `X-Forwarded-Proto` header handling.
+- Form handlers did not collect multi-value fields (e.g. checkboxes with the
+  same name) — only the last value was kept.
 
 ---
 
 ## [0.6.0] — 2026-03-28
 
-**Theme: Ready for everything.** Stable APIs, long-term support, general availability.
+**Theme: Ready for everything.** Stable APIs, long-term support, general
+availability.
 
 ### Added
 
 #### Visual Page Builder
-- New `src/sections/` module: `SectionDef`, `SectionField`, `SectionInstance` types
-- 10 built-in section types: hero, features, testimonials, CTA, gallery, pricing, FAQ, rich text, columns, contact
-- `SectionRegistry` singleton (`sectionRegistry`) — register custom section types from plugins
+
+- New `src/sections/` module: `SectionDef`, `SectionField`, `SectionInstance`
+  types
+- 10 built-in section types: hero, features, testimonials, CTA, gallery,
+  pricing, FAQ, rich text, columns, contact
+- `SectionRegistry` singleton (`sectionRegistry`) — register custom section
+  types from plugins
 - `renderSections()` — server-side HTML renderer with self-contained styles
-- Admin: `GET /admin/pages/builder?path=` Visual Page Builder UI (drag-and-drop canvas, section palette, field editors, desktop/tablet/mobile preview)
+- Admin: `GET /admin/pages/builder?path=` Visual Page Builder UI (drag-and-drop
+  canvas, section palette, field editors, desktop/tablet/mobile preview)
 - Admin: `GET /admin/api/sections` — section library JSON endpoint
-- Routing: pages with `layout: "page-builder"` are rendered via `renderSections()` instead of markdown
+- Routing: pages with `layout: "page-builder"` are rendered via
+  `renderSections()` instead of markdown
 - Classic page editor now has a **Builder** toolbar button
 
 #### Migration Tools (CLI)
-- `dune migrate:from-grav <src>` — import a Grav site preserving folder structure, frontmatter, and media
-- `dune migrate:from-wordpress <src>` — import a WordPress WXR export (posts, pages, categories, tags)
+
+- `dune migrate:from-grav <src>` — import a Grav site preserving folder
+  structure, frontmatter, and media
+- `dune migrate:from-wordpress <src>` — import a WordPress WXR export (posts,
+  pages, categories, tags)
 - `dune migrate:from-markdown <src>` — import any flat/nested markdown folder
-- `dune migrate:from-hugo <src>` — import a Hugo site (YAML/TOML/JSON frontmatter, static assets)
+- `dune migrate:from-hugo <src>` — import a Hugo site (YAML/TOML/JSON
+  frontmatter, static assets)
 - All migration commands support `--dry-run`, `--verbose`, `--out <dir>`
 
 #### Marketplace
-- Admin: `GET /admin/marketplace` — unified plugin + theme discovery page with Plugins/Themes tabs
-- Admin: `GET /admin/api/registry/plugins` — bundled plugin registry JSON endpoint
-- Admin: `POST /admin/api/plugins/install` — adds a JSR plugin entry to `config/site.yaml`
-- Bundled plugin registry (`src/admin/registry/plugins.json`) — 10 first-party plugins with verified badges, download counts, hook lists, and JSR specifiers
-- Bundled theme registry updated (`src/admin/registry/themes.json`) — 6 themes with verified badges and download counts
+
+- Admin: `GET /admin/marketplace` — unified plugin + theme discovery page with
+  Plugins/Themes tabs
+- Admin: `GET /admin/api/registry/plugins` — bundled plugin registry JSON
+  endpoint
+- Admin: `POST /admin/api/plugins/install` — adds a JSR plugin entry to
+  `config/site.yaml`
+- Bundled plugin registry (`src/admin/registry/plugins.json`) — 10 first-party
+  plugins with verified badges, download counts, hook lists, and JSR specifiers
+- Bundled theme registry updated (`src/admin/registry/themes.json`) — 6 themes
+  with verified badges and download counts
 - Marketplace nav item added to Admin sidebar
 
 #### API Stability
-- **Version bumped to 0.6.0** — all public exports in `src/mod.ts` are now stable
+
+- **Version bumped to 0.6.0** — all public exports in `src/mod.ts` are now
+  stable
 - `PLUGIN_API_VERSION` updated to `"0.6"` in `@dune/core/plugins`
-- Named JSR sub-module exports added: `@dune/core/plugins`, `@dune/core/sections`
-- `DunePlugin`, `HookEvent`, `PluginApi` interfaces annotated `@since 0.1.0` / frozen since 0.6.0
-- `SectionDef`, `SectionInstance`, `sectionRegistry`, `renderSections` added to public API
+- Named JSR sub-module exports added: `@dune/core/plugins`,
+  `@dune/core/sections`
+- `DunePlugin`, `HookEvent`, `PluginApi` interfaces annotated `@since 0.1.0` /
+  frozen since 0.6.0
+- `SectionDef`, `SectionInstance`, `sectionRegistry`, `renderSections` added to
+  public API
 
 ### Changed
 
-- `PageFrontmatter` now includes `sections?: Array<{id, type, ...fields}>` (additive, no breaking change)
+- `PageFrontmatter` now includes `sections?: Array<{id, type, ...fields}>`
+  (additive, no breaking change)
 
 ---
 
 ## [0.5.0] — 2026-03-28
 
 ### Added
-- **Static Site Generation** — `dune build --static`; incremental builds; `--hybrid` edge deployment mode
-- **Advanced Caching** — ETag/304, Cache-Control + SWR, in-process page cache with TTL + FIFO eviction (`src/cache/`)
-- **Audit Logging** — append-only JSONL audit log; 15 event types; admin UI + API (`src/audit/`)
-- **Performance Monitoring** — request latency percentiles (p50/p95/p99), slow query logging, memory stats; `/admin/metrics` dashboard (`src/metrics/`)
-- **Multi-Stage Workflows** — configurable stages and role-based transitions in `site.yaml` (`src/workflow/`)
-- **Machine Translation** — DeepL, Google Translate, LibreTranslate providers; `POST /admin/api/i18n/translate-page` (`src/mt/`)
-- **RTL Language Support** — `isRtl()`, `directionOf()`; `TemplateProps.dir`; auto `dir="rtl"` injection; admin panel RTL mirroring (`src/i18n/rtl.ts`)
-- **Pluggable Auth Provider** — `AuthProvider` interface; `LocalAuthProvider`; LDAP and SAML stubs (`src/admin/auth/provider.ts`)
+
+- **Static Site Generation** — `dune build --static`; incremental builds;
+  `--hybrid` edge deployment mode
+- **Advanced Caching** — ETag/304, Cache-Control + SWR, in-process page cache
+  with TTL + FIFO eviction (`src/cache/`)
+- **Audit Logging** — append-only JSONL audit log; 15 event types; admin UI +
+  API (`src/audit/`)
+- **Performance Monitoring** — request latency percentiles (p50/p95/p99), slow
+  query logging, memory stats; `/admin/metrics` dashboard (`src/metrics/`)
+- **Multi-Stage Workflows** — configurable stages and role-based transitions in
+  `site.yaml` (`src/workflow/`)
+- **Machine Translation** — DeepL, Google Translate, LibreTranslate providers;
+  `POST /admin/api/i18n/translate-page` (`src/mt/`)
+- **RTL Language Support** — `isRtl()`, `directionOf()`; `TemplateProps.dir`;
+  auto `dir="rtl"` injection; admin panel RTL mirroring (`src/i18n/rtl.ts`)
+- **Pluggable Auth Provider** — `AuthProvider` interface; `LocalAuthProvider`;
+  LDAP and SAML stubs (`src/admin/auth/provider.ts`)
 
 ---
 
 ## [0.4.0]
 
 ### Added
-- Real-time collaboration — WebSocket OT-based concurrent editing, presence indicators, change attribution, auto-save (`src/collab/`)
+
+- Real-time collaboration — WebSocket OT-based concurrent editing, presence
+  indicators, change attribution, auto-save (`src/collab/`)
 - Advanced search — faceted filtering, autocomplete, search analytics
-- Outbound webhooks — configurable per event type, delivery log with retry tracking
-- Incoming webhooks — `POST /api/webhook/incoming`; token-auth with `$ENV_VAR` expansion; `rebuild` and `purge-cache` actions
-- Internal comments — page-level threads with resolution status; block-anchored annotations; `@mention` notifications
-- Multi-site management — `MultisiteManager`, hostname/path-prefix routing, shared themes, `@site.*` collection sources (`src/multisite/`)
-- Media upload/delete — `POST /admin/api/media/upload`, `DELETE /admin/api/media`; upload UI in media library and page editor
-- Block type picker — "Add Block" opens type menu; non-image media insert emits link block
-- File-type pages — `file:` frontmatter → routing-layer redirect to co-located file; `fileUrl` on `PageIndex`
+- Outbound webhooks — configurable per event type, delivery log with retry
+  tracking
+- Incoming webhooks — `POST /api/webhook/incoming`; token-auth with `$ENV_VAR`
+  expansion; `rebuild` and `purge-cache` actions
+- Internal comments — page-level threads with resolution status; block-anchored
+  annotations; `@mention` notifications
+- Multi-site management — `MultisiteManager`, hostname/path-prefix routing,
+  shared themes, `@site.*` collection sources (`src/multisite/`)
+- Media upload/delete — `POST /admin/api/media/upload`,
+  `DELETE /admin/api/media`; upload UI in media library and page editor
+- Block type picker — "Add Block" opens type menu; non-image media insert emits
+  link block
+- File-type pages — `file:` frontmatter → routing-layer redirect to co-located
+  file; `fileUrl` on `PageIndex`
 
 ---
 
 ## [0.3.0]
 
 ### Added
-- Theme SDK helpers — `paginate`, `formatDate`, `getCanonicalUrl`, `sortPages`, `groupByYear`, `truncate` (`src/theme-helpers/`)
-- Live theme switching — `engine.switchTheme(name)`; persists to `site.yaml`; `onThemeSwitch` hook
-- Theme configuration — `config_schema` in `theme.yaml`; `TemplateProps.themeConfig`; admin Theme tab
+
+- Theme SDK helpers — `paginate`, `formatDate`, `getCanonicalUrl`, `sortPages`,
+  `groupByYear`, `truncate` (`src/theme-helpers/`)
+- Live theme switching — `engine.switchTheme(name)`; persists to `site.yaml`;
+  `onThemeSwitch` hook
+- Theme configuration — `config_schema` in `theme.yaml`;
+  `TemplateProps.themeConfig`; admin Theme tab
 - Plugin auto-discovery — scans `plugins/` directory for `.ts` files
-- Search UI — public `/search` route; debounced live JS search; theme-overridable via `"search"` template
-- RSS/Atom feeds — `/feed.xml` (RSS 2.0) and `/atom.xml` (Atom 1.0); `site.feed` config
-- XML sitemap enhancements — `exclude` patterns, per-route `changefreq`, `<image:image>` entries
+- Search UI — public `/search` route; debounced live JS search;
+  theme-overridable via `"search"` template
+- RSS/Atom feeds — `/feed.xml` (RSS 2.0) and `/atom.xml` (Atom 1.0); `site.feed`
+  config
+- XML sitemap enhancements — `exclude` patterns, per-route `changefreq`,
+  `<image:image>` entries
 
 ---
 
 ## [0.2.0]
 
 ### Added
+
 - MDX format handler (`src/content/formats/mdx.ts`)
-- Image processing pipeline — resize, convert, cache; `sharp`-based; focal point support
+- Image processing pipeline — resize, convert, cache; `sharp`-based; focal point
+  support
 - Admin panel — authentication, sessions, dashboard, block editor, media library
 - Content workflow — draft/in_review/published/archived status
 - Revision history with visual diff
-- i18n translation status dashboard; side-by-side translation editing; Translation Memory
-- Production hardening — security headers, gzip, cache headers, error pages, health endpoint
+- i18n translation status dashboard; side-by-side translation editing;
+  Translation Memory
+- Production hardening — security headers, gzip, cache headers, error pages,
+  health endpoint
 - Auto-generated XML sitemap
 
 ---
@@ -2240,6 +3171,7 @@ Full audit of new attack surface added since v1.0. No exploited issues; every fi
 ## [0.1.0]
 
 ### Added
+
 - Core engine — content scanning, routing, rendering
 - Markdown, TSX, MDX format handlers
 - File system storage adapter
@@ -2255,12 +3187,13 @@ Full audit of new attack surface added since v1.0. No exploited issues; every fi
 
 ## Migration guide — v0.5 to v0.6
 
-There are no breaking changes between v0.5 and v0.6. The `src/mod.ts` public
-API is a strict superset of v0.5. If you import from `@dune/core` and your
-code compiled against v0.5, it will compile against v0.6 without changes.
+There are no breaking changes between v0.5 and v0.6. The `src/mod.ts` public API
+is a strict superset of v0.5. If you import from `@dune/core` and your code
+compiled against v0.5, it will compile against v0.6 without changes.
 
 The only intentional change is **additive**:
+
 - `PageFrontmatter.sections` is a new optional field.
 - `@dune/core/sections` is a new sub-module export.
-- `PLUGIN_API_VERSION` changed from `"0.3"` to `"0.6"`. If your plugin
-  checks this value with a strict equality check, update it accordingly.
+- `PLUGIN_API_VERSION` changed from `"0.3"` to `"0.6"`. If your plugin checks
+  this value with a strict equality check, update it accordingly.
