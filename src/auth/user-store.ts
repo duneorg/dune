@@ -5,6 +5,8 @@
  * Users are stored as JSON files in data/users/{id}.json.
  * An email index at data/users/by-email/{encodedEmail}.json contains
  * just { id } for O(1) email lookup without scanning all user files.
+ *
+ * @module
  */
 
 import { encodeHex } from "@std/encoding/hex";

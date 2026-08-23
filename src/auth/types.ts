@@ -11,6 +11,8 @@
  * (src/admin/auth/provisioner.ts) — a user with none of those strings in
  * `roles` simply has no admin-panel access, the same way a public site
  * member with no matching content-gating role has none.
+ *
+ * @module
  */
 
 /** A Dune account — admin panel user, public site visitor, or both. */

@@ -8,6 +8,17 @@ doesn't count.
 
 ---
 
+## [0.33.1] — 2026-08-23
+
+### Changed
+
+- **JSR doc-coverage: `@module` tag added to the 4 entrypoints 0.33.0 left
+  without one** (`auth/mount`, `auth/types`, `auth/user-store`,
+  `auth/user-store-db` — all new or touched by the identity-unification work).
+  Each already had a real top-of-file comment; `deno_doc` just doesn't recognize
+  it as the module doc without the tag, same cause as past doc-coverage fixes in
+  this file.
+
 ## [0.33.0] — 2026-08-23
 
 ### Breaking

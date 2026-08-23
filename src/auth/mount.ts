@@ -8,6 +8,8 @@
  *
  * The middleware runs unconditionally — individual routes decide what to do
  * with a null siteUser.
+ *
+ * @module
  */
 
 // deno-lint-ignore no-explicit-any

@@ -7,6 +7,8 @@
  *
  * Table: users
  * Mirrors the User shape — roles stored as a JSON string column.
+ *
+ * @module
  */
 
 import type { DbAdapter } from "../db/types.ts";
