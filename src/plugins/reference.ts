@@ -1,16 +1,24 @@
 /**
- * Plugin specifier validation — supply-chain pinning check.
+ * Plugin specifier validation — supply-chain version-anchoring check.
  *
- * Mirrors `src/themes/reference.ts`'s pinned-specifier rule: a plugin loaded
- * from a registry executes with full process privileges at startup, so a
- * `jsr:`/`npm:` plugin specifier must pin an exact version rather than a
- * caret/tilde range or a bare name that could resolve to a newer,
- * unreviewed (or typosquatted) release.
+ * Mirrors `src/themes/reference.ts`'s rule: a plugin loaded from a registry
+ * executes with full process privileges at startup, so a `jsr:`/`npm:`
+ * plugin specifier must at least name a version (exact, or a `^`/`~` range)
+ * rather than a bare name that resolves to whatever is newest.
+ *
+ * An exact pin isn't required: `--lock --frozen` (dune's default) already
+ * freezes whatever version a range resolves to on first sync and refuses to
+ * silently re-resolve later, so drift is covered by the lockfile either way.
+ * Requiring an exact pin on top of that only bought marginal defense-in-depth
+ * — and it cost real composability with `minimumDependencyAge`, which needs
+ * a range to fall back within when the newest match is too fresh. A site
+ * that wants both an age gate and a plugin/theme pin had no way to satisfy
+ * both at once, so the version-anchoring check was loosened to accept either.
  */
 
-/** Remote package specifiers must pin an exact semver (supply-chain safety). */
+/** Remote package specifiers must at least name a version (exact or ^/~ range). */
 export const PINNED_PLUGIN_SPECIFIER_RE =
-  /^jsr:@?[a-z0-9_.-]+\/[a-zA-Z0-9_.-]+@\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$|^npm:(?:@[^/]+\/)?[^@\s]+@\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$/;
+  /^jsr:@?[a-z0-9_.-]+\/[a-zA-Z0-9_.-]+@[\^~]?\d+(?:\.\d+){0,2}(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$|^npm:(?:@[^/]+\/)?[^@\s]+@[\^~]?\d+(?:\.\d+){0,2}(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$/;
 
 /** True when the string is a JSR or npm package specifier. */
 export function isRemotePluginSpecifier(spec: string): boolean {
@@ -19,15 +27,15 @@ export function isRemotePluginSpecifier(spec: string): boolean {
 
 /**
  * Validate a plugin `src` specifier. No-op for local paths — `jsr:`/`npm:`
- * specifiers require an exact version. `https:` URLs are handled by
- * {@link assertHttpsPluginIntegrity}.
+ * specifiers must name a version (exact, or a `^`/`~` range). `https:` URLs
+ * are handled by {@link assertHttpsPluginIntegrity}.
  */
 export function assertPinnedPluginSpecifier(spec: string): void {
   if (!isRemotePluginSpecifier(spec)) return;
   if (!PINNED_PLUGIN_SPECIFIER_RE.test(spec)) {
     throw new Error(
-      `Plugin package specifier must be pinned to an exact version ` +
-        `(e.g. jsr:@dune/plugin-seo@1.0.0), got: ${spec}`,
+      `Plugin package specifier must name a version, exact or a ^/~ range ` +
+        `(e.g. jsr:@dune/plugin-seo@1.0.0 or jsr:@dune/plugin-seo@^1.0.0), got: ${spec}`,
     );
   }
 }

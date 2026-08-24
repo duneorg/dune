@@ -19,7 +19,22 @@ function makeStorage(): StorageAdapter & { writes: string[] } {
   } as unknown as StorageAdapter & { writes: string[] };
 }
 
-Deno.test("install_plugin: rejects an unpinned jsr: specifier and does not write", async () => {
+Deno.test("install_plugin: rejects an unversioned jsr: specifier and does not write", async () => {
+  const storage = makeStorage();
+  const tools = buildWriteTools({
+    engine: { pages: [] } as unknown as DuneEngine,
+    storage,
+    root: "/tmp",
+    contentDir: "content",
+  });
+  const install = tools.find((t) => t.meta.name === "install_plugin");
+  const result = await install!.handler({ src: "jsr:@dune/plugin-seo" });
+  assertEquals(result.isError, true);
+  assertEquals((result.content[0] as { text: string }).text.includes("version"), true);
+  assertEquals(storage.writes, []);
+});
+
+Deno.test("install_plugin: accepts a caret-range jsr: specifier", async () => {
   const storage = makeStorage();
   const tools = buildWriteTools({
     engine: { pages: [] } as unknown as DuneEngine,
@@ -29,9 +44,7 @@ Deno.test("install_plugin: rejects an unpinned jsr: specifier and does not write
   });
   const install = tools.find((t) => t.meta.name === "install_plugin");
   const result = await install!.handler({ src: "jsr:@dune/plugin-seo@^1.0.0" });
-  assertEquals(result.isError, true);
-  assertEquals((result.content[0] as { text: string }).text.includes("pinned"), true);
-  assertEquals(storage.writes, []);
+  assertEquals(result.isError, undefined);
 });
 
 Deno.test("install_plugin: rejects https: without integrity", async () => {

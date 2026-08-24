@@ -366,7 +366,7 @@ const INSTALL_PLUGIN_META: McpTool = {
   description:
     "Add a plugin specifier to the plugins list in site.yaml. " +
     "The specifier may be a local path (./plugins/my-plugin/index.ts) or " +
-    "a remote specifier pinned to an exact version (jsr:@scope/plugin@1.0.0, npm:plugin-name@1.2.3). " +
+    "a remote specifier naming a version, exact or a ^/~ range (jsr:@scope/plugin@1.0.0, npm:plugin-name@^1.2.3). " +
     "https: specifiers require integrity (sha256:<64 hex> or SRI sha256-<base64>).",
   inputSchema: {
     type: "object",

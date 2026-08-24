@@ -36,13 +36,15 @@ Deno.test("assertThemeName: rejects invalid slugs", () => {
   assertThemeName("my-brand_v2");
 });
 
-Deno.test("assertPinnedThemeSpecifier: requires exact semver", () => {
+Deno.test("assertPinnedThemeSpecifier: requires a version, exact or ^/~ range", () => {
   assertThrows(
-    () => assertPinnedThemeSpecifier("jsr:@dune/theme-paper@^1.0.0"),
+    () => assertPinnedThemeSpecifier("jsr:@dune/theme-paper"),
     Error,
-    "pinned",
+    "version",
   );
   assertPinnedThemeSpecifier("jsr:@dune/theme-paper@1.0.0");
+  assertPinnedThemeSpecifier("jsr:@dune/theme-paper@^1.0.0");
+  assertPinnedThemeSpecifier("jsr:@dune/theme-paper@~1.0.0");
   assertPinnedThemeSpecifier("npm:@scope/pkg@2.1.0");
 });
 

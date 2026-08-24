@@ -77,18 +77,18 @@ Deno.test("validator: catches empty theme.name", () => {
   assertEquals(errors.some((e) => e.includes("theme.name")), true);
 });
 
-Deno.test("validator: catches unpinned jsr: plugin specifier", () => {
+Deno.test("validator: catches unversioned jsr: plugin specifier", () => {
   const config = cloneConfig();
   config.pluginList = [{ src: "jsr:@dune/plugin-seo" }];
   const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("pluginList[0].src") && e.includes("pinned")), true);
+  assertEquals(errors.some((e) => e.includes("pluginList[0].src") && e.includes("version")), true);
 });
 
-Deno.test("validator: catches caret-range npm: plugin specifier", () => {
+Deno.test("validator: accepts caret-range npm: plugin specifier", () => {
   const config = cloneConfig();
   config.pluginList = [{ src: "npm:dune-plugin-thing@^1.0.0" }];
   const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("pluginList[0].src") && e.includes("pinned")), true);
+  assertEquals(errors.length, 0);
 });
 
 Deno.test("validator: accepts pinned jsr: plugin specifier", () => {

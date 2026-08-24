@@ -16,9 +16,17 @@ export interface ThemeReference {
   src?: string;
 }
 
-/** Remote package specifiers must pin an exact semver (supply-chain safety). */
+/**
+ * Remote package specifiers must at least name a version (exact or ^/~
+ * range) — not required to be an exact pin. `--lock --frozen` (dune's
+ * default) already freezes whatever version a range resolves to on first
+ * sync, so drift is covered by the lockfile either way; requiring an exact
+ * pin on top of that only bought marginal defense-in-depth while blocking
+ * composability with `minimumDependencyAge`, which needs a range to fall
+ * back within. See the matching comment in `src/plugins/reference.ts`.
+ */
 export const PINNED_THEME_SPECIFIER_RE =
-  /^jsr:@?[a-z0-9_.-]+\/[a-zA-Z0-9_.-]+@\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$|^npm:(?:@[^/]+\/)?[^@\s]+@\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$/;
+  /^jsr:@?[a-z0-9_.-]+\/[a-zA-Z0-9_.-]+@[\^~]?\d+(?:\.\d+){0,2}(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$|^npm:(?:@[^/]+\/)?[^@\s]+@[\^~]?\d+(?:\.\d+){0,2}(?:[-+][a-zA-Z0-9_.-]+)?(?:\/.*)?$/;
 
 const THEME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
@@ -42,13 +50,13 @@ export function assertThemeName(name: string): void {
   }
 }
 
-/** Validate a remote theme package specifier is version-pinned. */
+/** Validate a remote theme package specifier names a version (exact or ^/~ range). */
 export function assertPinnedThemeSpecifier(spec: string): void {
   if (!isRemoteThemeSpecifier(spec)) return;
   if (!PINNED_THEME_SPECIFIER_RE.test(spec)) {
     throw new Error(
-      `Theme package specifier must be pinned to an exact version ` +
-        `(e.g. jsr:@dune/theme-paper@1.0.0), got: ${spec}`,
+      `Theme package specifier must name a version, exact or a ^/~ range ` +
+        `(e.g. jsr:@dune/theme-paper@1.0.0 or jsr:@dune/theme-paper@^1.0.0), got: ${spec}`,
     );
   }
 }

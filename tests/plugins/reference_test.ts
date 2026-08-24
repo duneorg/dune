@@ -13,18 +13,16 @@ Deno.test("isRemotePluginSpecifier: jsr and npm", () => {
   assertEquals(isRemotePluginSpecifier("https://example.com/plugin.ts"), false);
 });
 
-Deno.test("assertPinnedPluginSpecifier: requires exact semver for jsr/npm", () => {
-  assertThrows(
-    () => assertPinnedPluginSpecifier("jsr:@dune/plugin-seo@^1.0.0"),
-    Error,
-    "pinned",
-  );
+Deno.test("assertPinnedPluginSpecifier: requires a version, exact or ^/~ range, for jsr/npm", () => {
   assertThrows(
     () => assertPinnedPluginSpecifier("jsr:@dune/plugin-seo"),
     Error,
-    "pinned",
+    "version",
   );
   assertPinnedPluginSpecifier("jsr:@dune/plugin-seo@1.0.0");
+  assertPinnedPluginSpecifier("jsr:@dune/plugin-seo@^1.0.0");
+  assertPinnedPluginSpecifier("jsr:@dune/plugin-seo@~1.0.0");
+  assertPinnedPluginSpecifier("jsr:@dune/plugin-seo@^1");
   assertPinnedPluginSpecifier("npm:@scope/pkg@2.1.0");
 });
 

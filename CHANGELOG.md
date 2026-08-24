@@ -8,6 +8,28 @@ doesn't count.
 
 ---
 
+## Unreleased
+
+### Changed
+
+- **Plugin and theme `jsr:`/`npm:` specifiers no longer require an exact
+  version pin — a `^`/`~` range is accepted too.** The exact-pin-only rule
+  (`assertPinnedPluginSpecifier()`, `assertPinnedThemeSpecifier()`) shipped
+  to close a real gap — no version check at all — but the "exact only" shape
+  turned out to structurally conflict with `minimumDependencyAge`: an exact
+  pin names one version, so if that version is younger than the configured
+  age it fails outright, with no older-but-still-matching version to fall
+  back to the way a range allows. A site that wanted both protections
+  (pin discipline and an age gate) had no way to satisfy both.
+  `--lock --frozen` (dune's default) already freezes whatever version a
+  range resolves to on first sync and refuses to silently re-resolve later,
+  so drift is caught by the lockfile regardless of whether the declared
+  specifier is exact or a range — the same reasoning already applied to
+  `@dune/plugin-admin`'s own bootstrap import (see the supply-chain backlog).
+  Requiring an exact pin on top of that bought marginal defense-in-depth at
+  the cost of composability; the check is now: name *a* version, exact or
+  ranged, and let the lockfile do the anti-drift work.
+
 ## [0.33.1] — 2026-08-23
 
 ### Changed
