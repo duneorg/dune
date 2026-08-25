@@ -105,8 +105,14 @@ export async function verifyExternalJwt(
 
     const nowSec = Date.now() / 1000;
 
+    // Require the exp claim — a token without expiry must never be accepted,
+    // otherwise a leaked token is valid forever.
+    if (typeof payload.exp !== "number") {
+      return null;
+    }
+
     // Check exp claim
-    if (typeof payload.exp === "number" && nowSec > payload.exp) {
+    if (nowSec > payload.exp) {
       return null; // expired
     }
 

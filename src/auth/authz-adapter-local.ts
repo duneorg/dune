@@ -44,10 +44,21 @@ export function authzStrictHmacFromEnv(): boolean {
   try {
     const allowUnsigned = Deno.env.get("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
     if (allowUnsigned === "1" || allowUnsigned?.toLowerCase() === "true") {
+      logger.warn("authz.hmac.allow_unsigned", {
+        reason:
+          "DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED is set — unsigned permission tuples are " +
+          "accepted. This weakens tamper detection and should only be used during " +
+          "a signed-tuple migration, never in steady-state production.",
+      });
       return false;
     }
     const legacy = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
     if (legacy === "0" || legacy?.toLowerCase() === "false") {
+      logger.warn("authz.hmac.allow_unsigned", {
+        reason:
+          "DUNE_AUTHZ_HMAC_STRICT=0 — unsigned permission tuples are accepted. " +
+          "This weakens tamper detection; re-enable strict mode after migration.",
+      });
       return false;
     }
     return true;

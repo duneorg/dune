@@ -5,8 +5,8 @@
  *   base64url(JSON({ email, exp, nonce })) + "." + base64url(HMAC-SHA256 signature)
  *
  * No database storage needed for signature/expiry — those are embedded in the token.
- * For single-use enforcement pass a MagicTokenStore; without one tokens are multi-use
- * for the full 15-minute lifetime.
+ * Tokens are single-use: verification claims the token's nonce in an in-memory
+ * store (a shared MagicTokenStore can be passed for multi-process deployments).
  *
  * Default lifetime: 15 minutes.
  */
@@ -109,21 +109,28 @@ export async function createMagicLink(
 }
 
 /**
+ * Default single-use store applied by {@link verifyMagicToken} when the caller
+ * does not supply one. Module-level so every call site in the process shares
+ * one nonce set (multi-process deployments should still pass an explicit
+ * shared store backed by KV or Redis).
+ */
+const defaultTokenStore = new InMemoryMagicTokenStore();
+
+/**
  * Verify a magic link token.
  *
- * When `store` is provided the token is treated as single-use: the first
- * successful verification marks the nonce as used and subsequent calls with
- * the same token return null.
- *
- * Without a store tokens remain valid for their full 15-minute lifetime, which
- * is acceptable for low-risk deployments but should be avoided in production.
+ * Tokens are single-use by default: the first successful verification marks
+ * the token's nonce as used in the shared in-memory store and subsequent calls
+ * with the same token return null. Multi-process or serverless deployments
+ * should pass an explicit `store` backed by Deno KV or Redis so all instances
+ * agree on which nonces have been consumed.
  *
  * @returns `{ email }` on success, `null` when invalid, expired, or already used.
  */
 export async function verifyMagicToken(
   token: string,
   secret: string,
-  store?: MagicTokenStore,
+  store: MagicTokenStore = defaultTokenStore,
 ): Promise<{ email: string } | null> {
   const dotIndex = token.lastIndexOf(".");
   if (dotIndex === -1) return null;

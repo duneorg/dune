@@ -21,6 +21,7 @@ import { extname } from "@std/path";
 import { encodeHex } from "@std/encoding/hex";
 import {
   checkUpload,
+  contentMatchesMime,
   DEFAULT_UPLOAD_EXTENSIONS,
 } from "../security/uploads.ts";
 import { checkBodySize, limitedBody, BodyTooLargeError } from "../security/body-limit.ts";
@@ -249,6 +250,18 @@ export async function handleUpload(
   const publicUrl = `/uploads/${candidate.pathname.slice(uploadsBase.pathname.length)}`;
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+
+  // Magic-byte sniffing: the extension passed the allowlist, but the file's
+  // actual content must match the derived MIME type. Blocks polyglot files
+  // (e.g. an HTML payload renamed to .gif) from being stored and replayed
+  // with a trusted content-type.
+  if (!contentMatchesMime(bytes, mimeType)) {
+    return new Response(
+      JSON.stringify({ error: "File content does not match its file type" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   await storage.write(storagePath, bytes);
 
   return {

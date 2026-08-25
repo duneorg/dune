@@ -133,6 +133,16 @@ Deno.test("InMemoryMagicTokenStore.add: second insert of a live nonce returns fa
   assertEquals(await store.has("nonce-1"), true);
 });
 
+Deno.test("verifyMagicToken: tokens are single-use by default (no store passed)", async () => {
+  const link = await createMagicLink("default@example.com", SECRET, BASE_URL);
+  const token = new URL(link).searchParams.get("token") ?? "";
+
+  const first = await verifyMagicToken(token, SECRET);
+  assertEquals(first?.email, "default@example.com");
+  const replay = await verifyMagicToken(token, SECRET);
+  assertEquals(replay, null);
+});
+
 Deno.test("verifyMagicToken: tokens from different secrets don't cross-verify", async () => {
   const link = await createMagicLink("user@example.com", "secret-A", BASE_URL);
   const token = new URL(link).searchParams.get("token") ?? "";

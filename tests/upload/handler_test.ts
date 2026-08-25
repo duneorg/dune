@@ -90,12 +90,21 @@ function makeUploadRequest(
   });
 }
 
+/** Minimal bytes that pass the magic-byte check for each sniffed type. */
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]).buffer as ArrayBuffer;
+function webpBytes(): ArrayBuffer {
+  const b = new Uint8Array(12);
+  b.set(new TextEncoder().encode("RIFF"), 0);
+  b.set(new TextEncoder().encode("WEBP"), 8);
+  return b.buffer as ArrayBuffer;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 Deno.test("handleUpload: valid JPEG upload returns UploadResult", async () => {
   const storage = createMemoryStorage();
   const config = makeConfig();
-  const req = makeUploadRequest("photo.jpg");
+  const req = makeUploadRequest("photo.jpg", JPEG_BYTES);
 
   const result = await handleUpload(req, config, storage, "data");
 
@@ -116,7 +125,7 @@ Deno.test("handleUpload: valid JPEG upload returns UploadResult", async () => {
 Deno.test("handleUpload: valid PNG upload returns correct MIME type", async () => {
   const storage = createMemoryStorage();
   const config = makeConfig();
-  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const req = makeUploadRequest("image.png", bytes.buffer as ArrayBuffer);
 
   const result = await handleUpload(req, config, storage, "data");
@@ -194,7 +203,7 @@ Deno.test("handleUpload: executable extension is rejected even with image MIME l
 Deno.test("handleUpload: stored filename is UUID-based (no original name leakage)", async () => {
   const storage = createMemoryStorage();
   const config = makeConfig();
-  const req = makeUploadRequest("../../etc/passwd.jpg");
+  const req = makeUploadRequest("../../etc/passwd.jpg", JPEG_BYTES);
 
   const result = await handleUpload(req, config, storage, "data");
   assert(!(result instanceof Response), "Expected UploadResult");
@@ -211,7 +220,7 @@ Deno.test("handleUpload: stored filename is UUID-based (no original name leakage
 Deno.test("handleUpload: storageSubpath is reflected in publicUrl", async () => {
   const storage = createMemoryStorage();
   const config = makeConfig({ storageSubpath: "avatars" });
-  const req = makeUploadRequest("me.webp");
+  const req = makeUploadRequest("me.webp", webpBytes());
 
   const result = await handleUpload(req, config, storage, "data");
   assert(!(result instanceof Response), "Expected UploadResult");
@@ -232,7 +241,7 @@ Deno.test("handleUpload: storageSubpath is reflected in publicUrl", async () => 
 Deno.test("handleUpload: webp upload is accepted", async () => {
   const storage = createMemoryStorage();
   const config = makeConfig();
-  const req = makeUploadRequest("photo.webp");
+  const req = makeUploadRequest("photo.webp", webpBytes());
 
   const result = await handleUpload(req, config, storage, "data");
   assert(!(result instanceof Response), "Expected UploadResult");
@@ -254,4 +263,21 @@ Deno.test("handleUpload: empty file is rejected with 400", async () => {
   const result = await handleUpload(req, config, storage, "data");
   assert(result instanceof Response, "Expected Response error for empty file");
   assertEquals((result as Response).status, 400);
+});
+
+Deno.test("handleUpload: polyglot content is rejected even with an allowed extension", async () => {
+  const storage = createMemoryStorage();
+  const config = makeConfig();
+
+  // HTML payload named .gif — passes the extension allowlist but the content
+  // does not match the GIF magic bytes, so it must be rejected.
+  const html = "<html><script>alert(1)</script></html>";
+  const req = makeUploadRequest("payload.gif", html);
+
+  const result = await handleUpload(req, config, storage, "data");
+  assert(result instanceof Response, "Expected Response error for polyglot file");
+  assertEquals((result as Response).status, 400);
+  const body = await (result as Response).json();
+  assertEquals(body.error, "File content does not match its file type");
+  assert(storage._files.size === 0, "Polyglot file should not be stored");
 });

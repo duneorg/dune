@@ -142,14 +142,21 @@ Deno.test("verifyExternalJwt: roles as single string is wrapped in array", async
   assertEquals(result!.roles, ["admin"]);
 });
 
-Deno.test("verifyExternalJwt: no exp claim is allowed (no expiry enforcement)", async () => {
-  // Tokens without exp are treated as non-expiring
+Deno.test("verifyExternalJwt: token without exp claim returns null", async () => {
+  // A missing exp means the token would never expire — reject it outright.
   const payload = { sub: "user-noexp" };
   const token = await buildJwt(payload, SECRET);
 
   const result = await verifyExternalJwt(token, { secret: SECRET });
-  assertEquals(result !== null, true);
-  assertEquals(result!.userId, "user-noexp");
+  assertEquals(result, null);
+});
+
+Deno.test("verifyExternalJwt: non-numeric exp claim returns null", async () => {
+  const payload = { sub: "user-123", exp: "not-a-number" };
+  const token = await buildJwt(payload, SECRET);
+
+  const result = await verifyExternalJwt(token, { secret: SECRET });
+  assertEquals(result, null);
 });
 
 Deno.test("verifyExternalJwt: issuer mismatch returns null (H-1)", async () => {

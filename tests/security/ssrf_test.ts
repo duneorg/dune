@@ -18,6 +18,33 @@ Deno.test("assertOutboundUrlAllowed: rejects loopback / link-local / private lit
   await assertRejects(() => assertOutboundUrlAllowed("http://localhost/"), SsrfBlockedError);
 });
 
+Deno.test("assertOutboundUrlAllowed: rejects extended special-use IPv4 ranges", async () => {
+  // IETF protocol assignments / NAT64 traversal
+  await assertRejects(() => assertOutboundUrlAllowed("http://192.0.0.10/"), SsrfBlockedError);
+  // TEST-NET documentation ranges
+  await assertRejects(() => assertOutboundUrlAllowed("http://192.0.2.1/"), SsrfBlockedError);
+  await assertRejects(() => assertOutboundUrlAllowed("http://198.51.100.7/"), SsrfBlockedError);
+  await assertRejects(() => assertOutboundUrlAllowed("http://203.0.113.9/"), SsrfBlockedError);
+  // Benchmarking (RFC2544)
+  await assertRejects(() => assertOutboundUrlAllowed("http://198.19.0.1/"), SsrfBlockedError);
+  // Reserved class E + broadcast
+  await assertRejects(() => assertOutboundUrlAllowed("http://240.0.0.1/"), SsrfBlockedError);
+  await assertRejects(() => assertOutboundUrlAllowed("http://255.255.255.255/"), SsrfBlockedError);
+});
+
+Deno.test("assertOutboundUrlAllowed: rejects NAT64, discard, doc, and IPv4-compatible IPv6 literals", async () => {
+  // NAT64 well-known prefix
+  await assertRejects(() => assertOutboundUrlAllowed("http://[64:ff9b::169.254.169.254]/"), SsrfBlockedError);
+  // Discard-only range 100::/64
+  await assertRejects(() => assertOutboundUrlAllowed("http://[100::1]/"), SsrfBlockedError);
+  // Documentation range
+  await assertRejects(() => assertOutboundUrlAllowed("http://[2001:db8::1]/"), SsrfBlockedError);
+  // IPv4-compatible (::a.b.c.d) embedding a loopback address
+  await assertRejects(() => assertOutboundUrlAllowed("http://[::127.0.0.1]/"), SsrfBlockedError);
+  // IPv4-mapped embedding a private address (existing behavior, now via shared path)
+  await assertRejects(() => assertOutboundUrlAllowed("http://[::ffff:10.0.0.1]/"), SsrfBlockedError);
+});
+
 Deno.test("assertOutboundUrlAllowed: allows a private literal when opted in", async () => {
   const { resolvedAddress } = await assertOutboundUrlAllowed("http://10.1.2.3/", {
     allowPrivateDestinations: true,

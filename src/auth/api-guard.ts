@@ -76,3 +76,37 @@ export async function requireAuth(
 
   return { error: null, user };
 }
+
+/**
+ * Ownership check for `mode: "owner"` handlers.
+ *
+ * {@link requireAuth} with mode `"owner"` only verifies that a user is
+ * present — the ownership comparison itself is the handler's responsibility.
+ * This helper performs it consistently:
+ *
+ *   - no user            → 401 (unauthenticated)
+ *   - mismatched owner id → 403 (authenticated, not the owner)
+ *   - match              → null (caller proceeds)
+ *
+ * Usage in a generated or hand-written CRUD route:
+ *
+ * ```ts
+ * const denied = ownershipError(getUser(req), record.userId);
+ * if (denied) return denied;
+ * ```
+ *
+ * Note: pass the record's stored owner field (`record.userId` by convention,
+ * see `api.ownerField` in schema config), never a client-supplied value.
+ */
+export function ownershipError(
+  user: User | null | undefined,
+  ownerId: unknown,
+): Response | null {
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (typeof ownerId !== "string" || ownerId === "" || user.id !== ownerId) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}

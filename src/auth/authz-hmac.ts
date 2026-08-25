@@ -9,6 +9,13 @@
  * verification are skipped (a startup warning is emitted but the server still
  * starts).
  *
+ * **Production posture:** without the key there is NO tamper detection on
+ * permission tuples — anyone with write access to the tuple files can grant
+ * themselves any permission. Production deployments should always set
+ * DUNE_AUTHZ_HMAC_SECRET and run `dune authz:sign` once at provisioning.
+ * The startup warning `authz.hmac.disabled` is your signal that this is
+ * missing; treat it as a configuration error in production environments.
+ *
  * When a key is configured, unsigned files (no `hmac` field) are rejected.
  * Run `dune authz:sign` after setting the secret. To temporarily accept
  * unsigned tuples during migration, set DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED=1

@@ -22,6 +22,12 @@ const PRIVATE_V4_RANGES: Array<[number, number]> = [
   [octets(169, 254, 0, 0), 16],      // link-local
   [octets(0, 0, 0, 0), 8],           // "this network"
   [octets(100, 64, 0, 0), 10],       // CGN
+  [octets(192, 0, 0, 0), 24],        // IETF protocol assignments (incl. NAT64 traversal)
+  [octets(192, 0, 2, 0), 24],        // TEST-NET-1 (documentation)
+  [octets(198, 18, 0, 0), 15],       // benchmarking (RFC2544)
+  [octets(198, 51, 100, 0), 24],     // TEST-NET-2 (documentation)
+  [octets(203, 0, 113, 0), 24],      // TEST-NET-3 (documentation)
+  [octets(240, 0, 0, 0), 4],         // reserved (class E) + broadcast 255.255.255.255
 ];
 
 function octets(a: number, b: number, c: number, d: number): number {
@@ -51,12 +57,31 @@ function isPrivateIPv6(ip: string): boolean {
   if (lower === "::" || lower === "::1") return true; // unspecified, loopback
   if (lower.startsWith("fe80:") || lower.startsWith("fe80::")) return true; // link-local
   if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique-local fc00::/7
-  if (lower.startsWith("::ffff:")) {
-    // IPv4-mapped — extract embedded v4
-    const v4 = lower.slice(7);
-    return isPrivateIPv4(v4);
+  if (lower.startsWith("64:ff9b:")) return true; // NAT64 well-known prefix 64:ff9b::/96
+  if (lower.startsWith("100:")) return true; // discard-only range 100::/64
+  if (lower.startsWith("2001:db8:")) return true; // documentation 2001:db8::/32
+  if (
+    lower.startsWith("::ffff:") || // IPv4-mapped
+    lower.startsWith("::") // IPv4-compatible / mapped in hex form (::7f00:1)
+  ) {
+    const tail = lower.startsWith("::ffff:") ? lower.slice(7) : lower.slice(2);
+    const v4 = ipv6TailToIPv4(tail);
+    return v4 !== null ? isPrivateIPv4(v4) : false;
   }
   return false;
+}
+
+/** Convert the embedded-IPv4 tail of an ::/96 or ::ffff:0:0/96 address to dotted form. */
+function ipv6TailToIPv4(tail: string): string | null {
+  // Dotted form, e.g. "10.0.0.1"
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(tail)) return tail;
+  // Hex groups, e.g. "7f00:1" — last two groups hold the low 32 bits
+  const groups = tail.split(":");
+  if (groups.length < 2) return null;
+  const hi = parseInt(groups[groups.length - 2], 16);
+  const lo = parseInt(groups[groups.length - 1], 16);
+  if (!Number.isInteger(hi) || !Number.isInteger(lo)) return null;
+  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
 }
 
 const HOSTNAME_DENYLIST = new Set([
