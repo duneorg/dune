@@ -14,6 +14,7 @@ import type { CheckoutSession, PaymentProvider, Product, WebhookEvent } from "./
 import type { UserStore } from "../auth/user-store.ts";
 import type { User } from "../auth/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
+import { logger } from "../core/logger.ts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -169,7 +170,7 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
         member: { type: "user", id: userId },
         group: { type: "group", id: roleToGrant },
       }).catch((err) => {
-        console.warn(`[dune/payments] authz.addMember failed for user ${userId}, role ${roleToGrant}:`, err);
+        logger.error("payments.webhook.role_grant_failed", { userId, role: roleToGrant, reason: String(err) });
       });
     }
   }
