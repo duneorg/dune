@@ -37,6 +37,7 @@ export const DUNE_CORE_RUNTIME_IMPORTS: Record<string, string> = {
   "@std/fs": "jsr:@std/fs@^1",
   "@std/crypto": "jsr:@std/crypto@^1",
   "@std/encoding": "jsr:@std/encoding@^1",
+  "@std/encoding/hex": "jsr:@std/encoding@^1/hex",
   "marked": "npm:marked@^15",
   "gray-matter": "npm:gray-matter@^4",
   "@mdx-js/mdx": "npm:@mdx-js/mdx@^3",
