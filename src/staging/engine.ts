@@ -21,6 +21,7 @@
 
 import type { StorageAdapter } from "../storage/types.ts";
 import { encodeHex } from "@std/encoding/hex";
+import { timingSafeEqualStrings as timingSafeEqual } from "../security/timing-safe.ts";
 
 /** An unpublished draft of a page, stored alongside revision history. */
 export interface StagedDraft {
@@ -133,12 +134,5 @@ export function createStagingEngine(config: StagingEngineConfig): StagingEngine 
   };
 }
 
-/** Constant-time string comparison to avoid timing side-channels. */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
+// timingSafeEqual is imported from ../security/timing-safe.ts — the single
+// canonical constant-time comparison used across the codebase.

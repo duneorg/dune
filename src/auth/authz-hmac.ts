@@ -23,6 +23,7 @@
  */
 
 import { logger } from "../core/logger.ts";
+import { timingSafeEqualStrings } from "../security/timing-safe.ts";
 
 /** The shape of a stored tuple including the optional hmac field. */
 export interface SignedTuple {
@@ -85,15 +86,8 @@ export async function verifyTuple(
   if (!tuple.hmac) return "missing";
 
   const expected = await signTuple(tuple, key);
-  // Constant-time comparison via timingSafeEqual-equivalent:
-  // XOR all bytes — returns false immediately if lengths differ
-  if (expected.length !== tuple.hmac.length) return "invalid";
-
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) {
-    diff |= expected.charCodeAt(i) ^ tuple.hmac.charCodeAt(i);
-  }
-  return diff === 0 ? "ok" : "invalid";
+  // Constant-time comparison via the shared security helper.
+  return timingSafeEqualStrings(expected, tuple.hmac) ? "ok" : "invalid";
 }
 
 /**

@@ -14,6 +14,7 @@
 import { encodeBase64Url, decodeBase64Url } from "@std/encoding/base64url";
 import { encodeHex } from "@std/encoding/hex";
 import { crypto as stdCrypto } from "@std/crypto";
+import { timingSafeEqualStrings } from "../security/timing-safe.ts";
 
 const TOKEN_LIFETIME_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -140,7 +141,7 @@ export async function verifyMagicToken(
 
   // Verify signature
   const expectedSig = await sign(payloadB64, secret);
-  if (!timingSafeEqual(expectedSig, providedSig)) return null;
+  if (!timingSafeEqualStrings(expectedSig, providedSig)) return null;
 
   // Decode payload
   let payload: TokenPayload;
@@ -180,27 +181,4 @@ async function sign(message: string, secret: string): Promise<string> {
 
   const signature = await stdCrypto.subtle.sign("HMAC", key, msgData);
   return encodeBase64Url(new Uint8Array(signature));
-}
-
-/**
- * Constant-time comparison of two base64url-encoded HMAC signatures.
- *
- * Uses `Uint8Array` byte comparison so the loop executes the same number of
- * iterations regardless of where a mismatch occurs, preventing timing attacks.
- *
- * Both arguments are base64url-encoded SHA-256 outputs (always 43 bytes after
- * encoding), so the early-exit length check is a non-issue in practice. The
- * `Uint8Array` encoding ensures the comparison is byte-accurate even if the
- * strings contain multi-byte characters.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  if (aBytes.byteLength !== bBytes.byteLength) return false;
-  let diff = 0;
-  for (let i = 0; i < aBytes.byteLength; i++) {
-    diff |= aBytes[i] ^ bBytes[i];
-  }
-  return diff === 0;
 }

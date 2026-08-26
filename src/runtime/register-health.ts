@@ -1,6 +1,7 @@
 import type { App } from "fresh";
 import type { PageCache } from "../cache/mod.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
+import { timingSafeEqualStrings as timingSafeEqual } from "../security/timing-safe.ts";
 
 export interface HealthRouteOptions {
   config: BootstrapResult["config"];
@@ -20,12 +21,6 @@ export function registerHealthRoutes(
 
   // Constant-time comparison prevents timing-side-channel probing of /health?token=.
   // Refs: claudedocs/security-audit-2026-05.md LOW-3 (CWE-200).
-  function timingSafeEqual(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
-    let diff = 0;
-    for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    return diff === 0;
-  }
 
   app.get("/health", (fc) => {
     const detailed = fc.url.searchParams.get("detailed") === "true";

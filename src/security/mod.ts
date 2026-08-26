@@ -13,4 +13,5 @@ export * from "./rate-limit.ts";
 export * from "./safe-yaml.ts";
 export * from "./sanitize-html.ts";
 export * from "./ssrf.ts";
+export * from "./timing-safe.ts";
 export * from "./uploads.ts";

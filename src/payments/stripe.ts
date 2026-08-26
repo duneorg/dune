@@ -14,6 +14,7 @@
 
 import { encodeBase64 } from "@std/encoding/base64";
 import { encodeHex } from "@std/encoding/hex";
+import { timingSafeEqualStrings as timingSafeEqual } from "../security/timing-safe.ts";
 import type { CheckoutSession, PaymentProvider, Product, WebhookEvent } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -230,21 +231,4 @@ export function createStripePaymentProvider(
   }
 
   return { createCheckoutSession, parseWebhook, createPortalSession };
-}
-
-// ---------------------------------------------------------------------------
-// Timing-safe string comparison
-// ---------------------------------------------------------------------------
-
-/**
- * Compare two hex strings in constant time to prevent timing attacks.
- * Returns true only when both strings are identical in length and content.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
 }

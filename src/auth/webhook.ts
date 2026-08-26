@@ -18,6 +18,7 @@
 
 import type { DuneAuthSystem } from "./authz.ts";
 import { logger } from "../core/logger.ts";
+import { timingSafeEqualStrings } from "../security/timing-safe.ts";
 
 export interface WebhookConfig {
   /** IdP provider type — determines signature verification format. */
@@ -43,19 +44,6 @@ export interface WebhookConfig {
 
 /** Replay window for all timestamp-bearing webhooks: 5 minutes. */
 const WEBHOOK_TOLERANCE_MS = 5 * 60 * 1000;
-
-/**
- * Constant-time hex comparison.
- * Both strings must be the same length; returns false otherwise.
- */
-function hexEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
 
 async function hmacHex(secret: string, message: string | Uint8Array): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -105,7 +93,7 @@ async function verifyClerk(req: Request, secret: string): Promise<Uint8Array | n
     try {
       const raw = atob(b64);
       const hex = Array.from(raw).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
-      if (hexEqual(expected, hex)) return body;
+      if (timingSafeEqualStrings(expected, hex)) return body;
     } catch { /* invalid base64 */ }
   }
   return null;
@@ -157,7 +145,7 @@ async function verifyHubSignature(
   const body = new Uint8Array(await req.arrayBuffer());
   const expected = await hmacHex(secret, body);
 
-  return hexEqual(expected, provided) ? body : null;
+  return timingSafeEqualStrings(expected, provided) ? body : null;
 }
 
 // ── Event parsing ─────────────────────────────────────────────────────────────
