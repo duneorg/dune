@@ -33,6 +33,7 @@ import type {
 } from "../types.ts";
 import type { MdxComponentRegistry, MdxSanitizeExtension } from "./mdx-components.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
+import { logger } from "../../core/logger.ts";
 
 /**
  * CSS class on the placeholder `<div>` renderToHtml() returns when MDX
@@ -210,7 +211,7 @@ export class MdxHandler implements ContentFormatHandler {
       // or by inspecting `err` directly.
       const isProd = !Deno.env.get("DUNE_DEV");
       const safeMessage = isProd ? sanitizeMdxError(message) : message;
-      console.error(`  ✗ MDX render error in ${page.sourcePath}: ${safeMessage}`);
+      logger.error("mdx.render_failed", { sourcePath: page.sourcePath, reason: safeMessage });
       return `<div class="${MDX_ERROR_CLASS}"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
     }
   }
@@ -284,7 +285,7 @@ async function resolveColocaledImports(
     }
     if (!(absPath + SEP).startsWith(containmentRoot) && absPath !== mdxDirCanonical) {
       // Resolved outside the page directory — refuse the import.
-      console.warn(`[mdx] refusing import outside page directory: ${specifier}`);
+      logger.warn("mdx.import_outside_page_directory", { specifier });
       continue;
     }
 
@@ -382,7 +383,7 @@ function escapeHtml(str: string): string {
  *   /Users/xrs/project/content/pages/foo.mdx  →  <path>
  *   /home/user/site/src/page.mdx               →  <path>
  *
- * The full message is still logged server-side (see console.error above).
+ * The full message is still logged server-side (see the logger.error above).
  */
 function sanitizeMdxError(message: string): string {
   // Match absolute Unix paths: at least two /segment components.

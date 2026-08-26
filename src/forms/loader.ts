@@ -8,6 +8,7 @@
 
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormDefinition, FormField, FormFieldType, FormMap } from "./types.ts";
+import { logger } from "../core/logger.ts";
 
 /** Valid form field types. */
 const VALID_TYPES = new Set<FormFieldType>([
@@ -55,7 +56,7 @@ export async function loadForms(
         forms[formName] = form;
       }
     } catch (err) {
-      console.warn(`[dune:forms] Failed to load ${filePath}: ${err}`);
+      logger.warn("forms.loader.load_failed", { file: filePath, reason: String(err) });
     }
   }
 
@@ -100,7 +101,7 @@ function parseFormYaml(
   filePath: string,
 ): FormDefinition | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    console.warn(`[dune:forms] ${filePath}: must be a YAML object`);
+    logger.warn("forms.loader.not_object", { file: filePath });
     return null;
   }
 
@@ -152,7 +153,7 @@ function parseField(
   filePath: string,
 ): FormField | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    console.warn(`[dune:forms] ${filePath}: field "${name}" must be an object`);
+    logger.warn("forms.loader.field_not_object", { file: filePath, field: name });
     return null;
   }
 
@@ -160,7 +161,7 @@ function parseField(
   const type = data.type as string;
 
   if (!VALID_TYPES.has(type as FormFieldType)) {
-    console.warn(
+    logger.warn(
       `[dune:forms] ${filePath}: field "${name}" has unknown type "${type}" — ` +
       `valid types: ${[...VALID_TYPES].join(", ")}`,
     );

@@ -42,6 +42,7 @@ import type {
 } from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+import { logger } from "../core/logger.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -132,7 +133,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
 
       const exported = mod.default;
       if (!exported) {
-        console.warn(`[dune] Plugin at "${entry.src}" has no default export — skipped`);
+        logger.warn("plugins.loader.no_default_export", { src: entry.src });
         continue;
       }
 
@@ -148,16 +149,12 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
       } else if (typeof exported === "object") {
         plugin = exported as DunePlugin;
       } else {
-        console.warn(
-          `[dune] Plugin at "${entry.src}" default export must be an object or function — skipped`,
-        );
+        logger.warn("plugins.loader.bad_default_export", { src: entry.src });
         continue;
       }
 
       if (!plugin.name || !plugin.version) {
-        console.warn(
-          `[dune] Plugin at "${entry.src}" is missing required "name" or "version" — skipped`,
-        );
+        logger.warn("plugins.loader.missing_name_or_version", { src: entry.src });
         continue;
       }
 
@@ -190,7 +187,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
       hooks.registerPlugin(plugin);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[dune] Failed to load plugin "${entry.src}": ${message}`);
+      logger.error("plugins.load.failed", { src: entry.src, reason: message });
       // Non-fatal — continue loading remaining plugins
     }
   }
@@ -201,9 +198,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
     if (!plugin.dependencies || plugin.dependencies.length === 0) continue;
     for (const dep of plugin.dependencies) {
       if (!loadedNames.has(dep)) {
-        console.warn(
-          `[dune] Plugin "${plugin.name}" depends on "${dep}", which is not installed.`,
-        );
+        logger.warn("plugins.loader.missing_dependency", { plugin: plugin.name, dependency: dep });
       }
     }
   }
@@ -382,7 +377,7 @@ export async function applyResponseTransforms(
       response = await plugin.transformResponse({ ...ctx, response });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[dune] Plugin "${plugin.name}" transformResponse() failed: ${message}`);
+      logger.error("plugins.transform_response.failed", { plugin: plugin.name, reason: message });
     }
   }
   return response;
@@ -446,7 +441,7 @@ export async function mountPlugins(
       const detail = Deno.env.get("DUNE_DEV") && err instanceof Error
         ? (err.stack ?? err.message)
         : (err instanceof Error ? err.message : String(err));
-      console.error(`[dune] Plugin "${plugin.name}" mount() failed: ${detail}`);
+      logger.error("plugins.mount.failed", { plugin: plugin.name, detail });
     }
   }
 }
@@ -472,7 +467,7 @@ export async function collectAdminServices(
       services = { ...services, ...contributed };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[dune] Plugin "${plugin.name}" adminServices() failed: ${message}`);
+      logger.error("plugins.admin_services.failed", { plugin: plugin.name, reason: message });
     }
   }
   return services;

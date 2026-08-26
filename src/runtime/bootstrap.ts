@@ -489,7 +489,7 @@ export async function bootstrap(
 
   // Load HMAC key once — shared by admin and site-user authz bundles.
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
-    console.error("[dune/authz] Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
+    logger.error("bootstrap.authz.hmac_key_invalid", { reason: err.message });
     return null;
   });
 
@@ -505,10 +505,7 @@ export async function bootstrap(
       // Admin-user tuples are bootstrapped by @dune/plugin-admin's mount() hook
       // after it creates the UserManager. Core only creates the empty system here.
     } catch (err) {
-      console.warn(
-        "[dune/authz] Authz system creation failed, falling back to ROLE_PERMISSIONS:",
-        err,
-      );
+      logger.warn("bootstrap.authz.creation_failed_fallback", { reason: String(err) });
     }
   }
 
@@ -526,7 +523,7 @@ export async function bootstrap(
       createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
     };
     const mismatch = adminCoreMismatch(adminModule);
-    if (mismatch) console.warn(mismatch);
+    if (mismatch) logger.warn("bootstrap.admin_plugin.version_mismatch", { detail: mismatch });
     const { createAdminPlugin } = adminModule;
     const adminPlugin = createAdminPlugin(config, storage, {
       root,
@@ -573,12 +570,10 @@ export async function bootstrap(
         const routes = engine.pages.map((p) => p.route);
         await cdnManager.purgeRoutes(routes);
         if (config.system.debug) {
-          console.log(
-            `[dune] cdn: purged ${routes.length} route(s) via ${cdnProvider.name}`,
-          );
+          logger.debug("cdn.purge.completed", { routes: routes.length, provider: cdnProvider.name });
         }
       } catch (err) {
-        console.warn(`[dune] cdn: purge failed: ${err}`);
+        logger.warn("cdn.purge.failed", { reason: String(err) });
       }
     });
   }

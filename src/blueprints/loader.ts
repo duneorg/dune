@@ -8,6 +8,7 @@
 
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintDefinition, BlueprintField, BlueprintFieldType, BlueprintMap } from "./types.ts";
+import { logger } from "../core/logger.ts";
 
 /** Valid field types — used for YAML parsing validation. */
 const VALID_TYPES = new Set<BlueprintFieldType>([
@@ -55,7 +56,7 @@ export async function loadBlueprints(
       }
     } catch (err) {
       // Log warning but continue — a broken blueprint file should not crash the CMS
-      console.warn(`[dune:blueprints] Failed to load ${filePath}: ${err}`);
+      logger.warn("blueprints.loader.load_failed", { file: filePath, reason: String(err) });
     }
   }
 
@@ -72,7 +73,7 @@ function parseBlueprintYaml(
   filePath: string,
 ): BlueprintDefinition | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    console.warn(`[dune:blueprints] ${filePath}: must be a YAML object`);
+    logger.warn("blueprints.loader.not_object", { file: filePath });
     return null;
   }
 
@@ -107,7 +108,7 @@ function parseField(
   filePath: string,
 ): BlueprintField | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    console.warn(`[dune:blueprints] ${filePath}: field "${name}" must be an object`);
+    logger.warn("blueprints.loader.field_not_object", { file: filePath, field: name });
     return null;
   }
 
@@ -115,7 +116,7 @@ function parseField(
   const type = data.type as string;
 
   if (!VALID_TYPES.has(type as BlueprintFieldType)) {
-    console.warn(
+    logger.warn(
       `[dune:blueprints] ${filePath}: field "${name}" has unknown type "${type}" — ` +
       `valid types: ${[...VALID_TYPES].join(", ")}`,
     );

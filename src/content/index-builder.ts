@@ -34,6 +34,7 @@ import {
   type RouteFileContext,
   sourcePathToRoute,
 } from "./path-utils.ts";
+import { logger } from "../core/logger.ts";
 
 /** Options for {@link buildIndex} and {@link updateIndex}. */
 export interface IndexBuilderOptions {
@@ -424,14 +425,14 @@ function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
       const newIsFlat = isFlatFilePath(page.sourcePath);
       if (!existingIsFlat && newIsFlat) {
         // Existing directory-based page wins
-        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Directory-based page wins.`);
+        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "directory-wins" });
       } else if (existingIsFlat && !newIsFlat) {
         // New directory-based page wins — replace
-        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Directory-based page wins.`);
+        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "directory-wins" });
         routeMap.set(key, page);
       } else {
         // Both same type — keep first
-        console.warn(`[dune] Route collision: "${page.sourcePath}" and "${existing.sourcePath}" both produce route "${page.route}". Keeping first.`);
+        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "first-wins" });
       }
     } else {
       routeMap.set(key, page);

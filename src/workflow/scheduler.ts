@@ -7,6 +7,7 @@
 
 import type { StorageAdapter } from "../storage/types.ts";
 import type { ScheduledAction } from "./types.ts";
+import { logger } from "../core/logger.ts";
 
 /** Options for {@link createScheduler}. */
 export interface SchedulerConfig {
@@ -113,7 +114,7 @@ export function createScheduler(config: SchedulerConfig): Scheduler {
             await this.cancel(action.id);
             executed++;
           } catch (err) {
-            console.error(`Scheduler: failed to execute ${action.id}: ${err}`);
+            logger.error("workflow.scheduler.action_failed", { actionId: action.id, reason: String(err) });
           }
         }
       }
@@ -124,7 +125,7 @@ export function createScheduler(config: SchedulerConfig): Scheduler {
     start(onAction): void {
       this.stop();
       timer = setInterval(() => {
-        this.tick(onAction).catch(console.error);
+        this.tick(onAction).catch((err) => logger.error("workflow.scheduler.tick_failed", { reason: String(err) }));
       }, interval);
     },
 
