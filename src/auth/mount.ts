@@ -53,6 +53,20 @@ export interface PublicAuthContext {
  * Reads `site.auth` from the bootstrapped config. If auth is not configured
  * this is a safe no-op — ctx.state.siteUser will always be null.
  */
+/**
+ * Fresh-state accessors for the resolved site user.
+ *
+ * Centralizes the `(fc.state as ...)` casts previously repeated at every
+ * route registration: one typed write path, one typed read path.
+ */
+function setSiteUser(fc: { state: Record<string, unknown> }, user: User | null): void {
+  fc.state.siteUser = user;
+}
+
+function getSiteUser(fc: { state: Record<string, unknown> }): User | null {
+  return (fc.state.siteUser as User | undefined) ?? null;
+}
+
 export async function mountDuneAuth(
   app: FreshApp,
   ctx: BootstrapResult,
@@ -246,7 +260,7 @@ export async function mountDuneAuth(
     ) => Promise<void>)
     | undefined;
   if (magicEnabled) {
-    const smtpCfg = (config as any).admin?.notifications?.email?.smtp;
+    const smtpCfg = config.admin?.notifications?.email?.smtp;
     if (smtpCfg) {
       // Lazy import to avoid pulling in nodemailer when not used
       const { default: nodemailer } = await import("nodemailer");
@@ -259,7 +273,7 @@ export async function mountDuneAuth(
           pass: expandEnv(smtpCfg.pass),
         },
       });
-      const from = (config as any).admin?.notifications?.email?.from ??
+      const from = config.admin?.notifications?.email?.from ??
         `noreply@${new URL(siteUrl).hostname}`;
       sendEmail = async (to, subject, text, html) => {
         await transporter.sendMail({ from, to, subject, text, html });
@@ -279,7 +293,10 @@ export async function mountDuneAuth(
   // In session mode there is no persistent record to update — the role is stored
   // in the authz tuple (survives restarts) but NOT reflected in the user's
   // session-embedded roles[] until they log out and back in.
-  if (userStoreType === "session" && (config as any).payments?.enabled) {
+  // Note: site.payments has no `enabled` flag — a configured secret_key is the
+  // activation signal (this check previously read a non-existent
+  // `payments.enabled` through an `as any` cast and never fired).
+  if (userStoreType === "session" && config.site.payments?.secret_key) {
     logger.warn("auth.userstore.session_payments_lossy", {
       reason:
         "userStore: session + payments: enabled — role grants after payment " +
@@ -374,7 +391,7 @@ export async function mountDuneAuth(
     copySocketAddr(fc.req, nextReq);
     (fc as any).req = nextReq;
 
-    (fc.state as any).siteUser = user;
+    setSiteUser(fc, user);
     return fc.next();
   });
 
@@ -382,7 +399,7 @@ export async function mountDuneAuth(
 
   // GET /auth/login
   app.get("/auth/login", (fc) => {
-    const siteUser = (fc.state as any).siteUser as User | null;
+    const siteUser = getSiteUser(fc);
     return routes.login(fc.req, siteUser);
   });
 
@@ -391,7 +408,7 @@ export async function mountDuneAuth(
 
   // GET /auth/me
   app.get("/auth/me", (fc) => {
-    const siteUser = (fc.state as any).siteUser as User | null;
+    const siteUser = getSiteUser(fc);
     return routes.me(fc.req, siteUser);
   });
 
@@ -411,18 +428,18 @@ export async function mountDuneAuth(
     const pName = providerName; // capture for closure
     app.get(`/auth/${pName}`, (fc) => routes.oauthStart(fc.req, pName));
     app.get(`/auth/${pName}/link`, (fc) => {
-      const siteUser = (fc.state as any).siteUser as User | null;
+      const siteUser = getSiteUser(fc);
       return routes.oauthLinkStart(fc.req, pName, siteUser);
     });
     app.get(
       `/auth/${pName}/callback`,
       (fc) => {
-        const siteUser = (fc.state as any).siteUser as User | null;
+        const siteUser = getSiteUser(fc);
         return routes.oauthCallback(fc.req, pName, siteUser);
       },
     );
     app.post(`/auth/${pName}/unlink`, (fc) => {
-      const siteUser = (fc.state as any).siteUser as User | null;
+      const siteUser = getSiteUser(fc);
       return routes.unlinkProvider(fc.req, pName, siteUser);
     });
   }
