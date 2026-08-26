@@ -1,0 +1,98 @@
+name: Comment released issues
+
+# Reusable workflow: after a successful JSR publish, find every issue closed
+# by a commit since the previous tag and post a "Released in vX.Y.Z" comment
+# on it. Issues already close at PR-merge time via GitHub's own closing
+# keywords (Fixes/Closes/Resolves) — this doesn't change that. The point is
+# that closing on merge doesn't notify anyone watching the issue that the fix
+# actually shipped; a comment on an already-closed issue does.
+#
+# Call this as a job with `needs: <publish-job-name>` so it only runs after
+# that job succeeds — a failed or not-yet-retried publish (e.g. a package
+# link/auth issue caught after the tag was already pushed) means this job
+# is skipped, by default GitHub Actions `needs` semantics, no extra
+# guarding required. JSR versions are immutable once published, so there's
+# no "oops, retract that announcement" case to worry about on the other
+# side either.
+#
+# Usage from another repo's publish workflow:
+#
+#   comment-issues:
+#     needs: publish
+#     uses: duneorg/dune/.github/workflows/comment-released-issues.yml@main
+#     with:
+#       tag: ${{ github.ref_name }}
+#       tag-pattern: "v*"          # or "{slug}-v*" for dune-themes' per-package tags
+#       version: "1.2.3"           # bare version to put in the comment
+#     secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "The tag that was just published, e.g. v0.34.0 or caravan-v1.1.0"
+        required: true
+        type: string
+      tag-pattern:
+        description: "Glob pattern (git tag --list syntax) to find the previous tag in the same series, e.g. 'v*' or 'caravan-v*'"
+        required: true
+        type: string
+      version:
+        description: "Bare version string to put in the comment, e.g. 1.2.3"
+        required: true
+        type: string
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full tag/commit history, not a shallow clone
+
+      - name: Find closed issues since the previous tag and comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TAG_PATTERN: ${{ inputs.tag-pattern }}
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+
+          PREV_TAG=$(git tag --sort=-creatordate --list "$TAG_PATTERN" | grep -v -x "$TAG" | head -1 || true)
+          if [ -z "$PREV_TAG" ]; then
+            echo "No earlier tag matches '$TAG_PATTERN' — first release in this series, nothing to diff."
+            exit 0
+          fi
+          echo "Diffing ${PREV_TAG}..${TAG} for closing-keyword issue references"
+
+          # GitHub's closing keywords: close/closes/closed, fix/fixes/fixed,
+          # resolve/resolves/resolved — each optionally followed by an
+          # "owner/repo#" prefix (needed since e.g. a duneorg/getdune commit
+          # can close a duneorg/dune issue), then a bare #N.
+          REFS=$(git log "${PREV_TAG}..${TAG}" --format=%B \
+            | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' \
+            | grep -oE '([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' \
+            | sort -u || true)
+
+          if [ -z "$REFS" ]; then
+            echo "No closing-keyword issue references found in ${PREV_TAG}..${TAG}"
+            exit 0
+          fi
+
+          echo "$REFS" | while IFS= read -r ref; do
+            issue_num="${ref##*#}"
+            if [[ "$ref" == */* ]]; then
+              target_repo="${ref%%#*}"
+            else
+              target_repo="$REPO"
+            fi
+            echo "Commenting on ${target_repo}#${issue_num}: Released in v${VERSION}"
+            if ! gh issue comment "$issue_num" --repo "$target_repo" --body "Released in v${VERSION}"; then
+              echo "::warning::Failed to comment on ${target_repo}#${issue_num} — it may not exist, may be a PR rather than an issue, or the repo may be private/inaccessible."
+            fi
+          done
