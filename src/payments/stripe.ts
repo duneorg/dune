@@ -15,6 +15,7 @@
 import { encodeBase64 } from "@std/encoding/base64";
 import { encodeHex } from "@std/encoding/hex";
 import { timingSafeEqualStrings as timingSafeEqual } from "../security/timing-safe.ts";
+import { logger } from "../core/logger.ts";
 import type { CheckoutSession, PaymentProvider, Product, WebhookEvent } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,8 @@ export function createStripePaymentProvider(
     let rawBody: string;
     try {
       rawBody = await req.text();
-    } catch {
+    } catch (err) {
+      logger.warn("payments.webhook.body_read_failed", { reason: String(err) });
       return null;
     }
 
@@ -190,7 +192,8 @@ export function createStripePaymentProvider(
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(rawBody);
-    } catch {
+    } catch (err) {
+      logger.warn("payments.webhook.invalid_json", { reason: String(err) });
       return null;
     }
 

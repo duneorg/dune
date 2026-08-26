@@ -116,10 +116,12 @@ function parseField(
   const type = data.type as string;
 
   if (!VALID_TYPES.has(type as BlueprintFieldType)) {
-    logger.warn(
-      `[dune:blueprints] ${filePath}: field "${name}" has unknown type "${type}" — ` +
-      `valid types: ${[...VALID_TYPES].join(", ")}`,
-    );
+    logger.warn("blueprints.loader.unknown_field_type", {
+      file: filePath,
+      field: name,
+      type,
+      validTypes: [...VALID_TYPES],
+    });
     return null;
   }
 
