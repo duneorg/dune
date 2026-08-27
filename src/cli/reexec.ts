@@ -15,6 +15,21 @@ import {
 } from "./lock-policy.ts";
 import { waitForwardingSignals } from "./forward-signals.ts";
 
+/**
+ * The real CLI entrypoint's URL, resolved relative to this module.
+ *
+ * reexec.ts itself lives at src/cli/reexec.ts, but the entrypoint script is
+ * one directory up at src/cli.ts — a bare "./cli.ts" resolves to the
+ * nonexistent src/cli/cli.ts instead. Only manifests when this module is
+ * loaded from a non-`file://` URL (`jsr:`-resolved, i.e. every real site in
+ * production) — `import.meta.url.startsWith("file://")` short-circuits this
+ * whole re-exec path for a local checkout, which is why `deno task test`
+ * alone never caught it.
+ */
+export function resolveCliEntryUrl(): string {
+  return new URL("../cli.ts", import.meta.url).href;
+}
+
 /** See module doc. Returns normally when no re-exec was needed. */
 export async function maybeReexecWithSiteConfig(
   args: string[],
@@ -56,7 +71,7 @@ export async function maybeReexecWithSiteConfig(
         console.error(lockError);
         Deno.exit(1);
       }
-      const cliUrl = new URL("./cli.ts", import.meta.url).href;
+      const cliUrl = resolveCliEntryUrl();
       const cmd = new Deno.Command(Deno.execPath(), {
         args: [
           "run",
