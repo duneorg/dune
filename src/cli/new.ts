@@ -148,6 +148,79 @@ export default function DefaultTemplate({ page, site, Layout, children }: any) {
 }
 `;
 
+const BLOG_TEMPLATE = `/** @jsxImportSource preact */
+import { h } from "preact";
+import { EditableMarkdown, EditableText } from "@dune/core/ui/editable";
+import StaticLayout from "../components/layout.tsx";
+
+/**
+ * Blog listing template — renders the page's declarative collection
+ * (frontmatter \`collection:\`) as a linked, dated, tagged post list.
+ */
+export default function BlogTemplate({ page, site, Layout, collection, children }: any) {
+  const fm = page?.frontmatter ?? {};
+  const LayoutComponent = Layout ?? StaticLayout;
+  const posts = collection?.items ?? [];
+  return (
+    <LayoutComponent site={site}>
+      <article>
+        <h1>
+          <EditableText field="title" sourcePath={page?.sourcePath}>{fm.title}</EditableText>
+        </h1>
+        <EditableMarkdown sourcePath={page?.sourcePath}>
+          <div>{children}</div>
+        </EditableMarkdown>
+        {posts.length > 0 && (
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {posts.map((post: any) => (
+              <li key={post.route} style={{ margin: "1rem 0" }}>
+                <a href={post.route} style={{ fontWeight: 600 }}>
+                  {post.frontmatter?.title ?? post.route}
+                </a>
+                {post.frontmatter?.date && (
+                  <span style={{ color: "#999", marginLeft: "0.5rem" }}>
+                    — {post.frontmatter.date}
+                  </span>
+                )}
+                {Array.isArray(post.frontmatter?.taxonomy?.tag) && (
+                  <div style={{ color: "#888", fontSize: "0.85rem" }}>
+                    {post.frontmatter.taxonomy.tag.join(", ")}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </article>
+    </LayoutComponent>
+  );
+}
+`;
+
+const ERROR_TEMPLATE = `/** @jsxImportSource preact */
+import { h } from "preact";
+import StaticLayout from "../components/layout.tsx";
+
+/**
+ * Error template — used for 404s and other error responses.
+ * Receives a synthetic page with the status code and reason phrase.
+ */
+export default function ErrorTemplate({ page, site, Layout }: any) {
+  const LayoutComponent = Layout ?? StaticLayout;
+  const status = page?.frontmatter?.statusCode ?? 500;
+  const reason = page?.frontmatter?.message ?? "Something went wrong";
+  return (
+    <LayoutComponent site={site}>
+      <article style={{ textAlign: "center", padding: "3rem 0" }}>
+        <h1>{status}</h1>
+        <p style={{ color: "#666" }}>{reason}</p>
+        <p><a href="/">← Back to the start</a></p>
+      </article>
+    </LayoutComponent>
+  );
+}
+`;
+
 const HOME_MD = `---
 title: Welcome to Dune
 template: default
@@ -175,7 +248,7 @@ This is your new flat-file CMS site. Content is files — no database required.
 
 const BLOG_MD = `---
 title: Blog
-template: default
+template: blog
 published: true
 collection:
   items:
@@ -490,6 +563,8 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   await Deno.writeTextFile(`${dir}/themes/starter/components/layout.tsx`, LAYOUT_TSX);
   await Deno.writeTextFile(`${dir}/themes/starter/islands/NavToggle.tsx`, NAV_TOGGLE_TSX);
   await Deno.writeTextFile(`${dir}/themes/starter/templates/default.tsx`, DEFAULT_TEMPLATE);
+  await Deno.writeTextFile(`${dir}/themes/starter/templates/blog.tsx`, BLOG_TEMPLATE);
+  await Deno.writeTextFile(`${dir}/themes/starter/templates/error.tsx`, ERROR_TEMPLATE);
   await Deno.writeTextFile(`${dir}/content/01.home/default.md`, HOME_MD);
   await Deno.writeTextFile(`${dir}/content/02.blog/blog.md`, BLOG_MD);
   await Deno.writeTextFile(`${dir}/content/02.blog/01.hello-world/post.md`, FIRST_POST);
@@ -515,6 +590,8 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`    themes/starter/components/layout.tsx`);
   console.log(`    themes/starter/islands/NavToggle.tsx  (Preact island — mobile nav)`);
   console.log(`    themes/starter/templates/default.tsx`);
+  console.log(`    themes/starter/templates/blog.tsx     (blog listing — renders the collection)`);
+  console.log(`    themes/starter/templates/error.tsx    (404/error pages)`);
   console.log(`    deno.json`);
   console.log(`    main.ts                 (site entrypoint — generated, don't customize)`);
   if (skillsResult.installed > 0) {
