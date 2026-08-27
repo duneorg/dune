@@ -8,7 +8,7 @@ doesn't count.
 
 ---
 
-## [Unreleased]
+## [0.34.0] — 2026-08-27
 
 ### Added
 

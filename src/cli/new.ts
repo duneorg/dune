@@ -322,7 +322,7 @@ const DENO_JSON = `{
     "preact/jsx-runtime": "npm:preact@^10/jsx-runtime",
     "preact/jsx-dev-runtime": "npm:preact@^10/jsx-dev-runtime",
     "preact-render-to-string": "npm:preact-render-to-string@^6",
-    "@dune/core": "jsr:@dune/core@^0.33",
+    "@dune/core": "jsr:@dune/core@^0.34",
 ${Object.entries(DUNE_CORE_RUNTIME_IMPORTS).map(([k, v]) => `    "${k}": "${v}"`).join(",\n")}
   },
   "tasks": {
