@@ -10,6 +10,22 @@ doesn't count.
 
 ## [Unreleased]
 
+### Added
+
+- **`dune dev:link`** — reinstalls the global `dune` shim against the local
+  checkout, refreshing its frozen import-map snapshot. The documented
+  local-dev install (`deno install --global -n dune -A --import-map=deno.json
+  src/cli.ts`) has two problems: `--import-map` doesn't resolve JSR/npm
+  package subpaths through their bare-package entry the way normal
+  `--config`-based resolution does, and `deno install` snapshots `deno.json`
+  at install time regardless of flag, so it silently goes stale whenever
+  `imports` change afterward. Fixed by switching the documented command (and
+  this new one) to `--config`, which doesn't have the subpath problem.
+  `import-map-error.ts`'s existing "missing import map entry" message now
+  also detects the stale-snapshot case (the specifier is already in the
+  checkout's live `deno.json`) and points at `dune dev:link` instead of
+  telling someone to add an entry that's already there. (duneorg/dune#6)
+
 ### Fixed
 
 - **External JWTs without an `exp` claim never expired.** `verifyExternalJwt()`

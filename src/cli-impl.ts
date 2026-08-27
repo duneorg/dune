@@ -4,6 +4,7 @@
  * Commands:
  *   dune new [dir]             — Scaffold a new Dune site
  *   dune dev                   — Start dev server with file watching
+ *   dune dev:link              — Reinstall the global shim against this checkout
  *   dune build                 — Build content index + validate config
  *   dune build --static        — Generate a fully static site (SSG)
  *   dune serve                 — Start production server
@@ -44,6 +45,7 @@
 /** @module */
 
 import { devCommand } from "./cli/dev.ts";
+import { devLinkCommand } from "./cli/dev-link.ts";
 import { computeLockPolicy, parseRootArg } from "./cli/lock-policy.ts";
 import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
 import { serveCommand } from "./cli/serve.ts";
@@ -168,6 +170,10 @@ export async function main(args: string[] = Deno.args) {
           port: parseInt(options.port as string) || 3000,
           debug: options.debug === true,
         });
+        break;
+
+      case "dev:link":
+        await devLinkCommand();
         break;
 
       case "validate":

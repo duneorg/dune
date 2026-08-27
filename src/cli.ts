@@ -213,7 +213,7 @@ if (import.meta.main) {
     await main();
   } catch (err) {
     if (isImportMapError(err)) {
-      console.error(formatImportMapError(err as Error));
+      console.error(await formatImportMapError(err as Error));
       Deno.exit(1);
     }
     throw err;
