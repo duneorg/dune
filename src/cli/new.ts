@@ -464,6 +464,7 @@ import {
   ENTRYPOINT_TASKS,
   MAIN_TS_TEMPLATE,
 } from "./entrypoint-template.ts";
+import { warnIfUnregisteredWorkspaceMember } from "./workspace-member-check.ts";
 
 export async function newCommand(dir: string, options: { headless?: boolean } = {}) {
   if (options.headless) {
@@ -523,6 +524,8 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`\n  Next steps:`);
   console.log(`    cd ${dir}`);
   console.log(`    deno task dev`);
+
+  await warnIfUnregisteredWorkspaceMember(dir);
 }
 
 async function _newHeadlessCommand(dir: string) {
@@ -588,6 +591,8 @@ async function _newHeadlessCommand(dir: string) {
   console.log(`    cd ${dir}`);
   console.log(`    deno task dev`);
   console.log(`\n  Admin panel: http://localhost:3000/admin\n`);
+
+  await warnIfUnregisteredWorkspaceMember(dir);
 }
 
 async function mkdirp(path: string) {
