@@ -1,10 +1,11 @@
 # Changelog
 
 All notable changes to Dune CMS are documented here. This project follows
-[Semantic Versioning](https://semver.org). Pre-1.0 minor releases may include
-breaking changes per semver convention. Stable API guarantees begin at v1.0.0 —
-see [VERSIONING.md](VERSIONING.md) for exactly what "breaking" means and what
-doesn't count.
+[Semantic Versioning](https://semver.org). Before v1.0.0, Minor is reserved
+for releases that break something (contract or an existing site) — additions,
+fixes, and refactors are Patch. Stable API guarantees, and the post-1.0
+Minor/Patch split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for
+exactly what "breaking" means and what doesn't count.
 
 ---
 

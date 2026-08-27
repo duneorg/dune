@@ -50,11 +50,36 @@ already wrong gets corrected, and not when new capability is added.
 
 ## Everything else
 
+Applies from `1.0.0` onward:
+
 - **Minor**: passes both tests above but adds anything — new exports, new hooks,
   new CLI commands, internal refactors, deprecate-with-a-shim (the shim itself
   keeps old callers working; only the eventual removal of the shim is a candidate
   for the contract test, in a later release).
 - **Patch**: pure bug/security fixes with no surface or working-site impact.
+
+## Before 1.0.0
+
+Before `1.0.0`, the split above doesn't apply — there's no major version to
+escalate a real break to, so **Minor is reserved for breaking changes only**:
+
+- **Minor**: fails either test above (the contract test or the working-site
+  test). This is the pre-1.0 stand-in for what becomes a major bump once the
+  library is stable — the version number itself is the signal that something
+  in this release broke an existing, unmodified site or its documented
+  surface, and the changelog should be read before upgrading.
+- **Patch**: passes both tests — everything else, with no exception. A pure
+  fix, a security fix, a pin bump, an internal refactor, *and a genuine new
+  feature or export* are all Patch pre-1.0. Adding something does not by
+  itself earn Minor before `1.0.0`, unlike the rule above.
+
+The point of this split is that a pre-1.0 Patch release should be safe to take
+without reading anything — if it isn't, it was misclassified, not the rule's
+fault. Classify by actually running both tests (especially the working-site
+test — passing the local test suite is not sufficient proof, see the note in
+memory on why `jsr:`-resolved bugs are invisible to local testing) before
+picking Minor vs. Patch; don't default to Minor because a release happens to
+add something.
 
 ## Applies beyond core
 
