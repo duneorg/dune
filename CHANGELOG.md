@@ -8,6 +8,19 @@ doesn't count.
 
 ---
 
+## [0.34.1] — 2026-08-27
+
+### Fixed
+
+- **`dune serve`/`dune dev` crashed on startup for any real site** (own
+  `deno.json`, `@dune/core` resolved via `jsr:` — the normal production
+  deployment shape) **on 0.34.0.** The site-config re-exec path resolved its
+  own entrypoint one directory too shallow, landing on a file that doesn't
+  exist. Only manifested for a `jsr:`-resolved load, not a local checkout, so
+  the existing test suite never exercised it; a regression test now resolves
+  the URL the same way the runtime does and asserts the target file exists.
+  0.33.1 and earlier are unaffected.
+
 ## [0.34.0] — 2026-08-27
 
 ### Added
