@@ -14,6 +14,9 @@ Commands:
   new [dir]           Create a new Dune site
   new [dir] --headless  Create a headless Fresh+Dune site (no theme)
   dev                 Start development server with hot-reload
+  dev:link            Reinstall the global "dune" shim against this checkout
+                      (for developing Dune itself — refreshes its frozen
+                      import-map snapshot after deno.json's imports change)
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server (--frozen enforces deno.lock;

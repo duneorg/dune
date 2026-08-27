@@ -57,8 +57,10 @@ To uninstall: `deno uninstall dune`
 
 **For local development** (working on the framework itself):
 ```bash
-deno install --global -n dune -A --import-map=deno.json src/cli.ts
+deno install --global -n dune -A --config=deno.json src/cli.ts
 ```
+
+This snapshots `deno.json` at install time rather than reading it live, so it goes stale whenever `deno.json`'s `imports` change afterward. Run `dune dev:link` (from inside the checkout) to relink and refresh it instead of retyping the command above.
 
 ## CLI Commands
 
@@ -66,6 +68,7 @@ deno install --global -n dune -A --import-map=deno.json src/cli.ts
 |---------|-------------|
 | `dune new [dir]` | Scaffold a new site with starter theme |
 | `dune dev` | Dev server with hot-reload (watches content + themes) |
+| `dune dev:link` | Reinstall the global shim against this checkout (local dev on Dune itself) |
 | `dune build` | Build content index, validate config |
 | `dune build --static` | Static site generation |
 | `dune serve` | Production server |
