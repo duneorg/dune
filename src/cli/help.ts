@@ -64,12 +64,12 @@ Commands:
                       the default because that is the local-agent workflow)
 
   plugin:list         List installed plugins and their hook subscriptions
-  plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name")
-  plugin:remove       Remove a plugin from site.yaml
+  plugin:install      Add a plugin to site.yaml (e.g. "jsr:@scope/name"; --dry-run to preview)
+  plugin:remove       Remove a plugin from site.yaml (--dry-run to preview)
   plugin:create       Scaffold a new plugin project
   plugin:publish      Publish plugin to JSR (runs deno publish in plugin dir)
   plugin:search       Search JSR for Dune plugins
-  plugin:update       Update JSR plugins to their latest versions
+  plugin:update       Update JSR plugins to their latest versions (--dry-run to preview)
 
   theme:list          List local themes and registered package themes
   theme:install       Register a JSR/npm theme package (--name, --activate)

@@ -9,6 +9,27 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`dune plugin:update`, `plugin:install`, and `plugin:remove` now accept
+  `--dry-run`.** All three mutate `config/site.yaml` with no confirmation
+  prompt; `plugin:update --dry-run` in particular was silently accepted and
+  applied the update for real (the flag was neither recognised nor rejected).
+  With `--dry-run` they compute and print what would change — version bumps,
+  the added entry, the removed entries — without writing the file.
+
+### Known limitations
+
+- **`plugin:install` / `plugin:remove` / `plugin:update` strip `#` comments
+  from `config/site.yaml`.** Their write path round-trips the file through a
+  parse → mutate → re-serialize cycle, which does not preserve YAML comments.
+  A hand-commented `plugins:` block loses its comments after any one of these
+  commands runs. Use `--dry-run` to preview a change and then hand-edit
+  `site.yaml` if you need to keep comments. A comment-preserving fix would
+  require a different YAML editor and is not yet scheduled.
+
 ## [0.34.1] — 2026-08-27
 
 ### Fixed
