@@ -17,12 +17,14 @@
  * ## Admin panel access (top-level)
  *   authz.check({ who: adminUser, canThey: "access", onWhat: { type: "app", id: "admin" } })
  *
- * ## Granular admin permissions (mirror of ROLE_PERMISSIONS)
+ * ## Granular admin permissions
  *   authz.check({ who: adminUser, canThey: "pages.create", onWhat: { type: "app", id: "admin" } })
  *
- * The admin permission actions below are the canonical permission definition.
- * ROLE_PERMISSIONS in src/admin/types.ts is kept for reference only and must
- * stay in sync with this schema.
+ * The admin permission actions below are the sole, canonical permission
+ * definition — `@dune/plugin-admin` no longer keeps its own `ROLE_PERMISSIONS`
+ * mirror (removed alongside dec-identity-unification Phase 5c/6, 3.0.0); see
+ * {@link roleHasPermission} for the one place that still needs a synchronous
+ * read of this same data instead of `authz.check()`.
  */
 
 import { defineSchema } from "polizy";
@@ -65,7 +67,7 @@ export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema
 
     // ── Admin panel — granular permissions (maps 1:1 with AdminPermission) ─
     //
-    // These mirror ROLE_PERMISSIONS in src/admin/types.ts. Change one → change both.
+    // Sole definition — nothing else mirrors this (see the module doc above).
     //
     "pages.create": ["admin", "editor", "author"],
     "pages.read":   ["admin", "editor", "author"],
@@ -93,3 +95,23 @@ export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema
 
 /** TypeScript type of the Dune authorization schema — pass to `AuthSystem` generics. */
 export type DuneAuthzSchema = typeof duneAuthzSchema;
+
+/**
+ * Synchronous, role-only approximation of an admin permission check, sourced
+ * directly from this schema's `actionToRelations` — the single canonical
+ * permission definition, not a hand-maintained mirror of it.
+ *
+ * `authz.check()` is the real, async, sole authority for every admin route.
+ * This exists only for the one place in Dune that cannot call it: a
+ * published, synchronous hook API (`ResponseTransformContext.auth
+ * .hasPermission()`, `src/cli/response-transforms.ts`) that plugin authors
+ * already depend on. It answers exactly for the permission that gated the
+ * hook context into existing in the first place, and is a reasonable
+ * approximation for any other permission a plugin might ask about — the
+ * same tradeoff a flat role table always made, just without a second table
+ * to keep in sync with this one.
+ */
+export function roleHasPermission(role: string, permission: string): boolean {
+  const relations = duneAuthzSchema.actionToRelations as Record<string, readonly string[]>;
+  return relations[permission]?.includes(role) ?? false;
+}

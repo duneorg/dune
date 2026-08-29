@@ -32,17 +32,6 @@ import { clientIp, rememberSocketAddr } from "../../src/security/rate-limit.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import { USER_HEADER } from "../../src/auth/types.ts";
 
-function makeAdminAuth(allowed: boolean) {
-  const calls = { hasPermission: 0 };
-  return {
-    calls,
-    hasPermission(_authResult: unknown, _permission: string): boolean {
-      calls.hasPermission++;
-      return allowed;
-    },
-  };
-}
-
 function makeAuthz(allowed: boolean) {
   const calls = { check: 0 };
   return {
@@ -57,50 +46,28 @@ function makeAuthz(allowed: boolean) {
 
 const authResult = { authenticated: true, user: { id: "u1" } };
 
-Deno.test("checkInlineEditPermission: authz.check() allowing wins even when ROLE_PERMISSIONS would deny", async () => {
-  const adminAuth = makeAdminAuth(false);
+Deno.test("checkInlineEditPermission: allows when authz.check() allows", async () => {
   const authz = makeAuthz(true);
   const result = await checkInlineEditPermission(
     authz as unknown as DuneAuthSystem,
-    adminAuth,
     authResult,
   );
   assertEquals(result, true);
   assertEquals(authz.calls.check, 1);
-  assertEquals(adminAuth.calls.hasPermission, 0);
 });
 
-Deno.test("checkInlineEditPermission: authz.check() denying wins even when ROLE_PERMISSIONS would allow", async () => {
-  const adminAuth = makeAdminAuth(true);
+Deno.test("checkInlineEditPermission: denies when authz.check() denies", async () => {
   const authz = makeAuthz(false);
   const result = await checkInlineEditPermission(
     authz as unknown as DuneAuthSystem,
-    adminAuth,
     authResult,
   );
   assertEquals(result, false);
   assertEquals(authz.calls.check, 1);
-  assertEquals(adminAuth.calls.hasPermission, 0);
 });
 
-Deno.test("checkInlineEditPermission: falls back to ROLE_PERMISSIONS when authz is undefined", async () => {
-  const adminAuth = makeAdminAuth(true);
-  const result = await checkInlineEditPermission(
-    undefined,
-    adminAuth,
-    authResult,
-  );
-  assertEquals(result, true);
-  assertEquals(adminAuth.calls.hasPermission, 1);
-});
-
-Deno.test("checkInlineEditPermission: falls back to ROLE_PERMISSIONS denial when authz is undefined", async () => {
-  const adminAuth = makeAdminAuth(false);
-  const result = await checkInlineEditPermission(
-    undefined,
-    adminAuth,
-    authResult,
-  );
+Deno.test("checkInlineEditPermission: fails closed (denies) when authz is undefined, no ROLE_PERMISSIONS fallback", async () => {
+  const result = await checkInlineEditPermission(undefined, authResult);
   assertEquals(result, false);
 });
 

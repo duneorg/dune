@@ -11,6 +11,25 @@ exactly what "breaking" means and what doesn't count.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dropped the `ROLE_PERMISSIONS`-table fallback from every core-side admin
+  permission decision — `authz.check()` is now the sole authority, no
+  exceptions.** `checkInlineEditPermission()` and
+  `runPluginResponseTransforms()`'s `pages.update` gate previously fell back
+  to a flat role table when `authz` was undefined (authz creation failing at
+  startup — an in-process object construction that essentially never fails
+  in practice). Both now fail closed (deny) instead of silently degrading to
+  a separate, less-audited mechanism — dec-identity-unification Phase 5c's
+  second half, finally closed. The one place that genuinely can't call the
+  real async `authz.check()` — `ResponseTransformContext.auth.hasPermission()`,
+  a published *synchronous* hook API — now reads `roleHasPermission()`
+  (new, `@dune/core/auth/authz-schema`), a synchronous lookup against the
+  same canonical `actionToRelations` schema `authz.check()` itself uses,
+  instead of a hand-maintained mirror. `@dune/plugin-admin` no longer needs
+  to keep its own `ROLE_PERMISSIONS` table in sync with this schema at all —
+  see its own 3.0.0 changelog entry for the corresponding removal there.
+
 ### Added
 
 - **`dune plugin:update`, `plugin:install`, and `plugin:remove` now accept
