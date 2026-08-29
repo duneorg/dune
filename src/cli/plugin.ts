@@ -5,6 +5,14 @@
  *   dune plugin:install <src>         Add a plugin to site.yaml
  *   dune plugin:remove <src|name>     Remove a plugin from site.yaml
  *   dune plugin:create [name]         Scaffold a new plugin project
+ *   dune plugin:update [name]         Bump JSR plugins to their latest versions
+ *
+ * `plugin:install`, `plugin:remove`, and `plugin:update` accept `--dry-run` to
+ * report what would change in config/site.yaml without writing the file.
+ *
+ * Known limitation: the write path round-trips site.yaml through parseYaml →
+ * stringifyYaml, which strips any `#` comments from the file. Passing
+ * `--dry-run` avoids this by not writing at all.
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
@@ -64,8 +72,9 @@ export async function pluginListCommand(root: string): Promise<void> {
 export async function pluginInstallCommand(
   root: string,
   src: string,
-  options: { integrity?: string } = {},
+  options: { integrity?: string; dryRun?: boolean } = {},
 ): Promise<void> {
+  const dryRun = options.dryRun === true;
   if (!src) {
     console.error("Usage: dune plugin:install <src> [--integrity sha256:<hex>]");
     console.error(
@@ -105,6 +114,12 @@ export async function pluginInstallCommand(
     options.integrity ? { src, integrity: options.integrity } : { src },
   );
   parsed.plugins = existing;
+
+  if (dryRun) {
+    console.log(`Would add plugin "${src}" to config/site.yaml (dry run).`);
+    console.log("  No files written.");
+    return;
+  }
 
   await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
   console.log(`✓ Added plugin "${src}" to config/site.yaml`);
@@ -186,7 +201,9 @@ async function printPluginPostInstallHints(
 export async function pluginRemoveCommand(
   root: string,
   srcOrName: string,
+  options: { dryRun?: boolean } = {},
 ): Promise<void> {
+  const dryRun = options.dryRun === true;
   if (!srcOrName) {
     console.error("Usage: dune plugin:remove <src|name>");
     Deno.exit(1);
@@ -220,6 +237,17 @@ export async function pluginRemoveCommand(
 
   parsed.plugins = filtered.length > 0 ? filtered : undefined;
   if (!filtered.length) delete parsed.plugins;
+
+  if (dryRun) {
+    const removedCount = before - filtered.length;
+    console.log(
+      `Would remove ${removedCount} plugin${
+        removedCount !== 1 ? "s" : ""
+      } matching "${srcOrName}" from config/site.yaml (dry run).`,
+    );
+    console.log("  No files written.");
+    return;
+  }
 
   await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
   console.log(`✓ Removed plugin "${srcOrName}" from config/site.yaml`);
@@ -504,10 +532,44 @@ export async function pluginSearchCommand(
 
 // ─── plugin:update ────────────────────────────────────────────────────────────
 
+export interface PluginUpdateOptions {
+  /** Compute the changes but do not write config/site.yaml. */
+  dryRun?: boolean;
+  /**
+   * Test seam: resolve the latest published version of a JSR package.
+   * Returns `null` when the version cannot be determined. Defaults to a
+   * lookup against the public JSR API.
+   */
+  resolveLatestVersion?: (
+    scope: string,
+    pkgName: string,
+  ) => Promise<string | null>;
+}
+
+/** Default JSR latest-version lookup used by `pluginUpdateCommand`. */
+async function fetchLatestJsrVersion(
+  scope: string,
+  pkgName: string,
+): Promise<string | null> {
+  const res = await fetch(
+    `https://jsr.io/api/scopes/${scope}/packages/${pkgName}`,
+    { headers: { "Accept": "application/json" } },
+  );
+  if (!res.ok) {
+    throw new Error(`JSR returned ${res.status}`);
+  }
+  const data = await res.json() as { latestVersion?: string };
+  return data.latestVersion ?? null;
+}
+
 export async function pluginUpdateCommand(
   root: string,
   name?: string,
+  options: PluginUpdateOptions = {},
 ): Promise<void> {
+  const dryRun = options.dryRun === true;
+  const resolveLatestVersion = options.resolveLatestVersion ??
+    fetchLatestJsrVersion;
   const siteYamlPath = join(root, "config", "site.yaml");
   let raw = "";
   try {
@@ -555,18 +617,7 @@ export async function pluginUpdateCommand(
     const [, scope, pkgName] = scopeMatch;
 
     try {
-      const res = await fetch(
-        `https://jsr.io/api/scopes/${scope}/packages/${pkgName}`,
-        {
-          headers: { "Accept": "application/json" },
-        },
-      );
-      if (!res.ok) {
-        console.log(`  ${pkgId}: could not check (JSR returned ${res.status})`);
-        continue;
-      }
-      const data = await res.json() as { latestVersion?: string };
-      const latest = data.latestVersion;
+      const latest = await resolveLatestVersion(scope, pkgName);
 
       if (!latest) {
         console.log(`  ${pkgId}: no latest version on JSR`);
@@ -589,6 +640,15 @@ export async function pluginUpdateCommand(
   }
 
   if (updated > 0) {
+    if (dryRun) {
+      console.log(
+        `\nWould update ${updated} plugin${
+          updated !== 1 ? "s" : ""
+        } in config/site.yaml (dry run).`,
+      );
+      console.log("  No files written.");
+      return;
+    }
     await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
     console.log(
       `\n✓ Updated ${updated} plugin${

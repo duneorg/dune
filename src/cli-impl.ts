@@ -20,12 +20,12 @@
  *   dune schema:export         — Print JSON Schema for site.yaml to stdout
  *   dune mcp:serve             — Start MCP server over stdio for AI agent integration
  *   dune plugin:list           — List installed plugins
- *   dune plugin:install <src>  — Add a plugin to site.yaml
- *   dune plugin:remove <src>   — Remove a plugin from site.yaml
+ *   dune plugin:install <src>  — Add a plugin to site.yaml (--dry-run to preview)
+ *   dune plugin:remove <src>   — Remove a plugin from site.yaml (--dry-run to preview)
  *   dune plugin:create [name]  — Scaffold a new plugin
  *   dune plugin:publish [name] — Publish plugin to JSR
  *   dune plugin:search <query> — Search JSR for plugins
- *   dune plugin:update [name]  — Update JSR plugins to latest versions
+ *   dune plugin:update [name]  — Update JSR plugins to latest versions (--dry-run to preview)
  *   dune migrate:from-grav <src>       — Import a Grav site
  *   dune migrate:from-wordpress <src>  — Import a WordPress WXR export
  *   dune migrate:from-markdown <src>   — Import a flat markdown folder
@@ -320,11 +320,14 @@ export async function main(args: string[] = Deno.args) {
       case "plugin:install":
         await pluginCommands.install(root, options.positional as string, {
           integrity: options.integrity as string | undefined,
+          dryRun: options.dryRun === true,
         });
         break;
 
       case "plugin:remove":
-        await pluginCommands.remove(root, options.positional as string);
+        await pluginCommands.remove(root, options.positional as string, {
+          dryRun: options.dryRun === true,
+        });
         break;
 
       case "plugin:create":
@@ -340,7 +343,9 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "plugin:update":
-        await pluginCommands.update(root, options.positional as string);
+        await pluginCommands.update(root, options.positional as string, {
+          dryRun: options.dryRun === true,
+        });
         break;
 
       case "theme:list":
