@@ -145,6 +145,14 @@ async function main() {
         `  ❌ @dune/${pkg}@${latest}: pin "${rangeStr}" does NOT cover ${coreVersion} — ` +
           `this package's real @dune/core imports will silently resolve to a stale core version.`,
       );
+      // GitHub Actions workflow-command syntax: surfaces as a visible
+      // annotation even though this job runs continue-on-error (see
+      // ci.yml) — the finding stays discoverable without blocking
+      // unrelated PRs during the expected core-bump-to-republish window.
+      console.log(
+        `::warning title=Core pin drift::@dune/${pkg}@${latest}'s pin "${rangeStr}" ` +
+          `does not cover core ${coreVersion} yet — bump its @dune/core range and publish a new version.`,
+      );
       violations++;
     }
   }

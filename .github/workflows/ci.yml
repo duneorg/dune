@@ -18,4 +18,26 @@ jobs:
 
       - run: deno task check
 
+  # Deliberately non-blocking: a sibling package's published @dune/core pin
+  # can only be re-covered by publishing a new sibling version, which can't
+  # happen before this repo's own core bump ships. Every commit to main
+  # between "core bump lands" and "all siblings republished" would otherwise
+  # show red here for reasons unrelated to that commit — normalizing red CI
+  # and burying real failures next to it. Findings still surface as a
+  # ::warning:: annotation (see check-core-pin-drift.ts) and as a visible
+  # (but non-blocking) status on this job — check it, don't ignore it, but
+  # it's a "go republish the siblings" reminder, not a "don't publish this"
+  # gate. Contrast plugin-admin's check:core-imports: that one is a
+  # same-commit, same-repo consistency check with no publish-timing
+  # dependency, so it correctly stays hard-blocking.
+  pin-drift:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - run: deno task check:core-pin-drift
