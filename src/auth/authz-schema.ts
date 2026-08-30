@@ -110,6 +110,15 @@ export type DuneAuthzSchema = typeof duneAuthzSchema;
  * approximation for any other permission a plugin might ask about — the
  * same tradeoff a flat role table always made, just without a second table
  * to keep in sync with this one.
+ *
+ * ⚠️ **Not for access decisions.** This is an *approximation*: it sees only
+ * the role vocabulary in `actionToRelations` and knows nothing of what
+ * `authz.check()` knows beyond roles — revoked tuples, per-user direct
+ * grants (`owner`/`editor` relations), or group membership. Its answer can
+ * therefore diverge from the sole authority in either direction. Do NOT use
+ * it (or copy it) to gate access anywhere — use `authz.check()`. If you
+ * need a permission decision in a synchronous context, restructure the
+ * context so the decision is made once, asynchronously, and passed in.
  */
 export function roleHasPermission(role: string, permission: string): boolean {
   const relations = duneAuthzSchema.actionToRelations as Record<string, readonly string[]>;

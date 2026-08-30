@@ -702,6 +702,13 @@ export interface ResponseTransformContext {
      * `authz.check()` itself uses — exact for `pages.update` (already gated
      * above) and a reasonable approximation for any other permission a
      * plugin might ask about.
+     *
+     * ⚠️ Trust accordingly: this is a role-only *approximation*, not the
+     * authority. It ignores everything `authz.check()` knows beyond roles
+     * (revoked tuples, per-user direct grants, group membership), so its
+     * answer can diverge from a real `authz.check()` in either direction.
+     * Fine for UI affordances and informational gating inside a plugin;
+     * do not treat it as an access-control decision for anything sensitive.
      */
     hasPermission(permission: string): boolean;
   } | null;
