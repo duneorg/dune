@@ -82,10 +82,6 @@ export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema
     "config.update": ["admin"],
     "submissions.read":   ["admin", "editor", "author"],
     "submissions.delete": ["admin"],
-
-    // ── Legacy convenience actions (kept for backward compat) ──────────────
-    /** User management (broader than users.update — covers create/delete too). */
-    "users.manage": ["admin"],
   },
   subjectTypes: ["user"] as const,
   objectTypes: ["group", "app", "resource"] as const,

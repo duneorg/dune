@@ -11,7 +11,7 @@ Authorization in Dune uses [polizy](https://github.com/bratsos/polizy) — a Zan
 `src/auth/authz-schema.ts` (internal to `@dune/core`) defines everything:
 
 - **Relations**: `member` (group membership, used for content gating), `admin`/`editor`/`author` (direct admin-tier roles), `owner` (per-resource grant).
-- **Actions → relations**: `access` (satisfied by `member`/`admin`/`editor`/`author` — deliberately excludes `owner`, so owning one page doesn't grant general gated-content access), `edit` (satisfied by `owner`/`admin`/`editor`), and the full `AdminPermission` set mirrored 1:1 — `pages.create/read/update/delete`, `media.upload/read/delete`, `users.create/read/update/delete`, `config.read/update`, `submissions.read/delete`, plus a legacy `users.manage` action kept for backward compatibility (broader than `users.update`, covers create/delete too).
+- **Actions → relations**: `access` (satisfied by `member`/`admin`/`editor`/`author` — deliberately excludes `owner`, so owning one page doesn't grant general gated-content access), `edit` (satisfied by `owner`/`admin`/`editor`), and the full `AdminPermission` set mirrored 1:1 — `pages.create/read/update/delete`, `media.upload/read/delete`, `users.create/read/update/delete`, `config.read/update`, `submissions.read/delete`.
 - **Subject type**: `user` only. **Object types**: `group`, `app`, `resource`.
 
 There is no `"pages.view"` — real is `"pages.read"`.

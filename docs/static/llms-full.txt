@@ -326,7 +326,7 @@ import { AuthzLocalAdapter } from "@dune/core";  // or AuthzDbAdapter
 const schema = defineSchema({
   // ... see polizy skill for defineSchema() syntax
   // Dune's default schema covers: admin, editor, author, member, owner
-  // Actions: access, pages.update, users.manage, media.upload, edit, ...
+  // Actions: access, pages.update, users.update, media.upload, edit, ...
 });
 
 // Section 2: AuthSystem — wires the adapter from authzStore config
@@ -395,9 +395,9 @@ const canEdit = await authz.check({
 ### Specific admin action
 
 ```ts
-const canManageUsers = await authz.check({
+const canUpdateUsers = await authz.check({
   who: { type: "user", id: ctx.state.user.id },
-  canThey: "users.manage",
+  canThey: "users.update",
   onWhat: { type: "app", id: "admin" },
 });
 ```
@@ -695,7 +695,7 @@ import { requirePermission, csrfCheck } from "@dune/core";
 | View any admin page | `"pages.view"` |
 | Create / update pages | `"pages.update"` |
 | Delete pages | `"pages.delete"` |
-| Manage users | `"users.manage"` |
+| Update users | `"users.update"` |
 | Upload media | `"media.upload"` |
 | Manage plugins | `"plugins.manage"` |
 

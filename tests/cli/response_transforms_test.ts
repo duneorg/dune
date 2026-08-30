@@ -212,7 +212,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   assertEquals(ctxAuth?.username, "alice");
   assertEquals(ctxAuth?.role, "editor");
   assertEquals(ctxAuth?.hasPermission("pages.update"), true);
-  assertEquals(ctxAuth?.hasPermission("users.manage"), false);
+  assertEquals(ctxAuth?.hasPermission("pages.delete"), false);
 });
 
 Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)", async () => {

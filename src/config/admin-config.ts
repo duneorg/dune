@@ -234,7 +234,7 @@ export interface AdminConfig {
   auth_provider?: AuthProviderConfig;
   /**
    * Polizy authz tuple store for the admin panel's own permission checks
-   * (`pages.update`, `users.manage`, etc.) — independent of
+   * (`pages.update`, `users.update`, etc.) — independent of
    * `site.auth.authzStore`, which is a *public*-auth setting for site
    * visitors. Default: `"local"`, created automatically whenever the admin
    * panel is enabled, regardless of what (if anything) `site.auth` is

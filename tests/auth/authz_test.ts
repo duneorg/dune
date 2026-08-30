@@ -689,7 +689,7 @@ Deno.test("bootstrapAdminTuples: grants admin access via 'access' action", async
   );
 });
 
-Deno.test("bootstrapAdminTuples: admin has users.manage, editor does not", async () => {
+Deno.test("bootstrapAdminTuples: admin can manage users, editor cannot", async () => {
   const storage = makeStorage();
   const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
 
@@ -698,22 +698,26 @@ Deno.test("bootstrapAdminTuples: admin has users.manage, editor does not", async
     { id: "editor-1", role: "editor" },
   ]);
 
-  assertStrictEquals(
-    await authz.check({
-      who: { type: "user", id: "admin-1" },
-      canThey: "users.manage",
-      onWhat: { type: "app", id: "admin" },
-    }),
-    true,
-  );
-  assertStrictEquals(
-    await authz.check({
-      who: { type: "user", id: "editor-1" },
-      canThey: "users.manage",
-      onWhat: { type: "app", id: "admin" },
-    }),
-    false,
-  );
+  for (const action of ["users.create", "users.read", "users.update", "users.delete"] as const) {
+    assertStrictEquals(
+      await authz.check({
+        who: { type: "user", id: "admin-1" },
+        canThey: action,
+        onWhat: { type: "app", id: "admin" },
+      }),
+      true,
+      `admin should have ${action}`,
+    );
+    assertStrictEquals(
+      await authz.check({
+        who: { type: "user", id: "editor-1" },
+        canThey: action,
+        onWhat: { type: "app", id: "admin" },
+      }),
+      false,
+      `editor should not have ${action}`,
+    );
+  }
 });
 
 Deno.test("bootstrapAdminTuples: idempotent — does not duplicate tuples", async () => {
