@@ -217,6 +217,37 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   assertEquals(ctxAuth?.hasPermission("users.manage"), false);
 });
 
+Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — highest admin-tier role wins", async () => {
+  // A merged User's roles[] can hold content-gating tags alongside the
+  // admin-tier role, in no guaranteed order. roles[0] ("member") used to
+  // become ctx.auth.role — under-privileging hasPermission() relative to
+  // what authz.check() decided just above.
+  const auth = makeAuth({
+    result: {
+      authenticated: true,
+      // deno-lint-ignore no-explicit-any
+      user: { ...makeUser("admin"), roles: ["member", "admin"] } as any,
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(true) as any;
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth,
+    authz,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  const ctxAuth = seen[0].auth;
+  assertEquals(ctxAuth?.role, "admin");
+  assertEquals(ctxAuth?.hasPermission("pages.update"), true);
+  assertEquals(ctxAuth?.hasPermission("users.manage"), true);
+});
+
 Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("admin") },

@@ -24,7 +24,14 @@ exactly what "breaking" means and what doesn't count.
   second half, finally closed. The site-user path to `/api/inline-edit/ws`
   (`checkInlineEditPermissionForSiteUser()`) had the same kind of fallback —
   a raw `roles[]` check for an editor-equivalent role when `authz` was
-  undefined — and now fails closed too. The one place that genuinely can't
+  undefined — and now fails closed too. `runPluginResponseTransforms()`'s
+  published `auth.role` / `hasPermission()` now also read the *highest*
+  admin-tier role in the session's `roles[]` (`highestAdminRole()`, new,
+  `@dune/core/auth/authz-schema`) instead of `roles[0]` — a merged User's
+  `roles[]` can hold content-gating tags alongside the admin role in any
+  order, and `roles[0]` could be a tag, silently under-privileging the
+  synchronous approximation relative to what `authz.check()` had just
+  decided. The one place that genuinely can't
   call the real async `authz.check()` —
   `ResponseTransformContext.auth.hasPermission()`,
   a published *synchronous* hook API — now reads `roleHasPermission()`

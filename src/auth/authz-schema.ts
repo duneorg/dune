@@ -124,3 +124,27 @@ export function roleHasPermission(role: string, permission: string): boolean {
   const relations = duneAuthzSchema.actionToRelations as Record<string, readonly string[]>;
   return relations[permission]?.includes(role) ?? false;
 }
+
+/**
+ * Pick the highest-ranked admin-tier role (`"admin" > "editor" > "author"`)
+ * out of a generic `roles: string[]` array, or `""` if none is present.
+ *
+ * A merged `User`'s `roles[]` mixes admin-tier roles with content-gating
+ * tags (e.g. `["member", "admin"]`) in no guaranteed order, so `roles[0]`
+ * is not necessarily an admin role at all. Permission answers sourced from
+ * a single `role` string must use the highest admin-tier entry — matching
+ * what `authz.check()` (which unions all the user's relations) would
+ * decide — or the synchronous approximation under-privileges relative to
+ * the sole authority. Used for `ResponseTransformContext.auth.role` /
+ * `.hasPermission()`, the one place that can't call the real async check.
+ */
+export function highestAdminRole(roles: string[] | undefined): string {
+  const rank: Record<string, number> = { admin: 3, editor: 2, author: 1 };
+  let best = "";
+  for (const r of roles ?? []) {
+    const rr = rank[r] ?? 0;
+    if (rr === 0) continue; // unknown / content-gating tag — never wins
+    if (!best || rr > (rank[best] ?? 0)) best = r;
+  }
+  return best;
+}

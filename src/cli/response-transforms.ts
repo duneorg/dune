@@ -41,7 +41,7 @@ import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
-import { roleHasPermission } from "../auth/authz-schema.ts";
+import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
@@ -136,15 +136,18 @@ export async function runPluginResponseTransforms(
       );
       if (canUpdatePages) {
         const user = r.user as Record<string, unknown>;
-        // dec-identity-unification Phase 5b: the merged User type has no
-        // single `role` field, only a generic `roles: string[]` — an admin
-        // session always has exactly one entry in it (set by
-        // @dune/plugin-admin's UserManager), so the first entry is the
-        // session's admin role. This context field keeps its original
-        // `role: string` shape (a published hook type, ResponseTransformContext
-        // — minimize churn for plugin authors) rather than switching to `roles`.
+        // This context field keeps its original `role: string` shape (a
+        // published hook type, ResponseTransformContext — minimize churn for
+        // plugin authors) rather than switching to `roles`.
         const roles = user.roles as string[] | undefined;
-        const role = roles?.[0] ?? "";
+        // The merged User type mixes admin-tier roles with content-gating
+        // tags in roles[] (e.g. ["member", "admin"]) with no guaranteed
+        // order — roles[0] is not necessarily an admin role. The published
+        // role string and hasPermission() answers sourced from it must use
+        // the highest admin-tier entry, or the synchronous approximation
+        // would under-privilege relative to what authz.check() (which
+        // unions all the user's relations) decided just above.
+        const role = highestAdminRole(roles);
         transformAuth = {
           username: user.username as string,
           role,
