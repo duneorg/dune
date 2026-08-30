@@ -29,6 +29,7 @@
 
 import { defineSchema } from "polizy";
 import type { AuthSchema } from "polizy";
+import type { Role } from "../config/admin-config.ts";
 
 /**
  * The polizy authorization schema for Dune — defines relations and action-to-relation mappings
@@ -126,8 +127,24 @@ export function roleHasPermission(role: string, permission: string): boolean {
 }
 
 /**
- * Pick the highest-ranked admin-tier role (`"admin" > "editor" > "author"`)
- * out of a generic `roles: string[]` array, or `""` if none is present.
+ * Canonical admin-tier role ranking (`"admin" > "editor" > "author"`) —
+ * the single source of truth `highestAdminRole()` below uses, and the one
+ * `@dune/plugin-admin`'s `role-utils.ts` imports for its own direct rank
+ * comparisons (`provisioner.ts`'s role-escalation guards) instead of
+ * keeping a second, hand-maintained copy of the same three numbers. This
+ * is the exact "two tables that must be kept in sync by convention"
+ * pattern the `ROLE_PERMISSIONS` removal (3.0.0) was about eliminating —
+ * codified once, here, rather than repeated.
+ */
+export const ADMIN_ROLE_RANK: Record<Role, number> = {
+  admin: 3,
+  editor: 2,
+  author: 1,
+};
+
+/**
+ * Pick the highest-ranked admin-tier role out of a generic `roles: string[]`
+ * array, or `""` if none is present.
  *
  * A merged `User`'s `roles[]` mixes admin-tier roles with content-gating
  * tags (e.g. `["member", "admin"]`) in no guaranteed order, so `roles[0]`
@@ -139,12 +156,11 @@ export function roleHasPermission(role: string, permission: string): boolean {
  * `.hasPermission()`, the one place that can't call the real async check.
  */
 export function highestAdminRole(roles: string[] | undefined): string {
-  const rank: Record<string, number> = { admin: 3, editor: 2, author: 1 };
   let best = "";
   for (const r of roles ?? []) {
-    const rr = rank[r] ?? 0;
+    const rr = ADMIN_ROLE_RANK[r as Role] ?? 0;
     if (rr === 0) continue; // unknown / content-gating tag — never wins
-    if (!best || rr > (rank[best] ?? 0)) best = r;
+    if (!best || rr > (ADMIN_ROLE_RANK[best as Role] ?? 0)) best = r;
   }
   return best;
 }

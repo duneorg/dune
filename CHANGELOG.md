@@ -40,6 +40,16 @@ exactly what "breaking" means and what doesn't count.
   instead of a hand-maintained mirror. `@dune/plugin-admin` no longer needs
   to keep its own `ROLE_PERMISSIONS` table in sync with this schema at all —
   see its own 3.0.0 changelog entry for the corresponding removal there.
+- **`ADMIN_ROLE_RANK`** exported alongside `highestAdminRole()`
+  (`@dune/core/auth/authz-schema`, now also reachable via a new
+  `"./auth/authz-schema"` export map entry — it previously had none, so
+  nothing outside this package could actually import from it despite
+  `roleHasPermission()`'s own doc already describing it as importable).
+  `@dune/plugin-admin`'s `role-utils.ts` now derives its `ROLE_RANK`/
+  `highestValidRole()` from this instead of keeping its own copy of the
+  same three numbers — the exact "two tables kept in sync by convention"
+  pattern the `ROLE_PERMISSIONS` removal was about eliminating, just
+  spotted a second time during review before it could take hold.
 
 ### Added
 
