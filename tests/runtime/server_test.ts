@@ -93,28 +93,27 @@ Deno.test("checkInlineEditPermissionForSiteUser: authz.check() denial wins even 
   assertEquals(authz.calls.check, 1);
 });
 
-Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — editor allowed", async () => {
+Deno.test("checkInlineEditPermissionForSiteUser: fails closed (denies) when authz is undefined, no roles[] fallback", async () => {
+  // An editor role used to grant inline edit access here when authz was
+  // undefined — that fallback was removed: authz.check() is the sole
+  // authority, no exceptions.
   const result = await checkInlineEditPermissionForSiteUser(undefined, {
     id: "u1",
     roles: ["editor"],
   });
-  assertEquals(result, true);
-});
+  assertEquals(result, false);
 
-Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — admin allowed", async () => {
-  const result = await checkInlineEditPermissionForSiteUser(undefined, {
+  const adminResult = await checkInlineEditPermissionForSiteUser(undefined, {
     id: "u1",
     roles: ["admin"],
   });
-  assertEquals(result, true);
-});
+  assertEquals(adminResult, false);
 
-Deno.test("checkInlineEditPermissionForSiteUser: falls back to roles[] when authz is undefined — no matching role denied", async () => {
-  const result = await checkInlineEditPermissionForSiteUser(undefined, {
+  const unknownRoles = await checkInlineEditPermissionForSiteUser(undefined, {
     id: "u1",
     roles: ["member", "subscriber"],
   });
-  assertEquals(result, false);
+  assertEquals(unknownRoles, false);
 });
 
 // ── stripUserHeader ────────────────────────────────────────────────────

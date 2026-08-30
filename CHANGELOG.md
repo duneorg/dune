@@ -21,8 +21,12 @@ exactly what "breaking" means and what doesn't count.
   startup — an in-process object construction that essentially never fails
   in practice). Both now fail closed (deny) instead of silently degrading to
   a separate, less-audited mechanism — dec-identity-unification Phase 5c's
-  second half, finally closed. The one place that genuinely can't call the
-  real async `authz.check()` — `ResponseTransformContext.auth.hasPermission()`,
+  second half, finally closed. The site-user path to `/api/inline-edit/ws`
+  (`checkInlineEditPermissionForSiteUser()`) had the same kind of fallback —
+  a raw `roles[]` check for an editor-equivalent role when `authz` was
+  undefined — and now fails closed too. The one place that genuinely can't
+  call the real async `authz.check()` —
+  `ResponseTransformContext.auth.hasPermission()`,
   a published *synchronous* hook API — now reads `roleHasPermission()`
   (new, `@dune/core/auth/authz-schema`), a synchronous lookup against the
   same canonical `actionToRelations` schema `authz.check()` itself uses,
