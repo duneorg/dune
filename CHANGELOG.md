@@ -50,6 +50,12 @@ exactly what "breaking" means and what doesn't count.
   same three numbers — the exact "two tables kept in sync by convention"
   pattern the `ROLE_PERMISSIONS` removal was about eliminating, just
   spotted a second time during review before it could take hold.
+- **Built-in admin plugin pin is now `@dune/plugin-admin@^3.0`**
+  (`deno.json` imports and `src/plugins/builtin.ts`). 3.0.0 is the
+  companion that removes `ROLE_PERMISSIONS` / `hasPermission()`; a 2.x
+  plugin-admin still runs against this core, but the two must be released
+  together so sites that pick up 3.0.0 do not call a method that no
+  longer exists.
 
 ### Added
 
