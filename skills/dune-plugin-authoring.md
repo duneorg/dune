@@ -321,7 +321,7 @@ Headless-mode developers who call `mountDuneAdmin(app, ctx)` directly (never goi
 
 ### Permission reference
 
-Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these are meaningful against the built-in role table:
+Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these map to actions in `@dune/core`'s canonical `actionToRelations` schema (`authz.check()` is the sole authority; unknown names deny):
 
 | Permission string | Grants |
 |--------------------|--------|
@@ -330,7 +330,8 @@ Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) �
 | `"users.create"` / `"users.read"` / `"users.update"` / `"users.delete"` | User management |
 | `"config.read"` / `"config.update"` | Site config |
 | `"submissions.read"` / `"submissions.delete"` | Form submissions |
-| `"admin.access"` | Any authenticated admin (no finer check) |
+
+Panel access itself is `authz.check({ canThey: "access", onWhat: { type: "app", id: "admin" } })`, not a permission string. There is no `"admin.access"` — that name existed only on the removed `ROLE_PERMISSIONS` table and is now rejected as unknown.
 
 There is no `"pages.view"`, `"users.manage"`, or `"plugins.manage"` — use the split create/read/update/delete permissions above.
 
