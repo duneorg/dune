@@ -58,7 +58,6 @@ const VALID_PERMISSIONS = new Set([
   "users.create", "users.read", "users.update", "users.delete",
   "config.read", "config.update",
   "submissions.read", "submissions.delete",
-  "admin.access",
 ]);
 
 /**
@@ -111,8 +110,12 @@ function scanCodeBlock(code: string): { unknownHooks: string[]; unknownPerms: st
     if (!VALID_PERMISSIONS.has(m[1])) unknownPerms.push(m[1]);
   }
 
-  // Pattern 4: hasPermission(authResult, "perm.name")
-  const hasPerm = /hasPermission\([^,]+,\s*["']([^"']+)["']/g;
+  // Pattern 4: hasPermission("perm.name") — the synchronous hook API
+  // (ResponseTransformContext.auth.hasPermission). The old two-argument
+  // form — hasPermission(authResult, "perm") — was removed alongside
+  // ROLE_PERMISSIONS (3.0.0); a two-arg call now means old example code
+  // and is flagged via the unknown-permission vocabulary below too.
+  const hasPerm = /hasPermission\(\s*["']([^"']+)["']/g;
   while ((m = hasPerm.exec(code)) !== null) {
     if (!VALID_PERMISSIONS.has(m[1])) unknownPerms.push(m[1]);
   }

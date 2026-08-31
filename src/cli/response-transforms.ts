@@ -8,11 +8,12 @@
  * - Resolve the auth context once per request, enforcing the documented
  *   contract: `auth` is non-null only for a valid admin session that holds
  *   the `pages.update` permission. Plugins can rely on this and must not
- *   need to re-authenticate. The permission check itself goes through the
- *   polizy `authz` system (`authz.check()`) when configured — the same
- *   sole-authority contract every other admin permission check follows
- *   (dec-identity-unification Phase 5c/7) — not the flat `ROLE_PERMISSIONS`
- *   table `auth.hasPermission()` alone would consult.
+ *   need to re-authenticate. The permission check itself is `authz.check()` —
+ *   the sole authority every admin permission check follows
+ *   (dec-identity-unification Phase 5c/6/7); if `authz` is somehow
+ *   undefined (authz creation itself failed at startup — already logged
+ *   loudly there), this fails closed rather than falling back to a
+ *   separate, less-audited mechanism.
  * - Never run transforms on admin-panel paths (defense in depth — admin
  *   routes are mounted separately and should never reach the content
  *   catch-all, but the pipeline must not depend on routing order alone).
@@ -31,18 +32,16 @@
 /**
  * Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`.
  * `authenticate()` is still the only way to validate an admin session cookie
- * (core doesn't own admin session cookie config), but `hasPermission()` is
- * used only as the fallback when `authz` (below) isn't configured — see the
- * doc comment on `runPluginResponseTransforms` for why.
+ * (core doesn't own admin session cookie config).
  */
 interface AdminAuthMiddleware {
   authenticate(req: Request): Promise<unknown>;
-  hasPermission(result: unknown, permission: string): boolean;
 }
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
+import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
@@ -72,11 +71,10 @@ export interface RunResponseTransformsOptions {
    */
   auth: AdminAuthMiddleware | null;
   /**
-   * Polizy authz system — when present, is the sole authority for the
-   * `pages.update` check below (dec-identity-unification Phase 7). Falls
-   * back to `auth.hasPermission()` only in the narrow, exceptional case
-   * where authz creation itself failed at startup (already logged loudly
-   * there — see `src/runtime/bootstrap.ts`).
+   * Polizy authz system — the sole authority for the `pages.update` check
+   * below (dec-identity-unification Phase 5c/7). Undefined only when authz
+   * creation itself failed at startup (already logged loudly there — see
+   * `src/runtime/bootstrap.ts`), in which case the check fails closed.
    */
   authz?: DuneAuthSystem;
   /**
@@ -134,22 +132,26 @@ export async function runPluginResponseTransforms(
             canThey: "pages.update" as any,
             onWhat: { type: "app", id: "admin" },
           })
-          : auth.hasPermission(result, "pages.update")
+          : false
       );
       if (canUpdatePages) {
         const user = r.user as Record<string, unknown>;
-        // dec-identity-unification Phase 5b: the merged User type has no
-        // single `role` field, only a generic `roles: string[]` — an admin
-        // session always has exactly one entry in it (set by
-        // @dune/plugin-admin's UserManager), so the first entry is the
-        // session's admin role. This context field keeps its original
-        // `role: string` shape (a published hook type, ResponseTransformContext
-        // — minimize churn for plugin authors) rather than switching to `roles`.
+        // This context field keeps its original `role: string` shape (a
+        // published hook type, ResponseTransformContext — minimize churn for
+        // plugin authors) rather than switching to `roles`.
         const roles = user.roles as string[] | undefined;
+        // The merged User type mixes admin-tier roles with content-gating
+        // tags in roles[] (e.g. ["member", "admin"]) with no guaranteed
+        // order — roles[0] is not necessarily an admin role. The published
+        // role string and hasPermission() answers sourced from it must use
+        // the highest admin-tier entry, or the synchronous approximation
+        // would under-privilege relative to what authz.check() (which
+        // unions all the user's relations) decided just above.
+        const role = highestAdminRole(roles);
         transformAuth = {
           username: user.username as string,
-          role: roles?.[0] ?? "",
-          hasPermission: (perm) => auth.hasPermission(result, perm as string),
+          role,
+          hasPermission: (perm) => roleHasPermission(role, perm),
         };
       }
     } catch { /* invalid session — treat as unauthenticated */ }

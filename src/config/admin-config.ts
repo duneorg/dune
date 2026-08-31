@@ -243,9 +243,9 @@ export interface AdminConfig {
    * site-user tuples, and previously creation of this authz instance was
    * accidentally gated on the public-auth config instead of its own
    * setting — a site running `site.auth.mode: external-jwt` (or
-   * `authzStore: "db"`) would silently lose real admin-panel permission
-   * checking too, falling back to the flat `ROLE_PERMISSIONS` table with
-   * no warning.
+   * `authzStore: "db"`) would silently lose the admin-panel authz instance.
+   * That path now fails closed (deny) when `authz` is missing; there is no
+   * role-table fallback.
    *
    * Only `"local"` is implemented today — a `"db"` tier (mirroring
    * `site.auth.authzStore`'s db-backed option) isn't wired up for the

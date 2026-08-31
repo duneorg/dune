@@ -184,25 +184,25 @@ export function isIndexedInlineEditPath(
 
 /**
  * Whether an authenticated admin session may perform inline edits
- * (`pages.update`). Checked against `authz` when configured — the sole
- * authority every other admin permission check follows
- * (dec-identity-unification Phase 5c/7) — falling back to
- * `adminAuth.hasPermission()` (the flat `ROLE_PERMISSIONS` table) only when
- * authz creation itself failed at startup. Extracted from the `/api/
- * inline-edit/ws` handler below and exported so this decision is directly
- * unit-testable without a full app + WebSocket-upgrade harness.
+ * (`pages.update`). `authz` is the sole authority — the flat
+ * `ROLE_PERMISSIONS` fallback this used to have was removed
+ * (dec-identity-unification Phase 5c, second half): `admin.authzStore`
+ * defaults to `"local"` and is created automatically whenever the admin
+ * panel is enabled, regardless of `site.auth`'s mode, so `authz` being
+ * undefined here means its creation itself failed at startup (already
+ * logged loudly there) — an exceptional condition that should fail closed
+ * (deny), not silently degrade to a materially different, less-audited
+ * authorization mechanism. Extracted from the `/api/inline-edit/ws` handler
+ * below and exported so this decision is directly unit-testable without a
+ * full app + WebSocket-upgrade harness.
  */
 export async function checkInlineEditPermission(
   authz: DuneAuthSystem | undefined,
   // deno-lint-ignore no-explicit-any
-  adminAuth: any,
-  // deno-lint-ignore no-explicit-any
   authResult: any,
 ): Promise<boolean> {
-  if (authz) {
-    return await checkPagesUpdateViaAuthz(authz, authResult.user.id);
-  }
-  return adminAuth.hasPermission(authResult, "pages.update");
+  if (!authz) return false;
+  return await checkPagesUpdateViaAuthz(authz, authResult.user.id);
 }
 
 function checkPagesUpdateViaAuthz(
@@ -221,20 +221,18 @@ function checkPagesUpdateViaAuthz(
  * Same `pages.update` decision as {@link checkInlineEditPermission}, for a
  * user resolved via the public-auth session (`src/auth/`, `getUser(req)`)
  * rather than an admin session — this is what lets `/api/inline-edit/ws`
- * work for a site that has `@dune/plugin-admin` decoupled entirely. There is
- * no `ROLE_PERMISSIONS` table for public-auth users (that fallback exists
- * only for admin sessions, whose roles are a closed admin-panel vocabulary),
- * so the no-authz fallback here is a direct check against the user's own
- * `roles: string[]` for an editor-equivalent role instead.
+ * work for a site that has `@dune/plugin-admin` decoupled entirely. Like
+ * every other admin permission check, this fails closed (deny) when `authz`
+ * is undefined — there is no role-table fallback for public-auth users (and
+ * after 3.0.0, none for admin sessions either): `authz.check()` is the sole
+ * authority, no exceptions.
  */
 export async function checkInlineEditPermissionForSiteUser(
   authz: DuneAuthSystem | undefined,
   user: { id: string; roles: string[] },
 ): Promise<boolean> {
-  if (authz) {
-    return await checkPagesUpdateViaAuthz(authz, user.id);
-  }
-  return user.roles.includes("editor") || user.roles.includes("admin");
+  if (!authz) return false;
+  return await checkPagesUpdateViaAuthz(authz, user.id);
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────────
@@ -485,7 +483,6 @@ export async function createDuneApp(
       username = authResult.user.username;
       permitted = await checkInlineEditPermission(
         ctx.authz,
-        adminAuth,
         authResult,
       );
     }

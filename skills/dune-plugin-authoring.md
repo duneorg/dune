@@ -288,7 +288,7 @@ export default {
 } satisfies DunePlugin;
 ```
 
-A route registered via `mount()` is **not** automatically authenticated the way `adminPages` is — you must wrap it in `withGuards()` (or call `csrfCheck()`/`requirePermission()` from the same module directly) yourself. Reimplementing the guard sequence by hand instead of using `withGuards()` is exactly what caused three real security regressions in Dune's own admin routes (the module's own doc comment names them) — the CSRF check's Origin/Sec-Fetch-Site/Referer fallback chain in particular is not trivial to get right, and `requirePermission()` checks the polizy-backed `authz` system first when configured, falling back to the role table only when it's not — a detail that's easy to miss if you reach for `AdminContext.auth.hasPermission()` directly instead. If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` anyway — you get all of this for free, no `withGuards()` needed.
+A route registered via `mount()` is **not** automatically authenticated the way `adminPages` is — you must wrap it in `withGuards()` (or call `csrfCheck()`/`requirePermission()` from the same module directly) yourself. Reimplementing the guard sequence by hand instead of using `withGuards()` is exactly what caused three real security regressions in Dune's own admin routes (the module's own doc comment names them) — the CSRF check's Origin/Sec-Fetch-Site/Referer fallback chain in particular is not trivial to get right, and `requirePermission()` consults `authz.check()` only (missing `authz` denies; there is no role-table fallback). `AdminContext.auth.hasPermission()` was removed in `@dune/plugin-admin` 3.0.0 — do not reimplement it. If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` anyway — you get all of this for free, no `withGuards()` needed.
 
 ### `publicRoutes` — declarative public-facing routes
 
@@ -321,7 +321,7 @@ Headless-mode developers who call `mountDuneAdmin(app, ctx)` directly (never goi
 
 ### Permission reference
 
-Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these are meaningful against the built-in role table:
+Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these map to actions in `@dune/core`'s canonical `actionToRelations` schema (`authz.check()` is the sole authority; unknown names deny):
 
 | Permission string | Grants |
 |--------------------|--------|
@@ -330,7 +330,8 @@ Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) �
 | `"users.create"` / `"users.read"` / `"users.update"` / `"users.delete"` | User management |
 | `"config.read"` / `"config.update"` | Site config |
 | `"submissions.read"` / `"submissions.delete"` | Form submissions |
-| `"admin.access"` | Any authenticated admin (no finer check) |
+
+Panel access itself is `authz.check({ canThey: "access", onWhat: { type: "app", id: "admin" } })`, not a permission string. There is no `"admin.access"` — that name existed only on the removed `ROLE_PERMISSIONS` table and is now rejected as unknown.
 
 There is no `"pages.view"`, `"users.manage"`, or `"plugins.manage"` — use the split create/read/update/delete permissions above.
 

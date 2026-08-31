@@ -693,14 +693,22 @@ export interface ResponseTransformContext {
     role: string;
     /**
      * Check whether this user has a specific admin permission. `auth` being
-     * non-null already means the session holds `pages.update` — checked
-     * against the polizy `authz` system when configured (dec-identity-
-     * unification Phase 7), not the flat role table alone. This method
-     * itself stays synchronous (a published hook API) and so cannot
-     * re-consult `authz.check()` per call; it answers from the flat role
-     * table, which is exact for `pages.update` (already gated above) and a
-     * reasonable approximation for any other permission a plugin might ask
-     * about.
+     * non-null already means the session holds `pages.update`, checked via
+     * `authz.check()` — the sole authority (dec-identity-unification Phase
+     * 5c/7). This method itself stays synchronous (a published hook API)
+     * and so cannot re-consult `authz.check()` per call; it answers from
+     * `roleHasPermission()` (`@dune/core/auth/authz-schema`), a synchronous
+     * role-only read of the same canonical `actionToRelations` schema
+     * `authz.check()` itself uses — exact for `pages.update` (already gated
+     * above) and a reasonable approximation for any other permission a
+     * plugin might ask about.
+     *
+     * ⚠️ Trust accordingly: this is a role-only *approximation*, not the
+     * authority. It ignores everything `authz.check()` knows beyond roles
+     * (revoked tuples, per-user direct grants, group membership), so its
+     * answer can diverge from a real `authz.check()` in either direction.
+     * Fine for UI affordances and informational gating inside a plugin;
+     * do not treat it as an access-control decision for anything sensitive.
      */
     hasPermission(permission: string): boolean;
   } | null;

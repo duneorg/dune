@@ -18,7 +18,6 @@ import type {
 } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
 import type {
-  AdminPermission,
   AuthResult,
   User,
 } from "jsr:@dune/plugin-admin/admin/types";
@@ -41,10 +40,14 @@ function makeUser(role: string): User {
   };
 }
 
-/** Fake auth middleware with a fixed outcome and call counter. */
+/**
+ * Fake auth middleware with a fixed outcome and call counter. `authenticate()`
+ * is the only method the real interface has since ROLE_PERMISSIONS/
+ * hasPermission() were removed (dec-identity-unification Phase 5c/6) —
+ * permission decisions go through `makeAuthz()` below instead.
+ */
 function makeAuth(opts: {
   result?: AuthResult;
-  permissions?: AdminPermission[];
   throws?: boolean;
 }) {
   const calls = { authenticate: 0 };
@@ -56,11 +59,6 @@ function makeAuth(opts: {
       return Promise.resolve(
         opts.result ?? { authenticated: false, error: "No session cookie" },
       );
-    },
-    hasPermission(authResult: unknown, permission: string): boolean {
-      const r = authResult as AuthResult;
-      if (!r.authenticated || !r.user) return false;
-      return (opts.permissions ?? []).includes(permission as AdminPermission);
     },
   };
 }
@@ -174,10 +172,9 @@ Deno.test("runPluginResponseTransforms: anonymous request — plugin runs with a
   assertEquals(auth.calls.authenticate, 0);
 });
 
-Deno.test("runPluginResponseTransforms: valid session WITHOUT pages.update — auth is null (F1)", async () => {
+Deno.test("runPluginResponseTransforms: valid session, no authz — auth is null (F1, fails closed)", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("author") },
-    permissions: ["pages.read"] as AdminPermission[],
   });
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
@@ -196,14 +193,16 @@ Deno.test("runPluginResponseTransforms: valid session WITHOUT pages.update — a
 Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth populated", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("editor") },
-    permissions: ["pages.read", "pages.update"] as AdminPermission[],
   });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(true) as any;
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
     response: new Response("hello"),
     plugins: [plugin],
     auth,
+    authz,
     resolve,
     config,
     adminPrefix: "/admin",
@@ -211,14 +210,47 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   const ctxAuth = seen[0].auth;
   assertEquals(ctxAuth?.username, "alice");
   assertEquals(ctxAuth?.role, "editor");
+  // hasPermission() is a synchronous read of the canonical actionToRelations
+  // schema (roleHasPermission()), not a re-consultation of authz.check() —
+  // "editor" grants pages.update but not the admin-only users.manage.
   assertEquals(ctxAuth?.hasPermission("pages.update"), true);
   assertEquals(ctxAuth?.hasPermission("pages.delete"), false);
+});
+
+Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — highest admin-tier role wins", async () => {
+  // A merged User's roles[] can hold content-gating tags alongside the
+  // admin-tier role, in no guaranteed order. roles[0] ("member") used to
+  // become ctx.auth.role — under-privileging hasPermission() relative to
+  // what authz.check() decided just above.
+  const auth = makeAuth({
+    result: {
+      authenticated: true,
+      // deno-lint-ignore no-explicit-any
+      user: { ...makeUser("admin"), roles: ["member", "admin"] } as any,
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(true) as any;
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: new Response("hello"),
+    plugins: [plugin],
+    auth,
+    authz,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  const ctxAuth = seen[0].auth;
+  assertEquals(ctxAuth?.role, "admin");
+  assertEquals(ctxAuth?.hasPermission("pages.update"), true);
+  assertEquals(ctxAuth?.hasPermission("users.manage"), true);
 });
 
 Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("admin") },
-    permissions: ["pages.update"] as AdminPermission[],
   });
   const { plugin, seen } = makeRecordingPlugin();
   for (const path of ["/admin", "/admin/pages", "/admin/api/content/x"]) {
@@ -281,11 +313,10 @@ Deno.test("runPluginResponseTransforms: non-content route — page is null", asy
 
 // ── authz-first permission check (dec-identity-unification Phase 7) ─────────────
 //
-// The `pages.update` gate must consult `authz.check()` when `authz` is
-// configured, not the flat ROLE_PERMISSIONS table `auth.hasPermission()`
-// alone would consult — same sole-authority contract as every other admin
-// permission check (Phase 5c). These prove authz's answer wins over what
-// auth.hasPermission() would say in either direction.
+// The `pages.update` gate is `authz.check()`, full stop — same sole-authority
+// contract as every other admin permission check (Phase 5c/6). No fallback
+// table to compare against anymore; these just prove authz's answer is what
+// actually governs `auth` in the returned context.
 
 function makeAuthz(allowed: boolean) {
   const calls = { check: 0 };
@@ -299,10 +330,9 @@ function makeAuthz(allowed: boolean) {
   };
 }
 
-Deno.test("runPluginResponseTransforms: authz.check() allowing wins even when ROLE_PERMISSIONS would deny", async () => {
+Deno.test("runPluginResponseTransforms: authz.check() allowing grants access", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("author") },
-    permissions: [] as AdminPermission[], // ROLE_PERMISSIONS alone would deny
   });
   // deno-lint-ignore no-explicit-any
   const authz = makeAuthz(true) as any;
@@ -321,10 +351,9 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing wins even when RO
   assertEquals(seen[0].auth?.username, "alice");
 });
 
-Deno.test("runPluginResponseTransforms: authz.check() denying wins even when ROLE_PERMISSIONS would allow", async () => {
+Deno.test("runPluginResponseTransforms: authz.check() denying blocks access", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("editor") },
-    permissions: ["pages.update"] as AdminPermission[], // ROLE_PERMISSIONS alone would allow
   });
   // deno-lint-ignore no-explicit-any
   const authz = makeAuthz(false) as any;
@@ -343,10 +372,9 @@ Deno.test("runPluginResponseTransforms: authz.check() denying wins even when ROL
   assertEquals(seen[0].auth, null);
 });
 
-Deno.test("runPluginResponseTransforms: falls back to ROLE_PERMISSIONS when authz is not passed", async () => {
+Deno.test("runPluginResponseTransforms: fails closed (auth stays null) when authz is not passed — no ROLE_PERMISSIONS fallback", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("editor") },
-    permissions: ["pages.update"] as AdminPermission[],
   });
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
@@ -358,13 +386,12 @@ Deno.test("runPluginResponseTransforms: falls back to ROLE_PERMISSIONS when auth
     config,
     adminPrefix: "/admin",
   });
-  assertEquals(seen[0].auth?.username, "alice");
+  assertEquals(seen[0].auth, null);
 });
 
-Deno.test("runPluginResponseTransforms: authz.check() denying scrubs markers even though ROLE_PERMISSIONS would allow", async () => {
+Deno.test("runPluginResponseTransforms: authz.check() denying scrubs markers", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("editor") },
-    permissions: ["pages.update"] as AdminPermission[],
   });
   // deno-lint-ignore no-explicit-any
   const authz = makeAuthz(false) as any;
@@ -438,7 +465,6 @@ Deno.test("marker scrub: forged/invalid session cookie still gets scrubbed", asy
 Deno.test("marker scrub: valid session WITHOUT pages.update gets scrubbed", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("author") },
-    permissions: ["pages.read"] as AdminPermission[],
   });
   const result = await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
@@ -455,13 +481,15 @@ Deno.test("marker scrub: valid session WITHOUT pages.update gets scrubbed", asyn
 Deno.test("marker scrub: valid editing session keeps markers", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("editor") },
-    permissions: ["pages.update"] as AdminPermission[],
   });
+  // deno-lint-ignore no-explicit-any
+  const authz = makeAuthz(true) as any;
   const result = await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
     response: htmlResponse(MARKED_HTML),
     plugins: [],
     auth,
+    authz,
     resolve,
     config,
     adminPrefix: "/admin",
@@ -502,7 +530,6 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
 Deno.test("runPluginResponseTransforms: ctx.plugins lets a bar-owning plugin collect another plugin's adminBarActions", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("admin") },
-    permissions: ["pages.update"],
   });
 
   // A plugin that only contributes adminBarActions — no transformResponse

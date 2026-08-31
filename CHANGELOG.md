@@ -11,6 +11,52 @@ exactly what "breaking" means and what doesn't count.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dropped the `ROLE_PERMISSIONS`-table fallback from every core-side admin
+  permission decision — `authz.check()` is now the sole authority, no
+  exceptions.** `checkInlineEditPermission()` and
+  `runPluginResponseTransforms()`'s `pages.update` gate previously fell back
+  to a flat role table when `authz` was undefined (authz creation failing at
+  startup — an in-process object construction that essentially never fails
+  in practice). Both now fail closed (deny) instead of silently degrading to
+  a separate, less-audited mechanism — dec-identity-unification Phase 5c's
+  second half, finally closed. The site-user path to `/api/inline-edit/ws`
+  (`checkInlineEditPermissionForSiteUser()`) had the same kind of fallback —
+  a raw `roles[]` check for an editor-equivalent role when `authz` was
+  undefined — and now fails closed too. `runPluginResponseTransforms()`'s
+  published `auth.role` / `hasPermission()` now also read the *highest*
+  admin-tier role in the session's `roles[]` (`highestAdminRole()`, new,
+  `@dune/core/auth/authz-schema`) instead of `roles[0]` — a merged User's
+  `roles[]` can hold content-gating tags alongside the admin role in any
+  order, and `roles[0]` could be a tag, silently under-privileging the
+  synchronous approximation relative to what `authz.check()` had just
+  decided. The one place that genuinely can't
+  call the real async `authz.check()` —
+  `ResponseTransformContext.auth.hasPermission()`,
+  a published *synchronous* hook API — now reads `roleHasPermission()`
+  (new, `@dune/core/auth/authz-schema`), a synchronous lookup against the
+  same canonical `actionToRelations` schema `authz.check()` itself uses,
+  instead of a hand-maintained mirror. `@dune/plugin-admin` no longer needs
+  to keep its own `ROLE_PERMISSIONS` table in sync with this schema at all —
+  see its own 3.0.0 changelog entry for the corresponding removal there.
+- **`ADMIN_ROLE_RANK`** exported alongside `highestAdminRole()`
+  (`@dune/core/auth/authz-schema`, now also reachable via a new
+  `"./auth/authz-schema"` export map entry — it previously had none, so
+  nothing outside this package could actually import from it despite
+  `roleHasPermission()`'s own doc already describing it as importable).
+  `@dune/plugin-admin`'s `role-utils.ts` now derives its `ROLE_RANK`/
+  `highestValidRole()` from this instead of keeping its own copy of the
+  same three numbers — the exact "two tables kept in sync by convention"
+  pattern the `ROLE_PERMISSIONS` removal was about eliminating, just
+  spotted a second time during review before it could take hold.
+- **Built-in admin plugin pin is now `@dune/plugin-admin@^3.0`**
+  (`deno.json` imports and `src/plugins/builtin.ts`). 3.0.0 is the
+  companion that removes `ROLE_PERMISSIONS` / `hasPermission()`; a 2.x
+  plugin-admin still runs against this core, but the two must be released
+  together so sites that pick up 3.0.0 do not call a method that no
+  longer exists.
+
 ### Added
 
 - **A local npm-cache mismatch now gets an actionable message instead of a

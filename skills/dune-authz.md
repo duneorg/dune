@@ -73,7 +73,7 @@ const canAdmin = await getAuthz().check({
 });
 ```
 
-In practice, `plugin-admin`'s own route guards don't call this directly for you — `requirePermission(ctx, perm)` (internal to `@dune/plugin-admin`) already does: it calls `authz.check()` when polizy is wired (`auth.mode: dune`, `authzStore: local`), and falls back to a simpler `ROLE_PERMISSIONS` table lookup when it isn't. You don't need to duplicate this in an admin route.
+In practice, `plugin-admin`'s own route guards don't call this directly for you — `requirePermission(ctx, perm)` (internal to `@dune/plugin-admin`) already does: it calls `authz.check()` and denies if `authz` is undefined. There is no role-table fallback. You don't need to duplicate this in an admin route.
 
 ### Group membership (content gating, membership sites)
 
