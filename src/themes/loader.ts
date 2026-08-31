@@ -401,7 +401,20 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
           templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
           return { name, component, fromTheme: active.manifest.name };
         } catch (err) {
-          console.warn(`  ⚠️  Failed to load template ${absPath}: ${err}`);
+          // A missing template file is caught here too (Deno.stat above
+          // throws NotFound rather than returning) and is not warning-worthy
+          // on its own — plenty of themes never define a custom template
+          // for a given name and rely on the parent-chain/fallback lookup
+          // that continues right below. A file that exists but fails to
+          // import/compile (typo, bad import, broken JSX) is a real problem
+          // and stays warned, deduped per path — see _warnedTemplateFailures.
+          if (
+            !(err instanceof Deno.errors.NotFound) &&
+            !_warnedTemplateFailures.has(absPath)
+          ) {
+            _warnedTemplateFailures.add(absPath);
+            console.warn(`  ⚠️  Failed to load template ${absPath}: ${err}`);
+          }
         }
         current = active.parent;
       }
@@ -575,6 +588,19 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
 
 /** Set of template paths already warned about, to avoid repeated messages. */
 const _warnedTemplates = new Set<string>();
+
+/**
+ * Template paths already warned about for a genuine load failure (file
+ * exists but threw while importing/compiling), so `loadTemplate()`'s catch
+ * block logs once per path per process instead of once per request. Every
+ * request that falls through to a lookup for a template a theme simply
+ * doesn't define (e.g. `templates/error.tsx` on a theme with no custom
+ * error page — a normal, common configuration choice, not a failure) would
+ * otherwise re-trigger the same log line forever; a burst of 404/bot
+ * traffic could produce a wall of identical warnings unrelated to whatever
+ * was actually just deployed.
+ */
+const _warnedTemplateFailures = new Set<string>();
 
 /**
  * True when the template source has a static component import but does NOT
