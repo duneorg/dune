@@ -6,7 +6,7 @@ This document describes what is being worked on, what comes next, and the longer
 
 ---
 
-## What ships today (v0.31)
+## What ships as of version 0.34.1
 
 The core is complete and in production use:
 
@@ -18,7 +18,7 @@ The core is complete and in production use:
 - Collections and taxonomy — declarative frontmatter queries, faceted filtering, pagination
 - Inline editing — `@dune/plugin-inline-edit` attaches a WYSIWYG editor to live pages; collaborative editing via CRDT; markers scrubbed from public responses
 - Admin auth — session-based, OAuth, magic links; polizy-backed relationship authorization; role-based access control; admin audit log
-- Public user auth — visitor accounts via OAuth (GitHub/Google/Discord) and magic link; `dune` and `external-jwt` modes; `local`/`session`/`db` user stores; role-based content gating via `roles:` frontmatter
+- Public user auth — visitor accounts via OAuth (GitHub/Google/Discord) and magic link; `dune` and `external-jwt` modes; `local`/`session`/`db` user stores; role-based content gating via `roles:` frontmatter; admin-provisioned accounts (`dune users:create`) alongside self-service signup; account linking — a user can connect additional OAuth providers to one existing account
 - Plugins — hooks API, browser entry points (client bundles), admin services, scheduled jobs
 - Pluggable search — `onSearchRecordsCollect`/`onSearchEngineCreate` hooks, multi-engine slot with runtime switching; built-in engine supports filter/sort/facet counts/pagination; `@dune/plugin-orama` (in-process, typo-tolerant) and `@dune/plugin-meilisearch` both register via `plugins:` in `site.yaml` with no code
 - Replaceable admin content editor — `ContentEditorPlugin` slot in `adminServices`; plugins replace the block editor by registering `pageEditorHandler`; optional WS endpoint for real-time collaboration
@@ -29,7 +29,7 @@ The core is complete and in production use:
 - CDN cache invalidation — Fastly, Bunny, Cloudflare, and custom providers; cache-tags and purge-on-publish
 - Multisite — multiple sites from one process
 - Deno Deploy support — `KvStorageAdapter` (no persistent filesystem required), auto-selected via `DENO_KV_URL`
-- CLI — `dune new`, `dev`, `serve`, `validate`, `migrate:*`, `deploy:init`, `lockfile`, `generate:*`, `jobs:*`, `plugin:install`, `plugin:create`, `theme:*`
+- CLI — `dune new`, `dev`, `serve`, `validate`, `build`, `migrate:*`, `deploy:init`, `lockfile:*`, `generate:*`, `jobs:*`, `plugin:*`, `theme:*`, `users:create`/`grant-role`/`revoke-role`, `content:*` (list/check/i18n-status/create/delete), `authz:sign`, `backup`/`restore`, `add`, `codegen`, `schema:export`
 - MCP server — read tools (pages, search, taxonomy, config) and write tools (content/config mutations); scaffolding via `generate:*`
 - Lockfile — Deno-level `--frozen` enforcement on `serve` (opt-in via `--frozen`/`DUNE_FROZEN=1`), no command implicitly writes `deno.lock`, `dune upgrade`/`add` auto-sync, staleness hint at startup
 - Testing infrastructure — `@dune/testing` in-process harness (`createTestHarness()`, `h.fetch()`/`h.render()`) for plugin/theme authors; Playwright E2E suite covering the admin panel's critical paths
