@@ -6,7 +6,7 @@ This document describes what is being worked on, what comes next, and the longer
 
 ---
 
-## What ships as of version 0.34.1
+## What ships today
 
 The core is complete and in production use:
 

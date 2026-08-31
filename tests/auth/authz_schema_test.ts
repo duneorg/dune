@@ -11,7 +11,7 @@ import { highestAdminRole, roleHasPermission } from "../../src/auth/authz-schema
 
 Deno.test("roleHasPermission: admin has every admin-tier permission", () => {
   assertEquals(roleHasPermission("admin", "pages.update"), true);
-  assertEquals(roleHasPermission("admin", "users.manage"), true);
+  assertEquals(roleHasPermission("admin", "users.update"), true);
   assertEquals(roleHasPermission("admin", "config.update"), true);
 });
 
@@ -19,7 +19,7 @@ Deno.test("roleHasPermission: editor has pages/media/config-read but not admin-o
   assertEquals(roleHasPermission("editor", "pages.update"), true);
   assertEquals(roleHasPermission("editor", "config.read"), true);
   assertEquals(roleHasPermission("editor", "config.update"), false);
-  assertEquals(roleHasPermission("editor", "users.manage"), false);
+  assertEquals(roleHasPermission("editor", "users.update"), false);
 });
 
 Deno.test("roleHasPermission: author is more restricted than editor", () => {

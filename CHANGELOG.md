@@ -9,7 +9,7 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
-## [Unreleased]
+## [0.34.2] — 2026-08-31
 
 ### Changed
 
@@ -50,12 +50,15 @@ exactly what "breaking" means and what doesn't count.
   same three numbers — the exact "two tables kept in sync by convention"
   pattern the `ROLE_PERMISSIONS` removal was about eliminating, just
   spotted a second time during review before it could take hold.
-- **Built-in admin plugin pin is now `@dune/plugin-admin@^3.0`**
-  (`deno.json` imports and `src/plugins/builtin.ts`). 3.0.0 is the
-  companion that removes `ROLE_PERMISSIONS` / `hasPermission()`; a 2.x
-  plugin-admin still runs against this core, but the two must be released
-  together so sites that pick up 3.0.0 do not call a method that no
-  longer exists.
+- **The built-in admin plugin pin stays at `@dune/plugin-admin@^2.0` in this
+  release, deliberately not yet bumped to `^3.0`.** `bootstrap()` resolves
+  this pin via a real runtime dynamic import whenever the admin panel is
+  enabled (the default) — bumping it ahead of `@dune/plugin-admin@3.0.0`
+  actually being published would make every such site fail to boot the
+  moment it picked up this version, since the pinned version wouldn't exist
+  yet. `roleHasPermission()`/`highestAdminRole()` above are fully additive
+  and work against either admin-plugin line; the `^3.0` bump ships in a
+  follow-up release once `@dune/plugin-admin@3.0.0` is confirmed live.
 
 ### Added
 

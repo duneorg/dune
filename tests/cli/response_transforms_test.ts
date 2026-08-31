@@ -212,7 +212,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   assertEquals(ctxAuth?.role, "editor");
   // hasPermission() is a synchronous read of the canonical actionToRelations
   // schema (roleHasPermission()), not a re-consultation of authz.check() —
-  // "editor" grants pages.update but not the admin-only users.manage.
+  // "editor" grants pages.update but not the admin-only users.update.
   assertEquals(ctxAuth?.hasPermission("pages.update"), true);
   assertEquals(ctxAuth?.hasPermission("pages.delete"), false);
 });
@@ -245,7 +245,7 @@ Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — 
   const ctxAuth = seen[0].auth;
   assertEquals(ctxAuth?.role, "admin");
   assertEquals(ctxAuth?.hasPermission("pages.update"), true);
-  assertEquals(ctxAuth?.hasPermission("users.manage"), true);
+  assertEquals(ctxAuth?.hasPermission("users.update"), true);
 });
 
 Deno.test("runPluginResponseTransforms: admin paths are never transformed (F4)", async () => {
