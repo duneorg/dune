@@ -13,6 +13,15 @@ exactly what "breaking" means and what doesn't count.
 
 ### Added
 
+- **A local npm-cache mismatch now gets an actionable message instead of a
+  raw esbuild/Deno stack trace.** `dune dev`/`dune serve` failing with
+  `[ERR_MODULE_NOT_FOUND]` or `Could not find referrer npm package` errors
+  naming two different resolved versions of the same package under
+  `npm/registry.npmjs.org/` (duneorg/dune#2) is a stale/corrupted local
+  `~/.cache/deno/npm`, not a Dune bug — this isn't preventable from Dune's
+  side, since it's not Dune's cache. The new message names the conflicting
+  versions when it can and suggests `deno cache --reload`, then clearing the
+  npm cache directory if that doesn't clear it.
 - **`dune plugin:update`, `plugin:install`, and `plugin:remove` now accept
   `--dry-run`.** All three mutate `config/site.yaml` with no confirmation
   prompt; `plugin:update --dry-run` in particular was silently accepted and

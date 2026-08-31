@@ -59,6 +59,10 @@ import {
   formatImportMapError,
   isImportMapError,
 } from "./cli/import-map-error.ts";
+import {
+  formatNpmCacheMismatchError,
+  isNpmCacheMismatchError,
+} from "./cli/npm-cache-error.ts";
 import { waitForwardingSignals } from "./cli/forward-signals.ts";
 import { buildMergedConfig } from "./cli/merge-config.ts";
 import { findWorkspaceRoot } from "./cli/local-checkout-detect.ts";
@@ -214,6 +218,10 @@ if (import.meta.main) {
   } catch (err) {
     if (isImportMapError(err)) {
       console.error(await formatImportMapError(err as Error));
+      Deno.exit(1);
+    }
+    if (isNpmCacheMismatchError(err)) {
+      console.error(formatNpmCacheMismatchError(err as Error));
       Deno.exit(1);
     }
     throw err;
