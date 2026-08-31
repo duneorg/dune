@@ -9,6 +9,22 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.3] — 2026-08-31
+
+### Changed
+
+- **Built-in admin plugin pin bumped to `@dune/plugin-admin@^3.0`**
+  (`deno.json` imports and `src/plugins/builtin.ts`), now that
+  `@dune/plugin-admin@3.0.0` is actually published — the follow-up
+  deferred in 0.34.2.
+- **`minimumDependencyAge` now also excludes `jsr:@dune/core`**, not just
+  `jsr:@dune/plugin-admin`. A same-org self-published dependency doesn't
+  carry the supply-chain risk the freshness gate exists for; without this,
+  a test fixture resolving the admin plugin transitively hit "Could not
+  find version of '@dune/core' that matches specified version constraint"
+  the moment core and plugin-admin were published within a day of each
+  other (found while re-verifying this exact pin bump).
+
 ## [0.34.2] — 2026-08-31
 
 ### Changed

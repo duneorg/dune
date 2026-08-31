@@ -1,11 +1,11 @@
 {
   "name": "@dune/core",
-  "version": "0.34.2",
+  "version": "0.34.3",
   "license": "MIT",
   "author": "zumbrunn (https://zumbrunn.com)",
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@dune/plugin-admin"]
+    "exclude": ["jsr:@dune/plugin-admin", "jsr:@dune/core"]
   },
   "exports": {
     ".": "./src/mod.ts",
@@ -57,12 +57,12 @@
     "./fresh-app": "./src/runtime/server.ts"
   },
   "imports": {
-    "@dune/plugin-admin": "jsr:@dune/plugin-admin@^2.0",
-    "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@^2.0/admin/mount",
-    "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@^2.0/admin/context",
-    "@dune/plugin-admin/admin/types": "jsr:@dune/plugin-admin@^2.0/admin/types",
-    "@dune/plugin-admin/admin/auth/middleware": "jsr:@dune/plugin-admin@^2.0/admin/auth/middleware",
-    "@dune/plugin-admin/admin/auth/provider": "jsr:@dune/plugin-admin@^2.0/admin/auth/provider",
+    "@dune/plugin-admin": "jsr:@dune/plugin-admin@^3.0",
+    "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@^3.0/admin/mount",
+    "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@^3.0/admin/context",
+    "@dune/plugin-admin/admin/types": "jsr:@dune/plugin-admin@^3.0/admin/types",
+    "@dune/plugin-admin/admin/auth/middleware": "jsr:@dune/plugin-admin@^3.0/admin/auth/middleware",
+    "@dune/plugin-admin/admin/auth/provider": "jsr:@dune/plugin-admin@^3.0/admin/auth/provider",
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",
     "preact/hooks": "npm:preact@^10/hooks",
