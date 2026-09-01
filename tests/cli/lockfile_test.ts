@@ -1,5 +1,5 @@
 /**
- * Tests for `dune lockfile check` / `dune lockfile sync` — the additive-only
+ * Tests for `dune lockfile:check` / `dune lockfile:sync` — the additive-only
  * merge algorithm and workspace-root discovery, plus an end-to-end pass
  * through the real subprocess orchestration.
  */

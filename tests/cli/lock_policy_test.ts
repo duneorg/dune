@@ -158,6 +158,6 @@ Deno.test("preflightLockPolicy: actionable message when the lockfile is missing"
   const lockPath = join(site, "deno.lock");
   const message = await preflightLockPolicy({ mode: "frozen", lockPath });
   assertStringIncludes(message ?? "", lockPath);
-  assertStringIncludes(message ?? "", "dune lockfile sync");
+  assertStringIncludes(message ?? "", "dune lockfile:sync");
   assertStringIncludes(message ?? "", "--no-frozen");
 });

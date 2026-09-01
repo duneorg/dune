@@ -26,6 +26,17 @@ exactly what "breaking" means and what doesn't count.
   whatever was actually just deployed. The missing-file case (`Deno.stat`
   throwing `NotFound`) no longer logs at all; a genuine load failure still
   warns, deduped per template path per process instead of per request.
+- **`dune lockfile sync`/`dune lockfile check` typo'd across every runtime
+  message and doc comment that referenced them** — the real subcommands are
+  `lockfile:sync`/`lockfile:check` (colon, matching every other CLI
+  subcommand's `namespace:action` convention and `help.ts`'s own listing).
+  The typo'd form doesn't exist as a command, so copy-pasting these warnings
+  verbatim (dev/serve startup lockfile-staleness notices, `dune add`/`dune
+  upgrade`'s post-install lockfile-sync failure messages, `--frozen`
+  preflight errors, `lockfile:check`'s own "run this to add them" hint) failed
+  with "Unknown command". Fixed in `src/cli/dev.ts`, `serve.ts`, `add.ts`,
+  `upgrade.ts`, `lock-policy.ts`, `lockfile.ts`, `lockfile-resolve-helper.ts`,
+  and `plugins/builtin.ts`'s doc comment.
 
 ## [0.34.3] — 2026-08-31
 

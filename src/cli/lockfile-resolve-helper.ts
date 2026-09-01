@@ -1,5 +1,5 @@
 /**
- * Internal worker for `dune lockfile sync` / `dune lockfile check`.
+ * Internal worker for `dune lockfile:sync` / `dune lockfile:check`.
  *
  * Not a public CLI command. Spawned as a subprocess with an explicit
  * `--lock=<scratch-copy>` (and the site's `--config=`), so that loading
