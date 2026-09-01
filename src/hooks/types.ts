@@ -514,6 +514,36 @@ export interface DunePlugin {
     ctx: AdminServicesContext,
   ) => Promise<AdminServices> | AdminServices;
   /**
+   * Register app-wide middleware that every other plugin's routes must be
+   * able to see, before any plugin's regular `mount()` runs.
+   *
+   * `mountPlugins()` compiles each `app.get()`/`app.post()`/etc. route's
+   * middleware chain at the moment that route is registered (this is a Fresh
+   * 2 constraint, not a Dune one — see `@fresh/core`'s `applyCommandsInner`/
+   * `segmentToMiddlewares`): a route registered before some `app.use()`
+   * middleware never sees it, even when both are unscoped, because the
+   * chain is snapshotted at registration time, not per-request. `mount()`
+   * hooks run in plugin registration order, which for the built-in admin
+   * plugin is *after* every site-configured plugin (see `bootstrap.ts`) — so
+   * a plugin's own `mount()`-registered route could never see
+   * `@dune/plugin-admin`'s `ctx.state.adminContext`, which its own `mount()`
+   * sets up via exactly this kind of unscoped `app.use()`.
+   *
+   * `mountEarly()` exists to break that dependency: `mountPlugins()` calls
+   * every plugin's `mountEarly()` (admin's first, if present) before calling
+   * *any* plugin's `mount()`. Only middleware belongs here — anything that
+   * registers a route (including a plugin's own `publicRoutes`) still
+   * belongs in `mount()`, which keeps its original ordering guarantees (see
+   * that hook's own doc comment).
+   *
+   * Most plugins never need this — it exists for the admin plugin's
+   * `ctx.state.adminContext` middleware specifically, and for any future
+   * plugin whose middleware other plugins' routes need to depend on.
+   *
+   * @since 0.34.4
+   */
+  mountEarly?: (api: MountApi) => Promise<void> | void;
+  /**
    * Mount Fresh routes onto the app.
    *
    * Called by {@link mountPlugins} after `bootstrap()` completes and the Fresh
@@ -524,6 +554,15 @@ export interface DunePlugin {
    * `adminServices` is the merged output of all plugins' `adminServices()` factories,
    * collected at mount time. Plugins that contribute an `inlineEdit` manager or
    * `contentEditor` implementation will see their contributions reflected here.
+   *
+   * Runs in plugin registration order (unlike `mountEarly()`, which always
+   * runs admin first) — a route registered here can rely on every other
+   * plugin registered *before* this one having already registered its own
+   * `mount()`-time middleware and routes. If your route needs to see
+   * middleware from a plugin that mounts *after* yours (most commonly the
+   * built-in admin plugin's `ctx.state.adminContext`), that dependency has
+   * to be a `mountEarly()` middleware instead, not something `mount()`'s own
+   * ordering can give you.
    *
    * @since 0.24.0
    *

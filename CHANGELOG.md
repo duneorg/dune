@@ -37,6 +37,25 @@ exactly what "breaking" means and what doesn't count.
   with "Unknown command". Fixed in `src/cli/dev.ts`, `serve.ts`, `add.ts`,
   `upgrade.ts`, `lock-policy.ts`, `lockfile.ts`, `lockfile-resolve-helper.ts`,
   and `plugins/builtin.ts`'s doc comment.
+- **A plugin's own `mount()`-registered route could never see
+  `@dune/plugin-admin`'s `ctx.state.adminContext`.** Fresh 2 snapshots each
+  route's middleware chain at the moment the route is registered, not
+  per-request; `mountPlugins()` calls every plugin's `mount()` in
+  registration order, and the built-in admin plugin is always registered
+  *after* every site-configured plugin (`bootstrap.ts` doesn't construct it
+  until authz/hmac-key/history are ready) — so a third-party plugin's own
+  guarded route, following the documented `withGuards()` pattern, always
+  read `ctx.state.adminContext` as `undefined`, no matter how the request
+  was authenticated.
+- **`DunePlugin` gained a new optional `mountEarly()` hook** for middleware
+  every other plugin's routes must be able to see. `mountPlugins()` now
+  calls every plugin's `mountEarly()` (admin plugin first, regardless of
+  registration order) in a separate pass before calling any plugin's
+  `mount()` — which keeps running in registration order, unchanged, since
+  admin's own internal route-finalizing work depends on that ordering (see
+  `mountPlugins()`'s doc comment in `src/plugins/loader.ts`). Requires
+  `@dune/plugin-admin` to move its `ctx.state.adminContext` middleware into
+  `mountEarly()` to take effect — see that package's own changelog.
 
 ## [0.34.3] — 2026-08-31
 
