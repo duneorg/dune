@@ -483,3 +483,76 @@ export default function Page(props) {
 }`;
   assertEquals(hasUnsafeStaticLayoutImport(source), false);
 });
+
+// ---------------------------------------------------------------------------
+// loadTemplate() — missing-file vs. genuine-load-failure logging
+//
+// Real files on a real temp dir (rootDir override) — the ENOENT path Deno.stat
+// throws for a template a theme simply doesn't define must never warn (common,
+// intentional; error-page.ts's tier-2 fallback handles it correctly), while a
+// file that exists but throws on import is a genuine problem and must still
+// warn, deduped per path per process rather than once per request.
+// ---------------------------------------------------------------------------
+
+function captureWarnings(): { lines: string[]; restore: () => void } {
+  const original = console.warn;
+  const lines: string[] = [];
+  console.warn = (...args: unknown[]) => lines.push(args.join(" "));
+  return { lines, restore: () => (console.warn = original) };
+}
+
+Deno.test("loadTemplate: missing template file never warns (common, intentional configuration)", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.mkdir(`${root}/themes/base/templates`, { recursive: true });
+    const loader = await createThemeLoader({
+      storage: makeStorage({ "themes/base/theme.yaml": "name: base\n" }),
+      themesDir: "themes",
+      themeName: "base",
+      rootDir: root,
+    });
+    const { lines, restore } = captureWarnings();
+    try {
+      const result = await loader.loadTemplate("error");
+      assertEquals(result, null);
+    } finally {
+      restore();
+    }
+    assertEquals(lines.length, 0);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("loadTemplate: a template file that exists but fails to import warns once, not once per call", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.mkdir(`${root}/themes/base/templates`, { recursive: true });
+    // Genuinely broken — a syntax error, not just a missing default export,
+    // so the dynamic import() itself throws.
+    await Deno.writeTextFile(
+      `${root}/themes/base/templates/broken.tsx`,
+      `export default function Broken( {`,
+    );
+    const loader = await createThemeLoader({
+      storage: makeStorage({ "themes/base/theme.yaml": "name: base\n" }),
+      themesDir: "themes",
+      themeName: "base",
+      rootDir: root,
+    });
+    const { lines, restore } = captureWarnings();
+    try {
+      // Two separate calls — the mtime-based cache above this catch block
+      // only caches successful loads, so both calls genuinely re-enter the
+      // try/catch and would both warn without the dedup fix.
+      assertEquals(await loader.loadTemplate("broken"), null);
+      assertEquals(await loader.loadTemplate("broken"), null);
+    } finally {
+      restore();
+    }
+    assertEquals(lines.length, 1);
+    assertEquals(lines[0].includes("broken.tsx"), true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});

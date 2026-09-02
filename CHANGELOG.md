@@ -9,6 +9,24 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The theme loader's "failed to load template" warning fired once per
+  request instead of once per process, and conflated two unrelated cases.**
+  A missing template file (e.g. no custom `templates/error.tsx` — a normal,
+  common configuration choice; `error-page.ts`'s tier-2 fallback handles it
+  correctly) and a template file that exists but throws while
+  importing/compiling (a real bug — typo, bad import, broken JSX) both hit
+  the same `console.warn` at the same level. Every request that fell
+  through to the missing-template lookup (every 404, for a theme with no
+  custom error page) re-logged the identical line — a burst of 404/bot
+  traffic could bury genuinely useful log output in noise unrelated to
+  whatever was actually just deployed. The missing-file case (`Deno.stat`
+  throwing `NotFound`) no longer logs at all; a genuine load failure still
+  warns, deduped per template path per process instead of per request.
+
 ## [0.34.3] — 2026-08-31
 
 ### Changed
