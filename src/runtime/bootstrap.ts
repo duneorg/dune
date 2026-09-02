@@ -36,6 +36,8 @@ import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
+import { buildDuneAuthzSchema, DUNE_BASE_AUTHZ_ACTIONS } from "../auth/authz-schema.ts";
+import type { AuthzRelation } from "../auth/authz-schema.ts";
 import { initTracer } from "../tracing/mod.ts";
 import { sectionRegistry } from "../sections/registry.ts";
 import type { SectionRegistry } from "../sections/registry.ts";
@@ -131,6 +133,16 @@ export interface BootstrapResult {
   authz?: DuneAuthSystem;
   /** Paired adapter for the authz system above — needed for hasTuple / bootstrap. */
   authzAdapter?: AuthzLocalAdapter | AuthzDbAdapter;
+  /**
+   * This site's actual polizy schema — Dune's built-in actions plus
+   * whatever any registered plugin contributed via `DunePlugin.authzActions`.
+   * The `authz` system above is already built against this; exposed
+   * separately for any caller that needs the schema itself (e.g.
+   * `roleHasPermission()`'s synchronous, non-`authz.check()` path in
+   * `runPluginResponseTransforms()`), rather than the plain built-in-only
+   * `duneAuthzSchema` module export, which never sees this site's plugins.
+   */
+  authzSchema: import("../auth/authz-schema.ts").DuneAuthzSchema;
   /**
    * Pre-loaded HMAC key for authz tuple signing — null if DUNE_AUTHZ_HMAC_SECRET
    * is absent. Passed to mountDuneAuth() so the env var is read exactly once.
@@ -348,11 +360,38 @@ export async function bootstrap(
   const pluginTemplateDirs: string[] = [];
   const pluginPublicRoutes:
     import("../hooks/types.ts").PublicRouteRegistration[] = [];
+  // Plugin-contributed authz actions — collected here (after every plugin's
+  // setup() has run) so buildDuneAuthzSchema() below can merge them in
+  // before the site's authz system is created. First declaration wins on a
+  // name collision (built-in or cross-plugin) — dropped with a logged
+  // warning, never silently merged/overwritten, so a typo'd or malicious
+  // plugin can't redefine what an existing action means.
+  const pluginAuthzActions: Record<string, readonly AuthzRelation[]> = {};
   for (const plugin of hooks.plugins()) {
     if (plugin.assetDir) pluginAssetDirs.set(plugin.name, plugin.assetDir);
     if (plugin.templateDir) pluginTemplateDirs.push(plugin.templateDir);
     if (plugin.publicRoutes) pluginPublicRoutes.push(...plugin.publicRoutes);
+    if (plugin.authzActions) {
+      for (const [action, relations] of Object.entries(plugin.authzActions)) {
+        if (action in DUNE_BASE_AUTHZ_ACTIONS) {
+          logger.warn("bootstrap.authz_actions.collides_with_builtin", {
+            plugin: plugin.name,
+            action,
+          });
+          continue;
+        }
+        if (action in pluginAuthzActions) {
+          logger.warn("bootstrap.authz_actions.collides_with_plugin", {
+            plugin: plugin.name,
+            action,
+          });
+          continue;
+        }
+        pluginAuthzActions[action] = relations;
+      }
+    }
   }
+  const authzSchema = buildDuneAuthzSchema(pluginAuthzActions);
 
   // Register plugin template dirs with the engine so plugins can provide
   // additional templates that themes can fall back to.
@@ -499,6 +538,7 @@ export async function bootstrap(
         authzStore: "local",
         dataDir,
         hmacKey,
+        schema: authzSchema,
       }, storage);
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
@@ -607,6 +647,7 @@ export async function bootstrap(
     adminServices: null,
     authz: bootstrappedAuthz,
     authzAdapter: bootstrappedAuthzAdapter,
+    authzSchema,
     hmacKey,
   };
 }

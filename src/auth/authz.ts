@@ -41,6 +41,7 @@
  */
 
 import { AuthSystem } from "polizy";
+import type { AuthSchema } from "polizy";
 import { duneAuthzSchema } from "./authz-schema.ts";
 import { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { AuthzDbAdapter } from "./authz-adapter-db.ts";
@@ -82,6 +83,16 @@ export interface AuthzConfig {
    * Load from DUNE_AUTHZ_HMAC_SECRET via `loadHmacKeyFromEnv()`.
    */
   hmacKey?: CryptoKey | null;
+  /**
+   * The polizy schema to build the AuthSystem against — defaults to the
+   * plain built-in `duneAuthzSchema`. `bootstrap()` passes its own
+   * per-site `authzSchema` (built-ins plus whatever plugins contributed
+   * via `DunePlugin.authzActions`, see `buildDuneAuthzSchema()`); any
+   * other caller (tests, headless usage) gets the same default as always
+   * if it doesn't pass one.
+   */
+  // deno-lint-ignore no-explicit-any
+  schema?: AuthSchema<any, any, any, any, any>;
 }
 
 /** Return value of {@link createDuneAuthSystem} — the configured AuthSystem plus its underlying adapter. */
@@ -138,7 +149,7 @@ export function createDuneAuthSystem(
     adapter = new AuthzLocalAdapter({ storage, dataDir, hmacKey: config.hmacKey });
   }
   const authz = new AuthSystem({
-    schema: duneAuthzSchema,
+    schema: config.schema ?? duneAuthzSchema,
     // Cast required because polizy's StorageAdapter<S,O> generic parameters
     // don't align with the structural types from AuthzLocalAdapter — the
     // implementation is fully compatible at runtime.

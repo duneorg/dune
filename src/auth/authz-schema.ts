@@ -20,11 +20,13 @@
  * ## Granular admin permissions
  *   authz.check({ who: adminUser, canThey: "pages.create", onWhat: { type: "app", id: "admin" } })
  *
- * The admin permission actions below are the sole, canonical permission
- * definition — `@dune/plugin-admin` no longer keeps its own `ROLE_PERMISSIONS`
- * mirror (removed alongside dec-identity-unification Phase 5c/6, 3.0.0); see
- * {@link roleHasPermission} for the one place that still needs a synchronous
- * read of this same data instead of `authz.check()`.
+ * The admin permission actions below are the sole, canonical *built-in*
+ * permission definition — `@dune/plugin-admin` no longer keeps its own
+ * `ROLE_PERMISSIONS` mirror (removed alongside dec-identity-unification
+ * Phase 5c/6, 3.0.0); see {@link roleHasPermission} for the one place that
+ * still needs a synchronous read of this same data instead of
+ * `authz.check()`. A plugin can extend this vocabulary with its own actions
+ * via `DunePlugin.authzActions` — see {@link buildDuneAuthzSchema}.
  */
 
 import { defineSchema } from "polizy";
@@ -32,63 +34,121 @@ import type { AuthSchema } from "polizy";
 import type { Role } from "../config/admin-config.ts";
 
 /**
- * The polizy authorization schema for Dune — defines relations and action-to-relation mappings
- * for content gating, admin access, and resource ownership.
+ * A polizy relation name a plugin-contributed action can require. Limited
+ * to Dune's existing built-in relations (no plugin can define a *new*
+ * relation type today — see `buildDuneAuthzSchema`'s doc comment for why).
+ */
+export type AuthzRelation = "member" | "admin" | "editor" | "author" | "owner";
+
+/**
+ * Dune's built-in actions, mapped to the relations that satisfy each —
+ * `@dune/plugin-admin`'s canonical permission definition (see the module
+ * doc above). Exported (not just inlined into {@link buildDuneAuthzSchema})
+ * so bootstrap can detect a plugin trying to redeclare one of these names
+ * before merging in plugin-contributed actions.
+ */
+export const DUNE_BASE_AUTHZ_ACTIONS = {
+  // ── Site-user actions ──────────────────────────────────────────────────
+  /** General access (read/view). Satisfied by group membership or admin-tier roles.
+   *
+   *  `owner` is intentionally excluded: it is a per-resource direct grant used for
+   *  inline editing (`edit` action). Including it here would allow a user who owns
+   *  a specific resource (e.g. a page) to pass *group-based* content gating checks
+   *  — a confused-deputy that grants unintended access to gated content.
+   *
+   *  If an owner should also be able to access gated content, grant them the
+   *  appropriate group membership (e.g. `authz.addMember(...)`) explicitly.
+   */
+  access: ["member", "admin", "editor", "author"],
+  /** Write/edit access on a specific resource */
+  edit: ["owner", "admin", "editor"],
+
+  // ── Admin panel — granular permissions (maps 1:1 with AdminPermission) ─
+  //
+  // Sole built-in definition — nothing else mirrors this (see the module doc above).
+  //
+  "pages.create": ["admin", "editor", "author"],
+  "pages.read":   ["admin", "editor", "author"],
+  "pages.update": ["admin", "editor", "author"],
+  "pages.delete": ["admin"],
+  "media.upload": ["admin", "editor", "author"],
+  "media.read":   ["admin", "editor", "author"],
+  "media.delete": ["admin", "editor"],
+  "users.create": ["admin"],
+  "users.read":   ["admin"],
+  "users.update": ["admin"],
+  "users.delete": ["admin"],
+  "config.read":   ["admin", "editor"],
+  "config.update": ["admin"],
+  "submissions.read":   ["admin", "editor", "author"],
+  "submissions.delete": ["admin"],
+} as const satisfies Record<string, readonly AuthzRelation[]>;
+
+/**
+ * Build Dune's polizy authorization schema — the built-in actions above,
+ * plus any actions plugins have contributed via `DunePlugin.authzActions`.
+ *
+ * `defineSchema()` itself is pure, synchronous, and just validates that
+ * every action's relations actually exist on the schema — there's no
+ * architectural reason a plugin can't extend the action vocabulary, only
+ * that `duneAuthzSchema` used to be a module-level constant built once at
+ * import time, before any plugin had registered. This function replaces
+ * that: `bootstrap()` calls it once per site, after every plugin's
+ * `setup()` has run and their `authzActions` have been collected and
+ * de-duplicated against both the built-ins and each other (a name
+ * collision is dropped with a logged warning, not silently merged —
+ * see `bootstrap.ts`).
+ *
+ * Deliberately relation-only, not a way to define new *relation* types: a
+ * plugin action can require `admin`/`editor`/`author`/`owner`/`member` (the
+ * existing structural vocabulary polizy's tuple model already understands),
+ * but can't invent its own relation kind. Covers the actual motivating case
+ * (gate a new admin capability the same correct way every built-in route
+ * is) without opening the larger, harder question of arbitrary
+ * plugin-defined relation semantics.
+ *
+ * @param pluginActions Already-merged, already-collision-checked plugin
+ *   actions (`bootstrap.ts` builds this) — pass nothing for the plain
+ *   built-in schema (tests, headless usage with no plugins contributing
+ *   actions).
+ */
+export function buildDuneAuthzSchema(
+  pluginActions?: Record<string, readonly AuthzRelation[]>,
+  // deno-lint-ignore no-explicit-any
+): AuthSchema<any, any, any, any, any> {
+  return defineSchema({
+    relations: {
+      /** Group membership — used for role-based content gating. The `type: "group"` marker
+       *  tells polizy that `addMember()` should use this relation. */
+      member: { type: "group" },
+      /** Admin-level direct access to an app or resource */
+      admin: { type: "direct" },
+      /** Editor-level access */
+      editor: { type: "direct" },
+      /** Author-level access */
+      author: { type: "direct" },
+      /** Resource ownership (per-object grant) */
+      owner: { type: "direct" },
+    },
+    actionToRelations: {
+      ...DUNE_BASE_AUTHZ_ACTIONS,
+      ...pluginActions,
+    },
+    subjectTypes: ["user"] as const,
+    objectTypes: ["group", "app", "resource"] as const,
+  });
+}
+
+/**
+ * The plain built-in schema, no plugin-contributed actions — for any
+ * caller that isn't a per-site bootstrap (tests, standalone/headless
+ * usage, or anything that predates plugin-extensible actions and just
+ * wants the same default as always). A real site's actual schema (with
+ * whatever its plugins contributed) lives on `BootstrapResult.authzSchema`
+ * instead — read from there when you have a `BootstrapResult` in hand.
  */
 // deno-lint-ignore no-explicit-any
-export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = defineSchema({
-  relations: {
-    /** Group membership — used for role-based content gating. The `type: "group"` marker
-     *  tells polizy that `addMember()` should use this relation. */
-    member: { type: "group" },
-    /** Admin-level direct access to an app or resource */
-    admin: { type: "direct" },
-    /** Editor-level access */
-    editor: { type: "direct" },
-    /** Author-level access */
-    author: { type: "direct" },
-    /** Resource ownership (per-object grant) */
-    owner: { type: "direct" },
-  },
-  actionToRelations: {
-    // ── Site-user actions ──────────────────────────────────────────────────
-    /** General access (read/view). Satisfied by group membership or admin-tier roles.
-     *
-     *  `owner` is intentionally excluded: it is a per-resource direct grant used for
-     *  inline editing (`edit` action). Including it here would allow a user who owns
-     *  a specific resource (e.g. a page) to pass *group-based* content gating checks
-     *  — a confused-deputy that grants unintended access to gated content.
-     *
-     *  If an owner should also be able to access gated content, grant them the
-     *  appropriate group membership (e.g. `authz.addMember(...)`) explicitly.
-     */
-    access: ["member", "admin", "editor", "author"],
-    /** Write/edit access on a specific resource */
-    edit: ["owner", "admin", "editor"],
-
-    // ── Admin panel — granular permissions (maps 1:1 with AdminPermission) ─
-    //
-    // Sole definition — nothing else mirrors this (see the module doc above).
-    //
-    "pages.create": ["admin", "editor", "author"],
-    "pages.read":   ["admin", "editor", "author"],
-    "pages.update": ["admin", "editor", "author"],
-    "pages.delete": ["admin"],
-    "media.upload": ["admin", "editor", "author"],
-    "media.read":   ["admin", "editor", "author"],
-    "media.delete": ["admin", "editor"],
-    "users.create": ["admin"],
-    "users.read":   ["admin"],
-    "users.update": ["admin"],
-    "users.delete": ["admin"],
-    "config.read":   ["admin", "editor"],
-    "config.update": ["admin"],
-    "submissions.read":   ["admin", "editor", "author"],
-    "submissions.delete": ["admin"],
-  },
-  subjectTypes: ["user"] as const,
-  objectTypes: ["group", "app", "resource"] as const,
-});
+export const duneAuthzSchema: AuthSchema<any, any, any, any, any> = buildDuneAuthzSchema();
 
 /** TypeScript type of the Dune authorization schema — pass to `AuthSystem` generics. */
 export type DuneAuthzSchema = typeof duneAuthzSchema;
@@ -116,10 +176,19 @@ export type DuneAuthzSchema = typeof duneAuthzSchema;
  * it (or copy it) to gate access anywhere — use `authz.check()`. If you
  * need a permission decision in a synchronous context, restructure the
  * context so the decision is made once, asynchronously, and passed in.
+ *
+ * @param actionToRelations The schema's action-to-relations map to check
+ *   against — pass a site's actual `BootstrapResult.authzSchema
+ *   .actionToRelations` so a plugin-contributed action resolves correctly;
+ *   defaults to just the built-ins (`DUNE_BASE_AUTHZ_ACTIONS`) for callers
+ *   with no per-site schema in hand.
  */
-export function roleHasPermission(role: string, permission: string): boolean {
-  const relations = duneAuthzSchema.actionToRelations as Record<string, readonly string[]>;
-  return relations[permission]?.includes(role) ?? false;
+export function roleHasPermission(
+  role: string,
+  permission: string,
+  actionToRelations: Record<string, readonly string[]> = DUNE_BASE_AUTHZ_ACTIONS,
+): boolean {
+  return actionToRelations[permission]?.includes(role) ?? false;
 }
 
 /**

@@ -86,7 +86,7 @@ export function registerContentCatchAll(
     adminPrefix,
     routes,
   } = opts;
-  const { engine, imageHandler, hooks, config, metrics, authz } = ctx;
+  const { engine, imageHandler, hooks, config, metrics, authz, authzSchema } = ctx;
   // deno-lint-ignore no-explicit-any
   const getAdminAuth = () => (ctx.adminContext as any)?.auth ?? null;
 
@@ -243,6 +243,7 @@ export function registerContentCatchAll(
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
           authz,
+          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
           resolve: engine.router.resolve,
           config,
           adminPrefix,
@@ -311,6 +312,7 @@ export function registerContentCatchAll(
           plugins: hooks.plugins(),
           auth: getAdminAuth(),
           authz,
+          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
           resolve: engine.router.resolve,
           config,
           adminPrefix,

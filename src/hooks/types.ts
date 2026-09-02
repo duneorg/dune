@@ -11,6 +11,7 @@ import type { FreshContext } from "fresh";
 import type { InlineEditManager } from "../inline-edit/types.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { ContentApi } from "../content/api.ts";
+import type { AuthzRelation } from "../auth/authz-schema.ts";
 
 /**
  * All lifecycle events a plugin can subscribe to.
@@ -493,6 +494,45 @@ export interface DunePlugin {
    * @since 0.24.0
    */
   islandSpecifiers?: string[];
+  /**
+   * New admin-permission actions this plugin contributes to the polizy authz
+   * schema, keyed by action name and mapping to the existing relations that
+   * satisfy it — the same shape as `@dune/core`'s own built-in actions (see
+   * `src/auth/authz-schema.ts`'s `DUNE_BASE_AUTHZ_ACTIONS`), just declared
+   * by a plugin instead of core.
+   *
+   * Lets a plugin gate a genuinely new admin capability the correct way —
+   * `authz.check()`, same as every built-in admin route — instead of either
+   * reusing an existing, semantically-mismatched permission or hand-rolling
+   * a check outside the authz system entirely. `bootstrap()` collects every
+   * registered plugin's `authzActions` (after `setup()` has run, before the
+   * site's authz system is created) and merges them into the schema; an
+   * action name that collides with a built-in or another plugin's is
+   * dropped with a logged warning, not silently merged — first declaration
+   * wins in registration order.
+   *
+   * Relation-only, not a way to define a new relation *type*: values must
+   * be drawn from `"member" | "admin" | "editor" | "author" | "owner"`, the
+   * same structural vocabulary every built-in action already uses.
+   *
+   * @since 0.34.4
+   *
+   * @example
+   * ```ts
+   * // Gate a plugin-specific admin capability behind its own permission,
+   * // reachable from any mount()-registered route via withGuards():
+   * //   withGuards({ permission: "billing.manage" }, handler)
+   * export default {
+   *   name: "my-billing-plugin",
+   *   version: "1.0.0",
+   *   authzActions: {
+   *     "billing.manage": ["admin"],
+   *   },
+   *   hooks: {},
+   * } satisfies DunePlugin;
+   * ```
+   */
+  authzActions?: Record<string, readonly AuthzRelation[]>;
   /**
    * Factory for admin-context services contributed by this plugin.
    *
