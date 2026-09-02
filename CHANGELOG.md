@@ -9,7 +9,7 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
-## [Unreleased]
+## [0.34.4] — 2026-09-01
 
 ### Fixed
 
