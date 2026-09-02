@@ -43,6 +43,7 @@ import type {
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
+import { ADMIN_PLUGIN_NAME } from "./builtin.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -384,15 +385,60 @@ export async function applyResponseTransforms(
 }
 
 /**
- * Call every plugin's `mount()` hook in registration order.
+ * Reorder `plugins` so the built-in admin plugin (if present) comes first,
+ * otherwise preserving registration order.
+ *
+ * `hooks.plugins()` reflects registration order, which for the admin plugin
+ * is deliberately late: `bootstrap.ts` doesn't register it until it has
+ * built the things admin's own construction depends on (authz, hmac key,
+ * the history engine, …) — well after `loadPlugins()` has already
+ * registered every site-configured plugin. Used for `mountEarly()` ordering
+ * (see `mountPlugins()`) and for `collectAdminServices()`, whose "later
+ * plugin wins" override semantics (a user plugin replacing a built-in admin
+ * service) only work as documented when admin's own contribution is
+ * collected first.
+ *
+ * Deliberately NOT used for the `mount()` loop itself — see
+ * `mountPlugins()`'s doc comment for why that one stays in registration
+ * order.
+ */
+function orderPluginsAdminFirst(plugins: DunePlugin[]): DunePlugin[] {
+  const adminIndex = plugins.findIndex((p) => p.name === ADMIN_PLUGIN_NAME);
+  if (adminIndex <= 0) return plugins;
+  const admin = plugins[adminIndex];
+  return [admin, ...plugins.slice(0, adminIndex), ...plugins.slice(adminIndex + 1)];
+}
+
+/**
+ * Call every plugin's `mountEarly()` hook (admin plugin first, see
+ * `orderPluginsAdminFirst()`), then every plugin's `mount()` hook (plain
+ * registration order).
+ *
+ * Two separate passes, in different orders, because they need opposite
+ * guarantees:
+ *
+ * - `mountEarly()` registers middleware every other plugin's routes must be
+ *   able to see (e.g. `@dune/plugin-admin`'s `ctx.state.adminContext`), so
+ *   it must run before *any* plugin's `mount()` — regardless of
+ *   registration order, which puts the admin plugin last (see
+ *   `orderPluginsAdminFirst()`).
+ * - `mount()` registers routes, including a plugin's own `publicRoutes` —
+ *   `@dune/plugin-admin`'s own `mount()` finalizes those via an internal
+ *   `registerPluginPublicRoutes()` call, which must run *after* every other
+ *   plugin has had a chance to register its own `mount()`-time middleware,
+ *   or their routes lose the same visibility this whole split exists to
+ *   fix. That only holds if `mount()` keeps running in registration order
+ *   (admin last) — reordering this loop the same way `mountEarly()` is
+ *   ordered was tried and breaks that invariant (see
+ *   `tests/runtime/register_plugin_routes_test.ts`).
  *
  * Must be called after `bootstrap()` (so all plugins are loaded and their
  * `setup()` hooks have run) and after the Fresh `App` is created (so routes
  * can be registered). Admin services are collected here — the same call that
  * `bootstrap()` currently makes will move here when the admin plugin takes over.
  *
- * Errors in individual plugins' `mount()` are caught and logged; remaining
- * plugins still mount.
+ * Errors in individual plugins' `mountEarly()`/`mount()` are caught and
+ * logged; remaining plugins still mount.
  *
  * @since 0.24.0
  */
@@ -404,12 +450,16 @@ export async function mountPlugins(
   // Plugin setup() is fire-and-forget at registration time (see
   // registry.ts's registerPlugin()), so a plugin's async setup() work
   // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
-  // here. adminServices() and mount() both read state setup() initializes,
-  // so wait for every plugin's setup() to settle before either runs.
+  // here. adminServices(), mountEarly(), and mount() all read state setup()
+  // initializes, so wait for every plugin's setup() to settle before any of
+  // them run.
   await ctx.hooks.whenSetupComplete();
 
+  const registeredOrder = ctx.hooks.plugins();
+  const adminFirstOrder = orderPluginsAdminFirst(registeredOrder);
+
   const adminCfg = ctx.config.admin;
-  const adminServices = await collectAdminServices(ctx.hooks.plugins(), {
+  const adminServices = await collectAdminServices(adminFirstOrder, {
     storage: ctx.storage,
     history: ctx.history,
     config: ctx.config,
@@ -429,7 +479,25 @@ export async function mountPlugins(
   // coupling to @dune/plugin-admin.
   ctx.adminServices = adminServices;
 
-  for (const plugin of ctx.hooks.plugins()) {
+  // Phase 1 — mountEarly(), admin first: middleware other plugins' mount()
+  // (phase 2) needs to already be in place when their routes are compiled.
+  for (const plugin of adminFirstOrder) {
+    if (!plugin.mountEarly) continue;
+    try {
+      await plugin.mountEarly({ app, bootstrap: ctx, adminServices });
+    } catch (err) {
+      const detail = Deno.env.get("DUNE_DEV") && err instanceof Error
+        ? (err.stack ?? err.message)
+        : (err instanceof Error ? err.message : String(err));
+      logger.error("plugins.mount_early.failed", { plugin: plugin.name, detail });
+    }
+  }
+
+  // Phase 2 — mount(), registration order (admin last): a plugin's own
+  // route-finalizing work (e.g. admin's internal registerPluginPublicRoutes()
+  // call) must run after every other plugin's mount()-time middleware and
+  // routes already exist — see this function's doc comment.
+  for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;
     try {
       await plugin.mount({ app, bootstrap: ctx, adminServices });

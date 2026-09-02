@@ -20,6 +20,15 @@ import { CORE_INSTANCE, CORE_VERSION } from "./mod.ts";
 /** The built-in admin plugin package (bootstrap.ts's dynamic import). */
 export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@^3.0";
 
+/**
+ * The `DunePlugin.name` value `@dune/plugin-admin`'s `createAdminPlugin()`
+ * returns (`mod.ts`). `mountPlugins()` (plugins/loader.ts) matches on this
+ * to mount the admin plugin's `adminContext`-injecting middleware before any
+ * other plugin's routes, regardless of registration order — see that
+ * function's doc comment for why registration order alone isn't enough.
+ */
+export const ADMIN_PLUGIN_NAME = "dune-admin";
+
 /** The admin mount subpath used by the multisite manager. */
 export const ADMIN_MOUNT_SPECIFIER = "jsr:@dune/plugin-admin@^3.0/admin/mount";
 
