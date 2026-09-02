@@ -38,7 +38,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // ── Lockfile staleness check (advisory in dev) ───────────────────────────
   if (await checkLockfileStaleness(root)) {
     console.log(
-      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile sync\` before deploying.\n`,
+      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile:sync\` before deploying.\n`,
     );
   }
 

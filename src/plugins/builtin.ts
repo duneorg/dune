@@ -5,7 +5,7 @@
  * (bootstrap.ts, multisite/manager.ts) to break the circular publish-time
  * dependency between @dune/core and @dune/plugin-admin — which means Deno's
  * module-graph builder cannot follow them statically, so `deno cache
- * <core>/cli` never records them and `dune lockfile sync` would produce a
+ * <core>/cli` never records them and `dune lockfile:sync` would produce a
  * lockfile that a `--frozen` serve rejects the moment bootstrap loads the
  * admin plugin. The lockfile discovery helper therefore reports these
  * specifiers explicitly for admin-enabled sites.

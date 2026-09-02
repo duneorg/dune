@@ -19,7 +19,7 @@
  *    any lockfile.
  *
  * "Lock but unfrozen" is not offered: a running dune process implicitly
- * rewriting the lockfile is exactly what `dune lockfile sync` exists to
+ * rewriting the lockfile is exactly what `dune lockfile:sync` exists to
  * prevent. `sync` is the only writer.
  *
  * `serve` does NOT default to frozen. It did briefly (0.29.0) but that
@@ -28,7 +28,7 @@
  * core<->plugin-admin publish cycle — see plugins/builtin.ts), and Deno's
  * `--frozen` validation, at least as observed on 2.7.14, refuses to boot
  * against a lockfile containing entries only reachable through that import —
- * even a lockfile `dune lockfile sync` reports as complete. Confirmed not to
+ * even a lockfile `dune lockfile:sync` reports as complete. Confirmed not to
  * be a generic "frozen + dynamic import" limitation (a minimal isolated case
  * with a pure-JSR dynamic import boots fine); reproducible specifically with
  * Dune's actual graph, most likely implicating Deno's npm dependency
@@ -146,7 +146,7 @@ export async function preflightLockPolicy(policy: LockPolicy): Promise<string | 
   } catch {
     return (
       `[dune] Lockfile enforcement (--frozen) is on, but no lockfile exists at ${policy.lockPath}.\n` +
-      `[dune] Run \`dune lockfile sync\` in your site checkout, commit deno.lock, and redeploy.\n` +
+      `[dune] Run \`dune lockfile:sync\` in your site checkout, commit deno.lock, and redeploy.\n` +
       `[dune] To run without lockfile enforcement, pass --no-frozen or set DUNE_FROZEN=0.`
     );
   }

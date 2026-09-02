@@ -1,5 +1,5 @@
 /**
- * `dune lockfile check` / `dune lockfile sync`
+ * `dune lockfile:check` / `dune lockfile:sync`
  *
  * Problem this solves: a Dune site's `deno.lock` only gets entries for a
  * plugin's dependencies (server-side imports, and — via the separate
@@ -579,11 +579,11 @@ export async function lockfileCheckCommand(root: string, opts: LockfileCheckOpti
   if (!status.consistent) {
     console.log(`\n${explainInconsistency(status.diffs, status.inconsistencyError)}`);
   } else if (added > 0) {
-    console.log(`\n  Run "dune lockfile sync" to add ${added === 1 ? "it" : "them"}.`);
+    console.log(`\n  Run "dune lockfile:sync" to add ${added === 1 ? "it" : "them"}.`);
   } else if (blocked > 0) {
     console.log(
       `\n  (${blocked} already-pinned entr${blocked === 1 ? "y" : "ies"} could resolve to a newer version — ` +
-        `run "dune lockfile sync --upgrade <specifier>" to apply intentionally.)`,
+        `run "dune lockfile:sync --upgrade <specifier>" to apply intentionally.)`,
     );
   }
 

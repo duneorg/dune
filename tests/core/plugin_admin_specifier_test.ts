@@ -13,7 +13,7 @@
  *    the latest published version in a fresh environment.
  * 2. The import sites must use the shared constants from plugins/builtin.ts
  *    rather than inline strings — the lockfile discovery helper reports those
- *    same constants so `dune lockfile sync` covers what Deno's graph builder
+ *    same constants so `dune lockfile:sync` covers what Deno's graph builder
  *    can't follow. An inline string at an import site silently reopens the
  *    "synced lockfile fails --frozen serve" gap.
  */
@@ -44,7 +44,7 @@ Deno.test("plugin-admin import sites and the lockfile helper share the builtin.t
     assert(
       source.includes(constant),
       `${file}: expected a reference to ${constant} from plugins/builtin.ts — ` +
-        `an inline specifier string here would not be covered by dune lockfile sync`,
+        `an inline specifier string here would not be covered by dune lockfile:sync`,
     );
     assert(
       !source.includes(`"${ADMIN_PLUGIN_SPECIFIER}"`) && !source.includes(`"${ADMIN_MOUNT_SPECIFIER}"`),

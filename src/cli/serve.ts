@@ -111,12 +111,12 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     if (frozen) {
       console.error(
         `  ✗ deno.lock is incomplete for the current deno.json.\n` +
-        `    Run \`dune lockfile sync\` and commit the result before deploying.`,
+        `    Run \`dune lockfile:sync\` and commit the result before deploying.`,
       );
       Deno.exit(1);
     }
     console.log(
-      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile sync\` before deploying.\n`,
+      `  ⚠  deno.lock may be incomplete. Run \`dune lockfile:sync\` before deploying.\n`,
     );
   }
 

@@ -126,6 +126,6 @@ export async function upgradeCommand(
     await lockfileSyncCommand(root, {});
     console.log(`\n  Commit deno.lock along with deno.json before deploying.\n`);
   } catch {
-    console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile sync\` manually before deploying.\n`);
+    console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile:sync\` manually before deploying.\n`);
   }
 }
