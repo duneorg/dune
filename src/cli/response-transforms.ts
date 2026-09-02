@@ -78,6 +78,15 @@ export interface RunResponseTransformsOptions {
    */
   authz?: DuneAuthSystem;
   /**
+   * This site's actual `actionToRelations` map (built-ins plus whatever
+   * plugins contributed via `DunePlugin.authzActions`) —
+   * `BootstrapResult.authzSchema.actionToRelations`. Passed to
+   * `roleHasPermission()` so the synchronous `ResponseTransformContext.auth
+   * .hasPermission()` a plugin calls resolves a plugin-contributed action
+   * correctly instead of only ever seeing the built-in ones.
+   */
+  actionToRelations?: Record<string, readonly string[]>;
+  /**
    * Resolves a URL pathname to the matching page — pass `engine.router.resolve`
    * so this uses the exact same home-page/language/alias-aware resolution the
    * content pipeline itself renders with. A hand-rolled route-matcher here
@@ -107,8 +116,17 @@ export interface RunResponseTransformsOptions {
 export async function runPluginResponseTransforms(
   opts: RunResponseTransformsOptions,
 ): Promise<Response> {
-  const { req, response, plugins, auth, authz, resolve, config, adminPrefix } =
-    opts;
+  const {
+    req,
+    response,
+    plugins,
+    auth,
+    authz,
+    resolve,
+    config,
+    adminPrefix,
+    actionToRelations,
+  } = opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
 
@@ -151,7 +169,7 @@ export async function runPluginResponseTransforms(
         transformAuth = {
           username: user.username as string,
           role,
-          hasPermission: (perm) => roleHasPermission(role, perm),
+          hasPermission: (perm) => roleHasPermission(role, perm, actionToRelations),
         };
       }
     } catch { /* invalid session — treat as unauthenticated */ }

@@ -11,6 +11,36 @@ exactly what "breaking" means and what doesn't count.
 
 ## [0.34.4] — 2026-09-01
 
+### Added
+
+- **Plugin-extensible authz schema — `DunePlugin.authzActions`.** A plugin
+  can now declare its own admin-permission action (e.g. `"billing.manage"`)
+  and gate a route behind it exactly the way every built-in admin route
+  is (`authz.check()`), instead of reusing an existing, semantically
+  mismatched permission or hand-rolling a check outside the authz system
+  entirely. Relation-only (a plugin can require existing relations —
+  `member`/`admin`/`editor`/`author`/`owner` — not define a new relation
+  type). `bootstrap()` collects every registered plugin's `authzActions`
+  (after `setup()` has run, before the site's authz system is created) and
+  merges them into the schema; a name colliding with a built-in action or
+  another plugin's is dropped with a logged warning, not silently merged —
+  first declaration wins in registration order. `BootstrapResult` gains
+  `authzSchema` (the site's actual merged schema — built-ins plus whatever
+  plugins contributed) alongside the existing `authz`, which is already
+  built against it. `src/auth/authz-schema.ts`'s module-level
+  `duneAuthzSchema` constant is now `buildDuneAuthzSchema()`'s zero-argument
+  output (built-ins only) — unaffected for any existing caller that reads
+  it directly (tests, headless usage); `roleHasPermission()` gains an
+  optional third parameter (a site's actual `actionToRelations` map) so
+  the one synchronous permission-check path
+  (`ResponseTransformContext.auth.hasPermission()`) resolves a
+  plugin-contributed action correctly instead of only ever seeing the
+  built-ins. Requires a matching `@dune/plugin-admin` change (widening
+  `AdminPermission` from a closed union to accept any string) for a plugin
+  author to actually pass a custom action through `withGuards()`/
+  `requirePermission()` without a type-level workaround — see that
+  package's own changelog.
+
 ### Fixed
 
 - **The theme loader's "failed to load template" warning fired once per
