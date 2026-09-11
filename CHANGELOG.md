@@ -9,6 +9,19 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.5] — 2026-09-11
+
+### Fixed
+
+- **301 canonicalization redirects silently dropped the query string.**
+  Trailing-slash canonical redirects and legacy `+`→`-` URL redirects built
+  their `Location` header from the resolver's bare site-relative path, so a
+  request like `/join?success=true` was redirected to `/join/` with
+  `?success=true` lost — breaking form `success_url` flags, UTM/analytics
+  params on shared links missing the slash, and pagination links. The
+  incoming `url.search` is now carried onto the redirect target, unless the
+  target already defines its own query (e.g. a `site.yaml` redirect entry).
+
 ## [0.34.4] — 2026-09-01
 
 ### Added
