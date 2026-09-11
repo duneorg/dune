@@ -276,7 +276,15 @@ export function duneRoutes(
       // redirects); prepend basePath so the browser re-requests the correct
       // path-prefixed route rather than the bare site-relative one.
       if (result.type === "redirect" && result.redirectTo) {
-        const target = (engine.site.basePath ?? "") + result.redirectTo;
+        let target = (engine.site.basePath ?? "") + result.redirectTo;
+        // Carry the incoming query string across the redirect. Canonical
+        // (trailing-slash) and legacy-URL redirects hand back a bare path, so a
+        // request like /join?success=true would otherwise land on /join/ with
+        // ?success=true silently dropped. Skip this when the redirect target
+        // already carries its own query (e.g. a site.yaml redirect entry).
+        if (url.search && !target.includes("?")) {
+          target += url.search;
+        }
         return respond(Response.redirect(
           new URL(target, url.origin).toString(),
           301,

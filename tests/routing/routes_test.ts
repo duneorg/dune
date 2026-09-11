@@ -251,6 +251,52 @@ Deno.test("contentHandler: redirect Location includes site.basePath when set (mu
   assertEquals(res.headers.get("Location"), "http://localhost/papermod/new-page");
 });
 
+Deno.test("contentHandler: redirect preserves the incoming query string", async () => {
+  const engine = makeEngine([], async (route: string) => {
+    if (route === "/join") {
+      return { type: "redirect" as const, redirectTo: "/join/" };
+    }
+    return { type: "not-found" as const };
+  });
+
+  const { contentHandler } = duneRoutes(engine);
+  const renderJsx = (_jsx: unknown, _status?: number): Response => {
+    return new Response("should not render", { status: 200 });
+  };
+
+  const req = new Request("http://localhost/join?success=true");
+  const res = await contentHandler(req, renderJsx);
+
+  assertEquals(res.status, 301);
+  assertEquals(
+    res.headers.get("Location"),
+    "http://localhost/join/?success=true",
+  );
+});
+
+Deno.test("contentHandler: redirect keeps the target's own query when it defines one", async () => {
+  const engine = makeEngine([], async (route: string) => {
+    if (route === "/old-page") {
+      return { type: "redirect" as const, redirectTo: "/new-page?ref=campaign" };
+    }
+    return { type: "not-found" as const };
+  });
+
+  const { contentHandler } = duneRoutes(engine);
+  const renderJsx = (_jsx: unknown, _status?: number): Response => {
+    return new Response("should not render", { status: 200 });
+  };
+
+  const req = new Request("http://localhost/old-page?success=true");
+  const res = await contentHandler(req, renderJsx);
+
+  assertEquals(res.status, 301);
+  assertEquals(
+    res.headers.get("Location"),
+    "http://localhost/new-page?ref=campaign",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Tests — contentHandler: /page:N pagination routing
 // ---------------------------------------------------------------------------
