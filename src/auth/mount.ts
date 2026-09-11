@@ -36,6 +36,7 @@ import type { SiteConfig } from "../config/site-config.ts";
 // deno-lint-ignore no-explicit-any
 type FreshApp = App<any>;
 
+/** Handles returned by {@link mountDuneAuth} for use by other mounted routes. */
 export interface PublicAuthContext {
   /** Resolve the current site user from a request (null if not authenticated) */
   resolveUser: (req: Request) => Promise<User | null>;
@@ -47,12 +48,6 @@ export interface PublicAuthContext {
   authz: DuneAuthSystem | null;
 }
 
-/**
- * Mount the public auth subsystem onto a Fresh app.
- *
- * Reads `site.auth` from the bootstrapped config. If auth is not configured
- * this is a safe no-op — ctx.state.siteUser will always be null.
- */
 /**
  * Fresh-state accessors for the resolved site user.
  *
@@ -67,6 +62,12 @@ function getSiteUser(fc: { state: Record<string, unknown> }): User | null {
   return (fc.state.siteUser as User | undefined) ?? null;
 }
 
+/**
+ * Mount the public auth subsystem onto a Fresh app.
+ *
+ * Reads `site.auth` from the bootstrapped config. If auth is not configured
+ * this is a safe no-op — `ctx.state.siteUser` will always be null.
+ */
 export async function mountDuneAuth(
   app: FreshApp,
   ctx: BootstrapResult,

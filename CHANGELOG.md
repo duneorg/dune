@@ -9,6 +9,17 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.6] — 2026-09-11
+
+### Fixed
+
+- **JSR package score docs gaps.** `src/auth/authz-schema.ts`'s module doc
+  comment was missing the `@module` tag JSR requires to count an entrypoint
+  as documented. Seven exported symbols across `src/auth/`, `src/email/`,
+  and `src/session/` had no doc comment at all — one (`mountDuneAuth`) had
+  a stray duplicate comment orphaned above two private helper functions
+  instead of attached to the export itself.
+
 ## [0.34.5] — 2026-09-11
 
 ### Fixed

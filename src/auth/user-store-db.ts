@@ -156,6 +156,7 @@ async function ensureTable(db: DbAdapter): Promise<void> {
 
 // ── Store factory ─────────────────────────────────────────────────────────────
 
+/** SQL-backed {@link UserStore} implementation, one row per user. */
 export async function createDbUserStore(
   config: { adapter: DbAdapter },
 ): Promise<UserStore> {

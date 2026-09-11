@@ -36,6 +36,12 @@ export interface DevDomainFilterEmailProviderOptions {
   fallbackProvider?: EmailProvider;
 }
 
+/**
+ * Dev-mode safety wrapper: delegates to `realProvider` only when every
+ * recipient's domain is in `allowedDomains`, otherwise routes the send to
+ * `fallbackProvider` — so a misconfigured dev environment can't email real
+ * outside addresses.
+ */
 export class DevDomainFilterEmailProvider implements EmailProvider {
   private readonly realProvider: EmailProvider;
   private readonly fallbackProvider: EmailProvider;

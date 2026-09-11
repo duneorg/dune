@@ -1,6 +1,8 @@
 /**
  * Dune's default authorization schema for polizy.
  *
+ * @module
+ *
  * Covers all authorization layers uniformly:
  *   - Content gating (`roles:` frontmatter) — "access" on object type "group"
  *   - Admin panel access + granular admin permissions — actions on object type "app"

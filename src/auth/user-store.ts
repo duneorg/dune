@@ -26,6 +26,7 @@ export class DuplicateEmailError extends Error {
   }
 }
 
+/** Storage-agnostic interface for reading and writing site user accounts. */
 export interface UserStore {
   getById(id: string): Promise<User | null>;
   getByEmail(email: string): Promise<User | null>;
@@ -72,6 +73,7 @@ export interface UserStore {
   delete(id: string): Promise<boolean>;
 }
 
+/** Options for {@link createLocalUserStore}. */
 export interface LocalUserStoreConfig {
   storage: StorageAdapter;
   /** Base directory for user files, e.g. "data/users" */

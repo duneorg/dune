@@ -8,6 +8,7 @@
 
 import type { User } from "../auth/types.ts";
 
+/** A single stored session record. */
 export interface Session {
   id: string;
   userId: string;
