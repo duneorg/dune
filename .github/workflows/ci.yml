@@ -58,11 +58,8 @@ jobs:
   # had been silently broken this whole time with no CI coverage to catch it.
   scaffold-smoke-test:
     runs-on: ubuntu-24.04
-    # 5 minutes wasn't enough on a genuinely cold runner — no pre-warmed
-    # npm/JSR cache means `dune new` alone (this repo's own graph) and
-    # `dune dev`'s boot (the scaffolded site's own, separate graph) each
-    # pay real download time. Timed out live 2026-09-13 at exactly 5:00.
-    timeout-minutes: 10
+    # Sum of the per-step budgets below plus headroom for checkout/scaffold.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -73,20 +70,36 @@ jobs:
       - name: Scaffold a fresh site with `dune new`
         run: deno run -A src/cli.ts new /tmp/scaffold-smoke-site
 
+      # Split from the boot step below on purpose: on a truly cold DENO_DIR,
+      # resolving the scaffolded site's own separate dependency graph (fresh,
+      # preact, sharp's native binary, the client-side runtime bundle
+      # fetched on first request, ...) is by far the slowest, most
+      # network-bound part of this job — timed out live 2026-09-13 even at
+      # 10 minutes total. Caching it here, with its own generous budget and
+      # its own clear failure mode, means the boot step below only has to
+      # measure how long `dune dev` takes to actually bind and answer once
+      # its deps already exist locally — a much tighter, more meaningful
+      # bound, and a much clearer signal about *which* phase failed.
+      - name: Cache the scaffolded site's dependency graph
+        working-directory: /tmp/scaffold-smoke-site
+        timeout-minutes: 10
+        run: deno cache main.ts
+
       - name: Boot `dune dev` and make a real first request
         working-directory: /tmp/scaffold-smoke-site
+        timeout-minutes: 3
         run: |
           set -e
           deno task dev > /tmp/scaffold-smoke-dev.log 2>&1 &
           DEV_PID=$!
 
           ready=""
-          for _ in $(seq 1 40); do
+          for _ in $(seq 1 60); do
             if curl -sf http://localhost:3000/ -o /tmp/scaffold-smoke-response.html; then
               ready=1
               break
             fi
-            sleep 0.5
+            sleep 1
           done
 
           kill "$DEV_PID" 2>/dev/null || true
