@@ -19,6 +19,8 @@ Commands:
   dev:link            Reinstall the global "dune" shim against this checkout
                       (for developing Dune itself — refreshes its frozen
                       import-map snapshot after deno.json's imports change)
+  ps                  List dune dev/serve instances currently running on
+                      this machine (PID, site, port — macOS/Linux only)
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server (--frozen enforces deno.lock;
