@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# Least privilege for GITHUB_TOKEN: every job here only checks out and
+# runs local checks/builds — none pushes, comments, or otherwise needs
+# write access. (Flagged by CodeQL, code-scanning alert #13.)
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
