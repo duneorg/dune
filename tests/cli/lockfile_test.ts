@@ -282,13 +282,141 @@ Deno.test("checkLockfileStaleness: false when deno.lock is missing (silent)", as
   }
 });
 
-Deno.test("checkLockfileStaleness: false when deno.json has no @dune/core import", async () => {
+Deno.test("checkLockfileStaleness: false when deno.json has no @dune/core import and no deno.lock exists", async () => {
   const root = await Deno.makeTempDir();
   try {
     await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
       imports: { "some-other": "npm:some-other@1.0.0" },
     }));
     assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: true when a plugin pinned in site.yaml has zero lockfile entries (#21)", async () => {
+  // The reported bug: a plugin's version was bumped in config/site.yaml,
+  // but deno.lock had no entries for it at all, and the startup check never
+  // noticed because it only ever looked at @dune/core.
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.mkdir(join(root, "config"));
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "plugins:\n  - src: jsr:@dune/plugin-seo@^1.2\n",
+    );
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: false when the pinned plugin has a matching lockfile entry", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.mkdir(join(root, "config"));
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "plugins:\n  - src: jsr:@dune/plugin-seo@^1.2\n",
+    );
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: {
+        "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6",
+        "jsr:@dune/plugin-seo@^1.2": "jsr:@dune/plugin-seo@1.2.3",
+      },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: true when a theme package in site.yaml has no lockfile entry", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.mkdir(join(root, "config"));
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "themes:\n  - name: paper\n    src: jsr:@dune/theme-paper@1.0.0\n",
+    );
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: a local (./...) plugin source needs no lockfile entry", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.mkdir(join(root, "config"));
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "plugins:\n  - src: ./plugins/my-plugin.ts\n",
+    );
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: an https: plugin source needs no lockfile entry", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.21" },
+    }));
+    await Deno.mkdir(join(root, "config"));
+    await Deno.writeTextFile(
+      join(root, "config", "site.yaml"),
+      "plugins:\n  - src: https://example.com/plugin.ts\n" +
+        "    integrity: sha256:0000000000000000000000000000000000000000000000000000000000000000\n",
+    );
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@dune/core@^0.21": "jsr:@dune/core@0.21.6" },
+    }));
+    assertEquals(await checkLockfileStaleness(root), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("checkLockfileStaleness: a non-@dune/core deno.json import with no lockfile entry is caught too", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({
+      imports: { "some-other": "npm:some-other@1.0.0" },
+    }));
+    await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({
+      version: "5",
+      specifiers: {},
+    }));
+    assertEquals(await checkLockfileStaleness(root), true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

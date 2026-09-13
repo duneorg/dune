@@ -9,6 +9,22 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.7] — 2026-09-13
+
+### Fixed
+
+- **`dev`/`serve`'s startup lockfile-staleness hint only checked `@dune/core`'s
+  own pin.** `checkLockfileStaleness()` now also checks every other `jsr:`/
+  `npm:` specifier in `deno.json`'s import map, plus every plugin/theme
+  pinned in `config/site.yaml`'s `plugins:`/`themes:` lists (those are
+  dynamically imported by their literal `src` string, not through the import
+  map, so they needed checking separately) — a plugin whose pinned version
+  was bumped with zero matching `deno.lock` entries previously produced no
+  warning at all. Local (`./...`) and `https:` plugin sources are skipped, as
+  neither gets a `deno.lock` "specifiers" entry. Still a fast, no-subprocess,
+  best-effort hint — `dune lockfile:check`/`lockfile:sync` remain the
+  authoritative check. Refs #21.
+
 ## [0.34.6] — 2026-09-11
 
 ### Fixed
