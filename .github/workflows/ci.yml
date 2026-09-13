@@ -18,6 +18,73 @@ jobs:
 
       - run: deno task check
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: deno task test
+
+  # Reproduces the class of bug behind duneorg/dune#2: `dune dev` crashing on
+  # a *freshly scaffolded* site because of real npm-cache/registry-resolution
+  # issues that only show up outside this repo's own already-warm local
+  # cache. Originally chased down with a one-off Docker repro (Ubuntu 24.04 +
+  # a pinned Deno version, matching the Dockerfile's own denoland/deno:2.1.4
+  # base image) — this job is that repro made permanent, on a clean runner
+  # with no pre-warmed npm/JSR cache. Deliberately not a `deno test` case:
+  # `dune new` writes a real `jsr:@dune/core@^0.34` import (the published
+  # package, not this checkout), so this exercises real network resolution
+  # against the registry rather than the fast, offline, local-checkout paths
+  # the rest of the suite covers (see live_boot_smoke_test.ts for that
+  # narrower, in-repo equivalent).
+  scaffold-smoke-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "2.1.4"
+
+      - name: Scaffold a fresh site with `dune new`
+        run: deno run -A src/cli.ts new /tmp/scaffold-smoke-site
+
+      - name: Boot `dune dev` and make a real first request
+        working-directory: /tmp/scaffold-smoke-site
+        run: |
+          set -e
+          deno task dev > /tmp/scaffold-smoke-dev.log 2>&1 &
+          DEV_PID=$!
+
+          ready=""
+          for _ in $(seq 1 40); do
+            if curl -sf http://localhost:3000/ -o /tmp/scaffold-smoke-response.html; then
+              ready=1
+              break
+            fi
+            sleep 0.5
+          done
+
+          kill "$DEV_PID" 2>/dev/null || true
+          wait "$DEV_PID" 2>/dev/null || true
+
+          if [ -z "$ready" ]; then
+            echo "::error::dune dev never served a response from the freshly scaffolded site"
+            cat /tmp/scaffold-smoke-dev.log
+            exit 1
+          fi
+
+          if ! grep -q "Welcome to Your Dune Site" /tmp/scaffold-smoke-response.html; then
+            echo "::error::response body did not contain the expected scaffold content"
+            cat /tmp/scaffold-smoke-response.html
+            exit 1
+          fi
+
   # Deliberately non-blocking: a sibling package's published @dune/core pin
   # can only be re-covered by publishing a new sibling version, which can't
   # happen before this repo's own core bump ships. Every commit to main
