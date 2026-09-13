@@ -24,20 +24,88 @@
 
 import { dirname, join, resolve } from "@std/path";
 import { buildMergedConfig } from "./merge-config.ts";
+import { parseUserYaml } from "../security/safe-yaml.ts";
 
 // ── Startup staleness hint ────────────────────────────────────────────────────
 
+/** True if `spec` is a registry specifier that gets its own deno.lock entry. */
+function isRegistrySpecifier(spec: unknown): spec is string {
+  return typeof spec === "string" && (spec.startsWith("jsr:") || spec.startsWith("npm:"));
+}
+
 /**
- * Fast check: does deno.lock look complete for the current deno.json?
+ * Package-level prefix for a registry specifier — the part before the
+ * version range. Lockfile keys store Deno's canonical serialization of the
+ * requested range, which can differ textually from the import map's (e.g.
+ * `jsr:@dune/core@^0.28` is stored as `jsr:@dune/core@0.28`) — matching is
+ * done at this prefix level, not the exact string, for that reason. A
+ * versionless specifier already ends at the package name.
+ */
+function pkgPrefix(spec: string): string {
+  const rangeAt = spec.lastIndexOf("@");
+  return rangeAt > spec.indexOf("@") ? spec.slice(0, rangeAt + 1) : `${spec}@`;
+}
+
+/**
+ * Every registry specifier (`jsr:`/`npm:`) this site's startup actually
+ * depends on: `deno.json`'s own import map, plus `config/site.yaml`'s
+ * `plugins:`/`themes:` lists — those entries are dynamically imported by
+ * their literal `src` string (see `plugins/loader.ts`), not through the
+ * import map, so they need checking separately. Local (`./...`) and
+ * `https:` sources are skipped — neither gets a `deno.lock` "specifiers"
+ * entry the way a registry package does.
  *
- * Only verifies that the @dune/core *package* from the site's import map
- * appears in the lockfile's specifiers section. Matching is at the package
- * level, not the exact range string: lockfile keys store Deno's canonical
- * serialization of the requested range, which can differ textually from the
- * import map's (e.g. an import of `jsr:@dune/core@^0.28` is stored as
- * `jsr:@dune/core@0.28` — equivalent ranges, different strings). Whether the
- * locked range actually satisfies the import is the runtime `--frozen`
- * check's job; this is only the friendlier pre-flight hint.
+ * Reads only `config/site.yaml` itself, not `config/env/<env>/site.yaml`
+ * overrides or `config.ts` — this is a fast, best-effort startup hint, not
+ * the authoritative dependency graph (`dune lockfile:check` resolves that
+ * properly, subprocesses and all).
+ */
+async function collectRegistrySpecifiers(absRoot: string): Promise<string[]> {
+  const specifiers: string[] = [];
+
+  try {
+    const denoJson = JSON.parse(await Deno.readTextFile(join(absRoot, "deno.json")));
+    const imports = denoJson?.imports;
+    if (imports && typeof imports === "object") {
+      for (const value of Object.values(imports)) {
+        if (isRegistrySpecifier(value)) specifiers.push(value);
+      }
+    }
+  } catch {
+    // No/unreadable deno.json — nothing to add from it.
+  }
+
+  try {
+    const siteYamlText = await Deno.readTextFile(join(absRoot, "config", "site.yaml"));
+    const siteYaml = parseUserYaml(siteYamlText);
+    if (siteYaml && typeof siteYaml === "object") {
+      const record = siteYaml as Record<string, unknown>;
+      for (const listKey of ["plugins", "themes"] as const) {
+        const list = record[listKey];
+        if (!Array.isArray(list)) continue;
+        for (const entry of list) {
+          const src = entry && typeof entry === "object" ? (entry as Record<string, unknown>).src : undefined;
+          if (isRegistrySpecifier(src)) specifiers.push(src);
+        }
+      }
+    }
+  } catch {
+    // No/unreadable config/site.yaml — nothing to add from it.
+  }
+
+  return specifiers;
+}
+
+/**
+ * Fast check: does deno.lock look complete for the current site?
+ *
+ * Verifies that every registry (`jsr:`/`npm:`) specifier this site's startup
+ * actually depends on — `deno.json`'s import map, and every plugin/theme
+ * pinned in `config/site.yaml` — has a matching entry in the lockfile's
+ * specifiers section. Matching is at the package level, not the exact range
+ * string (see `pkgPrefix`). Whether the locked range actually satisfies the
+ * import is the runtime `--frozen` check's job; this is only the friendlier
+ * pre-flight hint.
  *
  * No subprocesses. Returns true if the lockfile looks stale, false if it
  * looks complete or if any file is unreadable (advisory — errors are
@@ -46,21 +114,19 @@ import { buildMergedConfig } from "./merge-config.ts";
 export async function checkLockfileStaleness(root: string): Promise<boolean> {
   try {
     const absRoot = resolve(root);
-    const denoJson = JSON.parse(await Deno.readTextFile(join(absRoot, "deno.json")));
-    const coreSpec = denoJson?.imports?.["@dune/core"];
-    if (!coreSpec || typeof coreSpec !== "string") return false;
+    const specifiersToCheck = await collectRegistrySpecifiers(absRoot);
+    if (specifiersToCheck.length === 0) return false;
 
     const lockfileDir = await findEffectiveLockfileDir(absRoot);
     const lockText = await Deno.readTextFile(join(lockfileDir, "deno.lock"));
     const lock = JSON.parse(lockText) as Record<string, unknown>;
     const specifiers = lock.specifiers as Record<string, string> | undefined;
     if (!specifiers) return true;
-    if (coreSpec in specifiers) return false;
-    // Strip the version range (the "@" after "jsr:@scope/name") to a
-    // package-level prefix; a versionless import already ends at the name.
-    const rangeAt = coreSpec.lastIndexOf("@");
-    const pkgPrefix = rangeAt > coreSpec.indexOf("@") ? coreSpec.slice(0, rangeAt + 1) : `${coreSpec}@`;
-    return !Object.keys(specifiers).some((key) => key.startsWith(pkgPrefix));
+
+    const lockKeys = Object.keys(specifiers);
+    return specifiersToCheck.some((spec) =>
+      !(spec in specifiers) && !lockKeys.some((key) => key.startsWith(pkgPrefix(spec)))
+    );
   } catch {
     return false;
   }
