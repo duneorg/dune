@@ -92,16 +92,27 @@ jobs:
           set -e
           deno task dev > /tmp/scaffold-smoke-dev.log 2>&1 &
           DEV_PID=$!
+          # Stream dune dev's own output live into this step's log — without
+          # this, a hang anywhere below produces zero diagnostic output
+          # before the step's timeout silently kills the whole process tree.
+          tail -F /tmp/scaffold-smoke-dev.log &
+          TAIL_PID=$!
 
           ready=""
           for _ in $(seq 1 60); do
-            if curl -sf http://localhost:3000/ -o /tmp/scaffold-smoke-response.html; then
+            # --max-time bounds *each* attempt: without it, a connection
+            # that's accepted but never answered (the port bound before the
+            # handler is actually ready to respond) blocks this one curl
+            # call indefinitely instead of retrying — silently burning the
+            # entire step budget on a single stuck attempt.
+            if curl -sf --max-time 2 http://localhost:3000/ -o /tmp/scaffold-smoke-response.html; then
               ready=1
               break
             fi
             sleep 1
           done
 
+          kill "$TAIL_PID" 2>/dev/null || true
           kill "$DEV_PID" 2>/dev/null || true
           wait "$DEV_PID" 2>/dev/null || true
 
