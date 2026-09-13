@@ -113,8 +113,18 @@ jobs:
           done
 
           kill "$TAIL_PID" 2>/dev/null || true
+          # No `wait` on $DEV_PID: `deno task dev` runs `deno run --watch`,
+          # which spawns a grandchild watcher process — killing the
+          # immediate child (what $! actually captures) doesn't guarantee
+          # that grandchild's process group actually exits, and `wait`
+          # blocks on the immediate child regardless. Confirmed live
+          # 2026-09-13: the boot itself succeeded (curl got a real response
+          # within ~1s of "Fresh ready"), but the step then hung silently
+          # for the rest of its budget on this exact `wait` call. Best-effort
+          # kill and move on — the runner's own job cleanup reaps any
+          # orphaned deno process afterward regardless (visible as
+          # "Terminate orphan process" in a run's Post job cleanup).
           kill "$DEV_PID" 2>/dev/null || true
-          wait "$DEV_PID" 2>/dev/null || true
 
           if [ -z "$ready" ]; then
             echo "::error::dune dev never served a response from the freshly scaffolded site"
