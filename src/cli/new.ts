@@ -539,9 +539,9 @@ import {
 } from "./entrypoint-template.ts";
 import { warnIfUnregisteredWorkspaceMember } from "./workspace-member-check.ts";
 
-export async function newCommand(dir: string, options: { headless?: boolean } = {}) {
+export async function newCommand(dir: string, options: { headless?: boolean; verify?: boolean } = {}) {
   if (options.headless) {
-    return _newHeadlessCommand(dir);
+    return _newHeadlessCommand(dir, { verify: options.verify });
   }
   console.log(`🏜️  Dune — creating new site in "${dir}"...\n`);
 
@@ -603,9 +603,10 @@ export async function newCommand(dir: string, options: { headless?: boolean } = 
   console.log(`    deno task dev`);
 
   await warnIfUnregisteredWorkspaceMember(dir);
+  await runPostScaffoldChecks(dir, options.verify);
 }
 
-async function _newHeadlessCommand(dir: string) {
+async function _newHeadlessCommand(dir: string, options: { verify?: boolean } = {}) {
   console.log(`🏜️  Dune — creating headless site in "${dir}"...\n`);
   const start = performance.now();
 
@@ -670,6 +671,25 @@ async function _newHeadlessCommand(dir: string) {
   console.log(`\n  Admin panel: http://localhost:3000/admin\n`);
 
   await warnIfUnregisteredWorkspaceMember(dir);
+  await runPostScaffoldChecks(dir, options.verify);
+}
+
+/**
+ * `dune new`'s own doctor pass: fast checks (dependency resolution, lockfile
+ * staleness, Deno version) always run so #2's class of bug is caught by
+ * default; `--verify` additionally spawns the site for real (`doctor.ts`'s
+ * `--boot` check). Informational unless `--verify` was passed explicitly —
+ * a doctor finding shouldn't make `dune new` itself report failure when the
+ * caller never asked for that pass/fail signal.
+ */
+async function runPostScaffoldChecks(dir: string, verify?: boolean) {
+  const { runDoctorChecks, printDoctorFindings } = await import("./doctor.ts");
+  console.log(`\n  Running post-scaffold checks${verify ? " (--verify)" : ""}...\n`);
+  const findings = await runDoctorChecks(dir, { boot: verify === true });
+  printDoctorFindings(findings, { boot: verify === true });
+  if (verify && findings.some((f) => f.severity === "error")) {
+    Deno.exit(1);
+  }
 }
 
 async function mkdirp(path: string) {

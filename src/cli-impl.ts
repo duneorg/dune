@@ -9,6 +9,7 @@
  *   dune build --static        — Generate a fully static site (SSG)
  *   dune serve                 — Start production server
  *   dune validate              — Whole-project lint: config, plugins, templates, schemas, content
+ *   dune doctor                — Environment/runtime health checks (--boot to also verify it boots)
  *   dune cache:clear           — Clear all caches
  *   dune cache:rebuild         — Rebuild content index from scratch
  *   dune lockfile:check        — Exit non-zero if deno.lock is missing entries needed by current plugins
@@ -65,6 +66,7 @@ import {
 } from "./cli/migrate.ts";
 import { schemaExportCommand } from "./cli/schema.ts";
 import { validateCommand } from "./cli/validate.ts";
+import { doctorCommand } from "./cli/doctor.ts";
 import { mcpServeCommand } from "./cli/mcp.ts";
 import { deployInitCommand } from "./cli/deploy.ts";
 import { contentCreateCommand } from "./cli/content-create.ts";
@@ -161,6 +163,14 @@ export async function main(args: string[] = Deno.args) {
       case "new":
         await newCommand(options.positional as string || "my-site", {
           headless: options.headless === true,
+          verify: options.verify === true,
+        });
+        break;
+
+      case "doctor":
+        await doctorCommand(root, {
+          boot: options.boot === true,
+          json: options.json === true,
         });
         break;
 

@@ -13,6 +13,8 @@ Usage:
 Commands:
   new [dir]           Create a new Dune site
   new [dir] --headless  Create a headless Fresh+Dune site (no theme)
+  new [dir] --verify  Also boot the freshly scaffolded site and make a real
+                      request against it (see \`doctor --boot\`)
   dev                 Start development server with hot-reload
   dev:link            Reinstall the global "dune" shim against this checkout
                       (for developing Dune itself — refreshes its frozen
@@ -23,6 +25,9 @@ Commands:
                       opt in with --frozen or DUNE_FROZEN=1 — see CHANGELOG
                       for why this isn't the default yet)
   validate            Whole-project lint: config, plugins, templates, schemas, content, skills
+  doctor              Environment/runtime health checks: Deno version, dependency
+                      resolution, lockfile staleness (fast, no live boot)
+  doctor --boot       Also spawn the site for real and make a request against it
 
   cache:clear         Clear all caches
   cache:rebuild       Rebuild content index from scratch

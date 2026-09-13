@@ -103,6 +103,10 @@ export function parseCliOptions(args: string[]): ParsedCliArgs {
       options.integrity = args[++i];
     } else if (args[i] === "--readonly") {
       options.readonly = true;
+    } else if (args[i] === "--boot") {
+      options.boot = true;
+    } else if (args[i] === "--verify") {
+      options.verify = true;
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {
