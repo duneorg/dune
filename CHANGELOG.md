@@ -11,6 +11,24 @@ exactly what "breaking" means and what doesn't count.
 
 ## [0.34.7] — 2026-09-13
 
+### Added
+
+- **`dune doctor` — environment/runtime health checks.** Distinct from
+  `dune validate` (project correctness — config/plugin/template/content
+  checks, all in-process): `doctor` checks whether the site's dependency
+  graph can actually resolve and boot, on this machine, right now. Default
+  run is fast (no live boot): Deno version, dependency resolution (the same
+  class of failure behind #2 — a proactive `deno cache` pass reformats the
+  npm-cache-mismatch error into the actionable steps from #14 instead of a
+  raw stack trace, ahead of `dev`/`serve` ever hitting it), and lockfile
+  staleness (reusing `checkLockfileStaleness()`). `--boot` additionally
+  spawns the site for real and makes a request against it — opt-in, since
+  it's the slowest and most failure-prone check. `--json` for
+  machine-parseable output.
+- **`dune new --verify`.** Runs `doctor`'s fast checks automatically after
+  every scaffold (no flag needed) so #2's class of bug is caught by
+  default; `--verify` additionally runs the boot check. Refs #26.
+
 ### Fixed
 
 - **`dev`/`serve`'s startup lockfile-staleness hint only checked `@dune/core`'s
