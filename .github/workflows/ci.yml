@@ -52,7 +52,11 @@ jobs:
   # had been silently broken this whole time with no CI coverage to catch it.
   scaffold-smoke-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # 5 minutes wasn't enough on a genuinely cold runner — no pre-warmed
+    # npm/JSR cache means `dune new` alone (this repo's own graph) and
+    # `dune dev`'s boot (the scaffolded site's own, separate graph) each
+    # pay real download time. Timed out live 2026-09-13 at exactly 5:00.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
