@@ -13,6 +13,19 @@ exactly what "breaking" means and what doesn't count.
 
 ### Added
 
+- **`dune ps` — list dune dev/serve instances running on this machine.**
+  Scans the process table for `main.ts dev`/`main.ts serve` invocations (the
+  shape every generated entrypoint's `deno task dev`/`serve` runs), confirms
+  each match is a real dune site by checking for `config/site.yaml` at its
+  root, and reports the port(s) it's actually listening on — read from the
+  process's own open sockets, not guessed from a list of common ports. Site
+  root is resolved from the process's `PWD` environment variable (falling
+  back to its live cwd) so a maintainer's own local-checkout dev server —
+  which deliberately `chdir()`s away from the site root for Fresh's esbuild
+  import-map detection — is still identified correctly; listening ports are
+  looked up across the matched process and its descendants, so a JSR-resolved
+  site (where the matched process re-execs into a child that holds the actual
+  socket) still reports the right port. macOS/Linux only.
 - **`dune doctor` — environment/runtime health checks.** Distinct from
   `dune validate` (project correctness — config/plugin/template/content
   checks, all in-process): `doctor` checks whether the site's dependency

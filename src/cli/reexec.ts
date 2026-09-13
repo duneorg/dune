@@ -39,6 +39,7 @@ export async function maybeReexecWithSiteConfig(
   if (
     !Deno.env.get("DUNE_CONFIG_APPLIED") && command !== "new" &&
     command !== "lockfile:check" && command !== "lockfile:sync" &&
+    command !== "ps" &&
     !import.meta.url.startsWith("file://")
   ) {
     // We're about to lock into running the published @dune/core package for
