@@ -33,14 +33,23 @@ jobs:
   # a *freshly scaffolded* site because of real npm-cache/registry-resolution
   # issues that only show up outside this repo's own already-warm local
   # cache. Originally chased down with a one-off Docker repro (Ubuntu 24.04 +
-  # a pinned Deno version, matching the Dockerfile's own denoland/deno:2.1.4
-  # base image) — this job is that repro made permanent, on a clean runner
-  # with no pre-warmed npm/JSR cache. Deliberately not a `deno test` case:
-  # `dune new` writes a real `jsr:@dune/core@^0.34` import (the published
-  # package, not this checkout), so this exercises real network resolution
-  # against the registry rather than the fast, offline, local-checkout paths
-  # the rest of the suite covers (see live_boot_smoke_test.ts for that
-  # narrower, in-repo equivalent).
+  # a pinned Deno version, matching the Dockerfile's own denoland/deno base
+  # image) — this job is that repro made permanent, on a clean runner with no
+  # pre-warmed npm/JSR cache. Deliberately not a `deno test` case: `dune new`
+  # writes a real `jsr:@dune/core@^0.34` import (the published package, not
+  # this checkout), so this exercises real network resolution against the
+  # registry rather than the fast, offline, local-checkout paths the rest of
+  # the suite covers (see live_boot_smoke_test.ts for that narrower, in-repo
+  # equivalent).
+  #
+  # Keep this pin equal to the Dockerfile's FROM tag: `deno run -A src/cli.ts
+  # new` here resolves against *this checkout's own* deno.lock (not the
+  # scaffolded site's), so an older pinned Deno that predates this repo's
+  # lockfile version fails to read it before `dune new` even runs — the same
+  # failure `docker build` would hit. Caught live 2026-09-13: the Dockerfile
+  # was still pinned to 2.1.4 from when it was added (2026-02-13), but
+  # deno.lock had since moved to lockfile v5 (needs Deno >=2.3) — docker build
+  # had been silently broken this whole time with no CI coverage to catch it.
   scaffold-smoke-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -49,7 +58,7 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: "2.1.4"
+          deno-version: "2.9.6"
 
       - name: Scaffold a fresh site with `dune new`
         run: deno run -A src/cli.ts new /tmp/scaffold-smoke-site

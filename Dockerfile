@@ -6,7 +6,7 @@
 # The site root is mounted at /site. The container runs `dune serve`
 # on port 3000 by default.
 
-FROM denoland/deno:2.1.4
+FROM denoland/deno:2.9.6
 
 WORKDIR /app
 
