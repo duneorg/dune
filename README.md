@@ -67,8 +67,12 @@ This snapshots `deno.json` at install time rather than reading it live, so it go
 | Command | Description |
 |---------|-------------|
 | `dune new [dir]` | Scaffold a new site with starter theme |
+| `dune new [dir] --verify` | Same, but also boot the site for real and check it serves a request |
 | `dune dev` | Dev server with hot-reload (watches content + themes) |
 | `dune dev:link` | Reinstall the global shim against this checkout (local dev on Dune itself) |
+| `dune ps` | List dune dev/serve instances running on this machine |
+| `dune doctor` | Environment/runtime health checks — Deno version, dependency resolution, lockfile staleness |
+| `dune doctor --boot` | Also boot the site for real and check it serves a request |
 | `dune build` | Build content index, validate config |
 | `dune build --static` | Static site generation |
 | `dune serve` | Production server |
