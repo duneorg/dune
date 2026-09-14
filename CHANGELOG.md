@@ -9,6 +9,22 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.8] — 2026-09-14
+
+### Security
+
+- **Hardened HTML/text sanitization and frontmatter escaping.** Tag-stripping
+  used in search indexing and email plain-text generation used a single
+  regex pass that malformed/nested markup could bypass, leaving live markup
+  in output meant to be plain text — replaced with a quote-aware scanner
+  shared with the existing HTML sanitizer. Email plain-text generation's
+  entity-decoding order could cause an already-safely-encoded entity to
+  decode twice, reconstituting a live character it was meant to represent
+  as inert text — decode order fixed. Frontmatter generation (CLI content
+  scaffolding, TSX frontmatter extraction) escaped quotes without first
+  escaping backslashes, letting a trailing backslash in a value break out
+  of the quoted string.
+
 ## [0.34.7] — 2026-09-13
 
 ### Added
