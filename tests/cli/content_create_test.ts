@@ -13,12 +13,15 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { contentCreateCommand } from "../../src/cli/content-create.ts";
+import { parseUserYaml } from "../../src/security/safe-yaml.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function withTempSite(fn: (root: string) => Promise<void>): Promise<void> {
+async function withTempSite(
+  fn: (root: string) => Promise<void>,
+): Promise<void> {
   const root = await Deno.makeTempDir({ prefix: "dune-test-" });
   // Create a minimal content dir
   await Deno.mkdir(join(root, "content"), { recursive: true });
@@ -157,7 +160,13 @@ Deno.test("content:create: respects existing numeric-prefix folder", async () =>
     });
 
     // Should create post inside 03.blog (not 01.blog)
-    const filePath = join(root, "content", "03.blog", "01.my-post", "default.md");
+    const filePath = join(
+      root,
+      "content",
+      "03.blog",
+      "01.my-post",
+      "default.md",
+    );
     const content = await readFile(filePath);
 
     assertStringIncludes(content, "title: My Post");
@@ -221,7 +230,13 @@ Deno.test("content:create: includes today's date in frontmatter", async () => {
       title: "Announcement",
     });
 
-    const filePath = join(root, "content", "01.news", "01.announcement", "default.md");
+    const filePath = join(
+      root,
+      "content",
+      "01.news",
+      "01.announcement",
+      "default.md",
+    );
     const content = await readFile(filePath);
 
     const today = new Date().toISOString().slice(0, 10);
@@ -233,6 +248,36 @@ Deno.test("content:create: includes today's date in frontmatter", async () => {
 // onPageCreate hook firing (v0.31.6 — single explicit page mutations fire
 // hooks unconditionally, unlike bulk migration commands)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Frontmatter escaping — a title ending in "\" must not break out of the
+// quoted YAML string (js/incomplete-sanitization: escaping quotes without
+// first escaping backslashes lets a trailing "\" swallow the closing quote)
+// ---------------------------------------------------------------------------
+
+Deno.test("content:create: title with a trailing backslash produces valid, round-trippable frontmatter", async () => {
+  await withTempSite(async (root) => {
+    const title = 'Back\\slash: "quoted" test\\';
+    await contentCreateCommand(root, "/backslash-title", { title });
+
+    const filePath = join(
+      root,
+      "content",
+      "01.backslash-title",
+      "default.md",
+    );
+    const content = await readFile(filePath);
+
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
+    assertExists(
+      fmMatch,
+      "frontmatter block should be present and well-formed",
+    );
+    const frontmatter = parseUserYaml(fmMatch![1]) as Record<string, unknown>;
+
+    assertEquals(frontmatter.title, title);
+  });
+});
 
 Deno.test("content:create: fires onPageCreate for a registered plugin", async () => {
   await withTempSite(async (root) => {

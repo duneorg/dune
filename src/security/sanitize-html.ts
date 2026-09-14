@@ -49,19 +49,61 @@ export interface SanitizeOptions {
 
 /** Default allowlist — formatting + structural tags found in user content. */
 const DEFAULT_TAGS: ReadonlySet<string> = new Set([
-  "p", "br", "hr",
-  "strong", "b", "em", "i", "u", "s", "del", "ins", "mark", "sub", "sup", "small",
+  "p",
+  "br",
+  "hr",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "del",
+  "ins",
+  "mark",
+  "sub",
+  "sup",
+  "small",
   "a",
-  "ul", "ol", "li",
-  "dl", "dt", "dd",
-  "h1", "h2", "h3", "h4", "h5", "h6",
-  "blockquote", "q", "cite",
-  "code", "pre", "kbd", "samp", "var",
-  "img", "figure", "figcaption",
-  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
-  "span", "div",
-  "details", "summary",
-  "abbr", "time",
+  "ul",
+  "ol",
+  "li",
+  "dl",
+  "dt",
+  "dd",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "q",
+  "cite",
+  "code",
+  "pre",
+  "kbd",
+  "samp",
+  "var",
+  "img",
+  "figure",
+  "figcaption",
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "th",
+  "td",
+  "caption",
+  "colgroup",
+  "col",
+  "span",
+  "div",
+  "details",
+  "summary",
+  "abbr",
+  "time",
 ]);
 
 /**
@@ -87,7 +129,13 @@ const TAG_ATTRS: Record<string, readonly string[]> = {
 /** Raw-text elements: everything inside is text, not parseable HTML.
  *  We drop these entirely including their contents. */
 const RAW_TEXT_TAGS: ReadonlySet<string> = new Set([
-  "script", "style", "iframe", "noscript", "noembed", "xmp", "plaintext",
+  "script",
+  "style",
+  "iframe",
+  "noscript",
+  "noembed",
+  "xmp",
+  "plaintext",
 ]);
 
 /**
@@ -110,19 +158,31 @@ function escAttr(s: string): string {
 }
 
 /** URL-carrying attributes: validated with isSafeUrl. */
-const URL_ATTRS: ReadonlySet<string> = new Set(["href", "src", "action", "formaction"]);
+const URL_ATTRS: ReadonlySet<string> = new Set([
+  "href",
+  "src",
+  "action",
+  "formaction",
+]);
 
 /**
  * Sanitize an HTML fragment.
  *
  * Runs in O(n) over the input; makes no DOM allocations.
  */
-export function sanitizeHtml(input: string, opts: SanitizeOptions = {}): string {
+export function sanitizeHtml(
+  input: string,
+  opts: SanitizeOptions = {},
+): string {
   if (!input) return "";
 
   const allowed = new Set(DEFAULT_TAGS);
-  if (opts.extraTags) for (const t of opts.extraTags) allowed.add(t.toLowerCase());
-  if (opts.disallowTags) for (const t of opts.disallowTags) allowed.delete(t.toLowerCase());
+  if (opts.extraTags) {
+    for (const t of opts.extraTags) allowed.add(t.toLowerCase());
+  }
+  if (opts.disallowTags) {
+    for (const t of opts.disallowTags) allowed.delete(t.toLowerCase());
+  }
   if (opts.allowImages === false) allowed.delete("img");
   if (opts.allowLinks === false) allowed.delete("a");
 
@@ -171,7 +231,8 @@ export function sanitizeHtml(input: string, opts: SanitizeOptions = {}): string 
         // Malformed — drop rest.
         break;
       }
-      const tagPart = input.slice(i + 2, end).trim().split(/\s/)[0].toLowerCase();
+      const tagPart = input.slice(i + 2, end).trim().split(/\s/)[0]
+        .toLowerCase();
       i = end + 1;
       if (!tagPart || !/^[a-z][a-z0-9-]*$/.test(tagPart)) continue;
       if (!allowed.has(tagPart)) continue;
@@ -251,9 +312,101 @@ export function sanitizeHtml(input: string, opts: SanitizeOptions = {}): string 
   return out.join("");
 }
 
+/**
+ * Strip all HTML markup from a string, returning plain text.
+ *
+ * Unlike a single `replace(/<[^>]+>/g, "")` pass, this walks the input with
+ * the same quote-aware tag scanner as `sanitizeHtml` — it can't be fooled by
+ * malformed/nested markup (e.g. `<scr<script>ipt>`) into leaving a live tag
+ * behind, because tag boundaries are found by scanning, not reconstructed by
+ * removing substrings. Raw-text elements (`<script>`, `<style>`, etc.) have
+ * their content dropped along with the tags. Output is unescaped plain text.
+ */
+export function stripTags(input: string): string {
+  if (!input) return "";
+
+  const out: string[] = [];
+  const len = input.length;
+  let i = 0;
+
+  while (i < len) {
+    const ch = input[i];
+
+    if (ch !== "<") {
+      const next = input.indexOf("<", i);
+      const end = next === -1 ? len : next;
+      out.push(input.slice(i, end));
+      i = end;
+      continue;
+    }
+
+    if (input.startsWith("<!--", i)) {
+      const end = input.indexOf("-->", i + 4);
+      i = end === -1 ? len : end + 3;
+      continue;
+    }
+    if (input[i + 1] === "!" || input[i + 1] === "?" || input[i + 1] === "/") {
+      const end = input.indexOf(">", i);
+      i = end === -1 ? len : end + 1;
+      continue;
+    }
+
+    const tagMatch = /^<([a-zA-Z][a-zA-Z0-9-]*)/.exec(input.slice(i));
+    if (!tagMatch) {
+      // Not a tag — literal "<".
+      out.push("<");
+      i += 1;
+      continue;
+    }
+    const rawTag = tagMatch[1];
+    const tag = rawTag.toLowerCase();
+
+    // Find end of open tag, respecting quoted attribute values so a ">"
+    // inside e.g. an href can't be mistaken for the tag's close.
+    let j = i + 1 + rawTag.length;
+    let inQuote: string | null = null;
+    while (j < len) {
+      const c = input[j];
+      if (inQuote) {
+        if (c === inQuote) inQuote = null;
+      } else {
+        if (c === '"' || c === "'") inQuote = c;
+        else if (c === ">") break;
+      }
+      j += 1;
+    }
+    if (j >= len) {
+      // Unterminated tag — drop the rest of the input.
+      break;
+    }
+    i = j + 1;
+
+    if (RAW_TEXT_TAGS.has(tag)) {
+      const closeRe = new RegExp(`</${tag}\\s*>`, "i");
+      const rest = input.slice(i);
+      const m = closeRe.exec(rest);
+      i = m ? i + m.index + m[0].length : len;
+    }
+  }
+
+  return out.join("");
+}
+
 const VOID_TAGS: ReadonlySet<string> = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-  "meta", "param", "source", "track", "wbr",
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ]);
 
 interface ParsedAttr {
@@ -283,14 +436,17 @@ function parseAttrs(
         if (prefix) wildcards.push(prefix);
       } else if (name === "style") {
         styleAllowed = true;
-      } else if (!name.startsWith("on") && name !== "is" && !name.startsWith("xmlns")) {
+      } else if (
+        !name.startsWith("on") && name !== "is" && !name.startsWith("xmlns")
+      ) {
         allowedSet.add(name);
       }
     }
   }
 
   // Regex-based tokenizer — keep it simple.
-  const re = /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  const re =
+    /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) {
     const name = m[1].toLowerCase();
@@ -301,7 +457,9 @@ function parseAttrs(
     // nor wildcards can reopen them.
     if (name.startsWith("on")) continue;
     if (name === "style" && !styleAllowed) continue;
-    if (name === "is" || name === "xmlns" || name.startsWith("xmlns:")) continue;
+    if (name === "is" || name === "xmlns" || name.startsWith("xmlns:")) {
+      continue;
+    }
 
     if (
       !allowedSet.has(name) && name !== "style" &&
@@ -331,13 +489,18 @@ function parseAttrs(
   // If <a target="_blank"> is present without a safe rel, inject one to
   // prevent reverse-tabnabbing.
   if (tag === "a") {
-    const hasTargetBlank = out.some((a) => a.name === "target" && a.value === "_blank");
+    const hasTargetBlank = out.some((a) =>
+      a.name === "target" && a.value === "_blank"
+    );
     const relIdx = out.findIndex((a) => a.name === "rel");
     if (hasTargetBlank) {
       const safeRel = "noopener noreferrer";
       if (relIdx === -1) out.push({ name: "rel", value: safeRel });
       else if (!/noopener/i.test(out[relIdx].value)) {
-        out[relIdx] = { name: "rel", value: `${out[relIdx].value} ${safeRel}`.trim() };
+        out[relIdx] = {
+          name: "rel",
+          value: `${out[relIdx].value} ${safeRel}`.trim(),
+        };
       }
     }
   }
@@ -345,7 +508,11 @@ function parseAttrs(
   return out;
 }
 
-function renderOpenTag(tag: string, attrs: ParsedAttr[], isVoid: boolean): string {
+function renderOpenTag(
+  tag: string,
+  attrs: ParsedAttr[],
+  isVoid: boolean,
+): string {
   const parts = [tag];
   for (const a of attrs) {
     if (a.value === "") parts.push(a.name);

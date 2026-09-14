@@ -176,7 +176,9 @@ export class TsxHandler implements ContentFormatHandler {
       // Skip block comments
       if (char === "/" && i + 1 < raw.length && raw[i + 1] === "*") {
         i += 2;
-        while (i + 1 < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
+        while (i + 1 < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) {
+          i++;
+        }
         i++; // skip past closing /
         continue;
       }
@@ -254,7 +256,8 @@ export class TsxHandler implements ContentFormatHandler {
     // This is simplified — handles basic cases
     result = result.replace(
       /'([^'\\]*(?:\\.[^'\\]*)*)'/g,
-      (_match, content: string) => `"${content.replace(/"/g, '\\"')}"`,
+      (_match, content: string) =>
+        `"${content.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
     );
 
     // Quote unquoted keys: { key: → { "key":

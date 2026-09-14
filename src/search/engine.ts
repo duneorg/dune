@@ -9,6 +9,7 @@
  */
 
 import type { PageIndex } from "../content/types.ts";
+import { stripTags } from "../security/sanitize-html.ts";
 import { flexRecordToPageIndex } from "../flex/page-index.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
@@ -237,12 +238,13 @@ interface IndexedDocument {
  * Strip markdown and HTML markup from a string for plain-text indexing.
  */
 export function stripSearchMarkup(body: string): string {
-  return body
-    .replace(/```[\s\S]*?```/g, "") // Remove code blocks
-    .replace(/`[^`]+`/g, "") // Remove inline code
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, "") // Remove images
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Links → text
-    .replace(/<[^>]+>/g, "") // Remove HTML tags
+  return stripTags(
+    body
+      .replace(/```[\s\S]*?```/g, "") // Remove code blocks
+      .replace(/`[^`]+`/g, "") // Remove inline code
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "") // Remove images
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"), // Links → text
+  )
     .replace(/^#{1,6}\s+/gm, "") // Remove headers syntax
     .replace(/\*\*([^*]+)\*\*/g, "$1") // Bold → text
     .replace(/\*([^*]+)\*/g, "$1") // Italic → text
@@ -699,7 +701,11 @@ export function createSearchEngine(
 
       // Index flex records
       for (const rec of flexRecords) {
-        const page = flexRecordToPageIndex({ id: rec.id, type: rec.type, fields: rec.fields });
+        const page = flexRecordToPageIndex({
+          id: rec.id,
+          type: rec.type,
+          fields: rec.fields,
+        });
         const textParts: string[] = [];
         const customFieldTexts: Record<string, string> = {};
 

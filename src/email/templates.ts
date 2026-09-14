@@ -15,23 +15,35 @@ import { render as renderToString } from "preact-render-to-string";
 import { h } from "preact";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { EmailTemplate } from "./types.ts";
+import { stripTags } from "../security/sanitize-html.ts";
 
 /** Supported template file extensions, ordered by lookup priority. */
 const EXTENSIONS = [".email.tsx", ".email.md", ".email.mdx"] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Strip HTML tags from a string to produce plain text. */
-function stripHtml(html: string): string {
-  return html
+/**
+ * Strip HTML tags from a string to produce plain text.
+ *
+ * Exported for direct unit testing — see tests/email/strip_html_test.ts.
+ */
+export function stripHtml(html: string): string {
+  // Convert block-level breaks to newlines before the tags carrying them
+  // are stripped by stripTags below.
+  const withNewlines = html
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
+    .replace(/<\/p>/gi, "\n\n");
+
+  // `&amp;` must decode last: decoding it before `&lt;`/`&gt;`/etc. would
+  // turn a literal "&amp;lt;" (safely encoded text reading "&lt;") into a
+  // live "<" — a double-unescape. Decoding amp last means the other
+  // entities only ever see already-final `&` output, once.
+  return stripTags(withNewlines)
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -113,7 +125,9 @@ function buildTsxTemplate(name: string, filePath: string): EmailTemplate {
       }
 
       // Render JSX component to HTML string
-      const html = renderToString(h(Component, data as Record<string, unknown>));
+      const html = renderToString(
+        h(Component, data as Record<string, unknown>),
+      );
 
       // Subject can be exported as a named export from the module, or falls back to the template name
       const subject: string = typeof mod.subject === "string"

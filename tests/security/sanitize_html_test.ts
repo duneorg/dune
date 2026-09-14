@@ -3,8 +3,11 @@
  * the 2026-04-17 audit.
  */
 
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { sanitizeHtml } from "../../src/security/sanitize-html.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { sanitizeHtml, stripTags } from "../../src/security/sanitize-html.ts";
 
 function assertNoScript(s: string, input: string) {
   const lower = s.toLowerCase();
@@ -20,7 +23,9 @@ Deno.test("strips <script> tags entirely", () => {
 });
 
 Deno.test("strips <script> with attributes and nested markup", () => {
-  const out = sanitizeHtml(`<p>safe</p><script type="text/javascript">var x = "<b>bold</b>"; alert(x);</script><p>after</p>`);
+  const out = sanitizeHtml(
+    `<p>safe</p><script type="text/javascript">var x = "<b>bold</b>"; alert(x);</script><p>after</p>`,
+  );
   assertEquals(out, "<p>safe</p><p>after</p>");
 });
 
@@ -52,12 +57,16 @@ Deno.test("rejects vbscript: href", () => {
 });
 
 Deno.test("rejects data: URL in href", () => {
-  const out = sanitizeHtml(`<a href="data:text/html,<script>alert(1)</script>">x</a>`);
+  const out = sanitizeHtml(
+    `<a href="data:text/html,<script>alert(1)</script>">x</a>`,
+  );
   assertEquals(out, `<a>x</a>`);
 });
 
 Deno.test("rejects data: URL in img src", () => {
-  const out = sanitizeHtml(`<img src="data:image/svg+xml,<svg onload=alert(1)/>">`);
+  const out = sanitizeHtml(
+    `<img src="data:image/svg+xml,<svg onload=alert(1)/>">`,
+  );
   assertEquals(/data:/.test(out), false);
 });
 
@@ -83,7 +92,9 @@ Deno.test("allows mailto and tel", () => {
 });
 
 Deno.test("strips <iframe>", () => {
-  const out = sanitizeHtml(`before<iframe src="https://evil.com"></iframe>after`);
+  const out = sanitizeHtml(
+    `before<iframe src="https://evil.com"></iframe>after`,
+  );
   assertEquals(out, "beforeafter");
 });
 
@@ -94,17 +105,22 @@ Deno.test("strips <object>, <embed>, <form>", () => {
 });
 
 Deno.test("strips <style>", () => {
-  const out = sanitizeHtml(`<p>ok</p><style>body{background:url('javascript:alert(1)')}</style>`);
+  const out = sanitizeHtml(
+    `<p>ok</p><style>body{background:url('javascript:alert(1)')}</style>`,
+  );
   assertEquals(out, `<p>ok</p>`);
 });
 
 Deno.test("strips style attribute", () => {
-  const out = sanitizeHtml(`<p style="color:red; background:url('javascript:alert(1)')">x</p>`);
+  const out = sanitizeHtml(
+    `<p style="color:red; background:url('javascript:alert(1)')">x</p>`,
+  );
   assertEquals(out, `<p>x</p>`);
 });
 
 Deno.test("preserves formatting tags", () => {
-  const input = `<p>Hello <strong>world</strong> and <em>good</em> <a href="/link">morning</a>.</p>`;
+  const input =
+    `<p>Hello <strong>world</strong> and <em>good</em> <a href="/link">morning</a>.</p>`;
   assertEquals(sanitizeHtml(input), input);
 });
 
@@ -114,12 +130,14 @@ Deno.test("preserves headings and lists", () => {
 });
 
 Deno.test("preserves tables", () => {
-  const input = `<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>`;
+  const input =
+    `<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>`;
   assertEquals(sanitizeHtml(input), input);
 });
 
 Deno.test("preserves images with safe attrs", () => {
-  const input = `<img src="/pic.jpg" alt="pic" width="100" height="50" loading="lazy">`;
+  const input =
+    `<img src="/pic.jpg" alt="pic" width="100" height="50" loading="lazy">`;
   assertEquals(sanitizeHtml(input), input);
 });
 
@@ -157,7 +175,9 @@ Deno.test("injects rel=noopener on target=_blank", () => {
 });
 
 Deno.test("preserves existing rel when target=_blank and appends noopener", () => {
-  const out = sanitizeHtml(`<a href="https://x.com" target="_blank" rel="external">x</a>`);
+  const out = sanitizeHtml(
+    `<a href="https://x.com" target="_blank" rel="external">x</a>`,
+  );
   assertStringIncludes(out, `rel="external noopener noreferrer"`);
 });
 
@@ -167,7 +187,9 @@ Deno.test("rejects bizarre target values", () => {
 });
 
 Deno.test("strips HTML comments", () => {
-  const out = sanitizeHtml(`<p>ok</p><!-- <script>alert(1)</script> --><p>more</p>`);
+  const out = sanitizeHtml(
+    `<p>ok</p><!-- <script>alert(1)</script> --><p>more</p>`,
+  );
   assertEquals(out, `<p>ok</p><p>more</p>`);
 });
 
@@ -192,22 +214,29 @@ Deno.test("empty input returns empty", () => {
 });
 
 Deno.test("allowImages=false strips images", () => {
-  const out = sanitizeHtml(`<p>hi <img src="/x.png" alt="x"></p>`, { allowImages: false });
+  const out = sanitizeHtml(`<p>hi <img src="/x.png" alt="x"></p>`, {
+    allowImages: false,
+  });
   assertEquals(out, `<p>hi </p>`);
 });
 
 Deno.test("allowLinks=false strips anchor tags", () => {
-  const out = sanitizeHtml(`<p>hi <a href="/x">link</a></p>`, { allowLinks: false });
+  const out = sanitizeHtml(`<p>hi <a href="/x">link</a></p>`, {
+    allowLinks: false,
+  });
   assertEquals(out, `<p>hi link</p>`);
 });
 
 // --- extraAttrs (theme mdx-components sanitize extension) ---
 
 Deno.test("extraAttrs allows exact attribute names per tag", () => {
-  const out = sanitizeHtml(`<svg viewBox="0 0 24 24" fill="currentColor"></svg>`, {
-    extraTags: ["svg"],
-    extraAttrs: { svg: ["viewBox", "fill"] },
-  });
+  const out = sanitizeHtml(
+    `<svg viewBox="0 0 24 24" fill="currentColor"></svg>`,
+    {
+      extraTags: ["svg"],
+      extraAttrs: { svg: ["viewBox", "fill"] },
+    },
+  );
   assertEquals(out, `<svg viewbox="0 0 24 24" fill="currentColor"></svg>`);
 });
 
@@ -216,7 +245,10 @@ Deno.test("extraAttrs wildcard allows aria-* and data-* globally", () => {
     `<div role="tab" aria-selected="true" data-label="npm" other="x">t</div>`,
     { extraAttrs: { "*": ["role", "aria-*", "data-*"] } },
   );
-  assertEquals(out, `<div role="tab" aria-selected="true" data-label="npm">t</div>`);
+  assertEquals(
+    out,
+    `<div role="tab" aria-selected="true" data-label="npm">t</div>`,
+  );
 });
 
 Deno.test("extraAttrs cannot reopen event handlers", () => {
@@ -256,4 +288,30 @@ Deno.test("extraTags custom elements pass through with allowed attrs", () => {
     out,
     `<starlight-tabs data-sync-key="pkg"><section role="tabpanel" hidden>x</section></starlight-tabs>`,
   );
+});
+
+// ─── stripTags() ──────────────────────────────────────────────────────────
+
+Deno.test("stripTags: nested/malformed opening sequence doesn't reconstruct a live tag", () => {
+  // A naive single-pass `replace(/<[^>]+>/g, "")` can be fooled by markup
+  // like this into leaving a live <script> tag behind, because it removes
+  // substrings rather than scanning tag boundaries. stripTags uses the same
+  // quote-aware scanner as sanitizeHtml, so the whole "<scr<script>" run is
+  // consumed as a single (unrecognized) opening tag — its ">" can't be
+  // reinterpreted as starting a fresh "<script>" tag afterwards. Whatever
+  // text is left over (here "ipt>alert(1)") is inert plain text, not markup.
+  const out = stripTags(`<scr<script>ipt>alert(1)</script>`);
+  assertNoScript(out, "<scr<script>ipt>alert(1)</script>");
+});
+
+Deno.test("stripTags: drops script/style tags and their content", () => {
+  const out = stripTags(
+    `before<script>alert(1)</script><style>body{color:red}</style>after`,
+  );
+  assertEquals(out, "beforeafter");
+});
+
+Deno.test("stripTags: preserves plain text and quoted '>' inside attributes", () => {
+  const out = stripTags(`<a href="/x?a=1&b=2>3">click</a> plain text`);
+  assertEquals(out, "click plain text");
 });

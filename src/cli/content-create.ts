@@ -81,7 +81,13 @@ function buildFrontmatter(fields: Record<string, unknown>): string {
       const needsQuote = /[:{}\[\],|>&*!%@`]/.test(value) ||
         value.trim() !== value || value === "" || value === "null" ||
         value === "true" || value === "false";
-      lines.push(`${key}: ${needsQuote ? `"${value.replace(/"/g, '\\"')}"` : value}`);
+      lines.push(
+        `${key}: ${
+          needsQuote
+            ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+            : value
+        }`,
+      );
     } else {
       lines.push(`${key}: ${JSON.stringify(value)}`);
     }
@@ -185,7 +191,13 @@ export async function contentCreateCommand(
     await Deno.stat(filePath);
     const rel = filePath.replace(root + "/", "");
     if (options.json) {
-      console.log(JSON.stringify({ error: `File already exists: ${rel}`, path: rel }, null, 2));
+      console.log(
+        JSON.stringify(
+          { error: `File already exists: ${rel}`, path: rel },
+          null,
+          2,
+        ),
+      );
     } else {
       console.error(`  ✗ File already exists: ${rel}`);
     }
@@ -234,19 +246,27 @@ export async function contentCreateCommand(
       await loadPlugins({ config, hooks, storage, root });
       await hooks.fire("onPageCreate", { sourcePath: relPath, title });
     } catch (err) {
-      console.error(`  ⚠  onPageCreate hook failed: ${err instanceof Error ? err.message : err}`);
+      console.error(
+        `  ⚠  onPageCreate hook failed: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
     }
   }
 
   if (options.json) {
-    console.log(JSON.stringify({
-      created: true,
-      route,
-      path: relPath,
-      title,
-      published: options.publish === true,
-      template: options.template ?? "default",
-    }, null, 2));
+    console.log(JSON.stringify(
+      {
+        created: true,
+        route,
+        path: relPath,
+        title,
+        published: options.publish === true,
+        template: options.template ?? "default",
+      },
+      null,
+      2,
+    ));
     return;
   }
 
