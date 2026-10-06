@@ -8,7 +8,9 @@
  * esbuild (a fresh module instance with its own long-lived `--service` child)
  * while the previous runtime's child is never terminated: one leaked worker
  * per restart, all children of the same live PID, all reaped only when that
- * process finally exits (duneorg/dune#22).
+ * process finally exits (duneorg/dune#22). Deno kills a watched program's
+ * children on restart only if they're still ref'd; esbuild `unref()`s its
+ * service child (denoland/deno#36970) — drop this workaround once that's fixed.
  *
  * Calling `esbuild.stop()` would only reach Fresh's instance if dune imported
  * esbuild at exactly Fresh's pinned version, and would silently stop working
