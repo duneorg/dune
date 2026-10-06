@@ -9,6 +9,22 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.9] — 2026-10-06
+
+### Fixed
+
+- **`dune dev` leaked an `esbuild --service` worker on every `--watch`
+  restart** (#22). The generated `dev` task runs `deno run --watch=main.ts`,
+  and Deno's `--watch` restarts the program inside the *same OS process* while
+  watching the entrypoint's whole local module graph — for a workspace-linked
+  site that includes all of dune's own source, so editing or switching
+  branches in a dune checkout restarts every linked site's dev server in place.
+  Each restart started a fresh esbuild service for Fresh's bundler without the
+  previous one ever being terminated: one extra worker per restart, all
+  children of the same long-running `dune dev` process, reaped only when it
+  finally exited. `dune dev` now terminates its own `esbuild --service`
+  children when the runtime unloads (macOS/Linux; uses `ps`).
+
 ## [0.34.8] — 2026-09-14
 
 ### Security
