@@ -21,6 +21,7 @@ import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
+import { registerEsbuildWorkerCleanup } from "./esbuild-cleanup.ts";
 
 export interface DevOptions {
   port?: number;
@@ -34,6 +35,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // path (e.g. "zumbrunn/zumbrunn.com") and we Deno.chdir() later, which would
   // invalidate any relative paths computed against the original cwd.
   root = resolve(root);
+
+  registerEsbuildWorkerCleanup();
 
   // ── Lockfile staleness check (advisory in dev) ───────────────────────────
   if (await checkLockfileStaleness(root)) {
