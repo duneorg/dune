@@ -10,13 +10,13 @@
  * `plugin:install`, `plugin:remove`, and `plugin:update` accept `--dry-run` to
  * report what would change in config/site.yaml without writing the file.
  *
- * `plugin:update` edits only the version specifiers in place, so comments,
- * blank lines and quote style survive. `plugin:install` and `plugin:remove`
- * still round-trip site.yaml through parseYaml → stringifyYaml, which strips
- * `#` comments; `--dry-run` avoids that by not writing at all.
+ * All three mutating commands edit site.yaml text in place (never parse →
+ * stringify), so comments, blank lines and quote style survive. Each edit is
+ * re-parsed and compared to the intended document before writing; layouts the
+ * line-based edit can't handle make the command exit without writing.
  */
 
-import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
+import { parse as parseYaml } from "@std/yaml";
 import { join } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
@@ -68,6 +68,173 @@ export async function pluginListCommand(root: string): Promise<void> {
   console.log();
 }
 
+// ─── in-place site.yaml editing ───────────────────────────────────────────────
+
+interface PluginsBlock {
+  /** Index of the `plugins:` key line. */
+  keyLine: number;
+  /** Indent used by the existing list items (default two spaces). */
+  itemIndent: string;
+  /** Quote character used by the first `src:` value, if any. */
+  quote: string;
+  /** One entry per list item: first line, end (exclusive) of its content. */
+  items: { start: number; end: number }[];
+}
+
+const isBlank = (l: string) => l.trim() === "";
+const isComment = (l: string) => l.trimStart().startsWith("#");
+
+/** Locate the top-level `plugins:` block-sequence in site.yaml lines. */
+function findPluginsBlock(lines: string[]): PluginsBlock | null {
+  const keyLine = lines.findIndex((l) =>
+    /^plugins:[ \t]*(\[\s*\][ \t]*)?(#.*)?\r?$/.test(l)
+  );
+  if (keyLine === -1) return null;
+
+  // Block ends at the next top-level key (indent 0, not a `- ` item).
+  let blockEnd = lines.length;
+  for (let i = keyLine + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (isBlank(l) || isComment(l)) continue;
+    if (!/^\s/.test(l) && !l.startsWith("- ")) {
+      blockEnd = i;
+      break;
+    }
+  }
+
+  const items: { start: number; end: number }[] = [];
+  let itemIndent = "  ";
+  let quote = '"';
+  for (let i = keyLine + 1; i < blockEnd; i++) {
+    const m = lines[i].match(/^(\s*)- /);
+    if (!m) continue;
+    if (items.length === 0) {
+      itemIndent = m[1];
+      const q = lines[i].match(/\bsrc:[ \t]*(["'])/);
+      if (q) quote = q[1];
+    } else if (m[1] !== itemIndent) continue;
+    items.push({ start: i, end: i });
+  }
+  for (let n = 0; n < items.length; n++) {
+    const limit = n + 1 < items.length ? items[n + 1].start : blockEnd;
+    let end = limit;
+    while (
+      end > items[n].start + 1 &&
+      (isBlank(lines[end - 1]) || isComment(lines[end - 1]))
+    ) {
+      end--;
+    }
+    items[n].end = end;
+  }
+  return { keyLine, itemIndent, quote, items };
+}
+
+/** Order-insensitive structural comparison of two parsed YAML values. */
+function canonical(v: unknown): string {
+  return JSON.stringify(
+    v,
+    (_k, val) =>
+      val && typeof val === "object" && !Array.isArray(val)
+        ? Object.fromEntries(
+          Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0
+          ),
+        )
+        : val,
+  );
+}
+
+function failInPlaceEdit(): never {
+  console.error(
+    "\nCould not edit config/site.yaml in place (unsupported formatting). " +
+      "No files written; edit the plugins list manually.",
+  );
+  Deno.exit(1);
+}
+
+/** Exit without writing when an in-place edit doesn't yield the intended document. */
+function assertEditMatches(edited: string, expected: unknown): void {
+  let ok = false;
+  try {
+    ok = canonical(parseYaml(edited) ?? {}) === canonical(expected);
+  } catch { /* fall through */ }
+  if (!ok) failInPlaceEdit();
+}
+
+/** Append a plugin entry to site.yaml text, leaving everything else as is. */
+export function insertPluginEntry(
+  raw: string,
+  entry: PluginEntry,
+): string {
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const lines = raw.split(eol);
+  const block = findPluginsBlock(lines);
+
+  const indent = block?.itemIndent ?? "  ";
+  const q = block?.quote ?? '"';
+  const quoted = (v: string) =>
+    q === '"' ? JSON.stringify(v) : `'${v.replaceAll("'", "''")}'`;
+  const newLines = [`${indent}- src: ${quoted(entry.src)}`];
+  if (entry.integrity) {
+    newLines.push(`${indent}  integrity: ${quoted(entry.integrity)}`);
+  }
+
+  if (!block) {
+    // No plugins key: append one at the end of the file.
+    const body = raw.endsWith("\n") || raw === "" ? raw : raw + eol;
+    return body + `plugins:${eol}` + newLines.join(eol) + eol;
+  }
+  if (/^plugins:[ \t]*\[\s*\]/.test(lines[block.keyLine])) {
+    lines[block.keyLine] = "plugins:";
+  }
+  const at = block.items.length > 0
+    ? block.items[block.items.length - 1].end
+    : block.keyLine + 1;
+  lines.splice(at, 0, ...newLines);
+  return lines.join(eol);
+}
+
+/**
+ * Remove the plugin list items at `indexes` (positions in the parsed
+ * `plugins` array) from site.yaml text, along with the comment lines directly
+ * above each. Returns null when the block's items can't be mapped one-to-one
+ * onto the parsed entries.
+ */
+export function removePluginEntries(
+  raw: string,
+  indexes: Set<number>,
+  total: number,
+): string | null {
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const lines = raw.split(eol);
+  const block = findPluginsBlock(lines);
+  if (!block || block.items.length !== total) return null;
+
+  const drop = new Set<number>();
+  block.items.forEach((item, n) => {
+    if (!indexes.has(n)) return;
+    let start = item.start;
+    const floor = n > 0 ? block.items[n - 1].end : block.keyLine + 1;
+    while (start > floor && isComment(lines[start - 1])) start--;
+    for (let i = start; i < item.end; i++) drop.add(i);
+  });
+  if (indexes.size === total) drop.add(block.keyLine);
+
+  const kept: string[] = [];
+  lines.forEach((l, i) => {
+    if (drop.has(i)) return;
+    // Don't leave two blank lines where an item used to sit between them.
+    if (
+      isBlank(l) && kept.length > 0 && isBlank(kept[kept.length - 1]) &&
+      drop.has(i - 1)
+    ) {
+      return;
+    }
+    kept.push(l);
+  });
+  return kept.join(eol);
+}
+
 // ─── plugin:install ───────────────────────────────────────────────────────────
 
 export async function pluginInstallCommand(
@@ -113,9 +280,10 @@ export async function pluginInstallCommand(
     return;
   }
 
-  existing.push(
-    options.integrity ? { src, integrity: options.integrity } : { src },
-  );
+  const entry: PluginEntry = options.integrity
+    ? { src, integrity: options.integrity }
+    : { src };
+  existing.push(entry);
   parsed.plugins = existing;
 
   if (dryRun) {
@@ -124,7 +292,9 @@ export async function pluginInstallCommand(
     return;
   }
 
-  await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
+  const edited = insertPluginEntry(raw, entry);
+  assertEditMatches(edited, parsed);
+  await Deno.writeTextFile(siteYamlPath, edited);
   console.log(`✓ Added plugin "${src}" to config/site.yaml`);
   console.log(`  Run "dune dev" to start using the plugin.`);
 
@@ -227,11 +397,14 @@ export async function pluginRemoveCommand(
     : [];
 
   const before = existing.length;
-  const filtered = existing.filter(
-    (e) =>
-      e.src !== srcOrName && !e.src.endsWith(`/${srcOrName}.ts`) &&
-      !e.src.includes(srcOrName),
-  );
+  const removeIdx = new Set<number>();
+  existing.forEach((e, i) => {
+    if (
+      e.src === srcOrName || e.src.endsWith(`/${srcOrName}.ts`) ||
+      e.src.includes(srcOrName)
+    ) removeIdx.add(i);
+  });
+  const filtered = existing.filter((_, i) => !removeIdx.has(i));
 
   if (filtered.length === before) {
     console.log(`Plugin "${srcOrName}" not found in site.yaml.`);
@@ -252,7 +425,10 @@ export async function pluginRemoveCommand(
     return;
   }
 
-  await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
+  const edited = removePluginEntries(raw, removeIdx, before);
+  if (edited === null) failInPlaceEdit();
+  assertEditMatches(edited, parsed);
+  await Deno.writeTextFile(siteYamlPath, edited);
   console.log(`✓ Removed plugin "${srcOrName}" from config/site.yaml`);
 }
 

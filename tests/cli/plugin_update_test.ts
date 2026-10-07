@@ -12,9 +12,11 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import {
+  insertPluginEntry,
   pluginInstallCommand,
   pluginRemoveCommand,
   pluginUpdateCommand,
+  removePluginEntries,
   rewritePluginSpecifiers,
 } from "../../src/cli/plugin.ts";
 
@@ -248,5 +250,90 @@ Deno.test("rewritePluginSpecifiers ignores commented-out src lines", () => {
       new Map([["jsr:@a/b@1.0.0", "jsr:@a/b@2.0.0"]]),
     ),
     `plugins:\n  # - src: "jsr:@a/b@1.0.0"\n  - src: "jsr:@a/b@2.0.0"\n`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// plugin:install / plugin:remove preserve site.yaml formatting
+// ---------------------------------------------------------------------------
+
+const FORMATTED = `# Site configuration
+title: "Europa Magazin"
+url: https://example.com
+
+# Plugins
+plugins:
+  # require plugin-pdf >=1.2.0
+  - src: "jsr:@dune/plugin-pdf@1.2.1"   # pinned
+
+  # site-local plugin: rationale lives here
+  - src: "./plugins/local.ts"
+    config:
+      foo: "bar"
+
+  - src: "jsr:@dune/plugin-orama@0.1.0"
+
+# Theme
+theme:
+  name: "caravan"
+`;
+
+Deno.test("plugin:install adds one entry and leaves the rest byte-identical", async () => {
+  await withTempSite(FORMATTED, async (root, path) => {
+    const { restore } = captureLog();
+    try {
+      await pluginInstallCommand(root, "jsr:@dune/plugin-admin@1.0.0");
+    } finally {
+      restore();
+    }
+    assertEquals(
+      await Deno.readTextFile(path),
+      FORMATTED.replace(
+        `  - src: "jsr:@dune/plugin-orama@0.1.0"\n`,
+        `  - src: "jsr:@dune/plugin-orama@0.1.0"\n  - src: "jsr:@dune/plugin-admin@1.0.0"\n`,
+      ),
+    );
+  });
+});
+
+Deno.test("plugin:install creates a plugins key when absent, and fills `plugins: []`", () => {
+  assertEquals(
+    insertPluginEntry('title: "x"\n', { src: "./a.ts" }),
+    'title: "x"\nplugins:\n  - src: "./a.ts"\n',
+  );
+  assertEquals(
+    insertPluginEntry("plugins: []\ntitle: x\n", { src: "./a.ts" }),
+    'plugins:\n  - src: "./a.ts"\ntitle: x\n',
+  );
+});
+
+Deno.test("plugin:remove drops the entry and its attached comment only", async () => {
+  await withTempSite(FORMATTED, async (root, path) => {
+    const { restore } = captureLog();
+    try {
+      await pluginRemoveCommand(root, "./plugins/local.ts");
+    } finally {
+      restore();
+    }
+    assertEquals(
+      await Deno.readTextFile(path),
+      FORMATTED.replace(
+        `  # site-local plugin: rationale lives here
+  - src: "./plugins/local.ts"
+    config:
+      foo: "bar"
+
+`,
+        "",
+      ),
+    );
+  });
+});
+
+Deno.test("plugin:remove of the last plugin removes the plugins key", () => {
+  const raw = `title: x\nplugins:\n  - src: "./a.ts"\ntheme: y\n`;
+  assertEquals(
+    removePluginEntries(raw, new Set([0]), 1),
+    "title: x\ntheme: y\n",
   );
 });
