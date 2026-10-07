@@ -10,9 +10,10 @@
  * `plugin:install`, `plugin:remove`, and `plugin:update` accept `--dry-run` to
  * report what would change in config/site.yaml without writing the file.
  *
- * Known limitation: the write path round-trips site.yaml through parseYaml →
- * stringifyYaml, which strips any `#` comments from the file. Passing
- * `--dry-run` avoids this by not writing at all.
+ * `plugin:update` edits only the version specifiers in place, so comments,
+ * blank lines and quote style survive. `plugin:install` and `plugin:remove`
+ * still round-trip site.yaml through parseYaml → stringifyYaml, which strips
+ * `#` comments; `--dry-run` avoids that by not writing at all.
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
@@ -76,7 +77,9 @@ export async function pluginInstallCommand(
 ): Promise<void> {
   const dryRun = options.dryRun === true;
   if (!src) {
-    console.error("Usage: dune plugin:install <src> [--integrity sha256:<hex>]");
+    console.error(
+      "Usage: dune plugin:install <src> [--integrity sha256:<hex>]",
+    );
     console.error(
       '  <src>  Plugin source: "./plugins/my-plugin.ts", "jsr:@scope/name@1.0.0", ...',
     );
@@ -562,6 +565,31 @@ async function fetchLatestJsrVersion(
   return data.latestVersion ?? null;
 }
 
+/**
+ * Rewrite `src:` values in raw site.yaml text, touching nothing else.
+ *
+ * `replacements` maps an existing specifier to its new one. Only the matched
+ * text inside the (single/double/un-quoted) value changes, so comments, blank
+ * lines and quote style are preserved byte-for-byte. Comment-only lines are
+ * skipped.
+ */
+export function rewritePluginSpecifiers(
+  raw: string,
+  replacements: Map<string, string>,
+): string {
+  if (replacements.size === 0) return raw;
+  return raw.split("\n").map((line) => {
+    if (line.trimStart().startsWith("#")) return line;
+    return line.replace(
+      /(\bsrc:[ \t]*)(["']?)([^"'\s#,}]+)\2/,
+      (whole, key: string, quote: string, value: string) => {
+        const next = replacements.get(value);
+        return next === undefined ? whole : `${key}${quote}${next}${quote}`;
+      },
+    );
+  }).join("\n");
+}
+
 export async function pluginUpdateCommand(
   root: string,
   name?: string,
@@ -601,6 +629,7 @@ export async function pluginUpdateCommand(
   }
 
   let updated = 0;
+  const replacements = new Map<string, string>();
   console.log();
 
   for (const entry of jsrPlugins) {
@@ -629,7 +658,7 @@ export async function pluginUpdateCommand(
         continue;
       }
 
-      entry.src = `jsr:${pkgId}@${latest}`;
+      replacements.set(entry.src, `jsr:${pkgId}@${latest}`);
       console.log(`  ${pkgId}: ${currentVersion ?? "(unpinned)"} → ${latest}`);
       updated++;
     } catch (err) {
@@ -649,7 +678,24 @@ export async function pluginUpdateCommand(
       console.log("  No files written.");
       return;
     }
-    await Deno.writeTextFile(siteYamlPath, stringifyYaml(parsed));
+    const edited = rewritePluginSpecifiers(raw, replacements);
+    // Safety net for layouts the line-based edit can't reach (e.g. a `src`
+    // split across lines): refuse rather than silently write a partial edit.
+    const reparsed = (parseYaml(edited) ?? {}) as { plugins?: PluginEntry[] };
+    const applied = (reparsed.plugins ?? []).filter((p) =>
+      [...replacements.values()].includes(p.src)
+    ).length;
+    const expected = jsrPlugins.filter((p) =>
+      replacements.has(p.src)
+    ).length;
+    if (applied !== expected) {
+      console.error(
+        "\nCould not update the version specifiers in config/site.yaml in place " +
+          "(unsupported formatting). No files written; edit the versions manually.",
+      );
+      Deno.exit(1);
+    }
+    await Deno.writeTextFile(siteYamlPath, edited);
     console.log(
       `\n✓ Updated ${updated} plugin${
         updated !== 1 ? "s" : ""

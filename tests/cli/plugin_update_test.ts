@@ -15,6 +15,7 @@ import {
   pluginInstallCommand,
   pluginRemoveCommand,
   pluginUpdateCommand,
+  rewritePluginSpecifiers,
 } from "../../src/cli/plugin.ts";
 
 // ---------------------------------------------------------------------------
@@ -187,4 +188,65 @@ Deno.test("plugin:remove without --dry-run drops the entry (regression guard)", 
     assertEquals(written.includes("plugin-orama"), false);
     assertStringIncludes(written, "plugin-admin");
   });
+});
+
+// ---------------------------------------------------------------------------
+// plugin:update preserves site.yaml formatting
+// ---------------------------------------------------------------------------
+
+const COMMENTED_SITE_YAML = `# Site configuration
+title: "Europa Magazin"
+url: https://example.com
+
+# Plugins
+plugins:
+  # require plugin-pdf >=1.2.0
+  - src: "jsr:@dune/plugin-admin@1.0.0"   # keep in sync with core
+    options:
+      foo: "bar"
+
+  # site-local plugin: rationale lives here
+  - src: "./plugins/local"
+  - src: 'jsr:@dune/plugin-orama@0.1.0'
+  - src: jsr:@dune/plugin-pdf@1.2.1
+
+theme:
+  name: "caravan"
+`;
+
+Deno.test("plugin:update edits only the version specifiers, byte-for-byte", async () => {
+  await withTempSite(COMMENTED_SITE_YAML, async (root, siteYamlPath) => {
+    const { restore } = captureLog();
+    try {
+      await pluginUpdateCommand(root, undefined, {
+        resolveLatestVersion: (_s, pkg) =>
+          Promise.resolve(
+            pkg === "plugin-admin"
+              ? "1.2.0"
+              : pkg === "plugin-pdf"
+              ? "1.3.0"
+              : "0.4.0",
+          ),
+      });
+    } finally {
+      restore();
+    }
+    const expected = COMMENTED_SITE_YAML
+      .replace("plugin-admin@1.0.0", "plugin-admin@1.2.0")
+      .replace("plugin-orama@0.1.0", "plugin-orama@0.4.0")
+      .replace("plugin-pdf@1.2.1", "plugin-pdf@1.3.0");
+    assertEquals(await Deno.readTextFile(siteYamlPath), expected);
+  });
+});
+
+Deno.test("rewritePluginSpecifiers ignores commented-out src lines", () => {
+  const raw =
+    `plugins:\n  # - src: "jsr:@a/b@1.0.0"\n  - src: "jsr:@a/b@1.0.0"\n`;
+  assertEquals(
+    rewritePluginSpecifiers(
+      raw,
+      new Map([["jsr:@a/b@1.0.0", "jsr:@a/b@2.0.0"]]),
+    ),
+    `plugins:\n  # - src: "jsr:@a/b@1.0.0"\n  - src: "jsr:@a/b@2.0.0"\n`,
+  );
 });
