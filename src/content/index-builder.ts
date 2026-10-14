@@ -499,6 +499,7 @@ function buildPageIndex(
     date: (frontmatter.date as unknown) instanceof Date
       ? (frontmatter.date as unknown as Date).toISOString().slice(0, 10)
       : (frontmatter.date ?? null),
+    ...normaliseDateModified(frontmatter.dateModified),
     published: frontmatter.published ?? true,
     status: inferStatus(frontmatter),
     visible: frontmatter.visible ?? true,
@@ -521,6 +522,22 @@ function buildPageIndex(
     termPageFor: normaliseTermPageFor(frontmatter.termPageFor),
     extra: extractFacetExtra(frontmatter, facetFields),
   };
+}
+
+/**
+ * Coerce the raw `dateModified` frontmatter value to `{ dateModified: "YYYY-MM-DD" }`,
+ * or `{}` when it is absent or not a valid date (callers then fall back to mtime).
+ * The YAML parser may yield a Date for unquoted dates, so both forms are accepted.
+ */
+function normaliseDateModified(raw: unknown): { dateModified?: string } {
+  let iso: string | undefined;
+  if (raw instanceof Date) {
+    if (!Number.isNaN(raw.getTime())) iso = raw.toISOString().slice(0, 10);
+  } else if (typeof raw === "string") {
+    const m = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/.exec(raw.trim());
+    if (m && !Number.isNaN(Date.parse(m[1]))) iso = m[1];
+  }
+  return iso ? { dateModified: iso } : {};
 }
 
 /**

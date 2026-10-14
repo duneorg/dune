@@ -379,3 +379,15 @@ Deno.test("generateSitemap: flat-file pages with self-referential parentPath do 
   assertEquals(xml.includes("/blog/my-article</loc>"), true);
   assertEquals(xml.includes("/blog/another</loc>"), true);
 });
+
+Deno.test("generateSitemap: lastmod prefers dateModified over mtime", () => {
+  const pages = [
+    makePage({ route: "/edited", dateModified: "2020-01-02", mtime: new Date("2025-06-15").getTime() }),
+    makePage({ route: "/untouched", sourcePath: "02.untouched/default.md", mtime: new Date("2025-06-15").getTime() }),
+  ];
+  const xml = generateSitemap(pages, "https://example.com");
+  const entry = (route: string) => xml.split("<url>").find((u) => u.includes(`<loc>https://example.com${route}</loc>`))!;
+
+  assertEquals(entry("/edited").includes("<lastmod>2020-01-02</lastmod>"), true);
+  assertEquals(entry("/untouched").includes("<lastmod>2025-06-15</lastmod>"), true);
+});

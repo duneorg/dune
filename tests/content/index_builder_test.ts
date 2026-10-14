@@ -466,3 +466,30 @@ Deno.test("updateIndex: deleted file is removed from result", async () => {
   assertEquals(result.pages.length, 1);
   assertEquals(result.pages[0].route, "/home/");
 });
+
+// ---------------------------------------------------------------------------
+// Tests — dateModified frontmatter
+// ---------------------------------------------------------------------------
+
+Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when invalid", async () => {
+  const fm = new Map<string, Partial<PageFrontmatter>>([
+    ["content/01.plain/default.md", { dateModified: "2024-03-05" }],
+    ["content/02.datetime/default.md", { dateModified: "2024-03-05T10:00:00Z" }],
+    ["content/03.date-object/default.md", { dateModified: new Date("2024-03-05") as unknown as string }],
+    ["content/04.invalid/default.md", { dateModified: "soon" }],
+    ["content/05.absent/default.md", {}],
+  ]);
+  const result = await buildIndex({
+    storage: makeStorage(
+      ["01.plain", "02.datetime", "03.date-object", "04.invalid", "05.absent"].map((s) => fakeFile(s)),
+    ),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
+  const byRoute = new Map(result.pages.map((p) => [p.route, p]));
+  assertEquals(byRoute.get("/plain/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/datetime/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/date-object/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/invalid/")?.dateModified, undefined);
+  assertEquals("dateModified" in byRoute.get("/absent/")!, false);
+});
