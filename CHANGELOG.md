@@ -9,7 +9,7 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
-## [0.34.12] — 2026-10-16
+## [0.34.12] — 2026-10-15
 
 ### Fixed
 
