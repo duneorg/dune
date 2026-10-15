@@ -466,3 +466,38 @@ Deno.test("updateIndex: deleted file is removed from result", async () => {
   assertEquals(result.pages.length, 1);
   assertEquals(result.pages[0].route, "/home/");
 });
+
+// ---------------------------------------------------------------------------
+// Tests — dateModified frontmatter
+// ---------------------------------------------------------------------------
+
+Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when invalid", async () => {
+  const fm = new Map<string, Partial<PageFrontmatter>>([
+    ["content/01.plain/default.md", { dateModified: "2024-03-05" }],
+    ["content/02.datetime/default.md", { dateModified: "2024-03-05T10:00:00Z" }],
+    ["content/03.date-object/default.md", { dateModified: new Date("2024-03-05") as unknown as string }],
+    ["content/04.invalid/default.md", { dateModified: "soon" }],
+    ["content/05.absent/default.md", {}],
+    ["content/06.feb31/default.md", { dateModified: "2024-02-31" }],
+    ["content/07.nonleap/default.md", { dateModified: "2023-02-29" }],
+    ["content/08.leap/default.md", { dateModified: "2024-02-29" }],
+  ]);
+  const result = await buildIndex({
+    storage: makeStorage(
+      ["01.plain", "02.datetime", "03.date-object", "04.invalid", "05.absent", "06.feb31", "07.nonleap", "08.leap"].map((s) => fakeFile(s)),
+    ),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
+  const byRoute = new Map(result.pages.map((p) => [p.route, p]));
+  assertEquals(byRoute.get("/plain/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/datetime/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/date-object/")?.dateModified, "2024-03-05");
+  assertEquals(byRoute.get("/invalid/")?.dateModified, undefined);
+  assertEquals("dateModified" in byRoute.get("/absent/")!, false);
+  // Impossible calendar dates must be dropped (falling back to mtime), not
+  // passed through verbatim into the sitemap's <lastmod>.
+  assertEquals(byRoute.get("/feb31/")?.dateModified, undefined);
+  assertEquals(byRoute.get("/nonleap/")?.dateModified, undefined);
+  assertEquals(byRoute.get("/leap/")?.dateModified, "2024-02-29");
+});

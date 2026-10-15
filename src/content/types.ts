@@ -39,6 +39,9 @@ export interface PageFrontmatter {
   /** Content workflow status */
   status?: "draft" | "in_review" | "published" | "archived";
   date?: string;
+  /** Last editorial modification date (ISO 8601). Used for the sitemap
+   *  `<lastmod>` when set; otherwise the file mtime is used. */
+  dateModified?: string;
   publish_date?: string;
   unpublish_date?: string;
   visible?: boolean;
@@ -256,6 +259,8 @@ export interface PageIndex {
   /** Navigation label — falls back to title when nav_title is not set */
   navTitle: string;
   date: string | null;
+  /** `YYYY-MM-DD` from the `dateModified` frontmatter field, when present and valid. */
+  dateModified?: string;
   published: boolean;
   /** Content workflow status */
   status: "draft" | "in_review" | "published" | "archived";

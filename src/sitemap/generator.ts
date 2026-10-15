@@ -3,7 +3,8 @@
  *
  * Respects routable, published, and visible fields.
  * Excludes pages whose ancestor (parent section) is unpublished.
- * Generates <lastmod> from page modification time.
+ * Generates <lastmod> from the `dateModified` frontmatter field, falling back
+ * to the page modification time.
  * For multilingual sites, adds xhtml:link hreflang alternates.
  */
 
@@ -112,9 +113,11 @@ export function generateSitemap(
     )
     .map((p) => {
       const loc = escapeXml(pageToUrl(p));
-      const lastmod = p.mtime
+      // Prefer the editorial `dateModified` frontmatter over file mtime: mtime
+      // is reset by every fresh clone/deploy, so it says nothing about content.
+      const lastmod = p.dateModified ?? (p.mtime
         ? new Date(p.mtime).toISOString().split("T")[0]
-        : undefined;
+        : undefined);
       const priority = Math.max(0.1, 1.0 - p.depth * 0.2).toFixed(1);
 
       let entry = `  <url>\n    <loc>${loc}</loc>`;
