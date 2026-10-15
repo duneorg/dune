@@ -9,6 +9,44 @@ exactly what "breaking" means and what doesn't count.
 
 ---
 
+## [0.34.10] — 2026-10-15
+
+### Added
+
+- **`dateModified` frontmatter now drives the sitemap `<lastmod>`.** A page can
+  set `dateModified` (ISO date, ISO datetime, or an unquoted YAML date); the
+  content index normalises it to `YYYY-MM-DD` and the sitemap prefers it over
+  the file modification time. Absent or invalid values — including impossible
+  dates such as `2024-02-31` — fall back to the file mtime exactly as before,
+  so existing sites are unaffected. Motivation: every fresh clone or deploy
+  resets file mtimes to the checkout time, so on a site migrated from another
+  CMS most URLs reported one identical `<lastmod>`, which crawlers learn to
+  distrust.
+
+### Fixed
+
+- **Static files and plugin assets with spaces or non-ASCII characters in their
+  names returned 404.** `/static/My%20File.pdf` was looked up with its
+  percent-encoding intact, so the file was never found. The path is now
+  decoded exactly once, before the existing traversal checks; malformed
+  encodings and decoded NUL or backslash characters are rejected, and the
+  `theme` segment of `/themes/<theme>/static/…` is now covered by the traversal
+  check too. A file whose name literally contains a `%XX` sequence must now be
+  requested with the percent sign itself encoded (`%25`).
+- **`plugin:install`, `plugin:remove` and `plugin:update` stripped every
+  comment from `config/site.yaml`.** They rewrote the file through a YAML
+  parse and re-serialise; they now edit only the affected text (a version
+  specifier, or the added or removed list item), so comments, blank lines and
+  quote style survive, and removing a plugin also removes the comment lines
+  directly above it. Each edit is re-parsed and compared with the intended
+  result before it is written; a layout the edit can't handle safely (for
+  example a flow-style `plugins: [...]` list) exits with an error and leaves
+  the file untouched.
+- **`dune <command> --help` / `-h` ran the command.** `dune plugin:update
+  --help` performed the update and `-h` was treated as a name filter. Both now
+  print usage instead. `plugin:update` has its own usage text; other commands
+  print the global help.
+
 ## [0.34.9] — 2026-10-06
 
 ### Fixed
