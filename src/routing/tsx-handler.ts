@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 import type { ComponentType } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
-import type { Page } from "../content/types.ts";
+import type { Page, TemplateComponent } from "../content/types.ts";
 import type { ContentApi } from "../content/api.ts";
 import { buildPageTitle } from "../content/types.ts";
 import { directionOf } from "../i18n/rtl.ts";
@@ -13,6 +13,29 @@ import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { requireAuth } from "../auth/api-guard.ts";
 import { navigationForRequest } from "../auth/gating.ts";
 import { checkSameOriginCsrf } from "../security/csrf.ts";
+
+/**
+ * Pick the theme layout that wraps a plain TSX content page.
+ *
+ * "default" — also what a page gets with no `layout:` frontmatter — means the
+ * theme's standard layout: `components/layout.tsx`, the same one Markdown,
+ * flex and error pages get and the only layout file themes actually ship. A
+ * theme may still provide a literal `components/default.tsx` to give TSX
+ * pages their own default; that takes precedence. Any other name loads
+ * `components/<name>.tsx`. (Looking up `components/default.tsx` alone, as this
+ * used to, matched no theme, so TSX pages always rendered without chrome.)
+ */
+async function resolveTsxLayout(
+  engine: DuneEngine,
+  layoutName: unknown,
+): Promise<TemplateComponent | null> {
+  const name = typeof layoutName === "string" ? layoutName : "default";
+  if (name === "default") {
+    return (await engine.themes.loadLayout("default")) ??
+      (await engine.themes.loadLayout("layout"));
+  }
+  return await engine.themes.loadLayout(name);
+}
 
 /**
  * Render a TSX content page, including Fresh-style handler dispatch,
@@ -112,9 +135,7 @@ export async function handleTsxPage(
     );
   }
 
-  const layout = await engine.themes.loadLayout(
-    typeof layoutName === "string" ? layoutName : "default",
-  );
+  const layout = await resolveTsxLayout(engine, layoutName);
 
   const content = await resolveTemplateVNode(Component as ComponentType<any>, {
     site: engine.site,

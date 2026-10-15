@@ -9,6 +9,27 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.12] — 2026-10-16
+
+### Fixed
+
+- **Plain TSX content pages were never wrapped in the theme layout.** The
+  TSX renderer looked the layout up as `components/<layout>.tsx` using the
+  page's `layout:` frontmatter, defaulting to `"default"` — i.e.
+  `components/default.tsx`, a file no theme ships (themes ship
+  `components/layout.tsx`, which every other page type uses). So a TSX page
+  with no `layout:` — or with `layout: "default"`, as the docs said — always
+  rendered bare: no site `<title>`, navigation, stylesheet or footer. `"default"`
+  (and an omitted `layout:`) now resolve to the theme's standard
+  `components/layout.tsx`; a theme that does provide a literal
+  `components/default.tsx` still gets that one first, and any other name still
+  loads `components/<name>.tsx`. `layout: false` is unchanged.
+  Pages that export a `handler` and call `ctx.render()` are unchanged: like a
+  Fresh route they own the whole page and are never wrapped.
+  **Behavior change to check:** a TSX page that renders its own `<html>` but
+  never set `layout: false` will now be nested inside the theme layout — add
+  `layout: false` to it.
+
 ## [0.34.11] — 2026-10-15
 
 ### Fixed
