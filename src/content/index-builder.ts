@@ -535,7 +535,9 @@ function normaliseDateModified(raw: unknown): { dateModified?: string } {
     if (!Number.isNaN(raw.getTime())) iso = raw.toISOString().slice(0, 10);
   } else if (typeof raw === "string") {
     const m = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/.exec(raw.trim());
-    if (m && !Number.isNaN(Date.parse(m[1]))) iso = m[1];
+    // Round-trip, not just Date.parse(): V8 rolls "2024-02-31" over to Mar 2
+    // instead of rejecting it, and the raw string would reach <lastmod>.
+    if (m && new Date(`${m[1]}T00:00:00Z`).toISOString().slice(0, 10) === m[1]) iso = m[1];
   }
   return iso ? { dateModified: iso } : {};
 }

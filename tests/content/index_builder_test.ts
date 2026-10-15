@@ -478,10 +478,13 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
     ["content/03.date-object/default.md", { dateModified: new Date("2024-03-05") as unknown as string }],
     ["content/04.invalid/default.md", { dateModified: "soon" }],
     ["content/05.absent/default.md", {}],
+    ["content/06.feb31/default.md", { dateModified: "2024-02-31" }],
+    ["content/07.nonleap/default.md", { dateModified: "2023-02-29" }],
+    ["content/08.leap/default.md", { dateModified: "2024-02-29" }],
   ]);
   const result = await buildIndex({
     storage: makeStorage(
-      ["01.plain", "02.datetime", "03.date-object", "04.invalid", "05.absent"].map((s) => fakeFile(s)),
+      ["01.plain", "02.datetime", "03.date-object", "04.invalid", "05.absent", "06.feb31", "07.nonleap", "08.leap"].map((s) => fakeFile(s)),
     ),
     contentDir: "content",
     formats: makeFormats(fm),
@@ -492,4 +495,9 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
   assertEquals(byRoute.get("/date-object/")?.dateModified, "2024-03-05");
   assertEquals(byRoute.get("/invalid/")?.dateModified, undefined);
   assertEquals("dateModified" in byRoute.get("/absent/")!, false);
+  // Impossible calendar dates must be dropped (falling back to mtime), not
+  // passed through verbatim into the sitemap's <lastmod>.
+  assertEquals(byRoute.get("/feb31/")?.dateModified, undefined);
+  assertEquals(byRoute.get("/nonleap/")?.dateModified, undefined);
+  assertEquals(byRoute.get("/leap/")?.dateModified, "2024-02-29");
 });
