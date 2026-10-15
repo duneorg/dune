@@ -3,7 +3,12 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isAdminPath, injectBasePath } from "../../src/cli/serve-utils.ts";
+import {
+  injectBasePath,
+  isAdminPath,
+  servePluginAsset,
+  serveStaticFile,
+} from "../../src/cli/serve-utils.ts";
 
 async function bodyOf(response: Response): Promise<string> {
   return await response.text();
@@ -78,4 +83,104 @@ Deno.test("injectBasePath: is idempotent — doesn't double-prefix already-prefi
 Deno.test("injectBasePath: normalizes a trailing slash on basePath", async () => {
   const res = injectBasePath(htmlResponse('<a href="/blog">Blog</a>'), "/papermod/");
   assertEquals(await bodyOf(res), '<a href="/papermod/blog">Blog</a>');
+});
+
+// === serveStaticFile / servePluginAsset: percent-encoded paths ===
+
+/** A site root with static files (incl. spaces/non-ASCII names) and a secret outside static/. */
+async function makeStaticRoot(): Promise<{ root: string; shared: string; cleanup: () => Promise<void> }> {
+  const base = await Deno.makeTempDir();
+  const root = `${base}/site`;
+  const shared = `${base}/shared-themes`;
+  await Deno.mkdir(`${root}/static/docs`, { recursive: true });
+  await Deno.mkdir(`${root}/themes/mine/static`, { recursive: true });
+  await Deno.mkdir(`${shared}/other/static`, { recursive: true });
+  await Deno.writeTextFile(`${root}/static/plain.txt`, "plain");
+  await Deno.writeTextFile(`${root}/static/My File.pdf`, "spaced");
+  await Deno.writeTextFile(`${root}/static/docs/Littérature & Suisse.txt`, "unicode");
+  await Deno.writeTextFile(`${root}/static/100%25.txt`, "literal percent sequence");
+  await Deno.writeTextFile(`${root}/themes/mine/static/theme file.css`, "themed");
+  await Deno.writeTextFile(`${root}/secret.txt`, "SECRET");
+  await Deno.writeTextFile(`${base}/outside-secret.txt`, "SECRET");
+  await Deno.writeTextFile(`${shared}/other/static/ok.css`, "shared");
+  return { root, shared, cleanup: () => Deno.remove(base, { recursive: true }) };
+}
+
+Deno.test("serveStaticFile: serves files whose names need percent-encoding", async () => {
+  const { root, cleanup } = await makeStaticRoot();
+  try {
+    assertEquals(await (await serveStaticFile(root, "/static/plain.txt"))!.text(), "plain");
+    assertEquals(await (await serveStaticFile(root, "/static/My%20File.pdf"))!.text(), "spaced");
+    assertEquals(
+      await (await serveStaticFile(root, "/static/docs/Litt%C3%A9rature%20%26%20Suisse.txt"))!.text(),
+      "unicode",
+    );
+    assertEquals(
+      await (await serveStaticFile(root, "/themes/mine/static/theme%20file.css"))!.text(),
+      "themed",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+Deno.test("serveStaticFile: decodes exactly once (double-encoded input is a literal name)", async () => {
+  const { root, cleanup } = await makeStaticRoot();
+  try {
+    // "%25" decodes to "%", which is then NOT decoded again: this addresses "100%25.txt"
+    assertEquals(await (await serveStaticFile(root, "/static/100%2525.txt"))!.text(), "literal percent sequence");
+    // ...so a double-encoded traversal is just a nonexistent literal file name
+    assertEquals(await serveStaticFile(root, "/static/%252e%252e%252fsecret.txt"), null);
+  } finally {
+    await cleanup();
+  }
+});
+
+Deno.test("serveStaticFile: rejects encoded traversal, NUL, backslash and malformed encodings", async () => {
+  const { root, shared, cleanup } = await makeStaticRoot();
+  try {
+    for (
+      const p of [
+        "/static/%2e%2e/secret.txt",
+        "/static/%2E%2E%2Fsecret.txt",
+        "/static/..%2fsecret.txt",
+        "/static/docs/%2e%2e/%2e%2e/secret.txt",
+        "/static/%2e%2e%5csecret.txt",
+        "/static/plain.txt%00.png",
+        "/static/%5Csecret.txt",
+        "/static/%E0%A4%A",
+        "/static/%2Fetc%2Fpasswd",
+      ]
+    ) {
+      assertEquals(await serveStaticFile(root, p), null, p);
+    }
+    // theme-name segment: "%2e%2e" must not climb out of themes/<name>/ (incl. the shared dir)
+    for (const p of ["/themes/%2e%2e/static/ok.css", "/themes/%2E%2E/static/outside-secret.txt"]) {
+      assertEquals(await serveStaticFile(root, p, false, { sharedThemesDir: shared }), null, p);
+    }
+    // a legitimate shared theme asset still resolves
+    assertEquals(
+      await (await serveStaticFile(root, "/themes/other/static/ok.css", false, { sharedThemesDir: shared }))!.text(),
+      "shared",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+Deno.test("servePluginAsset: serves encoded names and rejects encoded traversal", async () => {
+  const base = await Deno.makeTempDir();
+  try {
+    const assets = `${base}/assets`;
+    await Deno.mkdir(assets, { recursive: true });
+    await Deno.writeTextFile(`${assets}/my asset.js`, "asset");
+    await Deno.writeTextFile(`${base}/secret.txt`, "SECRET");
+    const dirs = new Map([["demo", assets]]);
+    assertEquals(await (await servePluginAsset(dirs, "/plugins/demo/my%20asset.js"))!.text(), "asset");
+    for (const p of ["/plugins/demo/%2e%2e/secret.txt", "/plugins/demo/..%2fsecret.txt", "/plugins/demo/%E0%A4%A"]) {
+      assertEquals(await servePluginAsset(dirs, p), null, p);
+    }
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
 });

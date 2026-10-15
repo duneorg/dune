@@ -162,6 +162,26 @@ export function createFileResponse(
 }
 
 /**
+ * `url.pathname` keeps percent-encoding: a file named "My File.pdf" is requested
+ * as "/static/My%20File.pdf". Decode once up front so filenames with spaces or
+ * non-ASCII characters resolve, then let the callers' traversal checks run on
+ * the decoded path. Returns null for malformed encodings and for decoded NUL or
+ * backslash characters, which never belong in a served path. Decoding happens
+ * exactly once, so a double-encoded "%252e%252e" stays a literal (and harmless)
+ * "%2e%2e" file name.
+ */
+function decodeServedPathname(pathname: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\0") || decoded.includes("\\")) return null;
+  return decoded;
+}
+
+/**
  * Serve static files from a site's `static/` or theme `static/` directories.
  * In multisite setups, pass `sharedThemesDir` so theme assets stored outside
  * the individual site root (e.g. a top-level `themes/` directory) are found.
@@ -177,6 +197,9 @@ export async function serveStaticFile(
     packageThemeStatic?: ReadonlyMap<string, string>;
   },
 ): Promise<Response | null> {
+  const decodedPathname = decodeServedPathname(pathname);
+  if (decodedPathname === null) return null;
+  pathname = decodedPathname;
   const sharedThemesDir = options?.sharedThemesDir;
   const packageThemeStatic = options?.packageThemeStatic;
   let filePath: string;
@@ -188,6 +211,9 @@ export async function serveStaticFile(
     const themeMatch = pathname.match(/^\/themes\/([^/]+)\/static\/(.+)$/);
     if (!themeMatch) return null;
     const [, theme, path] = themeMatch;
+    // The theme name is interpolated into filesystem paths below and is not
+    // covered by the filePath check; after decoding it could be "..".
+    if (theme.includes("..")) return null;
     filePath = path;
     fullPath = `${root}/themes/${theme}/static/${path}`;
     if (sharedThemesDir) {
@@ -229,7 +255,9 @@ export async function servePluginAsset(
   pathname: string,
   devMode = false,
 ): Promise<Response | null> {
-  const match = pathname.match(/^\/plugins\/([^/]+)\/(.+)$/);
+  const decodedPathname = decodeServedPathname(pathname);
+  if (decodedPathname === null) return null;
+  const match = decodedPathname.match(/^\/plugins\/([^/]+)\/(.+)$/);
   if (!match) return null;
   const [, pluginName, filePath] = match;
   const assetDir = pluginAssetDirs.get(pluginName);
