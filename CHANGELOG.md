@@ -1,13 +1,29 @@
 # Changelog
 
 All notable changes to Dune CMS are documented here. This project follows
-[Semantic Versioning](https://semver.org). Before v1.0.0, Minor is reserved
-for releases that break something (contract or an existing site) — additions,
-fixes, and refactors are Patch. Stable API guarantees, and the post-1.0
-Minor/Patch split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for
-exactly what "breaking" means and what doesn't count.
+[Semantic Versioning](https://semver.org). Before v1.0.0, Minor is reserved for
+releases that break something (contract or an existing site) — additions, fixes,
+and refactors are Patch. Stable API guarantees, and the post-1.0 Minor/Patch
+split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
+"breaking" means and what doesn't count.
 
 ---
+
+## [0.34.11] — 2026-10-15
+
+### Fixed
+
+- **Sites running core from JSR could not render TSX content pages.**
+  `deno
+  publish` rewrote the template-literal `file://` dynamic import used to
+  load site-local files into a relative specifier that resolved against the
+  package URL (`https://jsr.io/...`) instead of the filesystem, so every TSX
+  page returned a 500 in a published release while working fine from a source
+  checkout. The same rewrite broke MDX files that import local components, a
+  theme's `mdx-components.ts`, and flex migrations. These now build the file URL
+  first (`import(toFileUrl(absPath).href)`), which `deno publish` leaves alone.
+  `scripts/lint-dynamic-imports.ts` (part of `deno task check`) now rejects the
+  broken pattern so it cannot return.
 
 ## [0.34.10] — 2026-10-15
 
@@ -17,125 +33,122 @@ exactly what "breaking" means and what doesn't count.
   set `dateModified` (ISO date, ISO datetime, or an unquoted YAML date); the
   content index normalises it to `YYYY-MM-DD` and the sitemap prefers it over
   the file modification time. Absent or invalid values — including impossible
-  dates such as `2024-02-31` — fall back to the file mtime exactly as before,
-  so existing sites are unaffected. Motivation: every fresh clone or deploy
-  resets file mtimes to the checkout time, so on a site migrated from another
-  CMS most URLs reported one identical `<lastmod>`, which crawlers learn to
-  distrust.
+  dates such as `2024-02-31` — fall back to the file mtime exactly as before, so
+  existing sites are unaffected. Motivation: every fresh clone or deploy resets
+  file mtimes to the checkout time, so on a site migrated from another CMS most
+  URLs reported one identical `<lastmod>`, which crawlers learn to distrust.
 
 ### Fixed
 
 - **Static files and plugin assets with spaces or non-ASCII characters in their
   names returned 404.** `/static/My%20File.pdf` was looked up with its
-  percent-encoding intact, so the file was never found. The path is now
-  decoded exactly once, before the existing traversal checks; malformed
-  encodings and decoded NUL or backslash characters are rejected, and the
-  `theme` segment of `/themes/<theme>/static/…` is now covered by the traversal
-  check too. A file whose name literally contains a `%XX` sequence must now be
-  requested with the percent sign itself encoded (`%25`).
-- **`plugin:install`, `plugin:remove` and `plugin:update` stripped every
-  comment from `config/site.yaml`.** They rewrote the file through a YAML
-  parse and re-serialise; they now edit only the affected text (a version
-  specifier, or the added or removed list item), so comments, blank lines and
-  quote style survive, and removing a plugin also removes the comment lines
-  directly above it. Each edit is re-parsed and compared with the intended
-  result before it is written; a layout the edit can't handle safely (for
-  example a flow-style `plugins: [...]` list) exits with an error and leaves
-  the file untouched.
-- **`dune <command> --help` / `-h` ran the command.** `dune plugin:update
-  --help` performed the update and `-h` was treated as a name filter. Both now
-  print usage instead. `plugin:update` has its own usage text; other commands
-  print the global help.
+  percent-encoding intact, so the file was never found. The path is now decoded
+  exactly once, before the existing traversal checks; malformed encodings and
+  decoded NUL or backslash characters are rejected, and the `theme` segment of
+  `/themes/<theme>/static/…` is now covered by the traversal check too. A file
+  whose name literally contains a `%XX` sequence must now be requested with the
+  percent sign itself encoded (`%25`).
+- **`plugin:install`, `plugin:remove` and `plugin:update` stripped every comment
+  from `config/site.yaml`.** They rewrote the file through a YAML parse and
+  re-serialise; they now edit only the affected text (a version specifier, or
+  the added or removed list item), so comments, blank lines and quote style
+  survive, and removing a plugin also removes the comment lines directly above
+  it. Each edit is re-parsed and compared with the intended result before it is
+  written; a layout the edit can't handle safely (for example a flow-style
+  `plugins: [...]` list) exits with an error and leaves the file untouched.
+- **`dune <command> --help` / `-h` ran the command.**
+  `dune plugin:update
+  --help` performed the update and `-h` was treated as a
+  name filter. Both now print usage instead. `plugin:update` has its own usage
+  text; other commands print the global help.
 
 ## [0.34.9] — 2026-10-06
 
 ### Fixed
 
-- **`dune dev` leaked an `esbuild --service` worker on every `--watch`
-  restart** (#22). The generated `dev` task runs `deno run --watch=main.ts`,
-  and Deno's `--watch` restarts the program inside the *same OS process* while
-  watching the entrypoint's whole local module graph — for a workspace-linked
-  site that includes all of dune's own source, so editing or switching
-  branches in a dune checkout restarts every linked site's dev server in place.
-  Each restart started a fresh esbuild service for Fresh's bundler without the
-  previous one ever being terminated: one extra worker per restart, all
-  children of the same long-running `dune dev` process, reaped only when it
-  finally exited. `dune dev` now terminates its own `esbuild --service`
-  children when the runtime unloads (macOS/Linux; uses `ps`).
+- **`dune dev` leaked an `esbuild --service` worker on every `--watch` restart**
+  (#22). The generated `dev` task runs `deno run --watch=main.ts`, and Deno's
+  `--watch` restarts the program inside the _same OS process_ while watching the
+  entrypoint's whole local module graph — for a workspace-linked site that
+  includes all of dune's own source, so editing or switching branches in a dune
+  checkout restarts every linked site's dev server in place. Each restart
+  started a fresh esbuild service for Fresh's bundler without the previous one
+  ever being terminated: one extra worker per restart, all children of the same
+  long-running `dune dev` process, reaped only when it finally exited.
+  `dune dev` now terminates its own `esbuild --service` children when the
+  runtime unloads (macOS/Linux; uses `ps`).
 
 ## [0.34.8] — 2026-09-14
 
 ### Security
 
 - **Hardened HTML/text sanitization and frontmatter escaping.** Tag-stripping
-  used in search indexing and email plain-text generation used a single
-  regex pass that malformed/nested markup could bypass, leaving live markup
-  in output meant to be plain text — replaced with a quote-aware scanner
-  shared with the existing HTML sanitizer. Email plain-text generation's
-  entity-decoding order could cause an already-safely-encoded entity to
-  decode twice, reconstituting a live character it was meant to represent
-  as inert text — decode order fixed. Frontmatter generation (CLI content
-  scaffolding, TSX frontmatter extraction) escaped quotes without first
-  escaping backslashes, letting a trailing backslash in a value break out
-  of the quoted string.
+  used in search indexing and email plain-text generation used a single regex
+  pass that malformed/nested markup could bypass, leaving live markup in output
+  meant to be plain text — replaced with a quote-aware scanner shared with the
+  existing HTML sanitizer. Email plain-text generation's entity-decoding order
+  could cause an already-safely-encoded entity to decode twice, reconstituting a
+  live character it was meant to represent as inert text — decode order fixed.
+  Frontmatter generation (CLI content scaffolding, TSX frontmatter extraction)
+  escaped quotes without first escaping backslashes, letting a trailing
+  backslash in a value break out of the quoted string.
 
 ## [0.34.7] — 2026-09-13
 
 ### Added
 
-- **`dune ps` — list dune dev/serve instances running on this machine.**
-  Scans the process table for `main.ts dev`/`main.ts serve` invocations (the
-  shape every generated entrypoint's `deno task dev`/`serve` runs), confirms
-  each match is a real dune site by checking for `config/site.yaml` at its
-  root, and reports the port(s) it's actually listening on — read from the
-  process's own open sockets, not guessed from a list of common ports. Site
-  root is resolved from the process's `PWD` environment variable (falling
-  back to its live cwd) so a maintainer's own local-checkout dev server —
-  which deliberately `chdir()`s away from the site root for Fresh's esbuild
-  import-map detection — is still identified correctly; listening ports are
-  looked up across the matched process and its descendants, so a JSR-resolved
-  site (where the matched process re-execs into a child that holds the actual
-  socket) still reports the right port. macOS/Linux only.
+- **`dune ps` — list dune dev/serve instances running on this machine.** Scans
+  the process table for `main.ts dev`/`main.ts serve` invocations (the shape
+  every generated entrypoint's `deno task dev`/`serve` runs), confirms each
+  match is a real dune site by checking for `config/site.yaml` at its root, and
+  reports the port(s) it's actually listening on — read from the process's own
+  open sockets, not guessed from a list of common ports. Site root is resolved
+  from the process's `PWD` environment variable (falling back to its live cwd)
+  so a maintainer's own local-checkout dev server — which deliberately
+  `chdir()`s away from the site root for Fresh's esbuild import-map detection —
+  is still identified correctly; listening ports are looked up across the
+  matched process and its descendants, so a JSR-resolved site (where the matched
+  process re-execs into a child that holds the actual socket) still reports the
+  right port. macOS/Linux only.
 - **`dune doctor` — environment/runtime health checks.** Distinct from
-  `dune validate` (project correctness — config/plugin/template/content
-  checks, all in-process): `doctor` checks whether the site's dependency
-  graph can actually resolve and boot, on this machine, right now. Default
-  run is fast (no live boot): Deno version, dependency resolution (the same
-  class of failure behind #2 — a proactive `deno cache` pass reformats the
-  npm-cache-mismatch error into the actionable steps from #14 instead of a
-  raw stack trace, ahead of `dev`/`serve` ever hitting it), and lockfile
-  staleness (reusing `checkLockfileStaleness()`). `--boot` additionally
-  spawns the site for real and makes a request against it — opt-in, since
-  it's the slowest and most failure-prone check. `--json` for
-  machine-parseable output.
-- **`dune new --verify`.** Runs `doctor`'s fast checks automatically after
-  every scaffold (no flag needed) so #2's class of bug is caught by
-  default; `--verify` additionally runs the boot check. Refs #26.
+  `dune validate` (project correctness — config/plugin/template/content checks,
+  all in-process): `doctor` checks whether the site's dependency graph can
+  actually resolve and boot, on this machine, right now. Default run is fast (no
+  live boot): Deno version, dependency resolution (the same class of failure
+  behind #2 — a proactive `deno cache` pass reformats the npm-cache-mismatch
+  error into the actionable steps from #14 instead of a raw stack trace, ahead
+  of `dev`/`serve` ever hitting it), and lockfile staleness (reusing
+  `checkLockfileStaleness()`). `--boot` additionally spawns the site for real
+  and makes a request against it — opt-in, since it's the slowest and most
+  failure-prone check. `--json` for machine-parseable output.
+- **`dune new --verify`.** Runs `doctor`'s fast checks automatically after every
+  scaffold (no flag needed) so #2's class of bug is caught by default;
+  `--verify` additionally runs the boot check. Refs #26.
 
 ### Fixed
 
 - **`dev`/`serve`'s startup lockfile-staleness hint only checked `@dune/core`'s
   own pin.** `checkLockfileStaleness()` now also checks every other `jsr:`/
-  `npm:` specifier in `deno.json`'s import map, plus every plugin/theme
-  pinned in `config/site.yaml`'s `plugins:`/`themes:` lists (those are
-  dynamically imported by their literal `src` string, not through the import
-  map, so they needed checking separately) — a plugin whose pinned version
-  was bumped with zero matching `deno.lock` entries previously produced no
-  warning at all. Local (`./...`) and `https:` plugin sources are skipped, as
-  neither gets a `deno.lock` "specifiers" entry. Still a fast, no-subprocess,
-  best-effort hint — `dune lockfile:check`/`lockfile:sync` remain the
-  authoritative check. Refs #21.
+  `npm:` specifier in `deno.json`'s import map, plus every plugin/theme pinned
+  in `config/site.yaml`'s `plugins:`/`themes:` lists (those are dynamically
+  imported by their literal `src` string, not through the import map, so they
+  needed checking separately) — a plugin whose pinned version was bumped with
+  zero matching `deno.lock` entries previously produced no warning at all. Local
+  (`./...`) and `https:` plugin sources are skipped, as neither gets a
+  `deno.lock` "specifiers" entry. Still a fast, no-subprocess, best-effort hint
+  — `dune lockfile:check`/`lockfile:sync` remain the authoritative check. Refs
+  #21.
 
 ## [0.34.6] — 2026-09-11
 
 ### Fixed
 
 - **JSR package score docs gaps.** `src/auth/authz-schema.ts`'s module doc
-  comment was missing the `@module` tag JSR requires to count an entrypoint
-  as documented. Seven exported symbols across `src/auth/`, `src/email/`,
-  and `src/session/` had no doc comment at all — one (`mountDuneAuth`) had
-  a stray duplicate comment orphaned above two private helper functions
-  instead of attached to the export itself.
+  comment was missing the `@module` tag JSR requires to count an entrypoint as
+  documented. Seven exported symbols across `src/auth/`, `src/email/`, and
+  `src/session/` had no doc comment at all — one (`mountDuneAuth`) had a stray
+  duplicate comment orphaned above two private helper functions instead of
+  attached to the export itself.
 
 ## [0.34.5] — 2026-09-11
 
@@ -145,104 +158,102 @@ exactly what "breaking" means and what doesn't count.
   Trailing-slash canonical redirects and legacy `+`→`-` URL redirects built
   their `Location` header from the resolver's bare site-relative path, so a
   request like `/join?success=true` was redirected to `/join/` with
-  `?success=true` lost — breaking form `success_url` flags, UTM/analytics
-  params on shared links missing the slash, and pagination links. The
-  incoming `url.search` is now carried onto the redirect target, unless the
-  target already defines its own query (e.g. a `site.yaml` redirect entry).
+  `?success=true` lost — breaking form `success_url` flags, UTM/analytics params
+  on shared links missing the slash, and pagination links. The incoming
+  `url.search` is now carried onto the redirect target, unless the target
+  already defines its own query (e.g. a `site.yaml` redirect entry).
 
 ## [0.34.4] — 2026-09-01
 
 ### Added
 
-- **Plugin-extensible authz schema — `DunePlugin.authzActions`.** A plugin
-  can now declare its own admin-permission action (e.g. `"billing.manage"`)
-  and gate a route behind it exactly the way every built-in admin route
-  is (`authz.check()`), instead of reusing an existing, semantically
-  mismatched permission or hand-rolling a check outside the authz system
-  entirely. Relation-only (a plugin can require existing relations —
-  `member`/`admin`/`editor`/`author`/`owner` — not define a new relation
-  type). `bootstrap()` collects every registered plugin's `authzActions`
-  (after `setup()` has run, before the site's authz system is created) and
-  merges them into the schema; a name colliding with a built-in action or
-  another plugin's is dropped with a logged warning, not silently merged —
-  first declaration wins in registration order. `BootstrapResult` gains
-  `authzSchema` (the site's actual merged schema — built-ins plus whatever
-  plugins contributed) alongside the existing `authz`, which is already
-  built against it. `src/auth/authz-schema.ts`'s module-level
-  `duneAuthzSchema` constant is now `buildDuneAuthzSchema()`'s zero-argument
-  output (built-ins only) — unaffected for any existing caller that reads
-  it directly (tests, headless usage); `roleHasPermission()` gains an
-  optional third parameter (a site's actual `actionToRelations` map) so
-  the one synchronous permission-check path
+- **Plugin-extensible authz schema — `DunePlugin.authzActions`.** A plugin can
+  now declare its own admin-permission action (e.g. `"billing.manage"`) and gate
+  a route behind it exactly the way every built-in admin route is
+  (`authz.check()`), instead of reusing an existing, semantically mismatched
+  permission or hand-rolling a check outside the authz system entirely.
+  Relation-only (a plugin can require existing relations —
+  `member`/`admin`/`editor`/`author`/`owner` — not define a new relation type).
+  `bootstrap()` collects every registered plugin's `authzActions` (after
+  `setup()` has run, before the site's authz system is created) and merges them
+  into the schema; a name colliding with a built-in action or another plugin's
+  is dropped with a logged warning, not silently merged — first declaration wins
+  in registration order. `BootstrapResult` gains `authzSchema` (the site's
+  actual merged schema — built-ins plus whatever plugins contributed) alongside
+  the existing `authz`, which is already built against it.
+  `src/auth/authz-schema.ts`'s module-level `duneAuthzSchema` constant is now
+  `buildDuneAuthzSchema()`'s zero-argument output (built-ins only) — unaffected
+  for any existing caller that reads it directly (tests, headless usage);
+  `roleHasPermission()` gains an optional third parameter (a site's actual
+  `actionToRelations` map) so the one synchronous permission-check path
   (`ResponseTransformContext.auth.hasPermission()`) resolves a
-  plugin-contributed action correctly instead of only ever seeing the
-  built-ins. Requires a matching `@dune/plugin-admin` change (widening
-  `AdminPermission` from a closed union to accept any string) for a plugin
-  author to actually pass a custom action through `withGuards()`/
-  `requirePermission()` without a type-level workaround — see that
-  package's own changelog.
+  plugin-contributed action correctly instead of only ever seeing the built-ins.
+  Requires a matching `@dune/plugin-admin` change (widening `AdminPermission`
+  from a closed union to accept any string) for a plugin author to actually pass
+  a custom action through `withGuards()`/ `requirePermission()` without a
+  type-level workaround — see that package's own changelog.
 
 ### Fixed
 
-- **The theme loader's "failed to load template" warning fired once per
-  request instead of once per process, and conflated two unrelated cases.**
-  A missing template file (e.g. no custom `templates/error.tsx` — a normal,
-  common configuration choice; `error-page.ts`'s tier-2 fallback handles it
-  correctly) and a template file that exists but throws while
-  importing/compiling (a real bug — typo, bad import, broken JSX) both hit
-  the same `console.warn` at the same level. Every request that fell
-  through to the missing-template lookup (every 404, for a theme with no
-  custom error page) re-logged the identical line — a burst of 404/bot
-  traffic could bury genuinely useful log output in noise unrelated to
-  whatever was actually just deployed. The missing-file case (`Deno.stat`
-  throwing `NotFound`) no longer logs at all; a genuine load failure still
-  warns, deduped per template path per process instead of per request.
+- **The theme loader's "failed to load template" warning fired once per request
+  instead of once per process, and conflated two unrelated cases.** A missing
+  template file (e.g. no custom `templates/error.tsx` — a normal, common
+  configuration choice; `error-page.ts`'s tier-2 fallback handles it correctly)
+  and a template file that exists but throws while importing/compiling (a real
+  bug — typo, bad import, broken JSX) both hit the same `console.warn` at the
+  same level. Every request that fell through to the missing-template lookup
+  (every 404, for a theme with no custom error page) re-logged the identical
+  line — a burst of 404/bot traffic could bury genuinely useful log output in
+  noise unrelated to whatever was actually just deployed. The missing-file case
+  (`Deno.stat` throwing `NotFound`) no longer logs at all; a genuine load
+  failure still warns, deduped per template path per process instead of per
+  request.
 - **`dune lockfile sync`/`dune lockfile check` typo'd across every runtime
   message and doc comment that referenced them** — the real subcommands are
-  `lockfile:sync`/`lockfile:check` (colon, matching every other CLI
-  subcommand's `namespace:action` convention and `help.ts`'s own listing).
-  The typo'd form doesn't exist as a command, so copy-pasting these warnings
-  verbatim (dev/serve startup lockfile-staleness notices, `dune add`/`dune
-  upgrade`'s post-install lockfile-sync failure messages, `--frozen`
-  preflight errors, `lockfile:check`'s own "run this to add them" hint) failed
-  with "Unknown command". Fixed in `src/cli/dev.ts`, `serve.ts`, `add.ts`,
-  `upgrade.ts`, `lock-policy.ts`, `lockfile.ts`, `lockfile-resolve-helper.ts`,
-  and `plugins/builtin.ts`'s doc comment.
+  `lockfile:sync`/`lockfile:check` (colon, matching every other CLI subcommand's
+  `namespace:action` convention and `help.ts`'s own listing). The typo'd form
+  doesn't exist as a command, so copy-pasting these warnings verbatim (dev/serve
+  startup lockfile-staleness notices, `dune add`/`dune
+  upgrade`'s post-install
+  lockfile-sync failure messages, `--frozen` preflight errors,
+  `lockfile:check`'s own "run this to add them" hint) failed with "Unknown
+  command". Fixed in `src/cli/dev.ts`, `serve.ts`, `add.ts`, `upgrade.ts`,
+  `lock-policy.ts`, `lockfile.ts`, `lockfile-resolve-helper.ts`, and
+  `plugins/builtin.ts`'s doc comment.
 - **A plugin's own `mount()`-registered route could never see
   `@dune/plugin-admin`'s `ctx.state.adminContext`.** Fresh 2 snapshots each
   route's middleware chain at the moment the route is registered, not
-  per-request; `mountPlugins()` calls every plugin's `mount()` in
-  registration order, and the built-in admin plugin is always registered
-  *after* every site-configured plugin (`bootstrap.ts` doesn't construct it
-  until authz/hmac-key/history are ready) — so a third-party plugin's own
-  guarded route, following the documented `withGuards()` pattern, always
-  read `ctx.state.adminContext` as `undefined`, no matter how the request
-  was authenticated.
+  per-request; `mountPlugins()` calls every plugin's `mount()` in registration
+  order, and the built-in admin plugin is always registered _after_ every
+  site-configured plugin (`bootstrap.ts` doesn't construct it until
+  authz/hmac-key/history are ready) — so a third-party plugin's own guarded
+  route, following the documented `withGuards()` pattern, always read
+  `ctx.state.adminContext` as `undefined`, no matter how the request was
+  authenticated.
 - **`DunePlugin` gained a new optional `mountEarly()` hook** for middleware
-  every other plugin's routes must be able to see. `mountPlugins()` now
-  calls every plugin's `mountEarly()` (admin plugin first, regardless of
-  registration order) in a separate pass before calling any plugin's
-  `mount()` — which keeps running in registration order, unchanged, since
-  admin's own internal route-finalizing work depends on that ordering (see
-  `mountPlugins()`'s doc comment in `src/plugins/loader.ts`). Requires
-  `@dune/plugin-admin` to move its `ctx.state.adminContext` middleware into
-  `mountEarly()` to take effect — see that package's own changelog.
+  every other plugin's routes must be able to see. `mountPlugins()` now calls
+  every plugin's `mountEarly()` (admin plugin first, regardless of registration
+  order) in a separate pass before calling any plugin's `mount()` — which keeps
+  running in registration order, unchanged, since admin's own internal
+  route-finalizing work depends on that ordering (see `mountPlugins()`'s doc
+  comment in `src/plugins/loader.ts`). Requires `@dune/plugin-admin` to move its
+  `ctx.state.adminContext` middleware into `mountEarly()` to take effect — see
+  that package's own changelog.
 
 ## [0.34.3] — 2026-08-31
 
 ### Changed
 
-- **Built-in admin plugin pin bumped to `@dune/plugin-admin@^3.0`**
-  (`deno.json` imports and `src/plugins/builtin.ts`), now that
-  `@dune/plugin-admin@3.0.0` is actually published — the follow-up
-  deferred in 0.34.2.
+- **Built-in admin plugin pin bumped to `@dune/plugin-admin@^3.0`** (`deno.json`
+  imports and `src/plugins/builtin.ts`), now that `@dune/plugin-admin@3.0.0` is
+  actually published — the follow-up deferred in 0.34.2.
 - **`minimumDependencyAge` now also excludes `jsr:@dune/core`**, not just
-  `jsr:@dune/plugin-admin`. A same-org self-published dependency doesn't
-  carry the supply-chain risk the freshness gate exists for; without this,
-  a test fixture resolving the admin plugin transitively hit "Could not
-  find version of '@dune/core' that matches specified version constraint"
-  the moment core and plugin-admin were published within a day of each
-  other (found while re-verifying this exact pin bump).
+  `jsr:@dune/plugin-admin`. A same-org self-published dependency doesn't carry
+  the supply-chain risk the freshness gate exists for; without this, a test
+  fixture resolving the admin plugin transitively hit "Could not find version of
+  '@dune/core' that matches specified version constraint" the moment core and
+  plugin-admin were published within a day of each other (found while
+  re-verifying this exact pin bump).
 
 ## [0.34.2] — 2026-08-31
 
@@ -251,74 +262,73 @@ exactly what "breaking" means and what doesn't count.
 - **Dropped the `ROLE_PERMISSIONS`-table fallback from every core-side admin
   permission decision — `authz.check()` is now the sole authority, no
   exceptions.** `checkInlineEditPermission()` and
-  `runPluginResponseTransforms()`'s `pages.update` gate previously fell back
-  to a flat role table when `authz` was undefined (authz creation failing at
-  startup — an in-process object construction that essentially never fails
-  in practice). Both now fail closed (deny) instead of silently degrading to
-  a separate, less-audited mechanism — dec-identity-unification Phase 5c's
-  second half, finally closed. The site-user path to `/api/inline-edit/ws`
-  (`checkInlineEditPermissionForSiteUser()`) had the same kind of fallback —
-  a raw `roles[]` check for an editor-equivalent role when `authz` was
-  undefined — and now fails closed too. `runPluginResponseTransforms()`'s
-  published `auth.role` / `hasPermission()` now also read the *highest*
-  admin-tier role in the session's `roles[]` (`highestAdminRole()`, new,
+  `runPluginResponseTransforms()`'s `pages.update` gate previously fell back to
+  a flat role table when `authz` was undefined (authz creation failing at
+  startup — an in-process object construction that essentially never fails in
+  practice). Both now fail closed (deny) instead of silently degrading to a
+  separate, less-audited mechanism — dec-identity-unification Phase 5c's second
+  half, finally closed. The site-user path to `/api/inline-edit/ws`
+  (`checkInlineEditPermissionForSiteUser()`) had the same kind of fallback — a
+  raw `roles[]` check for an editor-equivalent role when `authz` was undefined —
+  and now fails closed too. `runPluginResponseTransforms()`'s published
+  `auth.role` / `hasPermission()` now also read the _highest_ admin-tier role in
+  the session's `roles[]` (`highestAdminRole()`, new,
   `@dune/core/auth/authz-schema`) instead of `roles[0]` — a merged User's
-  `roles[]` can hold content-gating tags alongside the admin role in any
-  order, and `roles[0]` could be a tag, silently under-privileging the
-  synchronous approximation relative to what `authz.check()` had just
-  decided. The one place that genuinely can't
-  call the real async `authz.check()` —
-  `ResponseTransformContext.auth.hasPermission()`,
-  a published *synchronous* hook API — now reads `roleHasPermission()`
-  (new, `@dune/core/auth/authz-schema`), a synchronous lookup against the
-  same canonical `actionToRelations` schema `authz.check()` itself uses,
-  instead of a hand-maintained mirror. `@dune/plugin-admin` no longer needs
-  to keep its own `ROLE_PERMISSIONS` table in sync with this schema at all —
-  see its own 3.0.0 changelog entry for the corresponding removal there.
+  `roles[]` can hold content-gating tags alongside the admin role in any order,
+  and `roles[0]` could be a tag, silently under-privileging the synchronous
+  approximation relative to what `authz.check()` had just decided. The one place
+  that genuinely can't call the real async `authz.check()` —
+  `ResponseTransformContext.auth.hasPermission()`, a published _synchronous_
+  hook API — now reads `roleHasPermission()` (new,
+  `@dune/core/auth/authz-schema`), a synchronous lookup against the same
+  canonical `actionToRelations` schema `authz.check()` itself uses, instead of a
+  hand-maintained mirror. `@dune/plugin-admin` no longer needs to keep its own
+  `ROLE_PERMISSIONS` table in sync with this schema at all — see its own 3.0.0
+  changelog entry for the corresponding removal there.
 - **`ADMIN_ROLE_RANK`** exported alongside `highestAdminRole()`
   (`@dune/core/auth/authz-schema`, now also reachable via a new
-  `"./auth/authz-schema"` export map entry — it previously had none, so
-  nothing outside this package could actually import from it despite
+  `"./auth/authz-schema"` export map entry — it previously had none, so nothing
+  outside this package could actually import from it despite
   `roleHasPermission()`'s own doc already describing it as importable).
   `@dune/plugin-admin`'s `role-utils.ts` now derives its `ROLE_RANK`/
-  `highestValidRole()` from this instead of keeping its own copy of the
-  same three numbers — the exact "two tables kept in sync by convention"
-  pattern the `ROLE_PERMISSIONS` removal was about eliminating, just
-  spotted a second time during review before it could take hold.
+  `highestValidRole()` from this instead of keeping its own copy of the same
+  three numbers — the exact "two tables kept in sync by convention" pattern the
+  `ROLE_PERMISSIONS` removal was about eliminating, just spotted a second time
+  during review before it could take hold.
 - **The built-in admin plugin pin stays at `@dune/plugin-admin@^2.0` in this
-  release, deliberately not yet bumped to `^3.0`.** `bootstrap()` resolves
-  this pin via a real runtime dynamic import whenever the admin panel is
-  enabled (the default) — bumping it ahead of `@dune/plugin-admin@3.0.0`
-  actually being published would make every such site fail to boot the
-  moment it picked up this version, since the pinned version wouldn't exist
-  yet. `roleHasPermission()`/`highestAdminRole()` above are fully additive
-  and work against either admin-plugin line; the `^3.0` bump ships in a
-  follow-up release once `@dune/plugin-admin@3.0.0` is confirmed live.
+  release, deliberately not yet bumped to `^3.0`.** `bootstrap()` resolves this
+  pin via a real runtime dynamic import whenever the admin panel is enabled (the
+  default) — bumping it ahead of `@dune/plugin-admin@3.0.0` actually being
+  published would make every such site fail to boot the moment it picked up this
+  version, since the pinned version wouldn't exist yet.
+  `roleHasPermission()`/`highestAdminRole()` above are fully additive and work
+  against either admin-plugin line; the `^3.0` bump ships in a follow-up release
+  once `@dune/plugin-admin@3.0.0` is confirmed live.
 
 ### Added
 
-- **A local npm-cache mismatch now gets an actionable message instead of a
-  raw esbuild/Deno stack trace.** `dune dev`/`dune serve` failing with
+- **A local npm-cache mismatch now gets an actionable message instead of a raw
+  esbuild/Deno stack trace.** `dune dev`/`dune serve` failing with
   `[ERR_MODULE_NOT_FOUND]` or `Could not find referrer npm package` errors
   naming two different resolved versions of the same package under
   `npm/registry.npmjs.org/` (duneorg/dune#2) is a stale/corrupted local
-  `~/.cache/deno/npm`, not a Dune bug — this isn't preventable from Dune's
-  side, since it's not Dune's cache. The new message names the conflicting
-  versions when it can and suggests `deno cache --reload`, then clearing the
-  npm cache directory if that doesn't clear it.
+  `~/.cache/deno/npm`, not a Dune bug — this isn't preventable from Dune's side,
+  since it's not Dune's cache. The new message names the conflicting versions
+  when it can and suggests `deno cache --reload`, then clearing the npm cache
+  directory if that doesn't clear it.
 - **`dune plugin:update`, `plugin:install`, and `plugin:remove` now accept
   `--dry-run`.** All three mutate `config/site.yaml` with no confirmation
   prompt; `plugin:update --dry-run` in particular was silently accepted and
   applied the update for real (the flag was neither recognised nor rejected).
-  With `--dry-run` they compute and print what would change — version bumps,
-  the added entry, the removed entries — without writing the file.
+  With `--dry-run` they compute and print what would change — version bumps, the
+  added entry, the removed entries — without writing the file.
 
 ### Known limitations
 
-- **`plugin:install` / `plugin:remove` / `plugin:update` strip `#` comments
-  from `config/site.yaml`.** Their write path round-trips the file through a
-  parse → mutate → re-serialize cycle, which does not preserve YAML comments.
-  A hand-commented `plugins:` block loses its comments after any one of these
+- **`plugin:install` / `plugin:remove` / `plugin:update` strip `#` comments from
+  `config/site.yaml`.** Their write path round-trips the file through a parse →
+  mutate → re-serialize cycle, which does not preserve YAML comments. A
+  hand-commented `plugins:` block loses its comments after any one of these
   commands runs. Use `--dry-run` to preview a change and then hand-edit
   `site.yaml` if you need to keep comments. A comment-preserving fix would
   require a different YAML editor and is not yet scheduled.
@@ -329,30 +339,32 @@ exactly what "breaking" means and what doesn't count.
 
 - **`dune serve`/`dune dev` crashed on startup for any real site** (own
   `deno.json`, `@dune/core` resolved via `jsr:` — the normal production
-  deployment shape) **on 0.34.0.** The site-config re-exec path resolved its
-  own entrypoint one directory too shallow, landing on a file that doesn't
-  exist. Only manifested for a `jsr:`-resolved load, not a local checkout, so
-  the existing test suite never exercised it; a regression test now resolves
-  the URL the same way the runtime does and asserts the target file exists.
-  0.33.1 and earlier are unaffected.
+  deployment shape) **on 0.34.0.** The site-config re-exec path resolved its own
+  entrypoint one directory too shallow, landing on a file that doesn't exist.
+  Only manifested for a `jsr:`-resolved load, not a local checkout, so the
+  existing test suite never exercised it; a regression test now resolves the URL
+  the same way the runtime does and asserts the target file exists. 0.33.1 and
+  earlier are unaffected.
 
 ## [0.34.0] — 2026-08-27
 
 ### Added
 
 - **`dune dev:link`** — reinstalls the global `dune` shim against the local
-  checkout, refreshing its frozen import-map snapshot. The documented
-  local-dev install (`deno install --global -n dune -A --import-map=deno.json
-  src/cli.ts`) has two problems: `--import-map` doesn't resolve JSR/npm
-  package subpaths through their bare-package entry the way normal
-  `--config`-based resolution does, and `deno install` snapshots `deno.json`
-  at install time regardless of flag, so it silently goes stale whenever
-  `imports` change afterward. Fixed by switching the documented command (and
-  this new one) to `--config`, which doesn't have the subpath problem.
-  `import-map-error.ts`'s existing "missing import map entry" message now
-  also detects the stale-snapshot case (the specifier is already in the
-  checkout's live `deno.json`) and points at `dune dev:link` instead of
-  telling someone to add an entry that's already there. (duneorg/dune#6)
+  checkout, refreshing its frozen import-map snapshot. The documented local-dev
+  install
+  (`deno install --global -n dune -A --import-map=deno.json
+  src/cli.ts`) has
+  two problems: `--import-map` doesn't resolve JSR/npm package subpaths through
+  their bare-package entry the way normal `--config`-based resolution does, and
+  `deno install` snapshots `deno.json` at install time regardless of flag, so it
+  silently goes stale whenever `imports` change afterward. Fixed by switching
+  the documented command (and this new one) to `--config`, which doesn't have
+  the subpath problem. `import-map-error.ts`'s existing "missing import map
+  entry" message now also detects the stale-snapshot case (the specifier is
+  already in the checkout's live `deno.json`) and points at `dune dev:link`
+  instead of telling someone to add an entry that's already there.
+  (duneorg/dune#6)
 
 ### Fixed
 
@@ -389,12 +401,13 @@ exactly what "breaking" means and what doesn't count.
   depend on directly. New sites now scaffold with a pin matching the core
   version they were generated by and a complete import map. Existing sites are
   unaffected — `dune upgrade` still rewrites the pin the same way it always has.
-- **`dune new` gave no indication why `deno task dev` failed** when the new
-  site was scaffolded inside a directory covered by an enclosing Deno
-  workspace that didn't list it as a member — just a bare `Config file must
-  be a member of the workspace` error from Deno itself. `dune new` now
-  detects that situation and prints the exact `workspace` array entry to add
-  and where. (duneorg/dune#6)
+- **`dune new` gave no indication why `deno task dev` failed** when the new site
+  was scaffolded inside a directory covered by an enclosing Deno workspace that
+  didn't list it as a member — just a bare
+  `Config file must
+  be a member of the workspace` error from Deno itself.
+  `dune new` now detects that situation and prints the exact `workspace` array
+  entry to add and where. (duneorg/dune#6)
 - **The starter theme shipped no error template**, so every 404/500 on a fresh
   scaffold fell back to bare markup instead of a branded page. **The scaffolded
   blog page also declared a collection query the default template never
