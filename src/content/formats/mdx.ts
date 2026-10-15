@@ -22,7 +22,7 @@
  */
 
 import matter from "gray-matter";
-import { dirname, join, SEPARATOR as SEP } from "@std/path";
+import { dirname, join, SEPARATOR as SEP, toFileUrl } from "@std/path";
 import { h } from "preact";
 import { render } from "preact-render-to-string";
 import type {
@@ -291,7 +291,7 @@ async function resolveColocaledImports(
 
     let mod: Record<string, unknown>;
     try {
-      mod = await import(`file://${absPath}`);
+      mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
     } catch {
       // If the import fails, leave the line in source so MDX reports a clear error.
       continue;
