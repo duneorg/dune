@@ -21,6 +21,8 @@
  * ```
  */
 
+import { toFileUrl } from "@std/path";
+
 /** A single schema migration that transforms a record from the previous version. */
 export interface FlexMigration {
   /** Target schema version this migration reaches. */
@@ -71,7 +73,7 @@ export async function loadMigrations(root: string, type: string): Promise<FlexMi
     try {
       // Dynamic import — the file URL must be absolute.
       const absPath = filePath.startsWith("/") ? filePath : `${Deno.cwd()}/${filePath}`;
-      const mod = await import(`file://${absPath}`);
+      const mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
       if (mod.migration && typeof mod.migration.up === "function") {
         migrations.push(mod.migration as FlexMigration);
       }

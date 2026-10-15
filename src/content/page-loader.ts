@@ -11,7 +11,7 @@
  * @module
  */
 
-import { dirname, extname, join } from "@std/path";
+import { dirname, extname, join, toFileUrl } from "@std/path";
 import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import { ContentError, StorageError } from "../core/errors.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -123,7 +123,7 @@ export async function loadPage(
     component: lazyOnce(async () => {
       if (index.format !== "tsx") return null;
       const absPath = await resolveAbsolutePath(options.storageRoot, contentFilePath);
-      const mod = await import(`file://${absPath}`);
+      const mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
       return (mod.default ?? null) as TemplateComponent | null;
     }),
 
@@ -132,7 +132,7 @@ export async function loadPage(
     handlers: lazyOnce(async () => {
       if (index.format !== "tsx") return null;
       const absPath = await resolveAbsolutePath(options.storageRoot, contentFilePath);
-      const mod = await import(`file://${absPath}`);
+      const mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
       return (mod.handler ?? null) as Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>> | null;
     }),
 

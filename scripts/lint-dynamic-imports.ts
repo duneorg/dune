@@ -15,6 +15,13 @@
  *
  * Any new non-literal import() without a `// lockfile-safe` comment fails CI.
  *
+ * Also rejects template-literal specifiers that start with `file:` —
+ * import(`file://${absPath}`). `deno publish` rewrites those into a relative
+ * specifier (import(`../../../../${absPath}`)), which resolves against the
+ * package URL (https://jsr.io/...) instead of the filesystem, so the import
+ * works from a source checkout but fails in every published release. Build the
+ * URL first: import(toFileUrl(absPath).href).
+ *
  * Usage:  deno run --allow-read scripts/lint-dynamic-imports.ts
  * Exit:   0 = clean, 1 = violations found
  */
@@ -37,11 +44,20 @@ for await (const entry of walk(srcDir, { exts: [".ts", ".tsx"], skip: [/node_mod
   while ((match = DYNAMIC_IMPORT_RE.exec(src)) !== null) {
     const arg = match[1].trim();
 
-    // Literal string arguments are always safe — Deno traces them statically.
-    if (LITERAL_RE.test(arg)) continue;
-
     const lineIndex = src.slice(0, match.index).split("\n").length - 1;
     const lineText = lines[lineIndex] ?? "";
+
+    if (/^`file:/.test(arg) && !lineText.trimStart().startsWith("//") && !lineText.trimStart().startsWith("*")) {
+      console.error(
+        `src/${relative(srcDir, entry.path)}:${lineIndex + 1}: template-literal file: import() is rewritten by \`deno publish\` into a broken relative specifier: import(${arg})\n` +
+        `  Use import(toFileUrl(absPath).href) (from @std/path) instead.`,
+      );
+      violations++;
+      continue;
+    }
+
+    // Literal string arguments are always safe — Deno traces them statically.
+    if (LITERAL_RE.test(arg)) continue;
 
     // Skip comment lines (JSDoc or single-line).
     const trimmed = lineText.trimStart();

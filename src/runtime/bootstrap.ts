@@ -44,7 +44,7 @@ import type { SectionRegistry } from "../sections/registry.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
 import { createContentApi, type ContentApi } from "../content/api.ts";
-import { resolve } from "@std/path";
+import { resolve, toFileUrl } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
@@ -285,7 +285,7 @@ export async function bootstrap(
   if (await storage.exists(mdxComponentsPath)) {
     try {
       const absPath = await Deno.realPath(`${root}/${mdxComponentsPath}`);
-      const mod = await import(`file://${absPath}`);
+      const mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
       if (mod.default && typeof mod.default === "object") {
         const registry = createMdxComponentRegistry(
           mod.default as Record<string, unknown>,
