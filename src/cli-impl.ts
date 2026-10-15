@@ -98,7 +98,7 @@ import { usersCreateCommand } from "./cli/users-create.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 import { parseCliOptions } from "./cli/args.ts";
 import { maybeReexecWithSiteConfig } from "./cli/reexec.ts";
-import { HELP } from "./cli/help.ts";
+import { COMMAND_HELP, HELP } from "./cli/help.ts";
 
 /** Resolve version string and install source from runtime context. */
 function resolveVersion(): { version: string; source: string } {
@@ -120,7 +120,6 @@ function resolveVersion(): { version: string; source: string } {
   const jsrMatch = url.match(/jsr\.io\/@dune\/core\/([^/]+)\//);
   return { version: jsrMatch?.[1] ?? "unknown", source: "jsr:@dune/core" };
 }
-
 
 export async function main(args: string[] = Deno.args) {
   // Suppress Fresh's built-in update nag — Dune owns the upgrade UX and
@@ -151,6 +150,12 @@ export async function main(args: string[] = Deno.args) {
   if (command === "--version" || command === "-V") {
     const { version, source } = resolveVersion();
     console.log(`dune ${version} (${source})`);
+    Deno.exit(0);
+  }
+
+  // `dune <command> --help` prints usage instead of running the command.
+  if (args.slice(1).some((a) => a === "--help" || a === "-h")) {
+    console.log((COMMAND_HELP[command] ?? HELP).trim());
     Deno.exit(0);
   }
 

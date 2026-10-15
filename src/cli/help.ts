@@ -183,3 +183,21 @@ Deploy options (used with deploy:init):
   --out <dir>         Output directory for generated files (default: site root)
 `;
 
+/** Per-command usage, printed for `dune <command> --help` / `-h`. */
+export const COMMAND_HELP: Record<string, string> = {
+  "plugin:update": `
+Usage: dune plugin:update [name] [--dry-run] [--root <dir>]
+
+Bump JSR plugins in config/site.yaml to their latest published versions.
+Only the version specifiers are edited; comments, blank lines and quote
+style are left untouched.
+
+Arguments:
+  name        Only update plugins whose specifier contains this text
+
+Options:
+  --dry-run   Show what would change without writing config/site.yaml
+  --root      Site root (default: .)
+  -h, --help  Show this help
+`,
+};
