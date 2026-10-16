@@ -248,7 +248,7 @@ Deno.test("contentHandler: redirect Location includes site.basePath when set (mu
   const res = await contentHandler(req, renderJsx);
 
   assertEquals(res.status, 301);
-  assertEquals(res.headers.get("Location"), "http://localhost/papermod/new-page");
+  assertEquals(res.headers.get("Location"), "/papermod/new-page");
 });
 
 Deno.test("contentHandler: redirect preserves the incoming query string", async () => {
@@ -270,7 +270,7 @@ Deno.test("contentHandler: redirect preserves the incoming query string", async 
   assertEquals(res.status, 301);
   assertEquals(
     res.headers.get("Location"),
-    "http://localhost/join/?success=true",
+    "/join/?success=true",
   );
 });
 
@@ -293,8 +293,30 @@ Deno.test("contentHandler: redirect keeps the target's own query when it defines
   assertEquals(res.status, 301);
   assertEquals(
     res.headers.get("Location"),
-    "http://localhost/new-page?ref=campaign",
+    "/new-page?ref=campaign",
   );
+});
+
+Deno.test("contentHandler: redirect Location is relative, so a TLS-terminating proxy's http:// request scheme can't leak into it", async () => {
+  const engine = makeEngine([], async (route: string) => {
+    if (route === "/old-page") {
+      return { type: "redirect" as const, redirectTo: "/new-page/" };
+    }
+    return { type: "not-found" as const };
+  });
+
+  const { contentHandler } = duneRoutes(engine);
+  const renderJsx = (_jsx: unknown, _status?: number): Response => {
+    return new Response("should not render", { status: 200 });
+  };
+
+  // Behind a proxy that terminates TLS the server sees http:// and the
+  // upstream host, not the public https:// origin.
+  const req = new Request("http://127.0.0.1:8000/old-page");
+  const res = await contentHandler(req, renderJsx);
+
+  assertEquals(res.status, 301);
+  assertEquals(res.headers.get("Location"), "/new-page/");
 });
 
 // ---------------------------------------------------------------------------
