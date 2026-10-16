@@ -285,10 +285,13 @@ export function duneRoutes(
         if (url.search && !target.includes("?")) {
           target += url.search;
         }
-        return respond(Response.redirect(
-          new URL(target, url.origin).toString(),
-          301,
-        ));
+        // Relative Location (RFC 9110 §10.2.2): an absolute one built from
+        // url.origin carries the scheme of the request as this process saw it,
+        // which is http:// whenever a reverse proxy terminates TLS, so every
+        // redirect would bounce through http:// before upgrading back.
+        return respond(
+          new Response(null, { status: 301, headers: { Location: target } }),
+        );
       }
 
       // Not found — render 404 through theme (error template → layout → bare)
