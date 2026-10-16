@@ -9,6 +9,19 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.13] — 2026-10-17
+
+### Fixed
+
+- **Redirects pointed at `http://` behind a TLS-terminating reverse proxy.**
+  Redirect responses built an absolute `Location` from the request's own origin,
+  which is `http://` whenever a proxy terminates TLS in front of Dune, so every
+  redirect (`site.yaml` `redirects`, canonical trailing-slash redirects, legacy
+  URLs) bounced through an extra `http://` hop before upgrading back to
+  `https://`. Redirects now send a relative `Location`, which the browser
+  resolves against the URL it actually used. `basePath` prefixing and
+  query-string carry-over are unchanged.
+
 ## [0.34.12] — 2026-10-15
 
 ### Fixed
