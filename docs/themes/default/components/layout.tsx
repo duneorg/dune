@@ -21,6 +21,7 @@ const sections: NavItem[] = [
   { href: "/content", label: "Content", children: [
     { href: "/content/markdown", label: "Markdown Pages" },
     { href: "/content/tsx-pages", label: "TSX Pages" },
+    { href: "/content/mdx-content", label: "MDX Content" },
     { href: "/content/frontmatter", label: "Frontmatter" },
     { href: "/content/collections", label: "Collections" },
     { href: "/content/taxonomies", label: "Taxonomies" },
@@ -53,7 +54,6 @@ const sections: NavItem[] = [
   { href: "/extending", label: "Extending", children: [
     { href: "/extending/hooks", label: "Hooks" },
     { href: "/extending/format-handlers", label: "Format Handlers" },
-    { href: "/extending/mdx-content", label: "MDX Content" },
     { href: "/extending/plugins", label: "Plugins" },
   ]},
   { href: "/reference", label: "Reference", children: [
