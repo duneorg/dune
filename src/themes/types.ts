@@ -2,6 +2,7 @@
  * Theme system type definitions.
  */
 
+import type { TemplateOutput } from "./output.ts";
 import type { TemplateComponent } from "../content/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -65,4 +66,6 @@ export interface LoadedTemplate {
   component: TemplateComponent;
   /** Which theme it was loaded from (for debugging) */
   fromTheme: string;
+  /** Set when the template module exports a valid `output` (see `themes/output.ts`). */
+  output?: TemplateOutput;
 }

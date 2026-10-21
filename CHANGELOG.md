@@ -9,6 +9,33 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.15] — 2026-10-21
+
+### Added
+
+- **Template `output` modes: serve bare fragments, JSON, XML, text or any
+  media type from a content-backed page.** A template module can now export
+  `output` to produce the entire response body itself instead of being wrapped
+  in an HTML document:
+  `export const output = "fragment" | "json" | "xml" | "text" | "<type/subtype>"`.
+  `"fragment"` renders the template's JSX as HTML with no `<html>`/`<head>`/
+  `<body>`; the others take a string (or, for JSON, any serializable value)
+  and send it unchanged with the right `Content-Type`, so JSON and XML are
+  never HTML-escaped. Pair it with a flat content file and a dotted `slug`
+  (`slug: pricing.json` serves `/pricing.json`). A bare response skips the
+  document-oriented steps — feed-link and dev live-reload injection, RTL `dir`,
+  and plugin response transforms such as the admin bar, which previously
+  would have appended its ~22 KB bar and script to a fragment for any logged-in
+  editor — while keeping security headers, ETag/caching, compression,
+  base-path rewriting and editing-marker scrubbing (markers are removed from
+  fragments even for an editor session). The media type is declared in
+  template code, never in page frontmatter, so a page author cannot choose to
+  serve attacker-controlled `text/javascript` from the site's origin. An
+  unrecognised value logs a warning and the template renders as a normal page;
+  a data template that returns the wrong type is a 500 naming the template.
+  Islands in a fragment render on the server but do not hydrate when swapped
+  into a page after load.
+
 ## [0.34.14] — 2026-10-21
 
 ### Security
