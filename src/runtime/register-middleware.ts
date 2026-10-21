@@ -92,6 +92,26 @@ export function registerContentCatchAll(
   // deno-lint-ignore no-explicit-any
   const getAdminAuth = () => (ctx.adminContext as any)?.auth ?? null;
 
+  // Plugin response transforms (admin bar and friends) for a content response.
+  // A bare response (template `output` mode) is not an HTML document, so only
+  // editing markers are scrubbed — never the plugin pass, which assumes a page.
+  const transformContentResponse = (
+    req: Request,
+    response: Response,
+    bare: boolean,
+  ): Promise<Response> =>
+    bare ? scrubMarkersFromResponse(response) : runPluginResponseTransforms({
+      req,
+      response,
+      plugins: hooks.plugins(),
+      auth: getAdminAuth(),
+      authz,
+      actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
+      resolve: engine.router.resolve,
+      config,
+      adminPrefix,
+    });
+
   app.all("/*", async (fc) => {
     const startMs = performance.now();
     const { url, req } = fc;
@@ -200,7 +220,7 @@ export function registerContentCatchAll(
                   new Response(cached.body as BodyInit, {
                     status: 200,
                     headers: {
-                      "Content-Type": "text/html; charset=utf-8",
+                      "Content-Type": cached.contentType,
                       "ETag": etag,
                       "Cache-Control": ccValue,
                     },
@@ -243,17 +263,7 @@ export function registerContentCatchAll(
         if (feedEnabled && !bare) response = injectFeedLinks(siteName, response);
 
         // Plugin response transforms (e.g. admin bar injection) — must run before caching.
-        response = bare ? await scrubMarkersFromResponse(response) : await runPluginResponseTransforms({
-          req,
-          response,
-          plugins: hooks.plugins(),
-          auth: getAdminAuth(),
-          authz,
-          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
-          resolve: engine.router.resolve,
-          config,
-          adminPrefix,
-        });
+        response = await transformContentResponse(req, response, bare);
 
         // RTL direction injection
         const rtlSupportedLangs = config.system.languages?.supported ?? [];
@@ -294,6 +304,7 @@ export function registerContentCatchAll(
           const body = await response.arrayBuffer();
           pageCache.set(url.pathname, {
             body: new Uint8Array(body),
+            contentType: response.headers.get("Content-Type") ?? "text/html; charset=utf-8",
             etag,
             cacheControl: ccValue,
           });
@@ -315,17 +326,7 @@ export function registerContentCatchAll(
         }
         if (feedEnabled && !bare) response = injectFeedLinks(siteName, response);
 
-        response = bare ? await scrubMarkersFromResponse(response) : await runPluginResponseTransforms({
-          req,
-          response,
-          plugins: hooks.plugins(),
-          auth: getAdminAuth(),
-          authz,
-          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
-          resolve: engine.router.resolve,
-          config,
-          adminPrefix,
-        });
+        response = await transformContentResponse(req, response, bare);
 
         const devSupportedLangs = config.system.languages?.supported ?? [];
         const devUrlSegments = url.pathname.split("/");

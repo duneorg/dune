@@ -104,10 +104,11 @@ const FILES: Record<string, string> = {
 async function withApp(
   dev: boolean,
   fn: (get: (path: string, init?: RequestInit) => Promise<Response>) => Promise<void>,
+  extraFiles: Record<string, string> = {},
 ): Promise<void> {
   const root = await Deno.makeTempDir({ prefix: "dune_test_output_" });
   try {
-    for (const [rel, text] of Object.entries(FILES)) {
+    for (const [rel, text] of Object.entries({ ...FILES, ...extraFiles })) {
       await Deno.mkdir(dirname(join(root, rel)), { recursive: true });
       await Deno.writeTextFile(join(root, rel), text);
     }
@@ -209,5 +210,44 @@ Deno.test("dev mode: bare outputs get no live-reload script, normal pages still 
       assertEquals(body.includes("__dune_reload"), false, path);
       assertEquals(body.includes("<!--TRANSFORMED-->"), false, path);
     }
+  });
+});
+
+Deno.test("with the page cache on, bare outputs keep their Content-Type on every request, not just the first", opts, async () => {
+  await withApp(false, async (get) => {
+    const expected: Record<string, string> = {
+      "/pricing.json": "application/json; charset=utf-8",
+      "/items.xml": "application/xml; charset=utf-8",
+      "/note.txt": "text/plain; charset=utf-8",
+      "/table.csv": "text/csv; charset=utf-8", // a custom media type survives the hit too
+      "/frag/": "text/html; charset=utf-8",
+    };
+    for (const [path, type] of Object.entries(expected)) {
+      let firstBody: string | undefined;
+      // Request 1 fills the cache; 2 and 3 are served from it.
+      for (let i = 1; i <= 3; i++) {
+        const res = await get(path);
+        assertEquals(res.status, 200, `${path} #${i}`);
+        assertEquals(res.headers.get("content-type"), type, `${path} request #${i}`);
+        assertEquals(res.headers.get("x-content-type-options"), "nosniff", `${path} #${i}`);
+        const body = await res.text();
+        firstBody ??= body;
+        assertEquals(body, firstBody, `${path} #${i} body`);
+      }
+    }
+  }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
+});
+
+Deno.test("with the page cache on, a cached JSON body is never served as text/html (stored-XSS shape)", opts, async () => {
+  await withApp(false, async (get) => {
+    for (let i = 1; i <= 3; i++) {
+      const res = await get("/hostile.json");
+      assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8", `request #${i}`);
+      assertStringIncludes(await res.text(), "<script>alert(1)</script>");
+    }
+  }, {
+    "config/system.yaml": "page_cache:\n  enabled: true\n",
+    "themes/t/templates/hostile.tsx": `export const output = "json";\nexport default function H(){ return { note: "<script>alert(1)</script>" }; }`,
+    "content/09.hostile.md": "---\ntitle: H\ntemplate: hostile\nslug: hostile.json\n---\nx\n",
   });
 });
