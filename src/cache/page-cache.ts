@@ -14,8 +14,10 @@
  */
 
 export interface PageCacheEntry {
-  /** Rendered HTML body bytes. */
+  /** Rendered body bytes (HTML, or the output of a template with an `output` mode). */
   body: Uint8Array;
+  /** Content-Type to replay on a hit — not always HTML (JSON/XML/text templates are cached too). */
+  contentType: string;
   /** ETag for this entry (computed from PageIndex metadata). */
   etag: string;
   /** Pre-built Cache-Control header value for this entry. */

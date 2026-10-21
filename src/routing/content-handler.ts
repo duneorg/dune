@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
-import { h, type ComponentType } from "preact";
+import { h, type ComponentType, type VNode } from "preact";
+import { render as renderToString } from "preact-render-to-string";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
 import type { ContentApi } from "../content/api.ts";
@@ -14,6 +15,8 @@ import { rewriteInternalLinks } from "./link-rewriter.ts";
 import { resolveCollectionForPage, resolveCollectionsForPage } from "./collection-resolver.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
+import { dataOutputBody } from "../themes/output.ts";
+import { markBareResponse } from "./bare-response.ts";
 import { logger } from "../core/logger.ts";
 import { navigationForRequest } from "../auth/gating.ts";
 
@@ -145,6 +148,26 @@ export async function handleMarkdownPage(
   if (hooks && req) {
     const resolved = await hooks.fire("onBeforeRender", { req, page, props });
     props = resolved.props;
+  }
+
+  // Template declares an `output` mode: it produces the response body itself,
+  // so skip Fresh's document wrapper (fc.render). The response is marked so the
+  // catch-all skips document-oriented steps for it — see routing/bare-response.ts.
+  const output = template.output;
+  if (output) {
+    let body: string;
+    if (output.kind === "fragment") {
+      const result = await resolveTemplateVNode(template.component as ComponentType<any>, props);
+      body = typeof result === "string" ? result : renderToString(result as VNode);
+    } else {
+      // Plain call, not a vnode: a returned string would otherwise be rendered
+      // as an HTML-escaped text node. Sync and async templates both work.
+      const result = await (template.component as unknown as (p: typeof props) => unknown)(props);
+      body = dataOutputBody(result, output, templateName);
+    }
+    return markBareResponse(
+      new Response(body, { headers: { "Content-Type": output.contentType } }),
+    );
   }
 
   return render(
