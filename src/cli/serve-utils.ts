@@ -12,8 +12,16 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
 };
 
-/** Apply security headers to a response, skipping any already present. */
+/**
+ * Apply security headers to a response, skipping any already present.
+ * Returns the response itself when it already carries all of them, so the
+ * app-wide middleware in `createDuneApp()` costs nothing on responses the
+ * catch-all already stamped.
+ */
 export function withSecurityHeaders(response: Response): Response {
+  if (Object.keys(SECURITY_HEADERS).every((k) => response.headers.has(k))) {
+    return response;
+  }
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     if (!headers.has(key)) headers.set(key, value);

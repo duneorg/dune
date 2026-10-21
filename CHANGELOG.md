@@ -9,6 +9,25 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.14] — 2026-10-21
+
+### Security
+
+- **The standard security headers were missing on every route family outside
+  the content catch-all.** `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy` and `Permissions-Policy`
+  were applied by wrapping specific responses (content pages, static files,
+  plugin `onRequest` short-circuits), so anything registered another way went
+  out without them: plugin `publicRoutes`, `/health`, the `/api/*` endpoints,
+  `/sitemap.xml` and `/feed.xml` carried none of the four, and the admin
+  panel carried three. They are now applied by one app-wide middleware ahead
+  of every route registration, so plugin routes and any future route family
+  are covered by construction. A header a handler sets itself still wins.
+  Hardening only — no exploit by itself — but it matters more as plugins
+  serve HTML fragments and JSON. (Dune still sets no `Content-Security-Policy`;
+  that is a separate question.) WebSocket upgrades and streaming (SSE)
+  responses pass through unaffected.
+
 ## [0.34.13] — 2026-10-17
 
 ### Fixed

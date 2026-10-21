@@ -346,6 +346,16 @@ export async function createDuneApp(
     return fc.next();
   });
 
+  // 0b. Standard security headers on EVERY response, whichever route family
+  // produced it — plugin publicRoutes, plugin mount() routes, /api/*, /health,
+  // sitemap and feeds, static files. They used to be applied by wrapping
+  // specific handlers (the content catch-all, static routes), so any route
+  // registered another way went out without them. Fresh snapshots a route's
+  // middleware chain when the route is registered, so this must stay ahead of
+  // every route registration below. Headers a handler sets itself win
+  // (withSecurityHeaders only fills in missing ones).
+  app.use(async (fc) => withSecurityHeaders(await fc.next()));
+
   // 1. Static files — /_fresh/js/* from build cache
   app.use(staticFiles());
 
