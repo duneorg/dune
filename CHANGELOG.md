@@ -9,6 +9,42 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.15] — 2026-10-22
+
+### Fixed
+
+- **`dune ps` missed servers started through the `dune` CLI itself.** It only
+  matched the generated entrypoint (`main.ts dev|serve`), so a dev server run
+  via the global shim or a checkout (`.../cli.ts dev`), via
+  `jsr:@dune/core/cli serve`, or through a `deno task dev|serve` wrapper never
+  showed up — on a real machine it listed 19 hung processes and missed the one
+  server that was actually serving. It now matches those forms too. A bare
+  `cli.ts` or `deno task` match (which could be any project) counts only when a
+  `config/site.yaml` is found via `--root`, `PWD` or the live cwd.
+- **`dune ps` reported "port unknown — is `lsof` installed?" for processes that
+  simply weren't listening.** It now says **not listening** when `lsof` ran and
+  found no open port (typically a server started on a port something else
+  already held, which never exits), and "port unknown (lsof not available)"
+  only when `lsof` can't be run.
+- A server's wrapper, re-exec child and esbuild workers are now reported as one
+  instance, found from a single process-table snapshot (no more `pgrep`), and
+  `--root` on the command line is used to find the site.
+
+### Added
+
+- **`dune ps --stop`** stops every instance it lists, with its child processes:
+  SIGTERM, a 10-second grace period for a real server to drain, then SIGKILL
+  for anything still alive, naming the pids that needed it. (The escalation
+  matters: a `dune serve` used to close its listener on the first SIGTERM and
+  then stay alive until sent a second one, so plain SIGTERM left exactly the
+  idle processes this command exists to clear.) It asks first; `--yes` skips
+  the prompt, and with no terminal it refuses unless `--yes` is given. It never
+  signals itself or its parent processes.
+- **`dune ps --idle`** narrows the listing to instances that are running but
+  not listening (hung or leftover processes), and `dune ps --stop --idle`
+  stops only those, so live servers on a shared machine are left alone. An
+  instance whose port state is unknown (no `lsof`) is never assumed idle.
+
 ## [0.34.14] — 2026-10-21
 
 ### Security

@@ -194,7 +194,11 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "ps":
-        await psCommand();
+        await psCommand({
+          stop: options.stop === true,
+          yes: options.yes === true,
+          idle: options.idle === true,
+        });
         break;
 
       case "validate":
