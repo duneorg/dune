@@ -32,9 +32,13 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`dune ps --stop`** stops every instance it lists, with its child processes
-  (SIGTERM), and reports anything still alive. It asks first; `--yes` skips the
-  prompt, and with no terminal it refuses unless `--yes` is given. It never
+- **`dune ps --stop`** stops every instance it lists, with its child processes:
+  SIGTERM, a 10-second grace period for a real server to drain, then SIGKILL
+  for anything still alive, naming the pids that needed it. (The escalation
+  matters: a `dune serve` used to close its listener on the first SIGTERM and
+  then stay alive until sent a second one, so plain SIGTERM left exactly the
+  idle processes this command exists to clear.) It asks first; `--yes` skips
+  the prompt, and with no terminal it refuses unless `--yes` is given. It never
   signals itself or its parent processes.
 - **`dune ps --idle`** narrows the listing to instances that are running but
   not listening (hung or leftover processes), and `dune ps --stop --idle`

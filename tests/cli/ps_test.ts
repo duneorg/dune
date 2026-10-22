@@ -411,6 +411,7 @@ Deno.test("stopInstances: stops the whole tree and reports nothing left", opts, 
     const result = await stopInstances([found], { timeoutMs: 8000 });
     assertEquals(result.survivors, []);
     assertEquals(result.skipped, []);
+    assertEquals(result.killed, [], "a process that exits on SIGTERM must not be SIGKILLed");
     assertEquals(result.stopped.sort(), [...found.pids].sort());
     // Really gone: nothing answers any more.
     let answered = true;
@@ -423,6 +424,45 @@ Deno.test("stopInstances: stops the whole tree and reports nothing left", opts, 
   } finally {
     await stop(child);
     await Deno.remove(site, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("stopInstances: a process that ignores SIGTERM is escalated to SIGKILL, and reported as killed", opts, async () => {
+  const dir = await Deno.makeTempDir({ prefix: "ps_test_stubborn_" });
+  let child: Deno.ChildProcess | undefined;
+  try {
+    // Swallows SIGTERM, the way a server stuck in its own shutdown does.
+    await Deno.writeTextFile(
+      join(dir, "stubborn.ts"),
+      `Deno.addSignalListener("SIGTERM", () => {});\nconsole.log("ready");\nsetInterval(() => {}, 1000);\n`,
+    );
+    child = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", "stubborn.ts"],
+      cwd: dir,
+      stdout: "piped",
+      stderr: "null",
+    }).spawn();
+    const pid = child.pid;
+    // Wait until the signal handler is installed, or SIGTERM would just kill it.
+    const reader = child.stdout.getReader();
+    const first = await reader.read();
+    assertEquals(new TextDecoder().decode(first.value).includes("ready"), true);
+    reader.releaseLock();
+
+    const result = await stopInstances([fakeInstance({ pid, pids: [pid] })], { timeoutMs: 600, killTimeoutMs: 5000 });
+    assertEquals(result.killed, [pid], "had to be SIGKILLed");
+    assertEquals(result.stopped, [pid]);
+    assertEquals(result.survivors, []);
+    assertEquals((await child.status).signal, "SIGKILL");
+    child = undefined;
+  } finally {
+    if (child) {
+      try {
+        child.kill("SIGKILL");
+      } catch { /* already gone */ }
+      await child.status.catch(() => {});
+    }
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
 
@@ -445,6 +485,7 @@ Deno.test("stopInstances: never signals this process, even if an instance lists 
   const result = await stopInstances([fakeInstance({ pids: [Deno.pid] })], { timeoutMs: 300 });
   assertEquals(result.skipped, [Deno.pid]);
   assertEquals(result.stopped, []);
+  assertEquals(result.killed, []);
   assertEquals(result.survivors, []);
   // (If it had signalled itself, this assertion would never run.)
 });
@@ -454,7 +495,7 @@ Deno.test("stopInstances: never signals this process, even if an instance lists 
 async function runPs(
   instances: DuneInstance[],
   opts: { stop?: boolean; yes?: boolean; idle?: boolean },
-  deps: { interactive?: boolean; confirm?: boolean; survivors?: number[] } = {},
+  deps: { interactive?: boolean; confirm?: boolean; survivors?: number[]; killed?: number[] } = {},
 ) {
   const lines: string[] = [];
   const stopCalls: DuneInstance[][] = [];
@@ -468,6 +509,7 @@ async function runPs(
         const all = insts.flatMap((i) => i.pids);
         return Promise.resolve({
           stopped: all.filter((p) => !(deps.survivors ?? []).includes(p)),
+          killed: deps.killed ?? [],
           survivors: deps.survivors ?? [],
           skipped: [],
         });
@@ -522,10 +564,21 @@ Deno.test("psCommand --stop: an interactive 'no' stops nothing, a 'yes' stops ev
   assertEquals(yes.stopCalls.length, 1);
 });
 
-Deno.test("psCommand --stop: survivors are reported and make the exit code non-zero", async () => {
+Deno.test("psCommand --stop: survivors (alive even after SIGKILL) are reported and make the exit code non-zero", async () => {
   const { text, exitCode } = await runPs([fakeInstance({ pids: [7, 8] })], { stop: true, yes: true }, { survivors: [8] });
-  assertEquals(text.includes("Still running after SIGTERM: 8"), true);
+  assertEquals(text.includes("Could not stop (still running even after SIGKILL): 8"), true);
   assertEquals(exitCode, 1);
+});
+
+Deno.test("psCommand --stop: processes that needed SIGKILL are named, and that alone is not a failure", async () => {
+  const { text, exitCode } = await runPs([fakeInstance({ pids: [7, 8] })], { stop: true, yes: true }, { killed: [8] });
+  assertEquals(text.includes("1 did not exit on SIGTERM and were killed (SIGKILL): 8"), true);
+  assertEquals(exitCode, 0);
+});
+
+Deno.test("psCommand --stop: says nothing about SIGKILL when everything exited gracefully", async () => {
+  const { text } = await runPs([fakeInstance()], { stop: true, yes: true });
+  assertEquals(text.includes("SIGKILL"), false);
 });
 
 Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not reported (weak matches need a confirmed site)", opts, async () => {

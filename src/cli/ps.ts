@@ -417,9 +417,11 @@ async function selfAndAncestors(): Promise<Set<number>> {
 }
 
 export interface StopResult {
-  /** Pids that were signalled and are gone. */
+  /** Pids that were signalled and are gone (including those that needed SIGKILL). */
   stopped: number[];
-  /** Pids still alive after the timeout (SIGTERM was ignored or is still shutting down). */
+  /** The subset of `stopped` that ignored SIGTERM for the whole grace period and was SIGKILLed. */
+  killed: number[];
+  /** Pids still alive even after SIGKILL (rare: uninterruptible sleep, or not ours to signal). */
   survivors: number[];
   /** Pids deliberately not signalled (this process and its ancestors). */
   skipped: number[];
@@ -433,35 +435,60 @@ async function alivePids(pids: number[]): Promise<number[]> {
   return pids.filter((p) => alive.has(p));
 }
 
+async function waitUntilGone(pids: number[], timeoutMs: number): Promise<number[]> {
+  const deadline = Date.now() + timeoutMs;
+  let remaining = await alivePids(pids);
+  while (remaining.length > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 150));
+    remaining = await alivePids(remaining);
+  }
+  return remaining;
+}
+
+function signalAll(pids: number[], signal: Deno.Signal): void {
+  for (const pid of pids) {
+    try {
+      Deno.kill(pid, signal);
+    } catch { /* already gone */ }
+  }
+}
+
 /**
- * Stop whole instance trees with SIGTERM, then wait for them to exit.
+ * Stop whole instance trees: SIGTERM, wait up to `timeoutMs` for a graceful
+ * exit, then SIGKILL whatever is still alive.
+ *
+ * The escalation exists because a process can ignore SIGTERM indefinitely: a
+ * `dune serve` (before the explicit exit after shutdown) closed its listener
+ * on the first SIGTERM and then stayed alive until sent a second one, so
+ * "SIGTERM and report survivors" left exactly the idle processes this command
+ * exists to clear. The grace period is for real servers draining in-flight
+ * requests; `killed` reports who needed the SIGKILL so it is never silent.
+ *
  * Never signals this process or its ancestors (so a `dune ps --stop` run from
  * inside a shell/agent can't take out its own parents).
  */
 export async function stopInstances(
   instances: DuneInstance[],
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; killTimeoutMs?: number } = {},
 ): Promise<StopResult> {
-  const timeoutMs = opts.timeoutMs ?? 5000;
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const killTimeoutMs = opts.killTimeoutMs ?? 2_000;
   const protectedPids = await selfAndAncestors();
   const targets = [...new Set(instances.flatMap((i) => i.pids))];
   const skipped = targets.filter((p) => protectedPids.has(p));
   const toSignal = targets.filter((p) => !protectedPids.has(p));
 
-  for (const pid of toSignal) {
-    try {
-      Deno.kill(pid, "SIGTERM");
-    } catch { /* already gone */ }
-  }
+  signalAll(toSignal, "SIGTERM");
+  const afterTerm = await waitUntilGone(toSignal, timeoutMs);
 
-  const deadline = Date.now() + timeoutMs;
-  let remaining = await alivePids(toSignal);
-  while (remaining.length > 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 150));
-    remaining = await alivePids(remaining);
+  let survivors: number[] = [];
+  if (afterTerm.length > 0) {
+    signalAll(afterTerm, "SIGKILL");
+    survivors = await waitUntilGone(afterTerm, killTimeoutMs);
   }
-  const gone = new Set(toSignal.filter((p) => !remaining.includes(p)));
-  return { stopped: toSignal.filter((p) => gone.has(p)), survivors: remaining, skipped };
+  const killed = afterTerm.filter((p) => !survivors.includes(p));
+  const gone = new Set(toSignal.filter((p) => !survivors.includes(p)));
+  return { stopped: toSignal.filter((p) => gone.has(p)), killed, survivors, skipped };
 }
 
 // ── Command ──────────────────────────────────────────────────────────────────
@@ -566,8 +593,11 @@ export async function psCommand(opts: PsOptions = {}, deps: PsDeps = {}): Promis
   if (result.skipped.length > 0) {
     log(`  Left alone (this command's own process and its parents): ${result.skipped.join(", ")}`);
   }
+  if (result.killed.length > 0) {
+    log(`  ${result.killed.length} did not exit on SIGTERM and were killed (SIGKILL): ${result.killed.join(", ")}`);
+  }
   if (result.survivors.length > 0) {
-    log(`  Still running after SIGTERM: ${result.survivors.join(", ")}. Try \`kill -9\` on those if they are really stuck.`);
+    log(`  Could not stop (still running even after SIGKILL): ${result.survivors.join(", ")}`);
     Deno.exitCode = 1;
   }
 }
