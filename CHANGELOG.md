@@ -9,6 +9,22 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [0.34.15] — 2026-10-22
+
+### Fixed
+
+- **`dune serve` did not exit after a graceful shutdown if anything was still
+  running.** On SIGTERM it closed the listener, drained, printed `shutdown
+  complete`, and then just returned, so the process lived only as long as the
+  event loop had work. One ref'd plugin timer (`@dune/plugin-admin`'s collab
+  eviction interval, fixed in 3.1.3) was enough to keep it alive forever at 0%
+  CPU with no listener — an "idle" instance that a *second* SIGTERM was needed
+  to end. `serve` now exits explicitly once the drain is done (single-site and
+  multi-site), so no plugin timer can hold the process open. Covered by a test
+  that runs the real `dune serve`, gives it a plugin holding a ref'd timer, and
+  checks that one SIGTERM ends it. (The multi-site shutdown path has the same
+  change but no end-to-end test.)
+
 ## [0.34.14] — 2026-10-21
 
 ### Security
