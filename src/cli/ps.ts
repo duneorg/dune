@@ -1,21 +1,35 @@
 /**
- * dune ps — list dune dev/serve instances currently running on this machine.
+ * dune ps — list dune dev/serve instances currently running on this machine,
+ * and (with `--stop`) stop them.
  *
- * Finds candidates by matching the process table against the generated
- * entrypoint invocation shape (`deno run ... main.ts dev|serve` — the
- * pattern every `dune new` scaffold's `deno task dev`/`serve` runs, see
- * `entrypoint-template.ts`'s `ENTRYPOINT_TASKS`), confirms each match is a
- * real dune site by checking `config/site.yaml` exists at its site root,
- * and reports the port(s) it's *actually* listening on — read from that
- * process's own open sockets via `lsof`, never assumed from a fixed list
- * of "common" ports.
+ * Finds candidates by matching the process table against the invocation
+ * shapes dune servers actually run as:
+ *   - the generated entrypoint: `deno run ... main.ts dev|serve` (what every
+ *     `dune new` scaffold's `deno task dev`/`serve` runs, see
+ *     `entrypoint-template.ts`'s `ENTRYPOINT_TASKS`);
+ *   - the `dune` CLI itself: `deno run ... cli.ts dev|serve` (the global shim
+ *     or a source checkout) and `jsr:@dune/core@x/cli serve`;
+ *   - the `deno task dev|serve` wrapper around either of those.
+ * Each match is then confirmed as a real dune site by checking `config/site.yaml`
+ * at its root, and reported with the port(s) it is *actually* listening on —
+ * read from that process's own open sockets via `lsof`, never assumed from a
+ * fixed list of "common" ports.
  *
- * Site-root detection prefers a process's `PWD` environment variable over
- * its live cwd — `dev.ts` deliberately `Deno.chdir()`s to `@dune/core`'s
- * own package root when running from a local checkout (for Fresh's
- * esbuild import-map auto-detection), which would otherwise make a
- * maintainer's own dev setup — running dune from source against a real
- * site — misreport as "not a dune site" (see `getPwdEnv()`'s doc comment).
+ * A server is usually several processes (a `deno task` wrapper, the re-exec
+ * child that applies the site's import map, esbuild workers). They are
+ * reported as ONE instance, keyed by the topmost matching process, and
+ * `--stop` stops the whole tree.
+ *
+ * Site-root detection prefers an explicit `--root`, then the process's `PWD`
+ * environment variable, then its live cwd — `dev.ts` deliberately
+ * `Deno.chdir()`s to `@dune/core`'s own package root when running from a local
+ * checkout (for Fresh's esbuild import-map auto-detection), which would
+ * otherwise make a maintainer's own dev setup misreport as "not a dune site"
+ * (see `getPwdEnv()`'s doc comment).
+ *
+ * A process can match and still be listening on nothing — typically a server
+ * started on a port something else already held, which never exits. That is
+ * reported as "not listening", distinct from "port unknown" (no `lsof`).
  *
  * POSIX only (macOS/Linux) — both `ps` and `lsof` are used. Deliberately
  * process-table-scanning rather than a self-registered PID/state file:
@@ -26,26 +40,36 @@
  * @module
  */
 
-import { join } from "@std/path";
+import { isAbsolute, join, resolve } from "@std/path";
 import { parseUserYaml } from "../security/safe-yaml.ts";
 
-/** A dune dev/serve-shaped process found running on this machine. */
+/** A dune dev/serve-shaped process (tree) found running on this machine. */
 export interface DuneInstance {
+  /** The topmost matching process; what `--stop` and humans refer to. */
   pid: number;
+  /** `pid` plus every descendant (re-exec child, esbuild workers, ...). */
+  pids: number[];
   mode: "dev" | "serve" | "unknown";
   /**
-   * Absolute path to the site root, or null when neither `PWD` nor the
-   * live cwd could be confirmed as a real dune site (`config/site.yaml`
-   * missing from both) — still a real process worth reporting, just
-   * without a confirmed identity.
+   * Absolute path to the site root, or null when no candidate directory
+   * (`--root`, `PWD`, live cwd) held a `config/site.yaml` — still a real
+   * process worth reporting, just without a confirmed identity.
    */
   root: string | null;
   /** `config/site.yaml`'s `title`, or null if unset/unreadable/`root` is null. */
   title: string | null;
-  /** Ports this process is actually listening on, ascending. Empty if `lsof` couldn't tell us (e.g. not installed). */
+  /** Ports this instance is actually listening on, ascending. */
   ports: number[];
+  /**
+   * `"listening"`: at least one port. `"not-listening"`: `lsof` ran and found
+   * none — a hung or leftover process. `"unknown"`: `lsof` isn't available,
+   * so we can't tell.
+   */
+  portStatus: "listening" | "not-listening" | "unknown";
   /** `ps`'s own elapsed-time string (e.g. "01:23:45" or "2-09:03:55"). */
   elapsed: string | null;
+  /** The process's command line, for identifying unconfirmed instances. */
+  command: string;
 }
 
 async function runCommand(
@@ -69,35 +93,143 @@ async function runCommand(
   }
 }
 
+
+// ── Process table ────────────────────────────────────────────────────────────
+
+interface ProcRow {
+  pid: number;
+  ppid: number;
+  elapsed: string;
+  command: string;
+}
+
 /**
- * Every process on the machine matching the dune dev/serve invocation
- * shape, with PID and elapsed time straight from `ps` (one call, so we
- * don't pay a subprocess per candidate for this part).
+ * Snapshot of the whole process table with parent links, so a server's
+ * wrapper/child/worker processes can be grouped without further spawns.
  *
  * `COLUMNS=4096` works around BSD `ps` (macOS) truncating the `command`
  * column to terminal width by default — without it, a long `deno run -A
  * --watch=main.ts main.ts dev` invocation from a deeply-nested path can get
- * cut off before the trailing `dev`/`serve` token this match depends on.
+ * cut off before the trailing `dev`/`serve` token the match depends on.
  */
-async function findCandidates(): Promise<
-  { pid: number; elapsed: string; command: string }[]
-> {
-  const out = await runCommand("ps", ["-eo", "pid=,etime=,command="], {
+async function readProcessTable(): Promise<ProcRow[]> {
+  const out = await runCommand("ps", ["-eo", "pid=,ppid=,etime=,command="], {
     COLUMNS: "4096",
   });
   if (!out) return [];
-
-  const results: { pid: number; elapsed: string; command: string }[] = [];
+  const rows: ProcRow[] = [];
   for (const line of out.split("\n")) {
-    const match = line.match(/^\s*(\d+)\s+(\S+)\s+(.*)$/);
-    if (!match) continue;
-    const [, pidStr, elapsed, command] = match;
-    if (!command.includes("deno")) continue;
-    if (!/\bmain\.ts\s+(dev|serve)\b/.test(command)) continue;
-    results.push({ pid: parseInt(pidStr, 10), elapsed, command });
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+    if (!m) continue;
+    rows.push({ pid: parseInt(m[1], 10), ppid: parseInt(m[2], 10), elapsed: m[3], command: m[4] });
   }
-  return results;
+  return rows;
 }
+
+/** How a command line matched: `strong` is unambiguous, `weak` needs a confirmed site. */
+export interface CommandMatch {
+  mode: "dev" | "serve";
+  strength: "strong" | "weak";
+}
+
+const DENO_EXE = /^(?:\S*\/)?deno\s/;
+
+/**
+ * Does this command line look like a dune dev/serve server?
+ *
+ * - `main.ts dev|serve` — the generated site entrypoint. Strong.
+ * - `cli.ts dev|serve` / `.../cli dev|serve` — the dune CLI run directly: the
+ *   global shim, a source checkout, or `jsr:@dune/core/cli`. Strong when
+ *   "dune" appears in the command (path, `@dune/core` specifier,
+ *   `.dune-cli-config`); otherwise (a relative `src/cli.ts dev`) it could be
+ *   any tool's CLI, so Weak.
+ * - `deno task dev|serve` — only a wrapper around one of the above, and
+ *   generic enough to be any project's task, so Weak.
+ *
+ * A weak match counts only when its site root is confirmed (`config/site.yaml`).
+ */
+export function matchDuneCommand(command: string): CommandMatch | null {
+  if (!DENO_EXE.test(command)) return null;
+
+  const entry = command.match(/\bmain\.ts\s+(dev|serve)\b/);
+  if (entry) return { mode: entry[1] as "dev" | "serve", strength: "strong" };
+
+  const cli = command.match(/(?:^|[\s/])cli(?:\.ts)?\s+(dev|serve)\b/);
+  if (cli) {
+    return { mode: cli[1] as "dev" | "serve", strength: /dune/i.test(command) ? "strong" : "weak" };
+  }
+
+  const task = command.match(/\bdeno\s+task\s+(dev|serve)\b/);
+  if (task) return { mode: task[1] as "dev" | "serve", strength: "weak" };
+
+  return null;
+}
+
+/** `--root <dir>` / `--root=<dir>` from a command line, or null. */
+export function parseRootArg(command: string): string | null {
+  const m = command.match(/--root(?:=|\s+)("[^"]+"|'[^']+'|\S+)/);
+  return m ? m[1].replace(/^["']|["']$/g, "") : null;
+}
+
+/** All descendant pids of `pid`, from an in-memory process table. */
+function descendantsOf(pid: number, children: Map<number, number[]>): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>([pid]);
+  const queue = [pid];
+  while (queue.length > 0) {
+    for (const child of children.get(queue.shift()!) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      out.push(child);
+      queue.push(child);
+    }
+  }
+  return out;
+}
+
+// ── lsof ─────────────────────────────────────────────────────────────────────
+
+let lsofAvailableCache: boolean | undefined;
+
+/** Whether `lsof` can be spawned at all (its exit code is irrelevant: it exits 1 on "no matches"). */
+async function lsofAvailable(): Promise<boolean> {
+  if (lsofAvailableCache !== undefined) return lsofAvailableCache;
+  try {
+    await new Deno.Command("lsof", { args: ["-v"], stdout: "null", stderr: "null" }).output();
+    lsofAvailableCache = true;
+  } catch {
+    lsofAvailableCache = false;
+  }
+  return lsofAvailableCache;
+}
+
+/**
+ * Ports any of `pids` is actually bound to and listening on (TCP), ascending.
+ * `-P` forces numeric port output — without it, `lsof` resolves a port to its
+ * `/etc/services` name when one happens to be registered (port 3000 prints as
+ * `hbci` on macOS, not `3000`), which would silently break the numeric parse
+ * below for exactly the port `dune new` defaults to.
+ */
+async function getListeningPorts(pids: number[]): Promise<number[]> {
+  const out = await runCommand("lsof", [
+    "-a",
+    "-p",
+    pids.join(","),
+    "-iTCP",
+    "-sTCP:LISTEN",
+    "-P",
+    "-Fn",
+  ]);
+  if (!out) return [];
+  const ports = new Set<number>();
+  for (const line of out.split("\n")) {
+    if (!line.startsWith("n")) continue;
+    const match = line.match(/:(\d+)$/);
+    if (match) ports.add(parseInt(match[1], 10));
+  }
+  return [...ports].sort((a, b) => a - b);
+}
+
 
 /**
  * Extract one env var's value from `ps eww`'s raw dump. There's no
@@ -152,67 +284,6 @@ async function getLiveCwd(pid: number): Promise<string | null> {
   return null;
 }
 
-/**
- * Every descendant PID of `pid` (children, grandchildren, ...), via
- * repeated `pgrep -P`. Needed because `dune dev`/`serve`'s *matched*
- * process is not always the one holding the listening socket: when a site
- * resolves `@dune/core` from JSR (the common case — anything that isn't a
- * maintainer's own local-checkout dev setup), `maybeReexecWithSiteConfig()`
- * re-execs into a **child** process (to apply the site's merged
- * `deno.json`/import map) that actually calls `bootstrap()` and binds the
- * port — the original, outer process (the one whose command line matches
- * `main.ts dev|serve`) is a thin wrapper that doesn't hold the socket at
- * all. Checking descendants too is what makes port lookup work for both
- * that case and the local-checkout case (no re-exec, the matched PID
- * *is* the listener) uniformly.
- */
-async function getDescendantPids(pid: number): Promise<number[]> {
-  const all: number[] = [];
-  let frontier = [pid];
-  // Bounded depth, not because deep re-exec chains are expected, but so a
-  // pathological/cyclic ps report can't spin this into an infinite loop.
-  for (let depth = 0; depth < 5 && frontier.length > 0; depth++) {
-    const out = await runCommand("pgrep", ["-P", frontier.join(",")]);
-    if (!out) break;
-    const children = out.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) =>
-      !isNaN(n)
-    );
-    if (children.length === 0) break;
-    all.push(...children);
-    frontier = children;
-  }
-  return all;
-}
-
-/**
- * Ports this process — or any of its descendants (see `getDescendantPids`)
- * — is actually bound to and listening on (TCP), ascending. `-P` forces
- * numeric port output — without it, `lsof` resolves a port to its
- * `/etc/services` name when one happens to be registered (port 3000
- * prints as `hbci` on macOS, not `3000`), which would silently break the
- * numeric parse below for exactly the port `dune new` defaults to.
- */
-async function getListeningPorts(pid: number): Promise<number[]> {
-  const descendants = await getDescendantPids(pid);
-  const pids = [pid, ...descendants];
-  const out = await runCommand("lsof", [
-    "-a",
-    "-p",
-    pids.join(","),
-    "-iTCP",
-    "-sTCP:LISTEN",
-    "-P",
-    "-Fn",
-  ]);
-  if (!out) return [];
-  const ports = new Set<number>();
-  for (const line of out.split("\n")) {
-    if (!line.startsWith("n")) continue;
-    const match = line.match(/:(\d+)$/);
-    if (match) ports.add(parseInt(match[1], 10));
-  }
-  return [...ports].sort((a, b) => a - b);
-}
 
 /** `config/site.yaml`'s `title` field, or null if the file is missing/unreadable/has no title. */
 async function readSiteTitle(root: string): Promise<string | null> {
@@ -229,26 +300,14 @@ async function readSiteTitle(root: string): Promise<string | null> {
   }
 }
 
-function modeFromCommand(command: string): DuneInstance["mode"] {
-  if (/\bmain\.ts\s+dev\b/.test(command)) return "dev";
-  if (/\bmain\.ts\s+serve\b/.test(command)) return "serve";
-  return "unknown";
-}
 
 /**
- * Confirm `dir` (or, failing that, `fallbackDir`) is a real dune site —
- * `config/site.yaml` exists there — and return whichever one actually is.
- * Tries `dir` (normally the `PWD`-derived root) first since it's right for
- * the common `Deno.chdir()` case `getPwdEnv()`'s doc comment describes;
- * falls back to the live cwd for anything `PWD` got wrong. Returns null
- * when neither pans out — the caller still reports the process, just
- * without a confirmed site identity, rather than silently dropping it.
+ * First directory among `dirs` that holds a `config/site.yaml`, or null.
+ * `--root` first (explicit), then `PWD` (right for the `Deno.chdir()` case
+ * `getPwdEnv()` describes), then the live cwd.
  */
-async function confirmSiteRoot(
-  dir: string | null,
-  fallbackDir: string | null,
-): Promise<string | null> {
-  for (const candidate of [dir, fallbackDir]) {
+async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> {
+  for (const candidate of dirs) {
     if (!candidate) continue;
     try {
       await Deno.stat(join(candidate, "config", "site.yaml"));
@@ -259,65 +318,230 @@ async function confirmSiteRoot(
 }
 
 /**
- * Find every dune dev/serve-shaped process on this machine.
+ * Find every dune dev/serve instance on this machine.
  *
- * A process-table match is reported unconditionally — even when neither
- * `PWD` nor the live cwd turns out to hold a `config/site.yaml`, since
- * that's still useful signal (PID, port, uptime) rather than a false
- * negative — but `root`/`title` are null in that case, and the caller
- * should say so plainly rather than guessing.
+ * A process-table match is reported unconditionally — even when no candidate
+ * directory holds a `config/site.yaml`, since that's still useful signal (PID,
+ * port, uptime, command) rather than a false negative — but `root`/`title`
+ * are null in that case, and the caller should say so plainly.
  */
 export async function findDuneInstances(): Promise<DuneInstance[]> {
-  const candidates = await findCandidates();
+  const table = await readProcessTable();
+  const byPid = new Map(table.map((r) => [r.pid, r]));
+  const children = new Map<number, number[]>();
+  for (const r of table) children.set(r.ppid, [...(children.get(r.ppid) ?? []), r.pid]);
+
+  // 1. Match command lines; resolve each match's site root.
+  interface Cand extends ProcRow {
+    match: CommandMatch;
+    root: string | null;
+  }
+  const cands: Cand[] = [];
+  for (const row of table) {
+    const match = matchDuneCommand(row.command);
+    if (!match) continue;
+    const [pwdRoot, liveCwd] = await Promise.all([getPwdEnv(row.pid), getLiveCwd(row.pid)]);
+    const rootArg = parseRootArg(row.command);
+    const base = pwdRoot ?? liveCwd;
+    const explicit = rootArg ? (isAbsolute(rootArg) ? rootArg : base ? resolve(base, rootArg) : null) : null;
+    const root = await confirmSiteRoot([explicit, pwdRoot, liveCwd]);
+    cands.push({ ...row, match, root });
+  }
+
+  // 2. A weak match (`deno task ...`) counts only for a confirmed dune site.
+  const kept = cands.filter((c) => c.match.strength === "strong" || c.root !== null);
+  const keptPids = new Set(kept.map((c) => c.pid));
+
+  // 3. One instance per process tree: drop any match that has a matching ancestor.
+  const hasKeptAncestor = (pid: number): boolean => {
+    let cur = byPid.get(pid)?.ppid;
+    for (let i = 0; cur && cur > 1 && i < 32; i++) {
+      if (keptPids.has(cur)) return true;
+      cur = byPid.get(cur)?.ppid;
+    }
+    return false;
+  };
+  const tops = kept.filter((c) => !hasKeptAncestor(c.pid));
+
+  // 4. Build the instances.
+  const haveLsof = await lsofAvailable();
   const instances: DuneInstance[] = [];
-
-  for (const { pid, elapsed, command } of candidates) {
-    const [pwdRoot, liveCwd] = await Promise.all([getPwdEnv(pid), getLiveCwd(pid)]);
-    const root = await confirmSiteRoot(pwdRoot, liveCwd);
-
+  for (const c of tops) {
+    const pids = [c.pid, ...descendantsOf(c.pid, children)];
+    // A tree's site root can sit on any member (e.g. the `--root` is on the child).
+    let root = c.root;
+    if (!root) {
+      for (const pid of pids.slice(1)) {
+        const row = byPid.get(pid);
+        if (!row) continue;
+        const [pwd, cwd] = await Promise.all([getPwdEnv(pid), getLiveCwd(pid)]);
+        const arg = parseRootArg(row.command);
+        const base = pwd ?? cwd;
+        const explicit = arg ? (isAbsolute(arg) ? arg : base ? resolve(base, arg) : null) : null;
+        root = await confirmSiteRoot([explicit, pwd, cwd]);
+        if (root) break;
+      }
+    }
     const [title, ports] = await Promise.all([
       root ? readSiteTitle(root) : Promise.resolve(null),
-      getListeningPorts(pid),
+      haveLsof ? getListeningPorts(pids) : Promise.resolve([] as number[]),
     ]);
-
     instances.push({
-      pid,
-      mode: modeFromCommand(command),
+      pid: c.pid,
+      pids,
+      mode: c.match.mode,
       root,
       title,
       ports,
-      elapsed,
+      portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
+      elapsed: c.elapsed,
+      command: c.command,
     });
   }
-
-  return instances;
+  return instances.sort((a, b) => a.pid - b.pid);
 }
 
-export async function psCommand(): Promise<void> {
+// ── Stopping ─────────────────────────────────────────────────────────────────
+
+/** This process and its ancestors: never a stop target, whatever the caller passes. */
+async function selfAndAncestors(): Promise<Set<number>> {
+  const table = await readProcessTable();
+  const byPid = new Map(table.map((r) => [r.pid, r]));
+  const protectedPids = new Set<number>([Deno.pid]);
+  let cur = byPid.get(Deno.pid)?.ppid;
+  for (let i = 0; cur && cur > 1 && i < 64; i++) {
+    protectedPids.add(cur);
+    cur = byPid.get(cur)?.ppid;
+  }
+  return protectedPids;
+}
+
+export interface StopResult {
+  /** Pids that were signalled and are gone. */
+  stopped: number[];
+  /** Pids still alive after the timeout (SIGTERM was ignored or is still shutting down). */
+  survivors: number[];
+  /** Pids deliberately not signalled (this process and its ancestors). */
+  skipped: number[];
+}
+
+async function alivePids(pids: number[]): Promise<number[]> {
+  if (pids.length === 0) return [];
+  const out = await runCommand("ps", ["-o", "pid=", "-p", pids.join(",")]);
+  if (!out) return [];
+  const alive = new Set(out.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)));
+  return pids.filter((p) => alive.has(p));
+}
+
+/**
+ * Stop whole instance trees with SIGTERM, then wait for them to exit.
+ * Never signals this process or its ancestors (so a `dune ps --stop` run from
+ * inside a shell/agent can't take out its own parents).
+ */
+export async function stopInstances(
+  instances: DuneInstance[],
+  opts: { timeoutMs?: number } = {},
+): Promise<StopResult> {
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const protectedPids = await selfAndAncestors();
+  const targets = [...new Set(instances.flatMap((i) => i.pids))];
+  const skipped = targets.filter((p) => protectedPids.has(p));
+  const toSignal = targets.filter((p) => !protectedPids.has(p));
+
+  for (const pid of toSignal) {
+    try {
+      Deno.kill(pid, "SIGTERM");
+    } catch { /* already gone */ }
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  let remaining = await alivePids(toSignal);
+  while (remaining.length > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 150));
+    remaining = await alivePids(remaining);
+  }
+  const gone = new Set(toSignal.filter((p) => !remaining.includes(p)));
+  return { stopped: toSignal.filter((p) => gone.has(p)), survivors: remaining, skipped };
+}
+
+// ── Command ──────────────────────────────────────────────────────────────────
+
+export interface PsOptions {
+  /** Stop every instance found (asks first unless `yes`). */
+  stop?: boolean;
+  /** Skip the confirmation prompt for `stop`. */
+  yes?: boolean;
+}
+
+/** Injection points so the command's flow is testable without touching real processes. */
+export interface PsDeps {
+  find?: () => Promise<DuneInstance[]>;
+  stop?: typeof stopInstances;
+  isInteractive?: () => boolean;
+  confirm?: (message: string) => Promise<boolean>;
+  log?: (line: string) => void;
+}
+
+function describePort(inst: DuneInstance): string {
+  if (inst.portStatus === "listening") return inst.ports.map((p) => `http://localhost:${p}`).join(", ");
+  if (inst.portStatus === "not-listening") return "not listening (no open port; likely a hung or leftover process)";
+  return "port unknown (lsof not available)";
+}
+
+export async function psCommand(opts: PsOptions = {}, deps: PsDeps = {}): Promise<void> {
+  const log = deps.log ?? ((l: string) => console.log(l));
   if (Deno.build.os === "windows") {
-    console.log(
-      "  ⚠  `dune ps` needs `ps`/`lsof` and isn't supported on Windows yet.",
-    );
+    log("  ⚠  `dune ps` needs `ps`/`lsof` and isn't supported on Windows yet.");
     return;
   }
 
-  console.log("🏜️  Dune — scanning for running instances...\n");
-  const instances = await findDuneInstances();
+  log("🏜️  Dune — scanning for running instances...\n");
+  const instances = await (deps.find ?? findDuneInstances)();
 
   if (instances.length === 0) {
-    console.log("  No dune dev/serve instances found running locally.");
+    log("  No dune dev/serve instances found running locally.");
     return;
   }
 
   for (const inst of instances) {
-    const portsStr = inst.ports.length > 0
-      ? inst.ports.map((p) => `http://localhost:${p}`).join(", ")
-      : "(port unknown — is `lsof` installed?)";
-    console.log(`  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}`);
-    console.log(`    ${inst.title ?? "(untitled)"}`);
-    console.log(
-      `    ${inst.root ?? "(site root unconfirmed — config/site.yaml not found via PWD or live cwd)"}`,
-    );
-    console.log(`    ${portsStr}\n`);
+    log(`  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}${inst.pids.length > 1 ? `  (+${inst.pids.length - 1} child process${inst.pids.length > 2 ? "es" : ""})` : ""}`);
+    log(`    ${inst.title ?? "(untitled)"}`);
+    log(`    ${inst.root ?? "(site root unconfirmed — no config/site.yaml via --root, PWD or live cwd)"}`);
+    log(`    ${describePort(inst)}`);
+    log(`    $ ${inst.command.length > 110 ? inst.command.slice(0, 107) + "..." : inst.command}\n`);
+  }
+  const serving = instances.filter((i) => i.portStatus === "listening").length;
+  const idle = instances.filter((i) => i.portStatus === "not-listening").length;
+  log(`  ${instances.length} instance${instances.length === 1 ? "" : "s"}: ${serving} listening, ${idle} not listening\n`);
+
+  if (!opts.stop) {
+    if (idle > 0) log("  Run `dune ps --stop` to stop them.");
+    return;
+  }
+
+  const procCount = new Set(instances.flatMap((i) => i.pids)).size;
+  const question = `Stop ${instances.length} instance${instances.length === 1 ? "" : "s"} (${procCount} process${procCount === 1 ? "" : "es"})?`;
+  if (!opts.yes) {
+    const interactive = (deps.isInteractive ?? (() => Deno.stdin.isTerminal()))();
+    if (!interactive) {
+      log(`  Not stopping: ${question} needs confirmation, and this isn't a terminal. Re-run with --yes.`);
+      Deno.exitCode = 1;
+      return;
+    }
+    const ok = await (deps.confirm ?? ((m) => Promise.resolve(globalThis.confirm(m))))(question);
+    if (!ok) {
+      log("  Cancelled; nothing was stopped.");
+      return;
+    }
+  }
+
+  const result = await (deps.stop ?? stopInstances)(instances);
+  log(`  Stopped ${result.stopped.length} process${result.stopped.length === 1 ? "" : "es"}.`);
+  if (result.skipped.length > 0) {
+    log(`  Left alone (this command's own process and its parents): ${result.skipped.join(", ")}`);
+  }
+  if (result.survivors.length > 0) {
+    log(`  Still running after SIGTERM: ${result.survivors.join(", ")}. Try \`kill -9\` on those if they are really stuck.`);
+    Deno.exitCode = 1;
   }
 }

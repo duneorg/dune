@@ -103,6 +103,8 @@ export function parseCliOptions(args: string[]): ParsedCliArgs {
       options.integrity = args[++i];
     } else if (args[i] === "--readonly") {
       options.readonly = true;
+    } else if (args[i] === "--stop") {
+      options.stop = true;
     } else if (args[i] === "--boot") {
       options.boot = true;
     } else if (args[i] === "--verify") {
