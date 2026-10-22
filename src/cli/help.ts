@@ -24,6 +24,8 @@ Commands:
                       macOS/Linux only)
   ps --stop           Stop every instance found, with its child processes
                       (asks first; --yes to skip the prompt)
+  ps --idle           Only the instances that are running but not listening
+                      (hung or leftover); with --stop, stops just those
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server (--frozen enforces deno.lock;

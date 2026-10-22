@@ -453,7 +453,7 @@ Deno.test("stopInstances: never signals this process, even if an instance lists 
 
 async function runPs(
   instances: DuneInstance[],
-  opts: { stop?: boolean; yes?: boolean },
+  opts: { stop?: boolean; yes?: boolean; idle?: boolean },
   deps: { interactive?: boolean; confirm?: boolean; survivors?: number[] } = {},
 ) {
   const lines: string[] = [];
@@ -541,4 +541,60 @@ Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not
     if (child) await stop(child);
     await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
+});
+
+// ── --idle: the selective form ───────────────────────────────────────────────
+
+const LIVE = () => fakeInstance({ pid: 10, pids: [10, 11], ports: [3000], portStatus: "listening", title: "Live Site" });
+const IDLE_A = () => fakeInstance({ pid: 20, pids: [20], title: "Idle A" });
+const IDLE_B = () => fakeInstance({ pid: 30, pids: [30, 31, 32], title: "Idle B" });
+
+Deno.test("psCommand --idle: lists only the not-listening instances and says how many live ones it left out", async () => {
+  const { text, stopCalls } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { idle: true });
+  assertEquals(text.includes("Idle A") && text.includes("Idle B"), true);
+  assertEquals(text.includes("Live Site"), false, "a listening instance is not shown");
+  assertEquals(text.includes("2 idle instances shown; 1 listening instance left out"), true);
+  assertEquals(stopCalls.length, 0, "--idle alone never stops anything");
+});
+
+Deno.test("psCommand --stop --idle: stops ONLY the idle instances, never a listening one", async () => {
+  const { stopCalls, exitCode } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { stop: true, idle: true, yes: true });
+  assertEquals(stopCalls.length, 1);
+  assertEquals(stopCalls[0].map((i) => i.pid).sort(), [20, 30]);
+  assertEquals(stopCalls[0].flatMap((i) => i.pids).includes(10), false);
+  assertEquals(stopCalls[0].flatMap((i) => i.pids).includes(11), false, "not even the live one's child processes");
+  assertEquals(exitCode, 0);
+});
+
+Deno.test("psCommand --stop --idle: the confirmation names the idle count and process count", async () => {
+  const { text } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { stop: true, idle: true }, { interactive: false });
+  assertEquals(text.includes("Stop 2 idle instances (4 processes)?"), true, text);
+});
+
+Deno.test("psCommand --stop --idle: without --yes and without a terminal it still refuses", async () => {
+  const { stopCalls, exitCode } = await runPs([LIVE(), IDLE_A()], { stop: true, idle: true }, { interactive: false });
+  assertEquals(stopCalls.length, 0);
+  assertEquals(exitCode, 1);
+});
+
+Deno.test("psCommand --stop --idle: with nothing idle it stops nothing and says so", async () => {
+  const { text, stopCalls, exitCode } = await runPs([LIVE()], { stop: true, idle: true, yes: true });
+  assertEquals(stopCalls.length, 0);
+  assertEquals(text.includes("No idle instances: all 1 running instance is listening."), true);
+  assertEquals(exitCode, 0);
+});
+
+Deno.test("psCommand --idle: when lsof is unavailable nothing is assumed idle, and --stop does not proceed", async () => {
+  const unknown = fakeInstance({ pid: 40, pids: [40], portStatus: "unknown" });
+  const { text, stopCalls, exitCode } = await runPs([unknown], { stop: true, idle: true, yes: true });
+  assertEquals(stopCalls.length, 0, "an instance of unknown state must not be stopped as 'idle'");
+  assertEquals(text.includes("Can't tell which instances are idle"), true);
+  assertEquals(exitCode, 1);
+});
+
+Deno.test("psCommand: plain listing points at --stop --idle when idle instances exist", async () => {
+  const { text } = await runPs([LIVE(), IDLE_A()], {});
+  assertEquals(text.includes("`dune ps --stop --idle` stops only the not-listening ones"), true);
+  const none = await runPs([LIVE()], {});
+  assertEquals(none.text.includes("--stop --idle"), false, "no hint when there is nothing idle");
 });

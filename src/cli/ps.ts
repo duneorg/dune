@@ -467,10 +467,17 @@ export async function stopInstances(
 // ── Command ──────────────────────────────────────────────────────────────────
 
 export interface PsOptions {
-  /** Stop every instance found (asks first unless `yes`). */
+  /** Stop every instance shown (asks first unless `yes`). */
   stop?: boolean;
   /** Skip the confirmation prompt for `stop`. */
   yes?: boolean;
+  /**
+   * Only consider instances that are running but "not listening" — hung or
+   * leftover processes. Narrows both the listing and `stop`, so live servers
+   * are left alone. Instances whose port state is unknown (no `lsof`) are not
+   * assumed idle.
+   */
+  idle?: boolean;
 }
 
 /** Injection points so the command's flow is testable without touching real processes. */
@@ -496,10 +503,25 @@ export async function psCommand(opts: PsOptions = {}, deps: PsDeps = {}): Promis
   }
 
   log("🏜️  Dune — scanning for running instances...\n");
-  const instances = await (deps.find ?? findDuneInstances)();
+  const all = await (deps.find ?? findDuneInstances)();
 
-  if (instances.length === 0) {
+  if (all.length === 0) {
     log("  No dune dev/serve instances found running locally.");
+    return;
+  }
+
+  const serving = all.filter((i) => i.portStatus === "listening").length;
+  const idle = all.filter((i) => i.portStatus === "not-listening").length;
+  const unknown = all.length - serving - idle;
+
+  if (opts.idle && unknown > 0 && idle === 0) {
+    log("  Can't tell which instances are idle: `lsof` isn't available, so no instance can be shown as not listening.");
+    if (opts.stop) Deno.exitCode = 1;
+    return;
+  }
+  const instances = opts.idle ? all.filter((i) => i.portStatus === "not-listening") : all;
+  if (instances.length === 0) {
+    log(`  No idle instances: all ${all.length} running instance${all.length === 1 ? " is" : "s are"} listening.`);
     return;
   }
 
@@ -510,17 +532,21 @@ export async function psCommand(opts: PsOptions = {}, deps: PsDeps = {}): Promis
     log(`    ${describePort(inst)}`);
     log(`    $ ${inst.command.length > 110 ? inst.command.slice(0, 107) + "..." : inst.command}\n`);
   }
-  const serving = instances.filter((i) => i.portStatus === "listening").length;
-  const idle = instances.filter((i) => i.portStatus === "not-listening").length;
-  log(`  ${instances.length} instance${instances.length === 1 ? "" : "s"}: ${serving} listening, ${idle} not listening\n`);
+  if (opts.idle) {
+    log(`  ${instances.length} idle instance${instances.length === 1 ? "" : "s"} shown; ${serving} listening instance${serving === 1 ? "" : "s"} left out\n`);
+  } else {
+    log(`  ${all.length} instance${all.length === 1 ? "" : "s"}: ${serving} listening, ${idle} not listening\n`);
+  }
 
   if (!opts.stop) {
-    if (idle > 0) log("  Run `dune ps --stop` to stop them.");
+    if (idle > 0 && !opts.idle) {
+      log("  `dune ps --stop --idle` stops only the not-listening ones; `dune ps --stop` stops everything listed.");
+    }
     return;
   }
 
   const procCount = new Set(instances.flatMap((i) => i.pids)).size;
-  const question = `Stop ${instances.length} instance${instances.length === 1 ? "" : "s"} (${procCount} process${procCount === 1 ? "" : "es"})?`;
+  const question = `Stop ${instances.length} ${opts.idle ? "idle " : ""}instance${instances.length === 1 ? "" : "s"} (${procCount} process${procCount === 1 ? "" : "es"})?`;
   if (!opts.yes) {
     const interactive = (deps.isInteractive ?? (() => Deno.stdin.isTerminal()))();
     if (!interactive) {

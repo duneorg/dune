@@ -36,6 +36,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   (SIGTERM), and reports anything still alive. It asks first; `--yes` skips the
   prompt, and with no terminal it refuses unless `--yes` is given. It never
   signals itself or its parent processes.
+- **`dune ps --idle`** narrows the listing to instances that are running but
+  not listening (hung or leftover processes), and `dune ps --stop --idle`
+  stops only those, so live servers on a shared machine are left alone. An
+  instance whose port state is unknown (no `lsof`) is never assumed idle.
 
 ## [0.34.14] — 2026-10-21
 

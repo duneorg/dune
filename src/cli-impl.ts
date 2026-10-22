@@ -197,6 +197,7 @@ export async function main(args: string[] = Deno.args) {
         await psCommand({
           stop: options.stop === true,
           yes: options.yes === true,
+          idle: options.idle === true,
         });
         break;
 
