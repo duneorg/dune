@@ -3,6 +3,7 @@ import type { BootstrapResult } from "./bootstrap.ts";
 import type { HttpCacheRule } from "../config/types.ts";
 import type { PageCache } from "../cache/mod.ts";
 import { isMediaFile } from "../content/path-utils.ts";
+import { mediaBodyResponse } from "../routing/media-response.ts";
 import {
   injectBasePath,
   injectFeedLinks,
@@ -127,7 +128,6 @@ export function registerContentCatchAll(
           } else {
             const headers: Record<string, string> = {
               "Content-Type": media.contentType,
-              "Content-Length": String(media.size),
               "Cache-Control": owner?.gated
                 ? "private, no-store"
                 : "public, max-age=3600",
@@ -143,7 +143,7 @@ export function registerContentCatchAll(
                 "sandbox allow-scripts allow-popups";
               headers["X-Frame-Options"] = "SAMEORIGIN";
             }
-            response = new Response(media.data as BodyInit, { headers });
+            response = mediaBodyResponse(req, media, headers);
           }
           metrics?.recordRequest(
             url.pathname,
