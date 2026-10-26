@@ -22,6 +22,7 @@ import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { registerEsbuildWorkerCleanup } from "./esbuild-cleanup.ts";
+import { startWatchdog } from "../runtime/watchdog.ts";
 
 export interface DevOptions {
   port?: number;
@@ -35,6 +36,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // path (e.g. "zumbrunn/zumbrunn.com") and we Deno.chdir() later, which would
   // invalidate any relative paths computed against the original cwd.
   root = resolve(root);
+
+  // A server whose event loop is stuck can't answer anything, log anything or
+  // be stopped gracefully; see runtime/watchdog.ts. Dev has no graceful-exit
+  // path to hook (Ctrl-C / --watch restarts end the process), so no stop().
+  startWatchdog({ root, label: "dune dev" });
 
   registerEsbuildWorkerCleanup();
 

@@ -9,6 +9,28 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
+  silently until someone restarts it.** One synchronous loop (catastrophic
+  regex backtracking, a conversion that never terminates) blocks the single
+  thread that serves every request, so every URL stops answering at once, with
+  nothing in the logs. `dune dev` and `dune serve` now run a small watchdog
+  Worker that expects a heartbeat from the main thread every second. After 15
+  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`) it writes a report to
+  `<site>/.dune/hangs/` naming the requests that were in flight (plus a native
+  stack sample on macOS), logs the same lines to stderr, and SIGKILLs the
+  process so a supervisor (systemd `Restart=`, the `dune dev` wrapper exiting
+  non-zero) sees a dead process instead of a zombie. `DUNE_WATCHDOG=warn`
+  reports without killing; `DUNE_WATCHDOG=off` disables it. The process is
+  killed with SIGKILL rather than `Deno.exit()` because an exit requested from a
+  Worker only ends the Worker — the spinning main thread carries on.
+- The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
+  it was held for over a second, which shows a creeping problem before it
+  becomes a hang.
+
 ## [0.34.14] — 2026-10-21
 
 ### Security
