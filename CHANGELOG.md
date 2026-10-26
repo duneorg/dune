@@ -23,6 +23,16 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   `Content-Range: bytes */size`; a malformed or multi-range request is ignored
   and answered in full, as before. The HTML/SVG sandbox headers are unchanged.
 
+- **Links to co-located files on non-default-language pages 404'd.** The
+  internal-link rewriter prefixed every root-relative `href`, so
+  `[Download](doc.pdf)` on a German page became `/de/<route>/doc.pdf`, but
+  co-located media is only served at its unprefixed route path. The rewriter
+  now leaves hrefs whose file name has a media extension untouched, and the
+  media handler also accepts `/<lang>/<route>/<file>` (stripping a
+  supported-language prefix), with access gating still decided by the page
+  that owns the file. Language-prefixed media links that already exist in the
+  wild start working too.
+
 ## [0.34.14] — 2026-10-21
 
 ### Security
