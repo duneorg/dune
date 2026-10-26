@@ -42,7 +42,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // A server whose event loop is stuck can't answer anything, log anything or
   // be stopped gracefully; see runtime/watchdog.ts. Dev has no graceful-exit
   // path to hook (Ctrl-C / --watch restarts end the process), so no stop().
-  startWatchdog({ root, label: "dune dev" });
+  const watchdog = startWatchdog({ root, label: "dune dev" });
 
   registerEsbuildWorkerCleanup();
 
@@ -70,6 +70,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     await registerInstance({ mode: "dev", root, title: null, port, version: CORE_VERSION });
     console.log(`\n  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
     Deno.serve({ port, handler: (req, info) => manager.handle(req, info) });
+    watchdog.ready();
     return;
   }
 
@@ -222,6 +223,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });
     // Wire the content watcher's notifyReload reference now that the app is built.
     notifyContentReload = notifyReload;
+    // Startup is over: from here on the normal (short) stall limit applies.
+    watchdog.ready();
     return app;
   }, { port });
 }
