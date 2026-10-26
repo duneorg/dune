@@ -19,6 +19,7 @@ import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
 import { getUser, USER_HEADER } from "../auth/types.ts";
 import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
+import { trackRequest } from "./watchdog.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { createApiHandler } from "../api/handlers.ts";
@@ -344,6 +345,17 @@ export async function createDuneApp(
     // deno-lint-ignore no-explicit-any
     (fc as any).req = stripUserHeader(fc.req);
     return fc.next();
+  });
+
+  // 0a. Tell the event-loop watchdog which requests are in flight, so a hang
+  // report can name the one that never finished. No-op without a watchdog.
+  app.use(async (fc) => {
+    const done = trackRequest(fc.req.method, fc.url.pathname);
+    try {
+      return await fc.next();
+    } finally {
+      done();
+    }
   });
 
   // 0b. Standard security headers on EVERY response, whichever route family

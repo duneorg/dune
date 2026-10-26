@@ -9,6 +9,37 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Running instances now register themselves.** `dune dev` and `dune serve`
+  write a small record (pid, process start time, mode, site root, title, port,
+  `@dune/core` version) to `~/.dune/instances/<pid>.json`
+  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
+  exit. A kill or crash leaves the file behind, so readers confirm the pid is
+  alive *and* has the recorded start time (pids get reused) and delete the ones
+  that fail. This is groundwork for `dune ps` to list instances from what each
+  one says about itself rather than guessing from command lines and `lsof`;
+  nothing reads it yet, and a registry that can't be written never stops a
+  server from starting. Unix only.
+- **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
+  silently until someone restarts it.** One synchronous loop (catastrophic
+  regex backtracking, a conversion that never terminates) blocks the single
+  thread that serves every request, so every URL stops answering at once, with
+  nothing in the logs. `dune dev` and `dune serve` now run a small watchdog
+  Worker that expects a heartbeat from the main thread every second. After 15
+  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`) it writes a report to
+  `<site>/.dune/hangs/` naming the requests that were in flight (plus a native
+  stack sample on macOS), logs the same lines to stderr, and SIGKILLs the
+  process so a supervisor (systemd `Restart=`, the `dune dev` wrapper exiting
+  non-zero) sees a dead process instead of a zombie. `DUNE_WATCHDOG=warn`
+  reports without killing; `DUNE_WATCHDOG=off` disables it. The process is
+  killed with SIGKILL rather than `Deno.exit()` because an exit requested from a
+  Worker only ends the Worker — the spinning main thread carries on.
+- The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
+  it was held for over a second, which shows a creeping problem before it
+  becomes a hang.
 ## [0.34.15] — 2026-10-22
 
 ### Fixed
