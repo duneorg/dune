@@ -32,18 +32,25 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`dune stop`** stops dune instances, with their child processes. A target
-  is required, so stopping every server on a machine always has to be asked
-  for by name: `dune stop <pid>` (any process of an instance), `dune stop
-  --port <n>`, `dune stop --idle` (only instances that are running but not
-  listening — hung or leftover processes; an instance whose port state is
-  unknown, with no `lsof`, is never assumed idle) or `dune stop --all`. It
-  sends SIGTERM and waits up to 10 seconds for a server to drain; a process
-  that ignores it is reported, and only `--force` escalates to SIGKILL. It
-  asks first (`--yes` skips the prompt; with no terminal it refuses unless
-  `--yes` is given), never signals itself or its parent processes, and exits 2
-  for a usage error, 1 when a named pid/port matches nothing or something would
-  not stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+- **`dune stop`** stops dune instances, with their whole process tree (including
+  any other tool a `deno task` wrapper started). A target is required, so
+  stopping every server on a machine always has to be asked for by name: `dune
+  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
+  --idle` (running but not listening for at least 2 minutes — younger ones may
+  still be starting; an instance whose port state is unknown, with no `lsof`,
+  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
+  *confirmed* instances (a `config/site.yaml` at the site root): a command line
+  that merely looks like dune, such as another Deno project's `main.ts serve`,
+  is listed by `dune ps` but must be named by pid. Only your own processes are
+  considered. It sends SIGTERM and waits up to 10 seconds for a server to
+  drain; a process that ignores it is reported, and only `--force` escalates to
+  SIGKILL. Each pid's start time is re-checked immediately before it is
+  signalled, so a pid that exited and was reused while the prompt was open is
+  never hit, and a signal the OS refuses is reported as such. It asks first
+  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
+  given), never signals itself or its parent processes, and exits 2 for a
+  usage error, 1 when a named pid/port matches nothing or something would not
+  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
 
 ## [0.34.14] — 2026-10-21
 

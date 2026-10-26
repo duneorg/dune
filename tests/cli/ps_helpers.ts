@@ -75,8 +75,23 @@ export function fakeInstance(overrides: Partial<DuneInstance> = {}): DuneInstanc
     ports: [],
     portStatus: "not-listening",
     elapsed: "01:00",
+    ageSeconds: 3600,
+    confirmed: true,
+    startTimes: {},
     command: "deno run -A main.ts serve",
     ...overrides,
   };
 }
 
+
+/** Start times of real processes, in the form `findDuneInstances` records them. */
+export async function realStartTimes(pids: number[]): Promise<Record<number, string>> {
+  const out = await new Deno.Command("ps", { args: ["-o", "pid=,lstart=", "-p", pids.join(",")], stdout: "piped", stderr: "null" })
+    .output();
+  const times: Record<number, string> = {};
+  for (const line of new TextDecoder().decode(out.stdout).split("\n")) {
+    const m = line.match(/^\s*(\d+)\s+(.*\S)\s*$/);
+    if (m) times[parseInt(m[1], 10)] = m[2].replace(/\s+/g, " ");
+  }
+  return times;
+}

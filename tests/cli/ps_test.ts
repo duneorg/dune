@@ -19,6 +19,7 @@ import {
   parseRootArg,
 } from "../../src/cli/instances.ts";
 import { psCommand } from "../../src/cli/ps.ts";
+import { parseElapsedSeconds, readProcessTable } from "../../src/cli/instances.ts";
 import { fakeInstance, makeSite, opts, SERVER, spawnDeno, startTaskTree, stop, waitForPort } from "./ps_helpers.ts";
 
 /**
@@ -354,6 +355,49 @@ Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not
   } finally {
     if (child) await stop(child);
     await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("parseElapsedSeconds: mm:ss, hh:mm:ss and d-hh:mm:ss", () => {
+  assertEquals(parseElapsedSeconds("05:12"), 312);
+  assertEquals(parseElapsedSeconds("01:23:45"), 5025);
+  assertEquals(parseElapsedSeconds("2-09:03:55"), 2 * 86400 + 9 * 3600 + 3 * 60 + 55);
+  assertEquals(parseElapsedSeconds("garbage"), null);
+  assertEquals(parseElapsedSeconds(null), null);
+});
+
+Deno.test("readProcessTable: carries the owner's uid and a start time for every row, and this process is ours", opts, async () => {
+  const table = await readProcessTable();
+  const me = table.find((r) => r.pid === Deno.pid);
+  assertExists(me);
+  assertEquals(me.uid, Deno.uid());
+  assertEquals(table.every((r) => Number.isInteger(r.uid) && /\d{4}$/.test(r.started) && /\d:\d\d:\d\d/.test(r.started)), true);
+});
+
+Deno.test("findDuneInstances: a site is 'confirmed'; a dune-looking process with no config/site.yaml is not", opts, async () => {
+  const site = await makeSite("dune_test_ps_conf_", "Confirmed");
+  const bare = await Deno.makeTempDir({ prefix: "dune_test_ps_unconf_" });
+  let a: Deno.ChildProcess | undefined;
+  let b: Deno.ChildProcess | undefined;
+  try {
+    for (const dir of [site, bare]) await Deno.writeTextFile(join(dir, "main.ts"), `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`);
+    a = spawnDeno(["run", "-A", "main.ts", "serve"], site);
+    b = spawnDeno(["run", "-A", "main.ts", "serve"], bare);
+    await new Promise((r) => setTimeout(r, 700));
+    const found = await findDuneInstances();
+    const withSite = found.find((i) => i.pid === a!.pid);
+    const without = found.find((i) => i.pid === b!.pid);
+    assertExists(withSite);
+    assertExists(without, "still listed — ps shows it — but unconfirmed");
+    assertEquals(withSite.confirmed, true);
+    assertEquals(without.confirmed, false);
+    assertEquals(typeof withSite.ageSeconds, "number");
+    assertEquals(Object.keys(withSite.startTimes).map(Number).includes(a.pid), true, "start times recorded for the tree");
+  } finally {
+    if (a) await stop(a);
+    if (b) await stop(b);
+    await Deno.remove(site, { recursive: true }).catch(() => {});
+    await Deno.remove(bare, { recursive: true }).catch(() => {});
   }
 });
 

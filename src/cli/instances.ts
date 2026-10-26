@@ -68,6 +68,21 @@ export interface DuneInstance {
   portStatus: "listening" | "not-listening" | "unknown";
   /** `ps`'s own elapsed-time string (e.g. "01:23:45" or "2-09:03:55"). */
   elapsed: string | null;
+  /** `elapsed` in seconds, or null when unparseable. */
+  ageSeconds: number | null;
+  /**
+   * True when this is verifiably a dune site (a `config/site.yaml` was found at
+   * its root). A command-line match alone is only a guess — any other Deno
+   * project can run `main.ts serve` — so `dune stop --all/--idle` never act on
+   * an unconfirmed instance; it must be named by pid.
+   */
+  confirmed: boolean;
+  /**
+   * Start time of every pid in `pids` as read when this instance was found.
+   * `dune stop` re-checks each one right before signalling, so a pid that
+   * exited and was reused by an unrelated process in the meantime is left alone.
+   */
+  startTimes: Record<number, string>;
   /** The process's command line, for identifying unconfirmed instances. */
   command: string;
 }
@@ -99,8 +114,20 @@ export async function runCommand(
 export interface ProcRow {
   pid: number;
   ppid: number;
+  /** Owning user id. */
+  uid: number;
+  /** `ps`'s start time ("Mon Oct 26 15:38:49 2026"): with the pid, identifies one process for its whole life. */
+  started: string;
   elapsed: string;
   command: string;
+}
+
+/** Seconds from `ps`'s elapsed-time string ("05:12", "01:23:45", "2-09:03:55"); null if unparseable. */
+export function parseElapsedSeconds(elapsed: string | null): number | null {
+  if (!elapsed) return null;
+  const m = elapsed.match(/^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/);
+  if (!m) return null;
+  return (Number(m[1] ?? 0) * 24 + Number(m[2] ?? 0)) * 3600 + Number(m[3]) * 60 + Number(m[4]);
 }
 
 /**
@@ -113,15 +140,22 @@ export interface ProcRow {
  * cut off before the trailing `dev`/`serve` token the match depends on.
  */
 export async function readProcessTable(): Promise<ProcRow[]> {
-  const out = await runCommand("ps", ["-eo", "pid=,ppid=,etime=,command="], {
+  const out = await runCommand("ps", ["-eo", "pid=,ppid=,uid=,lstart=,etime=,command="], {
     COLUMNS: "4096",
   });
   if (!out) return [];
   const rows: ProcRow[] = [];
   for (const line of out.split("\n")) {
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(\S+)\s+(.*)$/);
     if (!m) continue;
-    rows.push({ pid: parseInt(m[1], 10), ppid: parseInt(m[2], 10), elapsed: m[3], command: m[4] });
+    rows.push({
+      pid: parseInt(m[1], 10),
+      ppid: parseInt(m[2], 10),
+      uid: parseInt(m[3], 10),
+      started: m[4].replace(/\s+/g, " "),
+      elapsed: m[5],
+      command: m[6],
+    });
   }
   return rows;
 }
@@ -326,7 +360,12 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
  * are null in that case, and the caller should say so plainly.
  */
 export async function findDuneInstances(): Promise<DuneInstance[]> {
-  const table = await readProcessTable();
+  const allRows = await readProcessTable();
+  // Only this user's processes: another user's server is not ours to list or
+  // signal (the kill would be refused anyway). Where the uid can't be read
+  // (not POSIX) nothing is filtered.
+  const myUid = Deno.build.os === "windows" ? null : Deno.uid();
+  const table = myUid === null ? allRows : allRows.filter((r) => r.uid === myUid);
   const byPid = new Map(table.map((r) => [r.pid, r]));
   const children = new Map<number, number[]>();
   for (const r of table) children.set(r.ppid, [...(children.get(r.ppid) ?? []), r.pid]);
@@ -395,6 +434,9 @@ export async function findDuneInstances(): Promise<DuneInstance[]> {
       ports,
       portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
       elapsed: c.elapsed,
+      ageSeconds: parseElapsedSeconds(c.elapsed),
+      confirmed: root !== null,
+      startTimes: Object.fromEntries(pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : [])),
       command: c.command,
     });
   }
