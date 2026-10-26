@@ -2,9 +2,16 @@
  * dune stop — stop dune dev/serve instances found by `dune ps`.
  *
  * A target is required: a PID (any process of an instance), `--port`, `--idle`
- * (only instances that are running but not listening) or `--all`. A bare
- * `dune stop` does nothing but print usage, so stopping every server on a
- * machine always has to be asked for by name.
+ * (only instances that are running but not listening, and not just starting)
+ * or `--all`. A bare `dune stop` does nothing but print usage, so stopping
+ * every server on a machine always has to be asked for by name.
+ *
+ * `--all` and `--idle` act only on *confirmed* instances (a `config/site.yaml`
+ * was found at the site root): a command line that merely looks like dune
+ * (`main.ts serve`) could be any Deno project, so those must be named by pid.
+ * Only this user's processes are considered, and each pid's start time is
+ * re-checked immediately before it is signalled, so a pid that exited and was
+ * reused while the prompt was open is never hit.
  *
  * SIGTERM first, so a server can drain. A process that ignores it is reported,
  * and only `--force` escalates to SIGKILL (which can orphan a wrapper's child,
@@ -41,6 +48,10 @@ export interface StopResult {
   survivors: number[];
   /** Pids deliberately not signalled (this process and its ancestors). */
   skipped: number[];
+  /** Pids that had already exited, or whose pid now belongs to a different process: not signalled. */
+  changed: number[];
+  /** Pids the operating system refused to signal (owned by another user). */
+  denied: number[];
 }
 
 async function alivePids(pids: number[]): Promise<number[]> {
@@ -61,11 +72,42 @@ async function waitUntilGone(pids: number[], timeoutMs: number): Promise<number[
   return remaining;
 }
 
-function signalAll(pids: number[], signal: Deno.Signal): void {
+/** Current start time of each of `pids` that still exists. */
+async function currentStartTimes(pids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (pids.length === 0) return out;
+  const text = await runCommand("ps", ["-o", "pid=,lstart=", "-p", pids.join(",")]);
+  for (const line of text?.split("\n") ?? []) {
+    const m = line.match(/^\s*(\d+)\s+(.*\S)\s*$/);
+    if (m) out.set(parseInt(m[1], 10), m[2].replace(/\s+/g, " "));
+  }
+  return out;
+}
+
+/**
+ * Signal each pid that is still the same process it was when the instance was
+ * found (same start time). Anything else is reported, not signalled: a pid
+ * can be reused by an unrelated process while the confirmation prompt is open.
+ */
+async function signalVerified(
+  pids: number[],
+  expected: Map<number, string | undefined>,
+  signal: Deno.Signal,
+  sink: { changed: Set<number>; denied: Set<number> },
+): Promise<void> {
+  const now = await currentStartTimes(pids);
   for (const pid of pids) {
+    const want = expected.get(pid);
+    if (!want || now.get(pid) !== want) {
+      sink.changed.add(pid);
+      continue;
+    }
     try {
       Deno.kill(pid, signal);
-    } catch { /* already gone */ }
+    } catch (err) {
+      if (err instanceof Deno.errors.PermissionDenied) sink.denied.add(pid);
+      else sink.changed.add(pid); // already gone
+    }
   }
 }
 
@@ -84,19 +126,32 @@ export async function stopInstances(
   const targets = [...new Set(instances.flatMap((i) => i.pids))];
   const skipped = targets.filter((p) => protectedPids.has(p));
   const toSignal = targets.filter((p) => !protectedPids.has(p));
+  const expected = new Map<number, string | undefined>();
+  for (const inst of instances) for (const p of inst.pids) expected.set(p, inst.startTimes[p]);
+  const sink = { changed: new Set<number>(), denied: new Set<number>() };
 
-  signalAll(toSignal, "SIGTERM");
-  const afterTerm = await waitUntilGone(toSignal, timeoutMs);
+  await signalVerified(toSignal, expected, "SIGTERM", sink);
+  const signalled = toSignal.filter((p) => !sink.changed.has(p) && !sink.denied.has(p));
+  const afterTerm = await waitUntilGone(signalled, timeoutMs);
 
   let survivors = afterTerm;
   let killed: number[] = [];
   if (opts.force && afterTerm.length > 0) {
-    signalAll(afterTerm, "SIGKILL");
-    survivors = await waitUntilGone(afterTerm, killTimeoutMs);
-    killed = afterTerm.filter((p) => !survivors.includes(p));
+    await signalVerified(afterTerm, expected, "SIGKILL", sink);
+    const sent = afterTerm.filter((p) => !sink.changed.has(p) && !sink.denied.has(p));
+    const left = await waitUntilGone(sent, killTimeoutMs);
+    survivors = afterTerm.filter((p) => left.includes(p) || sink.denied.has(p));
+    killed = sent.filter((p) => !left.includes(p));
   }
-  const gone = new Set(toSignal.filter((p) => !survivors.includes(p)));
-  return { stopped: toSignal.filter((p) => gone.has(p)), killed, survivors, skipped };
+  const gone = new Set(signalled.filter((p) => !survivors.includes(p)));
+  return {
+    stopped: signalled.filter((p) => gone.has(p)),
+    killed,
+    survivors,
+    skipped,
+    changed: [...sink.changed],
+    denied: [...sink.denied],
+  };
 }
 
 // ── Choosing what to stop ────────────────────────────────────────────────────
@@ -116,24 +171,37 @@ export interface StopOptions {
   yes?: boolean;
 }
 
+/** `--idle` leaves alone a not-listening instance younger than this: it may still be starting (indexing a big site takes a while). Matches the watchdog's startup limit. */
+export const IDLE_MIN_AGE_SECONDS = 120;
+
 export const STOP_USAGE = `Usage: dune stop <pid> | --port <n> | --idle | --all  [--force] [--yes]
 
   <pid>        the instance this process belongs to (see \`dune ps\`)
   --port <n>   the instance listening on that port
   --idle       only instances that aren't serving: running but not
-               listening, or listening but not responding
-  --all        every instance \`dune ps\` lists
+               listening, or listening but not responding to a health
+               check, for at least 2 minutes (younger ones may still
+               be starting)
+  --all        every confirmed instance \`dune ps\` lists
   --force      SIGKILL processes that ignore SIGTERM (default: report them)
-  --yes, -y    don't ask for confirmation`;
+  --yes, -y    don't ask for confirmation
+
+Only your own processes are considered. \`--idle\` and \`--all\` act only on
+instances confirmed as dune sites (a config/site.yaml at the site root); one
+that only looks like dune by its command line must be named by pid. Stopping
+an instance stops its whole process tree, including any other tool its
+wrapper started.`;
 
 export type Selection =
-  | { ok: true; instances: DuneInstance[]; label: string }
+  | { ok: true; instances: DuneInstance[]; label: string; notes: string[] }
   | { ok: false; message: string; exitCode: number };
 
 function parseNumber(value: string, what: string, max: number): number | string {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 && n <= max ? n : `"${value}" is not a valid ${what}.`;
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Pure: pick the instances `opts` asks for out of `all`, or explain why none. */
 export function selectInstances(all: DuneInstance[], opts: StopOptions): Selection {
@@ -144,14 +212,19 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
     return { ok: false, message: `Choose one target: a pid, --port, --idle or --all.\n\n${STOP_USAGE}`, exitCode: 2 };
   }
 
+  const unconfirmedNote = (found: DuneInstance[]): string[] =>
+    found.some((i) => !i.confirmed)
+      ? ["Not confirmed as a dune site: no config/site.yaml was found for it. It matches dune by its command line only."]
+      : [];
+
   if (opts.pid !== undefined) {
     const pid = parseNumber(opts.pid, "pid", 4_194_304);
     if (typeof pid === "string") return { ok: false, message: pid, exitCode: 2 };
     const found = all.filter((i) => i.pids.includes(pid));
     if (found.length === 0) {
-      return { ok: false, message: `No dune instance has a process with pid ${pid}. \`dune ps\` lists them.`, exitCode: 1 };
+      return { ok: false, message: `No dune instance of yours has a process with pid ${pid}. \`dune ps\` lists them.`, exitCode: 1 };
     }
-    return { ok: true, instances: found, label: "" };
+    return { ok: true, instances: found, label: "", notes: unconfirmedNote(found) };
   }
 
   if (opts.port !== undefined) {
@@ -159,32 +232,59 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
     if (typeof port === "string") return { ok: false, message: port, exitCode: 2 };
     const found = all.filter((i) => i.ports.includes(port));
     if (found.length === 0) {
-      return { ok: false, message: `No dune instance is listening on port ${port}. \`dune ps\` lists them.`, exitCode: 1 };
+      return { ok: false, message: `No dune instance of yours is listening on port ${port}. \`dune ps\` lists them.`, exitCode: 1 };
     }
-    return { ok: true, instances: found, label: "" };
+    return { ok: true, instances: found, label: "", notes: unconfirmedNote(found) };
+  }
+
+  // --all / --idle: confirmed instances only.
+  const confirmed = all.filter((i) => i.confirmed);
+  const notes: string[] = [];
+  const skippedUnconfirmed = all.length - confirmed.length;
+  if (skippedUnconfirmed > 0) {
+    notes.push(
+      `${plural(skippedUnconfirmed, "process that only looks", "processes that only look")} like dune by its command line ` +
+        `(no config/site.yaml found) ${skippedUnconfirmed === 1 ? "was" : "were"} left out; stop ${skippedUnconfirmed === 1 ? "it" : "them"} by pid if intended.`,
+    );
   }
 
   if (opts.idle) {
-    const idle = all.filter((i) => i.portStatus === "not-listening" || i.responsive === "not-responding");
-    const unknown = all.filter((i) => i.portStatus === "unknown").length;
-    if (idle.length === 0 && unknown > 0) {
+    const notServing = confirmed.filter((i) => i.portStatus === "not-listening" || i.responsive === "not-responding");
+    const mature = notServing.filter((i) => i.ageSeconds === null || i.ageSeconds >= IDLE_MIN_AGE_SECONDS);
+    const young = notServing.length - mature.length;
+    if (young > 0) {
+      notes.push(
+        `${plural(young, "instance", "instances")} not serving yet ${young === 1 ? "was" : "were"} left out because ` +
+          `${young === 1 ? "it is" : "they are"} under ${IDLE_MIN_AGE_SECONDS / 60} minutes old and may still be starting.`,
+      );
+    }
+    const unknown = confirmed.filter((i) => i.portStatus === "unknown").length;
+    if (mature.length === 0 && unknown > 0) {
       return {
         ok: false,
         message: "Can't tell which instances are idle: `lsof` isn't available, so no instance can be shown as not listening.",
         exitCode: 1,
       };
     }
-    if (idle.length === 0) {
+    if (mature.length === 0) {
+      const why = [...notes].map((n) => `\n  ${n}`).join("");
       return {
         ok: false,
-        message: `No idle instances: all ${all.length} running instance${all.length === 1 ? " is" : "s are"} listening and responding.`,
+        message: `No idle instances: ${confirmed.length === 0 ? "none of the running instances is a confirmed dune site" : `all ${confirmed.length} confirmed running instance${confirmed.length === 1 ? " is" : "s are"} listening and responding`}.${why}`,
         exitCode: 0,
       };
     }
-    return { ok: true, instances: idle, label: "idle " };
+    return { ok: true, instances: mature, label: "idle ", notes };
   }
 
-  return { ok: true, instances: all, label: "" };
+  if (confirmed.length === 0) {
+    return {
+      ok: false,
+      message: `None of the running instances is a confirmed dune site.${notes.map((n) => `\n  ${n}`).join("")}`,
+      exitCode: 0,
+    };
+  }
+  return { ok: true, instances: confirmed, label: "", notes };
 }
 
 // ── Command ──────────────────────────────────────────────────────────────────
@@ -228,9 +328,11 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
     return;
   }
 
-  const { instances, label } = selection;
+  const { instances, label, notes } = selection;
   log("");
   for (const inst of instances) for (const line of formatInstance(inst)) log(line);
+  for (const note of notes) log(`  Note: ${note}`);
+  if (notes.length > 0) log("");
 
   const procCount = new Set(instances.flatMap((i) => i.pids)).size;
   const question = `Stop ${instances.length} ${label}instance${instances.length === 1 ? "" : "s"} (${procCount} process${procCount === 1 ? "" : "es"})?`;
@@ -252,6 +354,13 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
   log(`  Stopped ${result.stopped.length} process${result.stopped.length === 1 ? "" : "es"}.`);
   if (result.skipped.length > 0) {
     log(`  Left alone (this command's own process and its parents): ${result.skipped.join(", ")}`);
+  }
+  if (result.changed.length > 0) {
+    log(`  Not signalled (already exited, or the pid now belongs to a different process): ${result.changed.join(", ")}`);
+  }
+  if (result.denied.length > 0) {
+    log(`  Not permitted (owned by another user): ${result.denied.join(", ")}`);
+    Deno.exitCode = 1;
   }
   if (result.killed.length > 0) {
     log(`  ${result.killed.length} did not exit on SIGTERM and were killed (SIGKILL): ${result.killed.join(", ")}`);

@@ -14,16 +14,23 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 ### Added
 
 - **`dune ps` now tells a hung server from a healthy one, and finds servers
-  that registered themselves.** Every listening instance is sent a request to
-  `/health/live` (3-second timeout; any HTTP status counts as an answer). A
-  blocked event loop still lets the kernel accept the connection but never
-  answers it, so such an instance is shown as **NOT RESPONDING** and counted
-  separately — which matters because it looks perfectly healthy to `lsof`.
-  Instances that wrote an entry to the instance registry are also listed even
-  if their command line doesn't look like dune, and show their `@dune/core`
-  version. `dune stop --idle` now also takes listening-but-not-responding
-  instances; since a server stuck in a loop can't handle SIGTERM,
-  `dune stop <pid> --force` is how to end one.
+  that registered themselves.** Every listening instance is sent a `GET
+  /health/live` (which shows up in its access log): to the port it registered
+  when it did, otherwise to every port it listens on, counting only dune's own
+  answer so a debugger's inspector port can't make a hung server look healthy.
+  A blocked event loop still lets the kernel accept the connection but never
+  answers it, so an instance that fails three probes in a row (3 seconds each,
+  about 10 seconds in all) is shown as **NOT RESPONDING** and counted
+  separately — it looks perfectly healthy to `lsof`. One failed probe proves
+  nothing, and a port that speaks HTTP but not like dune gives "can't tell",
+  not a hung verdict. Instances that wrote an entry to the instance registry
+  are also listed even if their command line doesn't look like dune, count as
+  confirmed, and show their `@dune/core` version. `dune stop --idle` also takes
+  confirmed instances that are listening but not responding, once they are at
+  least 2 minutes old. With the watchdog in its default mode a hung server is
+  killed within seconds, so this mostly matters under `DUNE_WATCHDOG=warn`/`off`;
+  a server stuck in a loop can't handle SIGTERM, so `dune stop <pid> --force` is
+  how to end one.
 
 - **Running instances now register themselves.** `dune dev` and `dune serve`
   write a small record (pid, process start time, mode, site root, title, port,
@@ -95,18 +102,25 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`dune stop`** stops dune instances, with their child processes. A target
-  is required, so stopping every server on a machine always has to be asked
-  for by name: `dune stop <pid>` (any process of an instance), `dune stop
-  --port <n>`, `dune stop --idle` (only instances that are running but not
-  listening — hung or leftover processes; an instance whose port state is
-  unknown, with no `lsof`, is never assumed idle) or `dune stop --all`. It
-  sends SIGTERM and waits up to 10 seconds for a server to drain; a process
-  that ignores it is reported, and only `--force` escalates to SIGKILL. It
-  asks first (`--yes` skips the prompt; with no terminal it refuses unless
-  `--yes` is given), never signals itself or its parent processes, and exits 2
-  for a usage error, 1 when a named pid/port matches nothing or something would
-  not stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+- **`dune stop`** stops dune instances, with their whole process tree (including
+  any other tool a `deno task` wrapper started). A target is required, so
+  stopping every server on a machine always has to be asked for by name: `dune
+  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
+  --idle` (running but not listening for at least 2 minutes — younger ones may
+  still be starting; an instance whose port state is unknown, with no `lsof`,
+  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
+  *confirmed* instances (a `config/site.yaml` at the site root): a command line
+  that merely looks like dune, such as another Deno project's `main.ts serve`,
+  is listed by `dune ps` but must be named by pid. Only your own processes are
+  considered. It sends SIGTERM and waits up to 10 seconds for a server to
+  drain; a process that ignores it is reported, and only `--force` escalates to
+  SIGKILL. Each pid's start time is re-checked immediately before it is
+  signalled, so a pid that exited and was reused while the prompt was open is
+  never hit, and a signal the OS refuses is reported as such. It asks first
+  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
+  given), never signals itself or its parent processes, and exits 2 for a
+  usage error, 1 when a named pid/port matches nothing or something would not
+  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
 
 ## [0.34.14] — 2026-10-21
 

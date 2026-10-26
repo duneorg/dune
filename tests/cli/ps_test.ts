@@ -17,9 +17,12 @@ import {
   findDuneInstances,
   matchDuneCommand,
   parseRootArg,
-  probeResponsive,
+  judgeResponsive,
+  type PortProbe,
+  probePort,
 } from "../../src/cli/instances.ts";
 import { psCommand } from "../../src/cli/ps.ts";
+import { parseElapsedSeconds, readProcessTable } from "../../src/cli/instances.ts";
 import { fakeInstance, makeSite, opts, SERVER, spawnDeno, startTaskTree, stop, waitForPort } from "./ps_helpers.ts";
 
 /**
@@ -358,31 +361,98 @@ Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not
   }
 });
 
+Deno.test("parseElapsedSeconds: mm:ss, hh:mm:ss and d-hh:mm:ss", () => {
+  assertEquals(parseElapsedSeconds("05:12"), 312);
+  assertEquals(parseElapsedSeconds("01:23:45"), 5025);
+  assertEquals(parseElapsedSeconds("2-09:03:55"), 2 * 86400 + 9 * 3600 + 3 * 60 + 55);
+  assertEquals(parseElapsedSeconds("garbage"), null);
+  assertEquals(parseElapsedSeconds(null), null);
+});
+
+Deno.test("readProcessTable: carries the owner's uid and a start time for every row, and this process is ours", opts, async () => {
+  const table = await readProcessTable();
+  const me = table.find((r) => r.pid === Deno.pid);
+  assertExists(me);
+  assertEquals(me.uid, Deno.uid());
+  assertEquals(table.every((r) => Number.isInteger(r.uid) && /\d{4}$/.test(r.started) && /\d:\d\d:\d\d/.test(r.started)), true);
+});
+
+Deno.test("findDuneInstances: a site is 'confirmed'; a dune-looking process with no config/site.yaml is not", opts, async () => {
+  const site = await makeSite("dune_test_ps_conf_", "Confirmed");
+  const bare = await Deno.makeTempDir({ prefix: "dune_test_ps_unconf_" });
+  let a: Deno.ChildProcess | undefined;
+  let b: Deno.ChildProcess | undefined;
+  try {
+    for (const dir of [site, bare]) await Deno.writeTextFile(join(dir, "main.ts"), `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`);
+    a = spawnDeno(["run", "-A", "main.ts", "serve"], site);
+    b = spawnDeno(["run", "-A", "main.ts", "serve"], bare);
+    await new Promise((r) => setTimeout(r, 700));
+    const found = await findDuneInstances();
+    const withSite = found.find((i) => i.pid === a!.pid);
+    const without = found.find((i) => i.pid === b!.pid);
+    assertExists(withSite);
+    assertExists(without, "still listed — ps shows it — but unconfirmed");
+    assertEquals(withSite.confirmed, true);
+    assertEquals(without.confirmed, false);
+    assertEquals(typeof withSite.ageSeconds, "number");
+    assertEquals(Object.keys(withSite.startTimes).map(Number).includes(a.pid), true, "start times recorded for the tree");
+  } finally {
+    if (a) await stop(a);
+    if (b) await stop(b);
+    await Deno.remove(site, { recursive: true }).catch(() => {});
+    await Deno.remove(bare, { recursive: true }).catch(() => {});
+  }
+});
+
 // ── health probe and registry ────────────────────────────────────────────────
 
 /** Server shape for a listener that accepts TCP connections but never answers HTTP. */
 const MUTE_SERVER = (port: number) =>
   `const l = Deno.listen({ port: ${port} });\nsetInterval(() => {}, 1000);\nawait new Promise(() => {});\n`;
 
-const quickProbe = (port: number) => probeResponsive(port, 600);
+const quickProbe = (port: number) => probePort(port, 600);
+const fastOpts = { probe: quickProbe, probeAttempts: 2, probeGapMs: 100 };
 
-Deno.test("probeResponsive: a server that answers (even with a 404) is responding", opts, async () => {
-  const server = Deno.serve({ port: 18_921, onListen: () => {} }, () => new Response("nope", { status: 404 }));
+Deno.test("probePort: dune's own health answer, some other HTTP service, and silence are told apart", opts, async () => {
+  const dune = Deno.serve({ port: 18_921, onListen: () => {} }, () => Response.json({ status: "alive" }));
+  const other = Deno.serve({ port: 18_928, onListen: () => {} }, () => new Response("nope", { status: 404 }));
+  const listener = Deno.listen({ port: 18_922 }); // accepts the connection, never answers
   try {
-    assertEquals(await probeResponsive(18_921, 2000), "responding");
-  } finally {
-    await server.shutdown();
-  }
-});
-
-Deno.test("probeResponsive: a listener that never answers, and a closed port, are not responding", opts, async () => {
-  const listener = Deno.listen({ port: 18_922 });
-  try {
-    assertEquals(await probeResponsive(18_922, 500), "not-responding");
+    assertEquals(await probePort(18_921, 2000), "dune");
+    assertEquals(await probePort(18_928, 2000), "other");
+    assertEquals(await probePort(18_922, 500), "none");
   } finally {
     listener.close();
+    await dune.shutdown();
+    await other.shutdown();
   }
-  assertEquals(await probeResponsive(18_923, 500), "not-responding");
+  assertEquals(await probePort(18_923, 500), "none", "a closed port");
+});
+
+Deno.test("judgeResponsive: one slow or failed probe is not enough; it takes every attempt failing", async () => {
+  let calls = 0;
+  const flaky = (): Promise<PortProbe> => Promise.resolve(++calls < 3 ? "none" : "dune");
+  assertEquals(await judgeResponsive([3000], null, flaky, 3, 1), "responding", "answered on the third attempt");
+  assertEquals(calls, 3);
+  assertEquals(await judgeResponsive([3000], null, () => Promise.resolve("none"), 3, 1), "not-responding");
+});
+
+Deno.test("judgeResponsive: the registered port is the one that counts, and any HTTP answer from it is enough", async () => {
+  const probed: number[] = [];
+  const probe = (p: number): Promise<PortProbe> => { probed.push(p); return Promise.resolve(p === 10_000 ? "other" : "dune"); };
+  // A debugger on 9229 would answer, but the site registered 10000.
+  assertEquals(await judgeResponsive([9229, 10_000], 10_000, probe, 1, 1), "responding");
+  assertEquals(probed, [10_000], "only the registered port is probed");
+});
+
+Deno.test("judgeResponsive: without a registered port every listening port is probed, and only dune's own answer counts", async () => {
+  // Hung site on 10000 (silent) + an inspector on 9229 (answers HTTP, not like dune): never "responding".
+  const probe = (p: number): Promise<PortProbe> => Promise.resolve(p === 9229 ? "other" : "none");
+  assertEquals(await judgeResponsive([9229, 10_000], null, probe, 2, 1), "unknown", "can't tell — not claimed to be hung");
+  // Healthy site on 10000 alongside the inspector.
+  const healthy = (p: number): Promise<PortProbe> => Promise.resolve(p === 9229 ? "other" : "dune");
+  assertEquals(await judgeResponsive([9229, 10_000], null, healthy, 2, 1), "responding");
+  assertEquals(await judgeResponsive([], null, healthy), "unknown", "nothing listening, nothing to probe");
 });
 
 Deno.test("findDuneInstances: a listening instance that answers is 'responding'; one that accepts but never answers is 'not-responding'", opts, async () => {
@@ -391,14 +461,14 @@ Deno.test("findDuneInstances: a listening instance that answers is 'responding';
   let a: Deno.ChildProcess | undefined;
   let b: Deno.ChildProcess | undefined;
   try {
-    await Deno.writeTextFile(join(live, "main.ts"), SERVER(18_924) + `await new Promise(() => {});\n`);
+    await Deno.writeTextFile(join(live, "main.ts"), `Deno.serve({ port: 18924, onListen: () => {} }, () => Response.json({ status: "alive" }));\nawait new Promise(() => {});\n`);
     await Deno.writeTextFile(join(mute, "main.ts"), MUTE_SERVER(18_925));
     a = spawnDeno(["run", "-A", "main.ts", "serve"], live);
     b = spawnDeno(["run", "-A", "main.ts", "serve"], mute);
     await waitForPort(18_924);
     await new Promise((r) => setTimeout(r, 800));
 
-    const found = await findDuneInstances({ probe: quickProbe });
+    const found = await findDuneInstances(fastOpts);
     const ok = found.find((i) => i.pid === a!.pid);
     const bad = found.find((i) => i.pid === b!.pid);
     assertExists(ok);
@@ -421,7 +491,7 @@ Deno.test("findDuneInstances: a not-listening instance is not probed ('unknown')
     await Deno.writeTextFile(join(site, "main.ts"), `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`);
     child = spawnDeno(["run", "-A", "main.ts", "serve"], site);
     await new Promise((r) => setTimeout(r, 600));
-    const found = (await findDuneInstances({ probe: quickProbe })).find((i) => i.pid === child!.pid);
+    const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
     assertExists(found);
     assertEquals(found.portStatus, "not-listening");
     assertEquals(found.responsive, "unknown", "nothing to probe without a port");
@@ -464,7 +534,7 @@ Deno.test("findDuneInstances: a server whose command line doesn't look like dune
       await waitForPort(18_926);
       await new Promise((r) => setTimeout(r, 500));
 
-      const found = (await findDuneInstances({ probe: quickProbe })).find((i) => i.pid === child!.pid);
+      const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
       assertExists(found, "the registry should reveal a process the command-line matching can't");
       assertEquals(found.version, "9.9.9");
       assertEquals(found.mode, "serve");
@@ -493,7 +563,7 @@ Deno.test("findDuneInstances: a registered process that command-line matching al
       child = spawnDeno(["run", "-A", `--config=${DUNE_CONFIG}`, "main.ts", "serve"], site);
       await waitForPort(18_927);
       await new Promise((r) => setTimeout(r, 500));
-      const mine = (await findDuneInstances({ probe: quickProbe })).filter((i) => i.pids.includes(child!.pid));
+      const mine = (await findDuneInstances(fastOpts)).filter((i) => i.pids.includes(child!.pid));
       assertEquals(mine.length, 1);
       assertEquals(mine[0].version, "1.2.3");
     } finally {
@@ -509,7 +579,7 @@ Deno.test("findDuneInstances: a stale registry record (process gone) adds nothin
       join(dir, "999999.json"),
       JSON.stringify({ pid: 999_999, processStart: "Mon Jan  1 00:00:00 2001", mode: "serve", root: "/nowhere", title: null, port: 1, version: "0", registeredAt: "x" }),
     );
-    const found = await findDuneInstances({ probe: quickProbe });
+    const found = await findDuneInstances(fastOpts);
     assertEquals(found.some((i) => i.pid === 999_999), false);
   });
 });

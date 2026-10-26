@@ -10,7 +10,7 @@ import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert
 import { join } from "@std/path";
 import { type DuneInstance, findDuneInstances } from "../../src/cli/instances.ts";
 import { selectInstances, type StopOptions, stopCommand, stopInstances } from "../../src/cli/stop.ts";
-import { fakeInstance, opts, startTaskTree, stop } from "./ps_helpers.ts";
+import { fakeInstance, opts, realStartTimes, startTaskTree, stop } from "./ps_helpers.ts";
 
 // ── stopInstances: real processes ────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ async function withStubbornProcess(fn: (pid: number, child: Deno.ChildProcess) =
 
 Deno.test("stopInstances: without force, a process that ignores SIGTERM is left alone and reported", opts, async () => {
   await withStubbornProcess(async (pid, child) => {
-    const result = await stopInstances([fakeInstance({ pid, pids: [pid] })], { timeoutMs: 600 });
+    const result = await stopInstances([fakeInstance({ pid, pids: [pid], startTimes: await realStartTimes([pid]) })], { timeoutMs: 600 });
     assertEquals(result.survivors, [pid]);
     assertEquals(result.killed, []);
     assertEquals(result.stopped, []);
@@ -83,7 +83,7 @@ Deno.test("stopInstances: without force, a process that ignores SIGTERM is left 
 
 Deno.test("stopInstances: with force, that process is SIGKILLed after the grace period and reported as killed", opts, async () => {
   await withStubbornProcess(async (pid, child) => {
-    const result = await stopInstances([fakeInstance({ pid, pids: [pid] })], { force: true, timeoutMs: 600, killTimeoutMs: 5000 });
+    const result = await stopInstances([fakeInstance({ pid, pids: [pid], startTimes: await realStartTimes([pid]) })], { force: true, timeoutMs: 600, killTimeoutMs: 5000 });
     assertEquals(result.killed, [pid]);
     assertEquals(result.stopped, [pid]);
     assertEquals(result.survivors, []);
@@ -98,6 +98,39 @@ Deno.test("stopInstances: never signals this process, even if an instance lists 
   assertEquals(result.killed, []);
   assertEquals(result.survivors, []);
   // (If it had signalled itself, this assertion would never run.)
+});
+
+Deno.test("stopInstances: a pid whose start time no longer matches (exited and reused) is not signalled", opts, async () => {
+  await withStubbornProcess(async (pid, child) => {
+    // The instance was "found" when pid belonged to some other process: here, a different start time.
+    const result = await stopInstances(
+      [fakeInstance({ pid, pids: [pid], startTimes: { [pid]: "Mon Jan 1 00:00:00 2001" } })],
+      { force: true, timeoutMs: 600, killTimeoutMs: 600 },
+    );
+    assertEquals(result.changed, [pid]);
+    assertEquals(result.stopped, []);
+    assertEquals(result.killed, []);
+    assertEquals(await Promise.race([child.status.then(() => "exited"), new Promise((r) => setTimeout(() => r("alive"), 300))]), "alive", "must not have been signalled, not even by SIGKILL");
+  });
+});
+
+Deno.test("stopInstances: a pid recorded without a start time is never signalled", opts, async () => {
+  await withStubbornProcess(async (pid, child) => {
+    const result = await stopInstances([fakeInstance({ pid, pids: [pid], startTimes: {} })], { force: true, timeoutMs: 600, killTimeoutMs: 600 });
+    assertEquals(result.changed, [pid]);
+    assertEquals(await Promise.race([child.status.then(() => "exited"), new Promise((r) => setTimeout(() => r("alive"), 300))]), "alive");
+  });
+});
+
+Deno.test("stopInstances: a process the operating system refuses to signal is reported as denied, not as ignoring SIGTERM", {
+  ...opts,
+  ignore: Deno.uid() === 0, // as root pid 1 would really be signalled
+}, async () => {
+  // pid 1 belongs to root; SIGTERM from an ordinary user is refused (EPERM).
+  const result = await stopInstances([fakeInstance({ pid: 1, pids: [1], startTimes: await realStartTimes([1]) })], { timeoutMs: 300 });
+  assertEquals(result.denied, [1]);
+  assertEquals(result.stopped, []);
+  assertEquals(result.survivors, []);
 });
 
 // ── selectInstances ──────────────────────────────────────────────────────────
@@ -171,12 +204,18 @@ Deno.test("selectInstances: --idle also takes a listening instance that is not r
   assertEquals(pidsOf(selectInstances([stuck, fine, IDLE_A()], { idle: true })), [50, 20]);
 });
 
+Deno.test("selectInstances: a not-responding instance that is still young is left alone too (it may be indexing)", () => {
+  const youngStuck = fakeInstance({ pid: 55, pids: [55], ports: [3300], portStatus: "listening", responsive: "not-responding", ageSeconds: 30 });
+  const sel = selectInstances([youngStuck], { idle: true });
+  assertEquals(sel.ok, false);
+});
+
 Deno.test("selectInstances: --idle with everything listening is a clean no-op (exit 0)", () => {
   const sel = selectInstances([LIVE()], { idle: true });
   assertEquals(sel.ok, false);
   if (!sel.ok) {
     assertEquals(sel.exitCode, 0);
-    assertEquals(sel.message.includes("No idle instances: all 1 running instance is listening and responding."), true);
+    assertEquals(sel.message.includes("No idle instances: all 1 confirmed running instance is listening and responding"), true);
   }
 });
 
@@ -189,6 +228,47 @@ Deno.test("selectInstances: --idle without lsof assumes nothing is idle (exit 1)
   }
 });
 
+Deno.test("selectInstances: --all and --idle leave out unconfirmed instances, and say how to stop them", () => {
+  const stray = fakeInstance({ pid: 70, pids: [70], confirmed: false, root: null, title: null });
+  const all = selectInstances([...ALL(), stray], { all: true });
+  assertEquals(pidsOf(all), [10, 20, 30]);
+  if (all.ok) assertEquals(all.notes.some((n) => n.includes("by pid")), true);
+  const idle = selectInstances([...ALL(), stray], { idle: true });
+  assertEquals(pidsOf(idle), [20, 30], "an unconfirmed not-listening process is not 'idle' to kill");
+});
+
+Deno.test("selectInstances: only unconfirmed instances running — --all is a clean no-op that explains why", () => {
+  const stray = fakeInstance({ pid: 70, pids: [70], confirmed: false });
+  const sel = selectInstances([stray], { all: true });
+  assertEquals(sel.ok, false);
+  if (!sel.ok) {
+    assertEquals(sel.exitCode, 0);
+    assertEquals(sel.message.includes("confirmed dune site"), true);
+  }
+});
+
+Deno.test("selectInstances: an unconfirmed instance can still be stopped by naming it, with a warning", () => {
+  const stray = fakeInstance({ pid: 70, pids: [70, 71], confirmed: false });
+  const sel = selectInstances([stray], { pid: "71" });
+  assertEquals(pidsOf(sel), [70]);
+  if (sel.ok) assertEquals(sel.notes[0].includes("Not confirmed"), true);
+});
+
+Deno.test("selectInstances: --idle leaves out a not-listening instance that is still young (it may be starting)", () => {
+  const young = fakeInstance({ pid: 80, pids: [80], ageSeconds: 45 });
+  const old = fakeInstance({ pid: 81, pids: [81], ageSeconds: 600 });
+  const sel = selectInstances([young, old], { idle: true });
+  assertEquals(pidsOf(sel), [81]);
+  if (sel.ok) assertEquals(sel.notes.some((n) => n.includes("still be starting")), true);
+  // Nothing old enough: a clean no-op that says why.
+  const none = selectInstances([young], { idle: true });
+  assertEquals(none.ok, false);
+  if (!none.ok) {
+    assertEquals(none.exitCode, 0);
+    assertEquals(none.message.includes("may still be starting"), true);
+  }
+});
+
 Deno.test("selectInstances: --all takes everything", () => {
   assertEquals(pidsOf(selectInstances(ALL(), { all: true })), [10, 20, 30]);
 });
@@ -198,7 +278,7 @@ Deno.test("selectInstances: --all takes everything", () => {
 async function runStop(
   instances: DuneInstance[],
   o: StopOptions,
-  deps: { interactive?: boolean; confirm?: boolean; survivors?: number[]; killed?: number[] } = {},
+  deps: { interactive?: boolean; confirm?: boolean; survivors?: number[]; killed?: number[]; changed?: number[]; denied?: number[] } = {},
 ) {
   const lines: string[] = [];
   const stopCalls: { instances: DuneInstance[]; force: boolean }[] = [];
@@ -215,6 +295,8 @@ async function runStop(
           killed: deps.killed ?? [],
           survivors: deps.survivors ?? [],
           skipped: [],
+          changed: deps.changed ?? [],
+          denied: deps.denied ?? [],
         });
       },
       isInteractive: () => deps.interactive ?? false,
@@ -303,6 +385,22 @@ Deno.test("stopCommand --force: processes that needed SIGKILL are named, and tha
   const { text, exitCode } = await runStop([fakeInstance({ pids: [7, 8] })], { all: true, yes: true, force: true }, { killed: [8] });
   assertEquals(text.includes("1 did not exit on SIGTERM and were killed (SIGKILL): 8"), true);
   assertEquals(exitCode, 0);
+});
+
+Deno.test("stopCommand: reports pids that were not signalled because they exited or were reused, and ones that were denied", async () => {
+  const changed = await runStop([IDLE_A()], { all: true, yes: true }, { changed: [9] });
+  assertEquals(changed.text.includes("Not signalled (already exited, or the pid now belongs to a different process): 9"), true);
+  assertEquals(changed.exitCode, 0);
+  const denied = await runStop([IDLE_A()], { all: true, yes: true }, { denied: [1] });
+  assertEquals(denied.text.includes("Not permitted (owned by another user): 1"), true);
+  assertEquals(denied.exitCode, 1);
+});
+
+Deno.test("stopCommand: shows the notes (unconfirmed left out) before asking", async () => {
+  const stray = fakeInstance({ pid: 70, pids: [70], confirmed: false });
+  const { text } = await runStop([IDLE_A(), stray], { all: true }, { interactive: false });
+  assertEquals(text.includes("Note: 1 process that only looks like dune"), true, text);
+  assertEquals(text.includes("Stop 1 instance (1 process)?"), true);
 });
 
 Deno.test("stopCommand: says nothing about SIGKILL when everything exited gracefully", async () => {
