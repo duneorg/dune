@@ -6,6 +6,7 @@
  *   dune dev                   — Start dev server with file watching
  *   dune dev:link              — Reinstall the global shim against this checkout
  *   dune ps                    — List dune dev/serve instances running on this machine
+ *   dune stop <pid>|--port|--idle|--all — Stop them (asks first)
  *   dune build                 — Build content index + validate config
  *   dune build --static        — Generate a fully static site (SSG)
  *   dune serve                 — Start production server
@@ -49,6 +50,7 @@
 import { devCommand } from "./cli/dev.ts";
 import { devLinkCommand } from "./cli/dev-link.ts";
 import { psCommand } from "./cli/ps.ts";
+import { stopCommand } from "./cli/stop.ts";
 import { computeLockPolicy, parseRootArg } from "./cli/lock-policy.ts";
 import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
 import { serveCommand } from "./cli/serve.ts";
@@ -194,10 +196,17 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "ps":
-        await psCommand({
-          stop: options.stop === true,
-          yes: options.yes === true,
+        await psCommand();
+        break;
+
+      case "stop":
+        await stopCommand({
+          pid: typeof options.positional === "string" ? options.positional : undefined,
+          port: typeof options.port === "string" ? options.port : undefined,
           idle: options.idle === true,
+          all: options.all === true,
+          force: options.force === true,
+          yes: options.yes === true,
         });
         break;
 

@@ -22,10 +22,14 @@ Commands:
   ps                  List dune dev/serve instances currently running on
                       this machine (PID, site, port or "not listening" —
                       macOS/Linux only)
-  ps --stop           Stop every instance found, with its child processes
-                      (asks first; --yes to skip the prompt)
-  ps --idle           Only the instances that are running but not listening
-                      (hung or leftover); with --stop, stops just those
+  stop <pid>          Stop a dune instance (and its child processes) — any
+                      PID shown by \`dune ps\`. SIGTERM; asks first
+  stop --port <n>     Stop the instance listening on that port
+  stop --idle         Stop only instances that are running but not listening
+                      (hung or leftover)
+  stop --all          Stop every instance \`dune ps\` lists
+                      (--force SIGKILLs processes that ignore SIGTERM;
+                      --yes skips the prompt)
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server (--frozen enforces deno.lock;

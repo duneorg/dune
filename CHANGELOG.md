@@ -32,18 +32,18 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`dune ps --stop`** stops every instance it lists, with its child processes:
-  SIGTERM, a 10-second grace period for a real server to drain, then SIGKILL
-  for anything still alive, naming the pids that needed it. (The escalation
-  matters: a `dune serve` used to close its listener on the first SIGTERM and
-  then stay alive until sent a second one, so plain SIGTERM left exactly the
-  idle processes this command exists to clear.) It asks first; `--yes` skips
-  the prompt, and with no terminal it refuses unless `--yes` is given. It never
-  signals itself or its parent processes.
-- **`dune ps --idle`** narrows the listing to instances that are running but
-  not listening (hung or leftover processes), and `dune ps --stop --idle`
-  stops only those, so live servers on a shared machine are left alone. An
-  instance whose port state is unknown (no `lsof`) is never assumed idle.
+- **`dune stop`** stops dune instances, with their child processes. A target
+  is required, so stopping every server on a machine always has to be asked
+  for by name: `dune stop <pid>` (any process of an instance), `dune stop
+  --port <n>`, `dune stop --idle` (only instances that are running but not
+  listening — hung or leftover processes; an instance whose port state is
+  unknown, with no `lsof`, is never assumed idle) or `dune stop --all`. It
+  sends SIGTERM and waits up to 10 seconds for a server to drain; a process
+  that ignores it is reported, and only `--force` escalates to SIGKILL. It
+  asks first (`--yes` skips the prompt; with no terminal it refuses unless
+  `--yes` is given), never signals itself or its parent processes, and exits 2
+  for a usage error, 1 when a named pid/port matches nothing or something would
+  not stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
 
 ## [0.34.14] — 2026-10-21
 

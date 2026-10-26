@@ -1,14 +1,13 @@
 /**
- * Tests for `dune ps` (src/cli/ps.ts) — finding dune dev/serve instances
- * already running on the machine.
+ * Tests for `dune ps` discovery (src/cli/instances.ts) and listing
+ * (src/cli/ps.ts).
  *
  * Deliberately doesn't spawn a real `dune dev`/`main.ts` process (that's
  * `live_boot_smoke_test.ts`'s job, and it's slow/needs the full bootstrap
  * stack) — these use a trivial fake entrypoint that only needs to *look*
- * like the real thing to `dune ps`'s own detection logic: a `main.ts`
- * invoked with `dev`/`serve` as the trailing arg, sitting next to a real
- * `config/site.yaml`, optionally binding a real port. That's the actual
- * surface `findDuneInstances()` operates on.
+ * like the real thing to the detection logic: a `main.ts` invoked with
+ * `dev`/`serve` as the trailing arg, sitting next to a real
+ * `config/site.yaml`, optionally binding a real port.
  */
 
 import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -18,44 +17,18 @@ import {
   findDuneInstances,
   matchDuneCommand,
   parseRootArg,
-  psCommand,
-  stopInstances,
-} from "../../src/cli/ps.ts";
-
-const BOOT_TIMEOUT_MS = 10_000;
-const POLL_INTERVAL_MS = 100;
+} from "../../src/cli/instances.ts";
+import { psCommand } from "../../src/cli/ps.ts";
+import { fakeInstance, makeSite, opts, SERVER, spawnDeno, startTaskTree, stop, waitForPort } from "./ps_helpers.ts";
 
 /**
  * On macOS, /tmp is a symlink to /private/tmp — Deno.makeTempDir() returns
- * the unresolved path, but the site root ps.ts reports back (via PWD/lsof,
+ * the unresolved path, but the site root discovery reports back (via PWD/lsof,
  * both reflecting the kernel's resolved path) is fully resolved. Compare
  * both sides post-realpath so this symlink hop doesn't look like a bug.
  */
 async function realpath(path: string): Promise<string> {
   return await Deno.realPath(path);
-}
-
-/** Poll until `port` accepts a connection, or give up at the timeout. */
-async function waitForPort(port: number): Promise<void> {
-  const deadline = Date.now() + BOOT_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(500) });
-      return;
-    } catch {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    }
-  }
-  throw new Error(`nothing answered on port ${port} within ${BOOT_TIMEOUT_MS}ms`);
-}
-
-async function stop(child: Deno.ChildProcess): Promise<void> {
-  try {
-    child.kill("SIGTERM");
-  } catch {
-    // already exited
-  }
-  await child.status.catch(() => {});
 }
 
 Deno.test(
@@ -280,29 +253,6 @@ Deno.test("parseRootArg: --root in both spellings, quoted or not", () => {
   assertEquals(parseRootArg("deno run cli.ts dev --port 3000"), null);
 });
 
-// ── fixtures for the new real-process tests ──────────────────────────────────
-
-const SERVER = (port: number) => `Deno.serve({ port: ${port}, onListen: () => {} }, () => new Response("ok"));\n`;
-
-async function makeSite(prefix: string, title: string): Promise<string> {
-  const dir = await Deno.makeTempDir({ prefix });
-  await Deno.mkdir(join(dir, "config"), { recursive: true });
-  await Deno.writeTextFile(join(dir, "config", "site.yaml"), `title: ${title}\n`);
-  return dir;
-}
-
-function spawnDeno(args: string[], cwd: string): Deno.ChildProcess {
-  return new Deno.Command(Deno.execPath(), {
-    args,
-    cwd,
-    env: { ...Deno.env.toObject(), PWD: cwd },
-    stdout: "null",
-    stderr: "null",
-  }).spawn();
-}
-
-const opts = { sanitizeOps: false, sanitizeResources: false };
-
 Deno.test("findDuneInstances: the dune CLI run directly (`cli.ts dev --root <site>`) is found, root from --root", opts, async () => {
   // "dune" must appear in the command line for a bare `cli.ts dev` to count.
   const toolDir = await Deno.makeTempDir({ prefix: "dune_test_ps_shim_tool_" });
@@ -372,16 +322,6 @@ Deno.test("findDuneInstances: a process that matches but holds no port is 'not-l
   }
 });
 
-/** A `deno task serve` wrapper around `deno run -A main.ts serve`: two processes, one instance. */
-async function startTaskTree(port: number): Promise<{ site: string; child: Deno.ChildProcess }> {
-  const site = await makeSite("dune_test_ps_tree_", "Tree Site");
-  await Deno.writeTextFile(join(site, "deno.json"), JSON.stringify({ tasks: { serve: "deno run -A main.ts serve" } }));
-  await Deno.writeTextFile(join(site, "main.ts"), SERVER(port) + `await new Promise(() => {});\n`);
-  const child = spawnDeno(["task", "serve"], site);
-  await waitForPort(port);
-  return { site, child };
-}
-
 Deno.test("findDuneInstances: a `deno task` wrapper and its child are ONE instance, reported at the wrapper", opts, async () => {
   const port = 18_913;
   const { site, child } = await startTaskTree(port);
@@ -402,185 +342,6 @@ Deno.test("findDuneInstances: a `deno task` wrapper and its child are ONE instan
   }
 });
 
-Deno.test("stopInstances: stops the whole tree and reports nothing left", opts, async () => {
-  const port = 18_914;
-  const { site, child } = await startTaskTree(port);
-  try {
-    const found = (await findDuneInstances()).find((i) => i.pids.includes(child.pid));
-    assertExists(found);
-    const result = await stopInstances([found], { timeoutMs: 8000 });
-    assertEquals(result.survivors, []);
-    assertEquals(result.skipped, []);
-    assertEquals(result.killed, [], "a process that exits on SIGTERM must not be SIGKILLed");
-    assertEquals(result.stopped.sort(), [...found.pids].sort());
-    // Really gone: nothing answers any more.
-    let answered = true;
-    try {
-      await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(800) });
-    } catch {
-      answered = false;
-    }
-    assertEquals(answered, false);
-  } finally {
-    await stop(child);
-    await Deno.remove(site, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("stopInstances: a process that ignores SIGTERM is escalated to SIGKILL, and reported as killed", opts, async () => {
-  const dir = await Deno.makeTempDir({ prefix: "ps_test_stubborn_" });
-  let child: Deno.ChildProcess | undefined;
-  try {
-    // Swallows SIGTERM, the way a server stuck in its own shutdown does.
-    await Deno.writeTextFile(
-      join(dir, "stubborn.ts"),
-      `Deno.addSignalListener("SIGTERM", () => {});\nconsole.log("ready");\nsetInterval(() => {}, 1000);\n`,
-    );
-    child = new Deno.Command(Deno.execPath(), {
-      args: ["run", "-A", "stubborn.ts"],
-      cwd: dir,
-      stdout: "piped",
-      stderr: "null",
-    }).spawn();
-    const pid = child.pid;
-    // Wait until the signal handler is installed, or SIGTERM would just kill it.
-    const reader = child.stdout.getReader();
-    const first = await reader.read();
-    assertEquals(new TextDecoder().decode(first.value).includes("ready"), true);
-    reader.releaseLock();
-
-    const result = await stopInstances([fakeInstance({ pid, pids: [pid] })], { timeoutMs: 600, killTimeoutMs: 5000 });
-    assertEquals(result.killed, [pid], "had to be SIGKILLed");
-    assertEquals(result.stopped, [pid]);
-    assertEquals(result.survivors, []);
-    assertEquals((await child.status).signal, "SIGKILL");
-    child = undefined;
-  } finally {
-    if (child) {
-      try {
-        child.kill("SIGKILL");
-      } catch { /* already gone */ }
-      await child.status.catch(() => {});
-    }
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-});
-
-function fakeInstance(overrides: Partial<DuneInstance> = {}): DuneInstance {
-  return {
-    pid: 99_990,
-    pids: [99_990],
-    mode: "serve",
-    root: "/x/site",
-    title: "Fake",
-    ports: [],
-    portStatus: "not-listening",
-    elapsed: "01:00",
-    command: "deno run -A main.ts serve",
-    ...overrides,
-  };
-}
-
-Deno.test("stopInstances: never signals this process, even if an instance lists it", async () => {
-  const result = await stopInstances([fakeInstance({ pids: [Deno.pid] })], { timeoutMs: 300 });
-  assertEquals(result.skipped, [Deno.pid]);
-  assertEquals(result.stopped, []);
-  assertEquals(result.killed, []);
-  assertEquals(result.survivors, []);
-  // (If it had signalled itself, this assertion would never run.)
-});
-
-// ── psCommand flow (fakes only: these never touch real processes) ────────────
-
-async function runPs(
-  instances: DuneInstance[],
-  opts: { stop?: boolean; yes?: boolean; idle?: boolean },
-  deps: { interactive?: boolean; confirm?: boolean; survivors?: number[]; killed?: number[] } = {},
-) {
-  const lines: string[] = [];
-  const stopCalls: DuneInstance[][] = [];
-  const priorExit = Deno.exitCode;
-  Deno.exitCode = 0;
-  try {
-    await psCommand(opts, {
-      find: () => Promise.resolve(instances),
-      stop: (insts) => {
-        stopCalls.push(insts);
-        const all = insts.flatMap((i) => i.pids);
-        return Promise.resolve({
-          stopped: all.filter((p) => !(deps.survivors ?? []).includes(p)),
-          killed: deps.killed ?? [],
-          survivors: deps.survivors ?? [],
-          skipped: [],
-        });
-      },
-      isInteractive: () => deps.interactive ?? false,
-      confirm: () => Promise.resolve(deps.confirm ?? false),
-      log: (l) => lines.push(l),
-    });
-    return { text: lines.join("\n"), stopCalls, exitCode: Deno.exitCode };
-  } finally {
-    Deno.exitCode = priorExit;
-  }
-}
-
-Deno.test("psCommand: says 'not listening' for an idle process, a URL for a live one, 'lsof not available' only when unknown", async () => {
-  const { text } = await runPs([
-    fakeInstance({ pid: 1, pids: [1], ports: [3000], portStatus: "listening" }),
-    fakeInstance({ pid: 2, pids: [2], ports: [], portStatus: "not-listening" }),
-    fakeInstance({ pid: 3, pids: [3], ports: [], portStatus: "unknown" }),
-  ], {});
-  assertEquals(text.includes("http://localhost:3000"), true);
-  assertEquals(text.includes("not listening (no open port"), true);
-  assertEquals(text.includes("port unknown (lsof not available)"), true);
-  assertEquals(text.includes("is `lsof` installed?"), false, "the old misleading wording is gone");
-  assertEquals(text.includes("3 instances: 1 listening, 1 not listening"), true);
-});
-
-Deno.test("psCommand: without --stop it never stops anything", async () => {
-  const { stopCalls } = await runPs([fakeInstance()], {});
-  assertEquals(stopCalls.length, 0);
-});
-
-Deno.test("psCommand --stop: refuses without --yes when not interactive, and says how to proceed", async () => {
-  const { text, stopCalls, exitCode } = await runPs([fakeInstance()], { stop: true }, { interactive: false });
-  assertEquals(stopCalls.length, 0);
-  assertEquals(exitCode, 1);
-  assertEquals(text.includes("Re-run with --yes"), true);
-});
-
-Deno.test("psCommand --stop: --yes stops without asking", async () => {
-  const { stopCalls, exitCode } = await runPs([fakeInstance(), fakeInstance({ pid: 5, pids: [5, 6] })], { stop: true, yes: true });
-  assertEquals(stopCalls.length, 1);
-  assertEquals(stopCalls[0].length, 2);
-  assertEquals(exitCode, 0);
-});
-
-Deno.test("psCommand --stop: an interactive 'no' stops nothing, a 'yes' stops everything", async () => {
-  const no = await runPs([fakeInstance()], { stop: true }, { interactive: true, confirm: false });
-  assertEquals(no.stopCalls.length, 0);
-  assertEquals(no.text.includes("Cancelled"), true);
-  const yes = await runPs([fakeInstance()], { stop: true }, { interactive: true, confirm: true });
-  assertEquals(yes.stopCalls.length, 1);
-});
-
-Deno.test("psCommand --stop: survivors (alive even after SIGKILL) are reported and make the exit code non-zero", async () => {
-  const { text, exitCode } = await runPs([fakeInstance({ pids: [7, 8] })], { stop: true, yes: true }, { survivors: [8] });
-  assertEquals(text.includes("Could not stop (still running even after SIGKILL): 8"), true);
-  assertEquals(exitCode, 1);
-});
-
-Deno.test("psCommand --stop: processes that needed SIGKILL are named, and that alone is not a failure", async () => {
-  const { text, exitCode } = await runPs([fakeInstance({ pids: [7, 8] })], { stop: true, yes: true }, { killed: [8] });
-  assertEquals(text.includes("1 did not exit on SIGTERM and were killed (SIGKILL): 8"), true);
-  assertEquals(exitCode, 0);
-});
-
-Deno.test("psCommand --stop: says nothing about SIGKILL when everything exited gracefully", async () => {
-  const { text } = await runPs([fakeInstance()], { stop: true, yes: true });
-  assertEquals(text.includes("SIGKILL"), false);
-});
-
 Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not reported (weak matches need a confirmed site)", opts, async () => {
   const dir = await Deno.makeTempDir({ prefix: "ps_test_nosite_" }); // no "dune" in the command, no config/site.yaml
   let child: Deno.ChildProcess | undefined;
@@ -596,58 +357,38 @@ Deno.test("findDuneInstances: a bare `cli.ts serve` with NO site anywhere is not
   }
 });
 
-// ── --idle: the selective form ───────────────────────────────────────────────
+// ── psCommand output (fakes only: never touches real processes) ──────────────
+
+async function runPs(instances: DuneInstance[]): Promise<string> {
+  const lines: string[] = [];
+  await psCommand({ find: () => Promise.resolve(instances), log: (l) => lines.push(l) });
+  return lines.join("\n");
+}
 
 const LIVE = () => fakeInstance({ pid: 10, pids: [10, 11], ports: [3000], portStatus: "listening", title: "Live Site" });
-const IDLE_A = () => fakeInstance({ pid: 20, pids: [20], title: "Idle A" });
-const IDLE_B = () => fakeInstance({ pid: 30, pids: [30, 31, 32], title: "Idle B" });
+const IDLE = () => fakeInstance({ pid: 20, pids: [20], title: "Idle A" });
 
-Deno.test("psCommand --idle: lists only the not-listening instances and says how many live ones it left out", async () => {
-  const { text, stopCalls } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { idle: true });
-  assertEquals(text.includes("Idle A") && text.includes("Idle B"), true);
-  assertEquals(text.includes("Live Site"), false, "a listening instance is not shown");
-  assertEquals(text.includes("2 idle instances shown; 1 listening instance left out"), true);
-  assertEquals(stopCalls.length, 0, "--idle alone never stops anything");
+Deno.test("psCommand: says 'not listening' for an idle process, a URL for a live one, 'lsof not available' only when unknown", async () => {
+  const text = await runPs([
+    fakeInstance({ pid: 1, pids: [1], ports: [3000], portStatus: "listening" }),
+    fakeInstance({ pid: 2, pids: [2], ports: [], portStatus: "not-listening" }),
+    fakeInstance({ pid: 3, pids: [3], ports: [], portStatus: "unknown" }),
+  ]);
+  assertEquals(text.includes("http://localhost:3000"), true);
+  assertEquals(text.includes("not listening (no open port"), true);
+  assertEquals(text.includes("port unknown (lsof not available)"), true);
+  assertEquals(text.includes("is `lsof` installed?"), false, "the old misleading wording is gone");
+  assertEquals(text.includes("3 instances: 1 listening, 1 not listening"), true);
 });
 
-Deno.test("psCommand --stop --idle: stops ONLY the idle instances, never a listening one", async () => {
-  const { stopCalls, exitCode } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { stop: true, idle: true, yes: true });
-  assertEquals(stopCalls.length, 1);
-  assertEquals(stopCalls[0].map((i) => i.pid).sort(), [20, 30]);
-  assertEquals(stopCalls[0].flatMap((i) => i.pids).includes(10), false);
-  assertEquals(stopCalls[0].flatMap((i) => i.pids).includes(11), false, "not even the live one's child processes");
-  assertEquals(exitCode, 0);
+Deno.test("psCommand: shows child-process counts and says so when nothing is running", async () => {
+  const text = await runPs([LIVE()]);
+  assertEquals(text.includes("(+1 child process)"), true);
+  assertEquals((await runPs([])).includes("No dune dev/serve instances found"), true);
 });
 
-Deno.test("psCommand --stop --idle: the confirmation names the idle count and process count", async () => {
-  const { text } = await runPs([LIVE(), IDLE_A(), IDLE_B()], { stop: true, idle: true }, { interactive: false });
-  assertEquals(text.includes("Stop 2 idle instances (4 processes)?"), true, text);
-});
-
-Deno.test("psCommand --stop --idle: without --yes and without a terminal it still refuses", async () => {
-  const { stopCalls, exitCode } = await runPs([LIVE(), IDLE_A()], { stop: true, idle: true }, { interactive: false });
-  assertEquals(stopCalls.length, 0);
-  assertEquals(exitCode, 1);
-});
-
-Deno.test("psCommand --stop --idle: with nothing idle it stops nothing and says so", async () => {
-  const { text, stopCalls, exitCode } = await runPs([LIVE()], { stop: true, idle: true, yes: true });
-  assertEquals(stopCalls.length, 0);
-  assertEquals(text.includes("No idle instances: all 1 running instance is listening."), true);
-  assertEquals(exitCode, 0);
-});
-
-Deno.test("psCommand --idle: when lsof is unavailable nothing is assumed idle, and --stop does not proceed", async () => {
-  const unknown = fakeInstance({ pid: 40, pids: [40], portStatus: "unknown" });
-  const { text, stopCalls, exitCode } = await runPs([unknown], { stop: true, idle: true, yes: true });
-  assertEquals(stopCalls.length, 0, "an instance of unknown state must not be stopped as 'idle'");
-  assertEquals(text.includes("Can't tell which instances are idle"), true);
-  assertEquals(exitCode, 1);
-});
-
-Deno.test("psCommand: plain listing points at --stop --idle when idle instances exist", async () => {
-  const { text } = await runPs([LIVE(), IDLE_A()], {});
-  assertEquals(text.includes("`dune ps --stop --idle` stops only the not-listening ones"), true);
-  const none = await runPs([LIVE()], {});
-  assertEquals(none.text.includes("--stop --idle"), false, "no hint when there is nothing idle");
+Deno.test("psCommand: points at `dune stop` when idle instances exist, and only then", async () => {
+  const withIdle = await runPs([LIVE(), IDLE()]);
+  assertEquals(withIdle.includes("`dune stop --idle` stops only the not-listening ones"), true);
+  assertEquals((await runPs([LIVE()])).includes("dune stop"), false, "no hint when there is nothing idle");
 });
