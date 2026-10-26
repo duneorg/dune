@@ -16,7 +16,12 @@ export interface PsDeps {
 }
 
 export function describePort(inst: DuneInstance): string {
-  if (inst.portStatus === "listening") return inst.ports.map((p) => `http://localhost:${p}`).join(", ");
+  if (inst.portStatus === "listening") {
+    const urls = inst.ports.map((p) => `http://localhost:${p}`).join(", ");
+    return inst.responsive === "not-responding"
+      ? `${urls} — NOT RESPONDING (no answer to a health check; the server may be hung)`
+      : urls;
+  }
   if (inst.portStatus === "not-listening") return "not listening (no open port; likely a hung or leftover process)";
   return "port unknown (lsof not available)";
 }
@@ -27,7 +32,7 @@ export function formatInstance(inst: DuneInstance): string[] {
     ? `  (+${inst.pids.length - 1} child process${inst.pids.length > 2 ? "es" : ""})`
     : "";
   return [
-    `  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}${extra}`,
+    `  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}${inst.version ? `  v${inst.version}` : ""}${extra}`,
     `    ${inst.title ?? "(untitled)"}`,
     `    ${inst.root ?? "(site root unconfirmed — no config/site.yaml via --root, PWD or live cwd)"}`,
     `    ${describePort(inst)}`,
@@ -53,9 +58,13 @@ export async function psCommand(deps: PsDeps = {}): Promise<void> {
   for (const inst of all) for (const line of formatInstance(inst)) log(line);
 
   const serving = all.filter((i) => i.portStatus === "listening").length;
-  const idle = all.filter((i) => i.portStatus === "not-listening").length;
-  log(`  ${all.length} instance${all.length === 1 ? "" : "s"}: ${serving} listening, ${idle} not listening\n`);
-  if (idle > 0) {
-    log("  `dune stop --idle` stops only the not-listening ones; `dune stop <pid>` stops one instance.");
+  const stuck = all.filter((i) => i.responsive === "not-responding").length;
+  const notListening = all.filter((i) => i.portStatus === "not-listening").length;
+  log(
+    `  ${all.length} instance${all.length === 1 ? "" : "s"}: ${serving} listening` +
+      `${stuck > 0 ? ` (${stuck} not responding)` : ""}, ${notListening} not listening\n`,
+  );
+  if (stuck + notListening > 0) {
+    log("  `dune stop --idle` stops only the ones that aren't serving (not listening or not responding); `dune stop <pid>` stops one instance.");
   }
 }

@@ -13,6 +13,18 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
+- **`dune ps` now tells a hung server from a healthy one, and finds servers
+  that registered themselves.** Every listening instance is sent a request to
+  `/health/live` (3-second timeout; any HTTP status counts as an answer). A
+  blocked event loop still lets the kernel accept the connection but never
+  answers it, so such an instance is shown as **NOT RESPONDING** and counted
+  separately — which matters because it looks perfectly healthy to `lsof`.
+  Instances that wrote an entry to the instance registry are also listed even
+  if their command line doesn't look like dune, and show their `@dune/core`
+  version. `dune stop --idle` now also takes listening-but-not-responding
+  instances; since a server stuck in a loop can't handle SIGTERM,
+  `dune stop <pid> --force` is how to end one.
+
 - **Running instances now register themselves.** `dune dev` and `dune serve`
   write a small record (pid, process start time, mode, site root, title, port,
   `@dune/core` version) to `~/.dune/instances/<pid>.json`

@@ -106,7 +106,7 @@ export interface StopOptions {
   pid?: string;
   /** The instance listening on this port. */
   port?: string;
-  /** Only instances that are running but not listening (hung or leftover). */
+  /** Only instances that aren't serving: running but not listening, or listening but not responding (hung or leftover). */
   idle?: boolean;
   /** Every instance `dune ps` lists. */
   all?: boolean;
@@ -120,7 +120,8 @@ export const STOP_USAGE = `Usage: dune stop <pid> | --port <n> | --idle | --all 
 
   <pid>        the instance this process belongs to (see \`dune ps\`)
   --port <n>   the instance listening on that port
-  --idle       only instances that are running but not listening
+  --idle       only instances that aren't serving: running but not
+               listening, or listening but not responding
   --all        every instance \`dune ps\` lists
   --force      SIGKILL processes that ignore SIGTERM (default: report them)
   --yes, -y    don't ask for confirmation`;
@@ -164,7 +165,7 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
   }
 
   if (opts.idle) {
-    const idle = all.filter((i) => i.portStatus === "not-listening");
+    const idle = all.filter((i) => i.portStatus === "not-listening" || i.responsive === "not-responding");
     const unknown = all.filter((i) => i.portStatus === "unknown").length;
     if (idle.length === 0 && unknown > 0) {
       return {
@@ -176,7 +177,7 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
     if (idle.length === 0) {
       return {
         ok: false,
-        message: `No idle instances: all ${all.length} running instance${all.length === 1 ? " is" : "s are"} listening.`,
+        message: `No idle instances: all ${all.length} running instance${all.length === 1 ? " is" : "s are"} listening and responding.`,
         exitCode: 0,
       };
     }

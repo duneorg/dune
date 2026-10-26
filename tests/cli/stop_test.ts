@@ -165,12 +165,18 @@ Deno.test("selectInstances: --idle takes only not-listening instances, never a l
   if (sel.ok) assertEquals(sel.instances.flatMap((i) => i.pids).some((p) => p === 10 || p === 11), false);
 });
 
+Deno.test("selectInstances: --idle also takes a listening instance that is not responding, but not a responding one", () => {
+  const stuck = fakeInstance({ pid: 50, pids: [50], ports: [3100], portStatus: "listening", responsive: "not-responding" });
+  const fine = fakeInstance({ pid: 60, pids: [60], ports: [3200], portStatus: "listening", responsive: "responding" });
+  assertEquals(pidsOf(selectInstances([stuck, fine, IDLE_A()], { idle: true })), [50, 20]);
+});
+
 Deno.test("selectInstances: --idle with everything listening is a clean no-op (exit 0)", () => {
   const sel = selectInstances([LIVE()], { idle: true });
   assertEquals(sel.ok, false);
   if (!sel.ok) {
     assertEquals(sel.exitCode, 0);
-    assertEquals(sel.message.includes("No idle instances: all 1 running instance is listening."), true);
+    assertEquals(sel.message.includes("No idle instances: all 1 running instance is listening and responding."), true);
   }
 });
 

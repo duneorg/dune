@@ -42,6 +42,7 @@
 
 import { isAbsolute, join, resolve } from "@std/path";
 import { parseUserYaml } from "../security/safe-yaml.ts";
+import { listRegisteredInstances } from "../runtime/instance-registry.ts";
 
 /** A dune dev/serve-shaped process (tree) found running on this machine. */
 export interface DuneInstance {
@@ -66,6 +67,15 @@ export interface DuneInstance {
    * so we can't tell.
    */
   portStatus: "listening" | "not-listening" | "unknown";
+  /**
+   * Whether a listening instance answered an HTTP request: `"responding"`,
+   * `"not-responding"` (accepts connections but gives no answer in time —
+   * the signature of a blocked event loop, or just a very busy server), or
+   * `"unknown"` (not listening, or not probed).
+   */
+  responsive: "responding" | "not-responding" | "unknown";
+  /** `@dune/core` version, when the instance registered itself (see runtime/instance-registry.ts). */
+  version: string | null;
   /** `ps`'s own elapsed-time string (e.g. "01:23:45" or "2-09:03:55"). */
   elapsed: string | null;
   /** The process's command line, for identifying unconfirmed instances. */
@@ -317,6 +327,33 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
   return null;
 }
 
+// ── Health probe ─────────────────────────────────────────────────────────────
+
+export const PROBE_TIMEOUT_MS = 3_000;
+
+/**
+ * Does the server on `port` answer HTTP at all? Any status counts — even a 404
+ * proves the event loop is running — so only a timeout or a refused/reset
+ * connection is "not responding". A blocked event loop still lets the kernel
+ * accept the TCP connection, but nothing ever answers it, which is exactly
+ * what the timeout catches.
+ */
+export async function probeResponsive(
+  port: number,
+  timeoutMs = PROBE_TIMEOUT_MS,
+): Promise<"responding" | "not-responding"> {
+  try {
+    const res = await fetch(`http://localhost:${port}/health/live`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "manual",
+    });
+    await res.body?.cancel();
+    return "responding";
+  } catch {
+    return "not-responding";
+  }
+}
+
 /**
  * Find every dune dev/serve instance on this machine.
  *
@@ -325,7 +362,10 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
  * port, uptime, command) rather than a false negative — but `root`/`title`
  * are null in that case, and the caller should say so plainly.
  */
-export async function findDuneInstances(): Promise<DuneInstance[]> {
+export async function findDuneInstances(
+  opts: { probe?: (port: number) => Promise<"responding" | "not-responding"> } = {},
+): Promise<DuneInstance[]> {
+  const probe = opts.probe ?? probeResponsive;
   const table = await readProcessTable();
   const byPid = new Map(table.map((r) => [r.pid, r]));
   const children = new Map<number, number[]>();
@@ -394,9 +434,49 @@ export async function findDuneInstances(): Promise<DuneInstance[]> {
       title,
       ports,
       portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
+      responsive: "unknown",
+      version: null,
       elapsed: c.elapsed,
       command: c.command,
     });
   }
+
+  // 5. Instances that registered themselves (runtime/instance-registry.ts):
+  // attach what they report about themselves, and add any the command-line
+  // matching missed (a server started in an unusual way).
+  for (const rec of await listRegisteredInstances()) {
+    const existing = instances.find((i) => i.pids.includes(rec.pid));
+    if (existing) {
+      existing.version = rec.version;
+      if (existing.root === null) {
+        existing.root = rec.root;
+        existing.title = rec.title ?? (await readSiteTitle(rec.root));
+      }
+      continue;
+    }
+    const row = byPid.get(rec.pid);
+    if (!row) continue;
+    const pids = [rec.pid, ...descendantsOf(rec.pid, children)];
+    const ports = haveLsof ? await getListeningPorts(pids) : [];
+    instances.push({
+      pid: rec.pid,
+      pids,
+      mode: rec.mode,
+      root: rec.root,
+      title: rec.title ?? (await readSiteTitle(rec.root)),
+      ports,
+      portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
+      responsive: "unknown",
+      version: rec.version,
+      elapsed: row.elapsed,
+      command: row.command,
+    });
+  }
+
+  // 6. Probe every listening instance, all at once.
+  await Promise.all(instances.map(async (inst) => {
+    if (inst.ports.length > 0) inst.responsive = await probe(inst.ports[0]);
+  }));
+
   return instances.sort((a, b) => a.pid - b.pid);
 }
