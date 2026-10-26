@@ -184,6 +184,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
       },
     );
 
+    watchdog.ready();
     await server.finished;
     await drainInFlight(() => inFlight, drainDeadlineMs);
     cleanup();
@@ -393,6 +394,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     },
   );
 
+  watchdog.ready();
   await server.finished;
 
   // Safety-net drain poll — in normal operation inFlight is already 0 here

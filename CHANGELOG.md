@@ -41,14 +41,34 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   thread that serves every request, so every URL stops answering at once, with
   nothing in the logs. `dune dev` and `dune serve` now run a small watchdog
   Worker that expects a heartbeat from the main thread every second. After 15
-  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`) it writes a report to
-  `<site>/.dune/hangs/` naming the requests that were in flight (plus a native
-  stack sample on macOS), logs the same lines to stderr, and SIGKILLs the
-  process so a supervisor (systemd `Restart=`, the `dune dev` wrapper exiting
-  non-zero) sees a dead process instead of a zombie. `DUNE_WATCHDOG=warn`
-  reports without killing; `DUNE_WATCHDOG=off` disables it. The process is
-  killed with SIGKILL rather than `Deno.exit()` because an exit requested from a
-  Worker only ends the Worker — the spinning main thread carries on.
+  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`; 2 minutes until the server is
+  up, `DUNE_WATCHDOG_STARTUP_TIMEOUT_MS`, so a large site's initial indexing
+  can't put a supervised process into a kill/restart loop) it writes a report
+  to `<site>/.dune/hangs/` naming the requests that were in flight (path
+  segments longer than 24 characters are cut, so tokens in URLs don't land in
+  it; the newest 20 reports are kept; plus a native stack sample on macOS), logs
+  the same lines to stderr, and SIGKILLs the process so a supervisor (systemd
+  `Restart=`; the `dune dev` wrapper exits 137) sees a dead process instead of
+  a zombie. The kill always happens: writing the report is abandoned after 5
+  seconds. `DUNE_WATCHDOG=warn` reports without killing and is chosen
+  automatically when the process runs under `--inspect`/`--inspect-brk` (a
+  breakpoint pauses only the main thread); `DUNE_WATCHDOG=off` disables it. A
+  process that is suspended and resumed (laptop sleep, Ctrl-Z) is not mistaken
+  for a hang: the stall clock is monotonic and the Worker discards a gap in its
+  own ticks. It kills with SIGKILL rather than `Deno.exit()` because an exit
+  requested from a Worker only ends the Worker — the spinning main thread
+  carries on.
+- **Telling the watchdog about legitimately synchronous work.** The watchdog
+  can't tell an infinite loop from a long computation, only whether the loop is
+  making progress. `@dune/core/watchdog` exports two functions for code that
+  blocks on purpose: `watchdogProgress()`, called per item inside a long
+  synchronous loop (counts as a heartbeat; rate-limited, so cheap), and
+  `watchdogGrace(ms, reason)`, a declared busy window for a single long native
+  call (capped at 10 minutes, nests, expires on its own, logged each time). A
+  loop that calls `watchdogProgress()` on every iteration of an unbounded loop
+  looks alive forever; use it only where the loop has a natural end. Measured
+  on a 4,474-page site: startup indexing and the search build never held the
+  event loop for over a second, so none of Dune's own loops needed either call.
 - The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
   it was held for over a second, which shows a creeping problem before it
   becomes a hang.
