@@ -36,6 +36,25 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   Islands in a fragment render on the server but do not hydrate when swapped
   into a page after load.
 
+- **`dune ps` now tells a hung server from a healthy one, and finds servers
+  that registered themselves.** Every listening instance is sent a `GET
+  /health/live` (which shows up in its access log): to the port it registered
+  when it did, otherwise to every port it listens on, counting only dune's own
+  answer so a debugger's inspector port can't make a hung server look healthy.
+  A blocked event loop still lets the kernel accept the connection but never
+  answers it, so an instance that fails three probes in a row (3 seconds each,
+  about 10 seconds in all) is shown as **NOT RESPONDING** and counted
+  separately — it looks perfectly healthy to `lsof`. One failed probe proves
+  nothing, and a port that speaks HTTP but not like dune gives "can't tell",
+  not a hung verdict. Instances that wrote an entry to the instance registry
+  are also listed even if their command line doesn't look like dune, count as
+  confirmed, and show their `@dune/core` version. `dune stop --idle` also takes
+  confirmed instances that are listening but not responding, once they are at
+  least 2 minutes old. With the watchdog in its default mode a hung server is
+  killed within seconds, so this mostly matters under `DUNE_WATCHDOG=warn`/`off`;
+  a server stuck in a loop can't handle SIGTERM, so `dune stop <pid> --force` is
+  how to end one.
+
 - **Running instances now register themselves.** `dune dev` and `dune serve`
   write a small record (pid, process start time, mode, site root, title, port,
   `@dune/core` version) to `~/.dune/instances/<pid>.json`

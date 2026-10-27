@@ -165,7 +165,7 @@ export interface StopOptions {
   pid?: string;
   /** The instance listening on this port. */
   port?: string;
-  /** Only instances that are running but not listening (hung or leftover). */
+  /** Only instances that aren't serving: running but not listening, or listening but not responding (hung or leftover). */
   idle?: boolean;
   /** Every instance `dune ps` lists. */
   all?: boolean;
@@ -182,8 +182,9 @@ export const STOP_USAGE = `Usage: dune stop <pid> | --port <n> | --idle | --all 
 
   <pid>        the instance this process belongs to (see \`dune ps\`)
   --port <n>   the instance listening on that port
-  --idle       only instances that are running but have not been
-               listening for at least 2 minutes (younger ones may still
+  --idle       only instances that aren't serving: running but not
+               listening, or listening but not responding to a health
+               check, for at least 2 minutes (younger ones may still
                be starting)
   --all        every confirmed instance \`dune ps\` lists
   --force      SIGKILL processes that ignore SIGTERM (default: report them)
@@ -252,12 +253,12 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
   }
 
   if (opts.idle) {
-    const notServing = confirmed.filter((i) => i.portStatus === "not-listening");
+    const notServing = confirmed.filter((i) => i.portStatus === "not-listening" || i.responsive === "not-responding");
     const mature = notServing.filter((i) => i.ageSeconds === null || i.ageSeconds >= IDLE_MIN_AGE_SECONDS);
     const young = notServing.length - mature.length;
     if (young > 0) {
       notes.push(
-        `${plural(young, "instance", "instances")} not listening yet ${young === 1 ? "was" : "were"} left out because ` +
+        `${plural(young, "instance", "instances")} not serving yet ${young === 1 ? "was" : "were"} left out because ` +
           `${young === 1 ? "it is" : "they are"} under ${IDLE_MIN_AGE_SECONDS / 60} minutes old and may still be starting.`,
       );
     }
@@ -273,7 +274,7 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
       const why = [...notes].map((n) => `\n  ${n}`).join("");
       return {
         ok: false,
-        message: `No idle instances: ${confirmed.length === 0 ? "none of the running instances is a confirmed dune site" : `all ${confirmed.length} confirmed running instance${confirmed.length === 1 ? " is" : "s are"} listening`}.${why}`,
+        message: `No idle instances: ${confirmed.length === 0 ? "none of the running instances is a confirmed dune site" : `all ${confirmed.length} confirmed running instance${confirmed.length === 1 ? " is" : "s are"} listening and responding`}.${why}`,
         exitCode: 0,
       };
     }

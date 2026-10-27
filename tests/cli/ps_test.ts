@@ -17,6 +17,9 @@ import {
   findDuneInstances,
   matchDuneCommand,
   parseRootArg,
+  judgeResponsive,
+  type PortProbe,
+  probePort,
 } from "../../src/cli/instances.ts";
 import { psCommand } from "../../src/cli/ps.ts";
 import { commandSiteRootHint, parseElapsedSeconds, readProcessTable } from "../../src/cli/instances.ts";
@@ -453,6 +456,213 @@ Deno.test("findDuneInstances: an unrelated main.ts run from INSIDE a site direct
   }
 });
 
+// ── health probe and registry ────────────────────────────────────────────────
+
+/** Server shape for a listener that accepts TCP connections but never answers HTTP. */
+const MUTE_SERVER = (port: number) =>
+  `const l = Deno.listen({ port: ${port} });\nsetInterval(() => {}, 1000);\nawait new Promise(() => {});\n`;
+
+const quickProbe = (port: number) => probePort(port, 600);
+const fastOpts = { probe: quickProbe, probeAttempts: 2, probeGapMs: 100 };
+
+Deno.test("probePort: dune's own health answer, some other HTTP service, and silence are told apart", opts, async () => {
+  const dune = Deno.serve({ port: 18_921, onListen: () => {} }, () => Response.json({ status: "alive" }));
+  const other = Deno.serve({ port: 18_928, onListen: () => {} }, () => new Response("nope", { status: 404 }));
+  const listener = Deno.listen({ port: 18_922 }); // accepts the connection, never answers
+  try {
+    assertEquals(await probePort(18_921, 2000), "dune");
+    assertEquals(await probePort(18_928, 2000), "other");
+    assertEquals(await probePort(18_922, 500), "none");
+  } finally {
+    listener.close();
+    await dune.shutdown();
+    await other.shutdown();
+  }
+  assertEquals(await probePort(18_923, 500), "none", "a closed port");
+});
+
+Deno.test("judgeResponsive: one slow or failed probe is not enough; it takes every attempt failing", async () => {
+  let calls = 0;
+  const flaky = (): Promise<PortProbe> => Promise.resolve(++calls < 3 ? "none" : "dune");
+  assertEquals(await judgeResponsive([3000], null, flaky, 3, 1), "responding", "answered on the third attempt");
+  assertEquals(calls, 3);
+  assertEquals(await judgeResponsive([3000], null, () => Promise.resolve("none"), 3, 1), "not-responding");
+});
+
+Deno.test("judgeResponsive: the registered port is the one that counts, and any HTTP answer from it is enough", async () => {
+  const probed: number[] = [];
+  const probe = (p: number): Promise<PortProbe> => { probed.push(p); return Promise.resolve(p === 10_000 ? "other" : "dune"); };
+  // A debugger on 9229 would answer, but the site registered 10000.
+  assertEquals(await judgeResponsive([9229, 10_000], 10_000, probe, 1, 1), "responding");
+  assertEquals(probed, [10_000], "only the registered port is probed");
+});
+
+Deno.test("judgeResponsive: without a registered port every listening port is probed, and only dune's own answer counts", async () => {
+  // Hung site on 10000 (silent) + an inspector on 9229 (answers HTTP, not like dune): never "responding".
+  const probe = (p: number): Promise<PortProbe> => Promise.resolve(p === 9229 ? "other" : "none");
+  assertEquals(await judgeResponsive([9229, 10_000], null, probe, 2, 1), "unknown", "can't tell — not claimed to be hung");
+  // Healthy site on 10000 alongside the inspector.
+  const healthy = (p: number): Promise<PortProbe> => Promise.resolve(p === 9229 ? "other" : "dune");
+  assertEquals(await judgeResponsive([9229, 10_000], null, healthy, 2, 1), "responding");
+  assertEquals(await judgeResponsive([], null, healthy), "unknown", "nothing listening, nothing to probe");
+});
+
+Deno.test("findDuneInstances: a listening instance that answers is 'responding'; one that accepts but never answers is 'not-responding'", opts, async () => {
+  const live = await makeSite("dune_test_ps_resp_", "Responding");
+  const mute = await makeSite("dune_test_ps_mute_", "Mute");
+  let a: Deno.ChildProcess | undefined;
+  let b: Deno.ChildProcess | undefined;
+  try {
+    await Deno.writeTextFile(join(live, "main.ts"), `Deno.serve({ port: 18924, onListen: () => {} }, () => Response.json({ status: "alive" }));\nawait new Promise(() => {});\n`);
+    await Deno.writeTextFile(join(mute, "main.ts"), MUTE_SERVER(18_925));
+    a = spawnDeno(["run", "-A", "main.ts", "serve"], live);
+    b = spawnDeno(["run", "-A", "main.ts", "serve"], mute);
+    await waitForPort(18_924);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const found = await findDuneInstances(fastOpts);
+    const ok = found.find((i) => i.pid === a!.pid);
+    const bad = found.find((i) => i.pid === b!.pid);
+    assertExists(ok);
+    assertExists(bad);
+    assertEquals(ok.responsive, "responding");
+    assertEquals(bad.portStatus, "listening", "it does hold the port");
+    assertEquals(bad.responsive, "not-responding");
+  } finally {
+    if (a) await stop(a);
+    if (b) await stop(b);
+    await Deno.remove(live, { recursive: true }).catch(() => {});
+    await Deno.remove(mute, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("findDuneInstances: a not-listening instance is not probed ('unknown')", opts, async () => {
+  const site = await makeSite("dune_test_ps_noprobe_", "Idle");
+  let child: Deno.ChildProcess | undefined;
+  try {
+    await Deno.writeTextFile(join(site, "main.ts"), `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`);
+    child = spawnDeno(["run", "-A", "main.ts", "serve"], site);
+    await new Promise((r) => setTimeout(r, 600));
+    const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
+    assertExists(found);
+    assertEquals(found.portStatus, "not-listening");
+    assertEquals(found.responsive, "unknown", "nothing to probe without a port");
+  } finally {
+    if (child) await stop(child);
+    await Deno.remove(site, { recursive: true }).catch(() => {});
+  }
+});
+
+/** Run `body` with DUNE_REGISTRY_DIR pointing at a fresh temp dir (for this process and any child it spawns). */
+async function withRegistryDir(fn: (dir: string) => Promise<void>): Promise<void> {
+  const dir = await Deno.makeTempDir({ prefix: "dune_test_ps_registry_" });
+  const prev = Deno.env.get("DUNE_REGISTRY_DIR");
+  Deno.env.set("DUNE_REGISTRY_DIR", dir);
+  try {
+    await fn(dir);
+  } finally {
+    if (prev === undefined) Deno.env.delete("DUNE_REGISTRY_DIR");
+    else Deno.env.set("DUNE_REGISTRY_DIR", prev);
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+}
+
+const REGISTRY_URL = new URL("../../src/runtime/instance-registry.ts", import.meta.url).href;
+// The child imports dune's own source, whose bare specifiers (@std/path) need dune's import map.
+const DUNE_CONFIG = new URL("../../deno.json", import.meta.url).pathname;
+
+Deno.test("findDuneInstances: a server whose command line doesn't look like dune is still found, via the registry", opts, async () => {
+  await withRegistryDir(async () => {
+    const site = await makeSite("dune_test_ps_regonly_", "Registry Only");
+    let child: Deno.ChildProcess | undefined;
+    try {
+      await Deno.writeTextFile(
+        join(site, "weird.ts"),
+        `import { registerInstance } from ${JSON.stringify(REGISTRY_URL)};\n` +
+          `await registerInstance({ mode: "serve", root: ${JSON.stringify(site)}, title: "Registry Only", port: 18926, version: "9.9.9" });\n` +
+          SERVER(18_926) + `await new Promise(() => {});\n`,
+      );
+      child = spawnDeno(["run", "-A", `--config=${DUNE_CONFIG}`, "weird.ts"], site);
+      await waitForPort(18_926);
+      await new Promise((r) => setTimeout(r, 500));
+
+      const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
+      assertExists(found, "the registry should reveal a process the command-line matching can't");
+      assertEquals(found.version, "9.9.9");
+      assertEquals(found.mode, "serve");
+      assertEquals(found.root, site);
+      assertEquals(found.title, "Registry Only");
+      assertEquals(found.ports, [18_926]);
+      assertEquals(found.responsive, "responding");
+    } finally {
+      if (child) await stop(child);
+      await Deno.remove(site, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
+Deno.test("findDuneInstances: a registered process that command-line matching also finds appears once, with its version", opts, async () => {
+  await withRegistryDir(async () => {
+    const site = await makeSite("dune_test_ps_regboth_", "Both");
+    let child: Deno.ChildProcess | undefined;
+    try {
+      await Deno.writeTextFile(
+        join(site, "main.ts"),
+        `import { registerInstance } from ${JSON.stringify(REGISTRY_URL)};\n` +
+          `await registerInstance({ mode: "serve", root: ${JSON.stringify(site)}, title: "Both", port: 18927, version: "1.2.3" });\n` +
+          SERVER(18_927) + `await new Promise(() => {});\n`,
+      );
+      child = spawnDeno(["run", "-A", `--config=${DUNE_CONFIG}`, "main.ts", "serve"], site);
+      await waitForPort(18_927);
+      await new Promise((r) => setTimeout(r, 500));
+      const mine = (await findDuneInstances(fastOpts)).filter((i) => i.pids.includes(child!.pid));
+      assertEquals(mine.length, 1);
+      assertEquals(mine[0].version, "1.2.3");
+    } finally {
+      if (child) await stop(child);
+      await Deno.remove(site, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
+Deno.test("findDuneInstances: a registered process is confirmed even though its command line says nothing about a site", opts, async () => {
+  await withRegistryDir(async () => {
+    const site = await makeSite("dune_test_ps_regconf_", "Registered");
+    const elsewhere = await Deno.makeTempDir({ prefix: "dune_test_ps_regconf_tool_" });
+    let child: Deno.ChildProcess | undefined;
+    try {
+      await Deno.writeTextFile(
+        join(elsewhere, "main.ts"),
+        `import { registerInstance } from ${JSON.stringify(REGISTRY_URL)};\n` +
+          `await registerInstance({ mode: "serve", root: ${JSON.stringify(site)}, title: "Registered", port: null, version: "3.2.1" });\n` +
+          `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`,
+      );
+      // Started from a directory with no site, from a script outside any site: unconfirmed by its command line.
+      child = spawnDeno(["run", "-A", `--config=${DUNE_CONFIG}`, join(elsewhere, "main.ts"), "serve"], elsewhere);
+      await new Promise((r) => setTimeout(r, 1200));
+      const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
+      assertExists(found);
+      assertEquals(found.confirmed, true, "the process itself says it is a dune site");
+      assertEquals(found.version, "3.2.1");
+    } finally {
+      if (child) await stop(child);
+      await Deno.remove(site, { recursive: true }).catch(() => {});
+      await Deno.remove(elsewhere, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
+Deno.test("findDuneInstances: a stale registry record (process gone) adds nothing", opts, async () => {
+  await withRegistryDir(async (dir) => {
+    await Deno.writeTextFile(
+      join(dir, "999999.json"),
+      JSON.stringify({ pid: 999_999, processStart: "Mon Jan  1 00:00:00 2001", mode: "serve", root: "/nowhere", title: null, port: 1, version: "0", registeredAt: "x" }),
+    );
+    const found = await findDuneInstances(fastOpts);
+    assertEquals(found.some((i) => i.pid === 999_999), false);
+  });
+});
+
 // ── psCommand output (fakes only: never touches real processes) ──────────────
 
 async function runPs(instances: DuneInstance[]): Promise<string> {
@@ -489,8 +699,21 @@ Deno.test("psCommand: marks an unconfirmed instance as such", async () => {
   assertEquals((await runPs([fakeInstance()])).includes("not confirmed"), false);
 });
 
+Deno.test("psCommand: flags a listening-but-unresponsive instance, counts it, and shows the version when known", async () => {
+  const text = await runPs([
+    fakeInstance({ pid: 1, pids: [1], ports: [3000], portStatus: "listening", responsive: "not-responding", version: "0.34.14" }),
+    fakeInstance({ pid: 2, pids: [2], ports: [3001], portStatus: "listening", responsive: "responding" }),
+  ]);
+  assertEquals(text.includes("http://localhost:3000 — NOT RESPONDING"), true);
+  assertEquals(text.includes("http://localhost:3001\n") || text.includes("http://localhost:3001"), true);
+  assertEquals(text.includes("NOT RESPONDING") && text.split("NOT RESPONDING").length === 2, true, "only the stuck one is flagged");
+  assertEquals(text.includes("v0.34.14"), true);
+  assertEquals(text.includes("2 instances: 2 listening (1 not responding), 0 not listening"), true, text);
+  assertEquals(text.includes("`dune stop --idle`"), true);
+});
+
 Deno.test("psCommand: points at `dune stop` when idle instances exist, and only then", async () => {
   const withIdle = await runPs([LIVE(), IDLE()]);
-  assertEquals(withIdle.includes("`dune stop --idle` stops only the not-listening ones"), true);
+  assertEquals(withIdle.includes("`dune stop --idle` stops only the ones that aren't serving"), true);
   assertEquals((await runPs([LIVE()])).includes("dune stop"), false, "no hint when there is nothing idle");
 });
