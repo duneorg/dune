@@ -9,7 +9,23 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
-## [Unreleased]
+## [0.35.0] — 2026-10-27
+
+### Changed
+
+- **`dune dev` and `dune serve` now kill a server whose event loop is stuck.**
+  This is why this release is a Minor: an existing site that never changed can
+  now be stopped by the new watchdog (default mode `exit`, see below) if its
+  main thread goes 15 seconds without a heartbeat (2 minutes until the server
+  is up). Measured on a 4,474-page production site, the longest event-loop
+  block under load was about 0.6 seconds and startup took about 12 seconds, so
+  the limits leave a wide margin, but a site that blocks the main thread on
+  purpose for longer needs `DUNE_WATCHDOG_TIMEOUT_MS` raised, a call to
+  `watchdogProgress()` / `watchdogGrace()` from `@dune/core/watchdog`, or
+  `DUNE_WATCHDOG=warn` (log, never kill) / `DUNE_WATCHDOG=off`. To see what a
+  site would do before enabling the kill, run it with `DUNE_WATCHDOG=warn` for
+  a few days and read the log. Under a debugger (`--inspect`) the mode falls
+  back to `warn` on its own.
 
 ### Added
 
@@ -107,6 +123,31 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   it was held for over a second, which shows a creeping problem before it
   becomes a hang.
 
+- **`dune stop`** stops dune instances, with their whole process tree (including
+  any other tool a `deno task` wrapper started). A target is required, so
+  stopping every server on a machine always has to be asked for by name: `dune
+  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
+  --idle` (running but not listening for at least 2 minutes — younger ones may
+  still be starting; an instance whose port state is unknown, with no `lsof`,
+  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
+  *confirmed* instances: one whose own command line points at a dune site (the
+  directory of the `main.ts` it runs, its `--root`, or the dune CLI's working
+  directory, each holding a `config/site.yaml`). Merely running from inside a
+  site directory confirms nothing, so another Deno project's `main.ts serve`
+  is listed by `dune ps`, marked unconfirmed, and must be named by pid. The
+  prompt shows each instance's full command line. Only your own processes are
+  considered (read from the process table, no `--allow-sys` needed); without
+  `--allow-run` it says what to re-run with instead of reporting no instances,
+  and a kill Deno's permissions refuse is reported as such. It sends SIGTERM
+  and waits up to 10 seconds for a server to drain; a process that ignores it is reported, and only `--force` escalates to
+  SIGKILL. Each pid's start time is re-checked immediately before it is
+  signalled, so a pid that exited and was reused while the prompt was open is
+  never hit, and a signal the OS refuses is reported as such. It asks first
+  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
+  given), never signals itself or its parent processes, and exits 2 for a
+  usage error, 1 when a named pid/port matches nothing or something would not
+  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+
 ### Fixed
 
 - **`dune serve` did not exit after a graceful shutdown if anything was still
@@ -159,33 +200,15 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   instance, found from a single process-table snapshot (no more `pgrep`), and
   `--root` on the command line is used to find the site.
 
-### Added
+- **`dune validate` and `dune content:check` reported every translated page as
+  a duplicate route.** `default.md`, `default.de.md` and `default.fr.md` share a
+  route by design (the index is keyed on route and language); both checks
+  compared the route alone. They now compare the language too.
 
-- **`dune stop`** stops dune instances, with their whole process tree (including
-  any other tool a `deno task` wrapper started). A target is required, so
-  stopping every server on a machine always has to be asked for by name: `dune
-  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
-  --idle` (running but not listening for at least 2 minutes — younger ones may
-  still be starting; an instance whose port state is unknown, with no `lsof`,
-  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
-  *confirmed* instances: one whose own command line points at a dune site (the
-  directory of the `main.ts` it runs, its `--root`, or the dune CLI's working
-  directory, each holding a `config/site.yaml`). Merely running from inside a
-  site directory confirms nothing, so another Deno project's `main.ts serve`
-  is listed by `dune ps`, marked unconfirmed, and must be named by pid. The
-  prompt shows each instance's full command line. Only your own processes are
-  considered (read from the process table, no `--allow-sys` needed); without
-  `--allow-run` it says what to re-run with instead of reporting no instances,
-  and a kill Deno's permissions refuse is reported as such. It sends SIGTERM and waits up to 10 seconds for a server to
-  drain; a process that ignores it is reported, and only `--force` escalates to
-  SIGKILL. Each pid's start time is re-checked immediately before it is
-  signalled, so a pid that exited and was reused while the prompt was open is
-  never hit, and a signal the OS refuses is reported as such. It asks first
-  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
-  given), never signals itself or its parent processes, and exits 2 for a
-  usage error, 1 when a named pid/port matches nothing or something would not
-  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
-
+- **`dune content:delete` could race plugin setup.** `bootstrap()` returns
+  before async plugin `setup()` finishes, so the admin plugin could still be
+  creating `.dune/admin/audit` when the command returned. The command now
+  waits for plugin setup first.
 
 ## [0.34.14] — 2026-10-21
 

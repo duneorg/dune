@@ -42,7 +42,7 @@ jobs:
   # a pinned Deno version, matching the Dockerfile's own denoland/deno base
   # image) — this job is that repro made permanent, on a clean runner with no
   # pre-warmed npm/JSR cache. Deliberately not a `deno test` case: `dune new`
-  # writes a real `jsr:@dune/core@^0.34` import (the published package, not
+  # writes a real `jsr:@dune/core@^0.35` import (the published package, not
   # this checkout), so this exercises real network resolution against the
   # registry rather than the fast, offline, local-checkout paths the rest of
   # the suite covers (see live_boot_smoke_test.ts for that narrower, in-repo
