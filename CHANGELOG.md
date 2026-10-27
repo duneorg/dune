@@ -11,6 +11,20 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Security
+
+- **Template `output` that is `image/svg+xml` is served under the same sandbox
+  as uploaded SVG media** (`Content-Security-Policy: sandbox allow-scripts
+  allow-popups`, `X-Frame-Options: SAMEORIGIN`), including when it comes from
+  the page cache. Template code is trusted, so this is defence in depth: if a
+  theme interpolates page content into SVG without escaping it, script in the
+  SVG can no longer reach the site's cookies or same-origin endpoints when the
+  SVG is opened directly (SVG used as an `<img>` is unaffected). HTML
+  fragments are deliberately not sandboxed — they must stay embeddable, and
+  Preact escapes them — and `text/javascript` cannot be sandboxed, so escaping
+  what a template embeds in JavaScript or XML output stays the theme author's
+  job (documented).
+
 ### Added
 
 - **Template `output` modes: serve bare fragments, JSON, XML, text or any

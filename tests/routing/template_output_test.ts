@@ -11,7 +11,7 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.
 import { dirname, join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import { createDuneApp } from "../../src/runtime/server.ts";
-import { dataOutputBody, parseTemplateOutput } from "../../src/themes/output.ts";
+import { dataOutputBody, outputSecurityHeaders, parseTemplateOutput } from "../../src/themes/output.ts";
 
 // ── parseTemplateOutput / dataOutputBody (pure) ──────────────────────────────
 
@@ -82,6 +82,7 @@ const FILES: Record<string, string> = {
   "themes/t/templates/jsonout.tsx": `export const output = "json";\nexport default function J(props: any){ return { title: props.page.frontmatter.title, note: 'a "quoted" & <tag>' }; }`,
   "themes/t/templates/xmlout.tsx": `export const output = "xml";\nexport default async function X(){ return '<?xml version="1.0"?><r>&amp; ok</r>'; }`,
   "themes/t/templates/csvout.tsx": `export const output = "text/csv";\nexport default function C(){ return "a,b\\n1,2\\n"; }`,
+  "themes/t/templates/svgout.tsx": `export const output = "image/svg+xml";\nexport default function S(props: any){ return '<svg xmlns="http://www.w3.org/2000/svg"><text>' + props.page.frontmatter.title + '</text></svg>'; }`,
   "themes/t/templates/textout.tsx": `export const output = "text";\nexport default function T(){ return "plain <not html> & text"; }`,
   "themes/t/templates/badxml.tsx": `export const output = "xml";\nexport default function B(){ return { not: "a string" }; }`,
   "themes/t/templates/badout.tsx": P + `export const output = "yaml";\nexport default function B(){ return <p id="normal">still a page</p>; }`,
@@ -96,6 +97,7 @@ const FILES: Record<string, string> = {
   "content/03.data.md": "---\ntitle: Pricing\ntemplate: jsonout\nslug: pricing.json\n---\nbody\n",
   "content/04.feed.md": "---\ntitle: Feed\ntemplate: xmlout\nslug: items.xml\n---\nbody\n",
   "content/05.table.md": "---\ntitle: Table\ntemplate: csvout\nslug: table.csv\n---\nbody\n",
+  "content/10.badge.md": "---\ntitle: Badge\ntemplate: svgout\nslug: badge.svg\n---\nbody\n",
   "content/06.note.md": "---\ntitle: Note\ntemplate: textout\nslug: note.txt\n---\nbody\n",
   "content/07.bad.md": "---\ntitle: Bad\ntemplate: badxml\nslug: bad.xml\n---\nbody\n",
   "content/08.badout/default.md": "---\ntitle: BadOut\ntemplate: badout\n---\nbody\n",
@@ -306,4 +308,47 @@ Deno.test("a path that looks like media but matches neither a file nor a page is
     assertEquals((await get("/nothing.json")).status, 404);
     assertEquals((await get("/de/nothing.json")).status, 404);
   }, MULTILINGUAL);
+});
+
+
+// ── image/svg+xml output is sandboxed like uploaded SVG media ────────────────
+
+Deno.test("outputSecurityHeaders: only image/svg+xml gets the sandbox, whatever the case or parameters", () => {
+  const sandbox = { "Content-Security-Policy": "sandbox allow-scripts allow-popups", "X-Frame-Options": "SAMEORIGIN" };
+  assertEquals(outputSecurityHeaders("image/svg+xml"), sandbox);
+  assertEquals(outputSecurityHeaders("image/svg+xml; charset=utf-8"), sandbox);
+  assertEquals(outputSecurityHeaders("IMAGE/SVG+XML"), sandbox);
+  for (const t of ["text/html; charset=utf-8", "application/json; charset=utf-8", "application/xml; charset=utf-8", "text/plain; charset=utf-8", "text/javascript; charset=utf-8", "image/png"]) {
+    assertEquals(outputSecurityHeaders(t), {}, t);
+  }
+});
+
+Deno.test("an image/svg+xml output is served with the sandbox CSP; fragments, JSON and XML are not", opts, async () => {
+  await withApp(false, async (get) => {
+    const svg = await get("/badge.svg");
+    assertEquals(svg.status, 200);
+    assertEquals(svg.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+    assertEquals(svg.headers.get("content-security-policy"), "sandbox allow-scripts allow-popups");
+    assertEquals(svg.headers.get("x-frame-options"), "SAMEORIGIN");
+    assertEquals(svg.headers.get("x-content-type-options"), "nosniff");
+    assertStringIncludes(await svg.text(), "<svg");
+    for (const path of ["/frag/", "/pricing.json", "/items.xml", "/note.txt"]) {
+      const res = await get(path);
+      assertEquals(res.headers.get("content-security-policy"), null, `${path} must stay unsandboxed`);
+      await res.body?.cancel();
+    }
+  });
+});
+
+Deno.test("with the page cache on, an SVG output keeps its sandbox on every request, not just the first", opts, async () => {
+  await withApp(false, async (get) => {
+    for (let i = 1; i <= 3; i++) {
+      const res = await get("/badge.svg");
+      assertEquals(res.status, 200, `#${i}`);
+      assertEquals(res.headers.get("content-type"), "image/svg+xml; charset=utf-8", `#${i}`);
+      assertEquals(res.headers.get("content-security-policy"), "sandbox allow-scripts allow-popups", `request #${i} (#1 fills the cache, 2 and 3 are hits)`);
+      assertEquals(res.headers.get("x-frame-options"), "SAMEORIGIN", `#${i}`);
+      await res.body?.cancel();
+    }
+  }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
 });

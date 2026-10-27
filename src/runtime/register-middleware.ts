@@ -1,3 +1,4 @@
+import { outputSecurityHeaders } from "../themes/output.ts";
 import type { App } from "fresh";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { HttpCacheRule } from "../config/types.ts";
@@ -230,6 +231,9 @@ export function registerContentCatchAll(
                       "Content-Type": cached.contentType,
                       "ETag": etag,
                       "Cache-Control": ccValue,
+                      // The cache keeps only the body and type, so re-derive
+                      // the sandbox an SVG output was first served with.
+                      ...outputSecurityHeaders(cached.contentType),
                     },
                   }),
                 ),

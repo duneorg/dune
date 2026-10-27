@@ -90,3 +90,25 @@ export function dataOutputBody(result: unknown, output: TemplateOutput, template
       `${output.json ? " or a JSON-serializable value" : ""}, got ${result === null ? "null" : typeof result}`,
   );
 }
+
+/**
+ * Extra response headers for a bare output of this media type.
+ *
+ * `image/svg+xml` gets the same sandbox uploaded SVG media gets (see
+ * `registerContentCatchAll`): script inside an SVG that is opened directly runs
+ * in an opaque origin, so it can't read the site's cookies or call same-origin
+ * endpoints, which matters if a template interpolates page content into SVG
+ * without escaping it. SVG used as an `<img>` is unaffected. HTML fragments are
+ * deliberately left alone (they must stay embeddable, and Preact escapes them),
+ * and `text/javascript` can't be sandboxed, so that stays a documented
+ * responsibility of the theme author.
+ */
+export function outputSecurityHeaders(contentType: string): Record<string, string> {
+  if (contentType.split(";")[0].trim().toLowerCase() === "image/svg+xml") {
+    return {
+      "Content-Security-Policy": "sandbox allow-scripts allow-popups",
+      "X-Frame-Options": "SAMEORIGIN",
+    };
+  }
+  return {};
+}
