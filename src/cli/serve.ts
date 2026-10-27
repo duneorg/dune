@@ -98,6 +98,21 @@ async function drainInFlight(
   }
 }
 
+/**
+ * End the process once a graceful shutdown has finished draining.
+ *
+ * Returning from `serveCommand()` and letting the event loop empty is not
+ * enough: any plugin timer or handle that is still ref'd keeps the process
+ * alive, and it then sits there forever at 0% CPU with no listener (an "idle"
+ * instance that a second SIGTERM is needed to end). plugin-admin's collab
+ * eviction interval did exactly this until 3.1.3. By this point the listener
+ * is closed and in-flight requests are drained (or the drain deadline has
+ * passed), so there is nothing left worth waiting for.
+ */
+function exitAfterShutdown(): void {
+  Deno.exit(0);
+}
+
 // ---------------------------------------------------------------------------
 // Main command
 // ---------------------------------------------------------------------------
@@ -191,6 +206,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     instance?.unregister();
     watchdog.stop();
     console.log("[dune] shutdown complete");
+    exitAfterShutdown();
     return;
   }
 
@@ -411,4 +427,5 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   instance?.unregister();
   watchdog.stop();
   console.log("[dune] shutdown complete");
+  exitAfterShutdown();
 }

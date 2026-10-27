@@ -13,17 +13,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **Running instances now register themselves.** `dune dev` and `dune serve`
-  write a small record (pid, process start time, mode, site root, title, port,
-  `@dune/core` version) to `~/.dune/instances/<pid>.json`
-  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
-  exit. A kill or crash leaves the file behind, so readers confirm the pid is
-  alive *and* has the recorded start time (pids get reused) and delete the ones
-  that fail. This is groundwork for `dune ps` to list instances from what each
-  one says about itself rather than guessing from command lines and `lsof`;
-  nothing reads it yet, and a registry that can't be written never stops a
-  server from starting. Unix only.
-
 - **`dune ps` now tells a hung server from a healthy one, and finds servers
   that registered themselves.** Every listening instance is sent a `GET
   /health/live` (which shows up in its access log): to the port it registered
@@ -43,6 +32,16 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   a server stuck in a loop can't handle SIGTERM, so `dune stop <pid> --force` is
   how to end one.
 
+- **Running instances now register themselves.** `dune dev` and `dune serve`
+  write a small record (pid, process start time, mode, site root, title, port,
+  `@dune/core` version) to `~/.dune/instances/<pid>.json`
+  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
+  exit. A kill or crash leaves the file behind, so readers confirm the pid is
+  alive *and* has the recorded start time (pids get reused) and delete the ones
+  that fail. This is groundwork for `dune ps` to list instances from what each
+  one says about itself rather than guessing from command lines and `lsof`;
+  nothing reads it yet, and a registry that can't be written never stops a
+  server from starting. Unix only.
 - **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
   silently until someone restarts it.** One synchronous loop (catastrophic
   regex backtracking, a conversion that never terminates) blocks the single
@@ -82,6 +81,18 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   becomes a hang.
 
 ### Fixed
+
+- **`dune serve` did not exit after a graceful shutdown if anything was still
+  running.** On SIGTERM it closed the listener, drained, printed `shutdown
+  complete`, and then just returned, so the process lived only as long as the
+  event loop had work. One ref'd plugin timer (`@dune/plugin-admin`'s collab
+  eviction interval, fixed in 3.1.3) was enough to keep it alive forever at 0%
+  CPU with no listener — an "idle" instance that a *second* SIGTERM was needed
+  to end. `serve` now exits explicitly once the drain is done (single-site and
+  multi-site), so no plugin timer can hold the process open. Covered by a test
+  that runs the real `dune serve`, gives it a plugin holding a ref'd timer, and
+  checks that one SIGTERM ends it. (The multi-site shutdown path has the same
+  change but no end-to-end test.)
 
 - **Co-located audio and video could not seek, and would not play in
   Safari/iOS.** Media files were always answered with a full `200` body and no
