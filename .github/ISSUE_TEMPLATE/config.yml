@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/duneorg/dune/security/advisories/new
+    about: Report it privately here, not in a public issue. See SECURITY.md.
   - name: Documentation
     url: https://getdune.org
     about: Check the docs first; many setup questions are answered there.
