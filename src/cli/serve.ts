@@ -32,6 +32,9 @@ import type { Scheduler, ScheduledAction } from "../workflow/mod.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
+import { startWatchdog } from "../runtime/watchdog.ts";
+import { type InstanceHandle, registerInstance } from "../runtime/instance-registry.ts";
+import { CORE_VERSION } from "../plugins/mod.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -95,6 +98,21 @@ async function drainInFlight(
   }
 }
 
+/**
+ * End the process once a graceful shutdown has finished draining.
+ *
+ * Returning from `serveCommand()` and letting the event loop empty is not
+ * enough: any plugin timer or handle that is still ref'd keeps the process
+ * alive, and it then sits there forever at 0% CPU with no listener (an "idle"
+ * instance that a second SIGTERM is needed to end). plugin-admin's collab
+ * eviction interval did exactly this until 3.1.3. By this point the listener
+ * is closed and in-flight requests are drained (or the drain deadline has
+ * passed), so there is nothing left worth waiting for.
+ */
+function exitAfterShutdown(): void {
+  Deno.exit(0);
+}
+
 // ---------------------------------------------------------------------------
 // Main command
 // ---------------------------------------------------------------------------
@@ -105,6 +123,14 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // Resolve root to an absolute path immediately.  The CLI may pass a relative
   // path and we Deno.chdir() later, which would invalidate relative paths.
   root = resolve(root);
+
+  // See runtime/watchdog.ts. Its Worker can't be unref'd, so both graceful-
+  // shutdown paths below stop it explicitly or the process would never exit.
+  const watchdog = startWatchdog({ root, label: "dune serve" });
+
+  // Tell `dune ps` about this process (runtime/instance-registry.ts). Removed
+  // again on graceful shutdown; a kill leaves a stale file that readers prune.
+  let instance: InstanceHandle | undefined;
 
   // ── Lockfile staleness check ─────────────────────────────────────────────
   if (await checkLockfileStaleness(root)) {
@@ -137,6 +163,9 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     const { MultisiteManager } = await import("../multisite/mod.ts");
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: false });
+    instance = await registerInstance({
+      mode: "serve", root, title: null, port, version: CORE_VERSION,
+    });
     console.log(`  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
 
     // ── Graceful shutdown (multi-site) ──────────────────────────────────────
@@ -170,10 +199,14 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
       },
     );
 
+    watchdog.ready();
     await server.finished;
     await drainInFlight(() => inFlight, drainDeadlineMs);
     cleanup();
+    instance?.unregister();
+    watchdog.stop();
     console.log("[dune] shutdown complete");
+    exitAfterShutdown();
     return;
   }
 
@@ -182,6 +215,9 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, config, pluginPublicRoutes, storage, hooks } = ctx;
+  instance = await registerInstance({
+    mode: "serve", root, title: config.site.title ?? null, port, version: CORE_VERSION,
+  });
   const adminPrefix = config.admin?.path ?? "/admin";
 
   // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
@@ -374,6 +410,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     },
   );
 
+  watchdog.ready();
   await server.finished;
 
   // Safety-net drain poll — in normal operation inFlight is already 0 here
@@ -387,5 +424,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // flush step is required here.
 
   cleanup();
+  instance?.unregister();
+  watchdog.stop();
   console.log("[dune] shutdown complete");
+  exitAfterShutdown();
 }

@@ -251,3 +251,59 @@ Deno.test("with the page cache on, a cached JSON body is never served as text/ht
     "content/09.hostile.md": "---\ntitle: H\ntemplate: hostile\nslug: hostile.json\n---\nx\n",
   });
 });
+
+// ── interplay with the media branch (HTTP Range / media-link work on main) ──
+//
+// registerContentCatchAll sends any path whose last segment looks like a media
+// file (`.json`, `.html`, ...) to the media branch first. A content-backed
+// `/pricing.json` must still fall through to the content handler when no
+// co-located file has that name — also behind a language prefix.
+
+const MULTILINGUAL: Record<string, string> = {
+  "config/system.yaml": "languages:\n  supported: [en, de]\n  default: en\n",
+  "content/03.data.de.md": "---\ntitle: Preise\ntemplate: jsonout\nslug: pricing.json\n---\nKörper\n",
+};
+
+Deno.test("a content-backed /pricing.json reaches the template, not the media branch, with the right Content-Type", opts, async () => {
+  await withApp(false, async (get) => {
+    const res = await get("/pricing.json");
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8");
+    assertEquals(JSON.parse(await res.text()).title, "Pricing");
+    // Not the media branch's answer: no Accept-Ranges, no media caching header.
+    assertEquals(res.headers.get("accept-ranges"), null);
+  });
+});
+
+Deno.test("multilingual site: /pricing.json and /de/pricing.json each serve their own template output as JSON", opts, async () => {
+  await withApp(false, async (get) => {
+    const en = await get("/pricing.json");
+    assertEquals(en.status, 200);
+    assertEquals(en.headers.get("content-type"), "application/json; charset=utf-8");
+    assertEquals(JSON.parse(await en.text()).title, "Pricing");
+
+    const de = await get("/de/pricing.json");
+    assertEquals(de.status, 200, "the language-prefixed path must fall through the media branch too");
+    assertEquals(de.headers.get("content-type"), "application/json; charset=utf-8");
+    assertEquals(JSON.parse(await de.text()).title, "Preise");
+  }, MULTILINGUAL);
+});
+
+Deno.test("a real co-located .json file in a page folder is still served as media (Range-capable), not as a page", opts, async () => {
+  await withApp(false, async (get) => {
+    const res = await get("/docs/data.json");
+    assertEquals(res.status, 200);
+    assertEquals(await res.text(), '{"colocated":true}');
+    assertEquals(res.headers.get("accept-ranges"), "bytes");
+  }, {
+    "content/09.docs/default.md": "---\ntitle: Docs\n---\nhi\n",
+    "content/09.docs/data.json": '{"colocated":true}',
+  });
+});
+
+Deno.test("a path that looks like media but matches neither a file nor a page is a plain 404", opts, async () => {
+  await withApp(false, async (get) => {
+    assertEquals((await get("/nothing.json")).status, 404);
+    assertEquals((await get("/de/nothing.json")).status, 404);
+  }, MULTILINGUAL);
+});

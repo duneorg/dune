@@ -105,7 +105,7 @@ export async function handleMarkdownPage(
   } else {
     html = await page.html();
     if (supportedLangs.length > 1) {
-      html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs);
+      html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs, page.media);
     }
   }
   const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });

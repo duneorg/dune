@@ -3,6 +3,8 @@ import type { BootstrapResult } from "./bootstrap.ts";
 import type { HttpCacheRule } from "../config/types.ts";
 import type { PageCache } from "../cache/mod.ts";
 import { isMediaFile } from "../content/path-utils.ts";
+import { mediaBodyResponse } from "../routing/media-response.ts";
+import { stripLangPrefix } from "../routing/link-rewriter.ts";
 import {
   injectBasePath,
   injectFeedLinks,
@@ -121,7 +123,13 @@ export function registerContentCatchAll(
       // Serve co-located media before routing to the content handler.
       const lastSegment = url.pathname.split("/").pop() ?? "";
       if (lastSegment && isMediaFile(lastSegment)) {
-        const owner = findPageForMediaUrl(engine.pages, url.pathname);
+        // Co-located media lives at its unprefixed route path; accept a
+        // language-prefixed URL (/de/blog/doc.pdf) too. Gate on the real owner.
+        const mediaPathname = stripLangPrefix(
+          url.pathname,
+          config.system.languages?.supported ?? [],
+        );
+        const owner = findPageForMediaUrl(engine.pages, mediaPathname);
         if (owner && !(await canAccessIndexEntry(req, owner))) {
           response = new Response("Not found", { status: 404 });
           metrics?.recordRequest(
@@ -131,7 +139,7 @@ export function registerContentCatchAll(
           );
           return response;
         }
-        const mediaPath = url.pathname.slice(1);
+        const mediaPath = mediaPathname.slice(1);
         const media = await engine.serveMedia(mediaPath);
         if (media) {
           const imageResult = await imageHandler(req);
@@ -149,7 +157,6 @@ export function registerContentCatchAll(
           } else {
             const headers: Record<string, string> = {
               "Content-Type": media.contentType,
-              "Content-Length": String(media.size),
               "Cache-Control": owner?.gated
                 ? "private, no-store"
                 : "public, max-age=3600",
@@ -165,7 +172,7 @@ export function registerContentCatchAll(
                 "sandbox allow-scripts allow-popups";
               headers["X-Frame-Options"] = "SAMEORIGIN";
             }
-            response = new Response(media.data as BodyInit, { headers });
+            response = mediaBodyResponse(req, media, headers);
           }
           metrics?.recordRequest(
             url.pathname,

@@ -22,6 +22,9 @@ import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { registerEsbuildWorkerCleanup } from "./esbuild-cleanup.ts";
+import { startWatchdog } from "../runtime/watchdog.ts";
+import { registerInstance } from "../runtime/instance-registry.ts";
+import { CORE_VERSION } from "../plugins/mod.ts";
 
 export interface DevOptions {
   port?: number;
@@ -35,6 +38,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // path (e.g. "zumbrunn/zumbrunn.com") and we Deno.chdir() later, which would
   // invalidate any relative paths computed against the original cwd.
   root = resolve(root);
+
+  // A server whose event loop is stuck can't answer anything, log anything or
+  // be stopped gracefully; see runtime/watchdog.ts. Dev has no graceful-exit
+  // path to hook (Ctrl-C / --watch restarts end the process), so no stop().
+  const watchdog = startWatchdog({ root, label: "dune dev" });
 
   registerEsbuildWorkerCleanup();
 
@@ -59,8 +67,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     const { MultisiteManager } = await import("../multisite/mod.ts");
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: true });
+    await registerInstance({ mode: "dev", root, title: null, port, version: CORE_VERSION });
     console.log(`\n  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
     Deno.serve({ port, handler: (req, info) => manager.handle(req, info) });
+    watchdog.ready();
     return;
   }
 
@@ -69,6 +79,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, collections, taxonomy, search, config, pluginPublicRoutes, hooks } = ctx;
+  // For `dune ps` (runtime/instance-registry.ts). Dev ends via signals or a
+  // --watch restart rather than a graceful path, so the record is left to the
+  // unload handler and, failing that, to readers pruning it.
+  await registerInstance({
+    mode: "dev", root, title: config.site.title ?? null, port, version: CORE_VERSION,
+  });
   const adminPrefix = config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
@@ -207,6 +223,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     const { app, notifyReload } = await createDuneApp(ctx, { root, port, debug, dev: true });
     // Wire the content watcher's notifyReload reference now that the app is built.
     notifyContentReload = notifyReload;
+    // Startup is over: from here on the normal (short) stall limit applies.
+    watchdog.ready();
     return app;
   }, { port });
 }

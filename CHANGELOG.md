@@ -9,7 +9,7 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
-## [0.34.15] — 2026-10-21
+## [Unreleased]
 
 ### Added
 
@@ -35,6 +35,134 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   a data template that returns the wrong type is a 500 naming the template.
   Islands in a fragment render on the server but do not hydrate when swapped
   into a page after load.
+
+- **Running instances now register themselves.** `dune dev` and `dune serve`
+  write a small record (pid, process start time, mode, site root, title, port,
+  `@dune/core` version) to `~/.dune/instances/<pid>.json`
+  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
+  exit. A kill or crash leaves the file behind, so readers confirm the pid is
+  alive *and* has the recorded start time (pids get reused) and delete the ones
+  that fail. This is groundwork for `dune ps` to list instances from what each
+  one says about itself rather than guessing from command lines and `lsof`;
+  nothing reads it yet, and a registry that can't be written never stops a
+  server from starting. Unix only.
+- **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
+  silently until someone restarts it.** One synchronous loop (catastrophic
+  regex backtracking, a conversion that never terminates) blocks the single
+  thread that serves every request, so every URL stops answering at once, with
+  nothing in the logs. `dune dev` and `dune serve` now run a small watchdog
+  Worker that expects a heartbeat from the main thread every second. After 15
+  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`; 2 minutes until the server is
+  up, `DUNE_WATCHDOG_STARTUP_TIMEOUT_MS`, so a large site's initial indexing
+  can't put a supervised process into a kill/restart loop) it writes a report
+  to `<site>/.dune/hangs/` naming the requests that were in flight (path
+  segments longer than 24 characters are cut, so tokens in URLs don't land in
+  it; the newest 20 reports are kept; plus a native stack sample on macOS), logs
+  the same lines to stderr, and SIGKILLs the process so a supervisor (systemd
+  `Restart=`; the `dune dev` wrapper exits 137) sees a dead process instead of
+  a zombie. The kill always happens: writing the report is abandoned after 5
+  seconds. `DUNE_WATCHDOG=warn` reports without killing and is chosen
+  automatically when the process runs under `--inspect`/`--inspect-brk` (a
+  breakpoint pauses only the main thread); `DUNE_WATCHDOG=off` disables it. A
+  process that is suspended and resumed (laptop sleep, Ctrl-Z) is not mistaken
+  for a hang: the stall clock is monotonic and the Worker discards a gap in its
+  own ticks. It kills with SIGKILL rather than `Deno.exit()` because an exit
+  requested from a Worker only ends the Worker — the spinning main thread
+  carries on.
+- **Telling the watchdog about legitimately synchronous work.** The watchdog
+  can't tell an infinite loop from a long computation, only whether the loop is
+  making progress. `@dune/core/watchdog` exports two functions for code that
+  blocks on purpose: `watchdogProgress()`, called per item inside a long
+  synchronous loop (counts as a heartbeat; rate-limited, so cheap), and
+  `watchdogGrace(ms, reason)`, a declared busy window for a single long native
+  call (capped at 10 minutes, nests, expires on its own, logged each time). A
+  loop that calls `watchdogProgress()` on every iteration of an unbounded loop
+  looks alive forever; use it only where the loop has a natural end. Measured
+  on a 4,474-page site: startup indexing and the search build never held the
+  event loop for over a second, so none of Dune's own loops needed either call.
+- The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
+  it was held for over a second, which shows a creeping problem before it
+  becomes a hang.
+
+### Fixed
+
+- **`dune serve` did not exit after a graceful shutdown if anything was still
+  running.** On SIGTERM it closed the listener, drained, printed `shutdown
+  complete`, and then just returned, so the process lived only as long as the
+  event loop had work. One ref'd plugin timer (`@dune/plugin-admin`'s collab
+  eviction interval, fixed in 3.1.3) was enough to keep it alive forever at 0%
+  CPU with no listener — an "idle" instance that a *second* SIGTERM was needed
+  to end. `serve` now exits explicitly once the drain is done (single-site and
+  multi-site), so no plugin timer can hold the process open. Covered by a test
+  that runs the real `dune serve`, gives it a plugin holding a ref'd timer, and
+  checks that one SIGTERM ends it. (The multi-site shutdown path has the same
+  change but no end-to-end test.)
+
+- **Co-located audio and video could not seek, and would not play in
+  Safari/iOS.** Media files were always answered with a full `200` body and no
+  `Accept-Ranges` header, and a `Range` request was ignored. Media responses
+  (both the co-located route and `/content-media/*`) now send
+  `Accept-Ranges: bytes` and honour a single byte range — `bytes=a-b`,
+  `bytes=a-` and `bytes=-n` — with `206 Partial Content`, `Content-Range` and a
+  matching `Content-Length`. A range outside the file gets `416` with
+  `Content-Range: bytes */size`; a malformed or multi-range request is ignored
+  and answered in full, as before. The HTML/SVG sandbox headers are unchanged.
+
+- **Links to co-located files on non-default-language pages 404'd.** The
+  internal-link rewriter prefixed every root-relative `href`, so
+  `[Download](doc.pdf)` on a German page became `/de/<route>/doc.pdf`, but
+  co-located media is only served at its unprefixed route path. The rewriter
+  now leaves links to the page's own co-located files untouched (matched by
+  URL, so page routes like `/old-page.html` or `/pricing.json` are still
+  prefixed), and the media handler also accepts `/<lang>/<route>/<file>` (stripping a
+  supported-language prefix), with access gating still decided by the page
+  that owns the file. Language-prefixed media links that already exist in the
+  wild start working too.
+
+- **`dune ps` missed servers started through the `dune` CLI itself.** It only
+  matched the generated entrypoint (`main.ts dev|serve`), so a dev server run
+  via the global shim or a checkout (`.../cli.ts dev`), via
+  `jsr:@dune/core/cli serve`, or through a `deno task dev|serve` wrapper never
+  showed up — on a real machine it listed 19 hung processes and missed the one
+  server that was actually serving. It now matches those forms too. A bare
+  `cli.ts` or `deno task` match (which could be any project) counts only when a
+  `config/site.yaml` is found via `--root`, `PWD` or the live cwd.
+- **`dune ps` reported "port unknown — is `lsof` installed?" for processes that
+  simply weren't listening.** It now says **not listening** when `lsof` ran and
+  found no open port (typically a server started on a port something else
+  already held, which never exits), and "port unknown (lsof not available)"
+  only when `lsof` can't be run.
+- A server's wrapper, re-exec child and esbuild workers are now reported as one
+  instance, found from a single process-table snapshot (no more `pgrep`), and
+  `--root` on the command line is used to find the site.
+
+### Added
+
+- **`dune stop`** stops dune instances, with their whole process tree (including
+  any other tool a `deno task` wrapper started). A target is required, so
+  stopping every server on a machine always has to be asked for by name: `dune
+  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
+  --idle` (running but not listening for at least 2 minutes — younger ones may
+  still be starting; an instance whose port state is unknown, with no `lsof`,
+  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
+  *confirmed* instances: one whose own command line points at a dune site (the
+  directory of the `main.ts` it runs, its `--root`, or the dune CLI's working
+  directory, each holding a `config/site.yaml`). Merely running from inside a
+  site directory confirms nothing, so another Deno project's `main.ts serve`
+  is listed by `dune ps`, marked unconfirmed, and must be named by pid. The
+  prompt shows each instance's full command line. Only your own processes are
+  considered (read from the process table, no `--allow-sys` needed); without
+  `--allow-run` it says what to re-run with instead of reporting no instances,
+  and a kill Deno's permissions refuse is reported as such. It sends SIGTERM and waits up to 10 seconds for a server to
+  drain; a process that ignores it is reported, and only `--force` escalates to
+  SIGKILL. Each pid's start time is re-checked immediately before it is
+  signalled, so a pid that exited and was reused while the prompt was open is
+  never hit, and a signal the OS refuses is reported as such. It asks first
+  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
+  given), never signals itself or its parent processes, and exits 2 for a
+  usage error, 1 when a named pid/port matches nothing or something would not
+  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+
 
 ## [0.34.14] — 2026-10-21
 

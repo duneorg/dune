@@ -5,6 +5,7 @@
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.14",
     "jsr:@denosaurs/plug@1": "1.1.0",
+    "jsr:@dune/plugin-admin@*": "3.0.0",
     "jsr:@dune/plugin-admin@3": "3.0.0",
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@2": "2.3.3",
