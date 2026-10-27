@@ -1,0 +1,31 @@
+name: Feature or change proposal
+description: Propose a feature, a behaviour change or a refactor
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, or what goes wrong? A concrete example helps more than a general description.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: How you'd solve it, and alternatives you considered.
+  - type: textarea
+    id: questions
+    attributes:
+      label: Open questions
+      description: Design decisions you're unsure about. This is where feedback is most useful.
+  - type: textarea
+    id: done
+    attributes:
+      label: What "done" looks like
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself
