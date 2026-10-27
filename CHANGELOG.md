@@ -13,6 +13,36 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
+- **Running instances now register themselves.** `dune dev` and `dune serve`
+  write a small record (pid, process start time, mode, site root, title, port,
+  `@dune/core` version) to `~/.dune/instances/<pid>.json`
+  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
+  exit. A kill or crash leaves the file behind, so readers confirm the pid is
+  alive *and* has the recorded start time (pids get reused) and delete the ones
+  that fail. This is groundwork for `dune ps` to list instances from what each
+  one says about itself rather than guessing from command lines and `lsof`;
+  nothing reads it yet, and a registry that can't be written never stops a
+  server from starting. Unix only.
+
+- **`dune ps` now tells a hung server from a healthy one, and finds servers
+  that registered themselves.** Every listening instance is sent a `GET
+  /health/live` (which shows up in its access log): to the port it registered
+  when it did, otherwise to every port it listens on, counting only dune's own
+  answer so a debugger's inspector port can't make a hung server look healthy.
+  A blocked event loop still lets the kernel accept the connection but never
+  answers it, so an instance that fails three probes in a row (3 seconds each,
+  about 10 seconds in all) is shown as **NOT RESPONDING** and counted
+  separately — it looks perfectly healthy to `lsof`. One failed probe proves
+  nothing, and a port that speaks HTTP but not like dune gives "can't tell",
+  not a hung verdict. Instances that wrote an entry to the instance registry
+  are also listed even if their command line doesn't look like dune, count as
+  confirmed, and show their `@dune/core` version. `dune stop --idle` also takes
+  confirmed instances that are listening but not responding, once they are at
+  least 2 minutes old. With the watchdog in its default mode a hung server is
+  killed within seconds, so this mostly matters under `DUNE_WATCHDOG=warn`/`off`;
+  a server stuck in a loop can't handle SIGTERM, so `dune stop <pid> --force` is
+  how to end one.
+
 - **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
   silently until someone restarts it.** One synchronous loop (catastrophic
   regex backtracking, a conversion that never terminates) blocks the single
@@ -93,73 +123,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`dune ps` now tells a hung server from a healthy one, and finds servers
-  that registered themselves.** Every listening instance is sent a `GET
-  /health/live` (which shows up in its access log): to the port it registered
-  when it did, otherwise to every port it listens on, counting only dune's own
-  answer so a debugger's inspector port can't make a hung server look healthy.
-  A blocked event loop still lets the kernel accept the connection but never
-  answers it, so an instance that fails three probes in a row (3 seconds each,
-  about 10 seconds in all) is shown as **NOT RESPONDING** and counted
-  separately — it looks perfectly healthy to `lsof`. One failed probe proves
-  nothing, and a port that speaks HTTP but not like dune gives "can't tell",
-  not a hung verdict. Instances that wrote an entry to the instance registry
-  are also listed even if their command line doesn't look like dune, count as
-  confirmed, and show their `@dune/core` version. `dune stop --idle` also takes
-  confirmed instances that are listening but not responding, once they are at
-  least 2 minutes old. With the watchdog in its default mode a hung server is
-  killed within seconds, so this mostly matters under `DUNE_WATCHDOG=warn`/`off`;
-  a server stuck in a loop can't handle SIGTERM, so `dune stop <pid> --force` is
-  how to end one.
-
-- **Running instances now register themselves.** `dune dev` and `dune serve`
-  write a small record (pid, process start time, mode, site root, title, port,
-  `@dune/core` version) to `~/.dune/instances/<pid>.json`
-  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
-  exit. A kill or crash leaves the file behind, so readers confirm the pid is
-  alive *and* has the recorded start time (pids get reused) and delete the ones
-  that fail. This is groundwork for `dune ps` to list instances from what each
-  one says about itself rather than guessing from command lines and `lsof`;
-  nothing reads it yet, and a registry that can't be written never stops a
-  server from starting. Unix only.
-- **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
-  silently until someone restarts it.** One synchronous loop (catastrophic
-  regex backtracking, a conversion that never terminates) blocks the single
-  thread that serves every request, so every URL stops answering at once, with
-  nothing in the logs. `dune dev` and `dune serve` now run a small watchdog
-  Worker that expects a heartbeat from the main thread every second. After 15
-  seconds of silence (`DUNE_WATCHDOG_TIMEOUT_MS`; 2 minutes until the server is
-  up, `DUNE_WATCHDOG_STARTUP_TIMEOUT_MS`, so a large site's initial indexing
-  can't put a supervised process into a kill/restart loop) it writes a report
-  to `<site>/.dune/hangs/` naming the requests that were in flight (path
-  segments longer than 24 characters are cut, so tokens in URLs don't land in
-  it; the newest 20 reports are kept; plus a native stack sample on macOS), logs
-  the same lines to stderr, and SIGKILLs the process so a supervisor (systemd
-  `Restart=`; the `dune dev` wrapper exits 137) sees a dead process instead of
-  a zombie. The kill always happens: writing the report is abandoned after 5
-  seconds. `DUNE_WATCHDOG=warn` reports without killing and is chosen
-  automatically when the process runs under `--inspect`/`--inspect-brk` (a
-  breakpoint pauses only the main thread); `DUNE_WATCHDOG=off` disables it. A
-  process that is suspended and resumed (laptop sleep, Ctrl-Z) is not mistaken
-  for a hang: the stall clock is monotonic and the Worker discards a gap in its
-  own ticks. It kills with SIGKILL rather than `Deno.exit()` because an exit
-  requested from a Worker only ends the Worker — the spinning main thread
-  carries on.
-- **Telling the watchdog about legitimately synchronous work.** The watchdog
-  can't tell an infinite loop from a long computation, only whether the loop is
-  making progress. `@dune/core/watchdog` exports two functions for code that
-  blocks on purpose: `watchdogProgress()`, called per item inside a long
-  synchronous loop (counts as a heartbeat; rate-limited, so cheap), and
-  `watchdogGrace(ms, reason)`, a declared busy window for a single long native
-  call (capped at 10 minutes, nests, expires on its own, logged each time). A
-  loop that calls `watchdogProgress()` on every iteration of an unbounded loop
-  looks alive forever; use it only where the loop has a natural end. Measured
-  on a 4,474-page site: startup indexing and the search build never held the
-  event loop for over a second, so none of Dune's own loops needed either call.
-- The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
-  it was held for over a second, which shows a creeping problem before it
-  becomes a hang.
-
 - **`dune stop`** stops dune instances, with their whole process tree (including
   any other tool a `deno task` wrapper started). A target is required, so
   stopping every server on a machine always has to be asked for by name: `dune
@@ -184,6 +147,7 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   given), never signals itself or its parent processes, and exits 2 for a
   usage error, 1 when a named pid/port matches nothing or something would not
   stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+
 
 ## [0.34.14] — 2026-10-21
 
