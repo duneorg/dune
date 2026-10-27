@@ -74,6 +74,8 @@ export function fakeInstance(overrides: Partial<DuneInstance> = {}): DuneInstanc
     title: "Fake",
     ports: [],
     portStatus: "not-listening",
+    responsive: "unknown",
+    version: null,
     elapsed: "01:00",
     ageSeconds: 3600,
     confirmed: true,

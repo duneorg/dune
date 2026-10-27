@@ -42,6 +42,7 @@
 
 import { dirname, fromFileUrl, isAbsolute, join, resolve } from "@std/path";
 import { parseUserYaml } from "../security/safe-yaml.ts";
+import { listRegisteredInstances } from "../runtime/instance-registry.ts";
 
 /** A dune dev/serve-shaped process (tree) found running on this machine. */
 export interface DuneInstance {
@@ -66,6 +67,15 @@ export interface DuneInstance {
    * so we can't tell.
    */
   portStatus: "listening" | "not-listening" | "unknown";
+  /**
+   * Whether a listening instance answered an HTTP request: `"responding"`,
+   * `"not-responding"` (accepts connections but gives no answer in time —
+   * the signature of a blocked event loop, or just a very busy server), or
+   * `"unknown"` (not listening, or not probed).
+   */
+  responsive: "responding" | "not-responding" | "unknown";
+  /** `@dune/core` version, when the instance registered itself (see runtime/instance-registry.ts). */
+  version: string | null;
   /** `ps`'s own elapsed-time string (e.g. "01:23:45" or "2-09:03:55"). */
   elapsed: string | null;
   /** `elapsed` in seconds, or null when unparseable. */
@@ -397,6 +407,70 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
   return null;
 }
 
+// ── Health probe ─────────────────────────────────────────────────────────────
+
+export const PROBE_TIMEOUT_MS = 3_000;
+const PROBE_ATTEMPTS = 3;
+const PROBE_GAP_MS = 500;
+
+/** What answered on a port: dune's own health check, some other HTTP service, or nothing in time. */
+export type PortProbe = "dune" | "other" | "none";
+
+/**
+ * Ask `port` for `/health/live`. A blocked event loop still lets the kernel
+ * accept the TCP connection, but nothing ever answers it, which is exactly what
+ * the timeout catches. A JSON body with a `status` field is dune's own answer;
+ * anything else that speaks HTTP (a debugger's inspector port, another tool)
+ * is "other". Probes 127.0.0.1, not `localhost`, so IPv6 resolution can't
+ * change the result. Note this sends a real GET to the instance, which shows
+ * up in its access log.
+ */
+export async function probePort(port: number, timeoutMs = PROBE_TIMEOUT_MS): Promise<PortProbe> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health/live`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "manual",
+    });
+    const text = (await res.text()).slice(0, 512);
+    try {
+      const body = JSON.parse(text);
+      if (res.ok && body && typeof body === "object" && typeof body.status === "string") return "dune";
+    } catch { /* not JSON */ }
+    return "other";
+  } catch {
+    return "none";
+  }
+}
+
+/**
+ * Is this instance answering? Probes the port the instance itself registered
+ * when there is one (any HTTP answer counts), otherwise every listening port
+ * (only dune's own answer counts, so a debugger's inspector port can't make a
+ * hung server look healthy). A single failure proves nothing — a busy server
+ * can be slow for a few seconds — so it takes `attempts` failures in a row,
+ * spaced `gapMs` apart. If some port speaks HTTP but none answers like dune,
+ * the verdict is "unknown" rather than a claim that it is hung.
+ */
+export async function judgeResponsive(
+  ports: number[],
+  registeredPort: number | null,
+  probe: (port: number) => Promise<PortProbe>,
+  attempts = PROBE_ATTEMPTS,
+  gapMs = PROBE_GAP_MS,
+): Promise<"responding" | "not-responding" | "unknown"> {
+  if (ports.length === 0) return "unknown";
+  const useRegistered = registeredPort !== null && ports.includes(registeredPort);
+  const candidates = useRegistered ? [registeredPort] : ports;
+  let sawOther = false;
+  for (let i = 0; i < attempts; i++) {
+    const results = await Promise.all(candidates.map(probe));
+    if (results.some((r) => (useRegistered ? r !== "none" : r === "dune"))) return "responding";
+    if (results.includes("other")) sawOther = true;
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, gapMs));
+  }
+  return sawOther ? "unknown" : "not-responding";
+}
+
 /**
  * Find every dune dev/serve instance on this machine.
  *
@@ -406,8 +480,15 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
  * are null in that case, and the caller should say so plainly.
  */
 export async function findDuneInstances(
-  opts: { onWarning?: (message: string) => void } = {},
+  opts: {
+    onWarning?: (message: string) => void;
+    probe?: (port: number) => Promise<PortProbe>;
+    probeAttempts?: number;
+    probeGapMs?: number;
+  } = {},
 ): Promise<DuneInstance[]> {
+  const probe = opts.probe ?? probePort;
+  const registeredPorts = new Map<number, number | null>(); // instance pid -> port it registered
   const allRows = await readProcessTable();
   // Only this user's processes: another user's server is not ours to list or
   // signal (the kill would be refused anyway). Our own uid comes from our own
@@ -506,6 +587,8 @@ export async function findDuneInstances(
       title,
       ports,
       portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
+      responsive: "unknown",
+      version: null,
       elapsed: c.elapsed,
       ageSeconds: parseElapsedSeconds(c.elapsed),
       confirmed: confirmedRoot !== null,
@@ -513,5 +596,55 @@ export async function findDuneInstances(
       command: c.command,
     });
   }
+
+  // 5. Instances that registered themselves (runtime/instance-registry.ts):
+  // attach what they report about themselves, and add any the command-line
+  // matching missed (a server started in an unusual way).
+  for (const rec of await listRegisteredInstances()) {
+    const existing = instances.find((i) => i.pids.includes(rec.pid));
+    if (existing) {
+      existing.version = rec.version;
+      existing.confirmed = true; // the process says so itself
+      registeredPorts.set(existing.pid, rec.port);
+      if (existing.root === null) {
+        existing.root = rec.root;
+        existing.title = rec.title ?? (await readSiteTitle(rec.root));
+      }
+      continue;
+    }
+    const row = byPid.get(rec.pid);
+    if (!row) continue;
+    const pids = [rec.pid, ...descendantsOf(rec.pid, children)];
+    const ports = haveLsof ? await getListeningPorts(pids) : [];
+    instances.push({
+      pid: rec.pid,
+      pids,
+      mode: rec.mode,
+      root: rec.root,
+      title: rec.title ?? (await readSiteTitle(rec.root)),
+      ports,
+      portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
+      responsive: "unknown",
+      version: rec.version,
+      elapsed: row.elapsed,
+      ageSeconds: parseElapsedSeconds(row.elapsed),
+      confirmed: true,
+      startTimes: Object.fromEntries(pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : [])),
+      command: row.command,
+    });
+    registeredPorts.set(rec.pid, rec.port);
+  }
+
+  // 6. Probe every listening instance, all at once.
+  await Promise.all(instances.map(async (inst) => {
+    inst.responsive = await judgeResponsive(
+      inst.ports,
+      registeredPorts.get(inst.pid) ?? null,
+      probe,
+      opts.probeAttempts,
+      opts.probeGapMs,
+    );
+  }));
+
   return instances.sort((a, b) => a.pid - b.pid);
 }
