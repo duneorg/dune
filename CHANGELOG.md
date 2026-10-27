@@ -9,6 +9,20 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Co-located audio and video could not seek, and would not play in
+  Safari/iOS.** Media files were always answered with a full `200` body and no
+  `Accept-Ranges` header, and a `Range` request was ignored. Media responses
+  (both the co-located route and `/content-media/*`) now send
+  `Accept-Ranges: bytes` and honour a single byte range — `bytes=a-b`,
+  `bytes=a-` and `bytes=-n` — with `206 Partial Content`, `Content-Range` and a
+  matching `Content-Length`. A range outside the file gets `416` with
+  `Content-Range: bytes */size`; a malformed or multi-range request is ignored
+  and answered in full, as before. The HTML/SVG sandbox headers are unchanged.
+
 ## [0.34.14] — 2026-10-21
 
 ### Security
