@@ -32,6 +32,7 @@ import type { Scheduler, ScheduledAction } from "../workflow/mod.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
+import { startWatchdog } from "../runtime/watchdog.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -121,6 +122,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // path and we Deno.chdir() later, which would invalidate relative paths.
   root = resolve(root);
 
+  // See runtime/watchdog.ts. Its Worker can't be unref'd, so both graceful-
+  // shutdown paths below stop it explicitly or the process would never exit.
+  const watchdog = startWatchdog({ root, label: "dune serve" });
+
   // ── Lockfile staleness check ─────────────────────────────────────────────
   if (await checkLockfileStaleness(root)) {
     if (frozen) {
@@ -185,9 +190,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
       },
     );
 
+    watchdog.ready();
     await server.finished;
     await drainInFlight(() => inFlight, drainDeadlineMs);
     cleanup();
+    watchdog.stop();
     console.log("[dune] shutdown complete");
     exitAfterShutdown();
     return;
@@ -390,6 +397,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     },
   );
 
+  watchdog.ready();
   await server.finished;
 
   // Safety-net drain poll — in normal operation inFlight is already 0 here
@@ -403,6 +411,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // flush step is required here.
 
   cleanup();
+  watchdog.stop();
   console.log("[dune] shutdown complete");
   exitAfterShutdown();
 }

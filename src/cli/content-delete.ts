@@ -77,6 +77,10 @@ export async function contentDeleteCommand(
   let ctx: BootstrapResult | undefined;
   try {
     ctx = await bootstrap(root, { debug: options.debug });
+    // registerPlugin() fires async setup() without awaiting (the built-in admin
+    // plugin creates .dune/admin/* here). Wait for it so the command never
+    // returns while plugin setup is still writing under the site root.
+    await ctx.hooks.whenSetupComplete();
     const page = ctx.engine.pages.find((p) => p.route === normalised);
     if (page) sourcePath = page.sourcePath;
   } catch {

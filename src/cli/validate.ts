@@ -423,9 +423,12 @@ export async function validateCommand(
         });
       }
 
-      // Duplicate route check
+      // Duplicate route check — language variants (default.de.md etc.) share
+      // a route by design; only same-route-same-language is a collision.
       const duplicates = engine.pages.filter(
-        (p) => p.route === page.route && p.sourcePath !== page.sourcePath,
+        (p) =>
+          p.route === page.route && p.language === page.language &&
+          p.sourcePath !== page.sourcePath,
       );
       if (duplicates.length > 0 && page.route) {
         contentIssues.push({

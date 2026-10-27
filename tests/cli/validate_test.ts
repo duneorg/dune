@@ -45,7 +45,7 @@ async function withTempSite(
     // content-index cache file) for a moment after this test's assertions
     // run, which occasionally races a recursive remove with
     // "Directory not empty". Retry a few times rather than flake.
-    for (let attempt = 0; ; attempt++) {
+    for (let attempt = 0;; attempt++) {
       try {
         await Deno.remove(root, { recursive: true });
         break;
@@ -78,7 +78,9 @@ Deno.test(
       );
 
       // Parent theme ("base") — has the search.tsx template.
-      await Deno.mkdir(join(root, "themes", "base", "templates"), { recursive: true });
+      await Deno.mkdir(join(root, "themes", "base", "templates"), {
+        recursive: true,
+      });
       await Deno.writeTextFile(
         join(root, "themes", "base", "theme.yaml"),
         "name: base\n",
@@ -93,7 +95,9 @@ Deno.test(
       );
 
       // Child theme ("child") — inherits from "base", has no search.tsx of its own.
-      await Deno.mkdir(join(root, "themes", "child", "templates"), { recursive: true });
+      await Deno.mkdir(join(root, "themes", "child", "templates"), {
+        recursive: true,
+      });
       await Deno.writeTextFile(
         join(root, "themes", "child", "theme.yaml"),
         "name: child\nparent: base\n",
@@ -126,7 +130,7 @@ Deno.test(
 );
 
 Deno.test(
-  "validateCommand: TSX content pages (template \"self\") are not flagged as a missing theme template",
+  'validateCommand: TSX content pages (template "self") are not flagged as a missing theme template',
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withTempSite(async (root) => {
@@ -147,7 +151,9 @@ Deno.test(
       );
 
       // Minimal theme — deliberately has no template named "self".
-      await Deno.mkdir(join(root, "themes", "base", "templates"), { recursive: true });
+      await Deno.mkdir(join(root, "themes", "base", "templates"), {
+        recursive: true,
+      });
       await Deno.writeTextFile(
         join(root, "themes", "base", "theme.yaml"),
         "name: base\n",
@@ -208,18 +214,29 @@ Deno.test(
         "---\ntitle: [oops\n---\n\n# Broken\n",
       );
 
-      await Deno.mkdir(join(root, "themes", "base", "templates"), { recursive: true });
-      await Deno.writeTextFile(join(root, "themes", "base", "theme.yaml"), "name: base\n");
+      await Deno.mkdir(join(root, "themes", "base", "templates"), {
+        recursive: true,
+      });
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "theme.yaml"),
+        "name: base\n",
+      );
       await Deno.writeTextFile(
         join(root, "themes", "base", "templates", "default.tsx"),
         `export default function Default({ children }: { children: unknown }) {\n  return children;\n}\n`,
       );
       await Deno.mkdir(join(root, "config"), { recursive: true });
-      await Deno.writeTextFile(join(root, "config", "site.yaml"), "theme:\n  name: base\n");
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "theme:\n  name: base\n",
+      );
 
       // Confirm the file really was dropped from the index, not just flagged.
       const ctx = await bootstrap(root, {});
-      assertEquals(ctx.engine.pages.some((p) => p.sourcePath.includes("02.broken")), false);
+      assertEquals(
+        ctx.engine.pages.some((p) => p.sourcePath.includes("02.broken")),
+        false,
+      );
       assertEquals(ctx.engine.indexErrors.length, 1);
       assertEquals(ctx.engine.indexErrors[0].path.includes("02.broken"), true);
 
@@ -246,6 +263,82 @@ Deno.test(
           f.category === "content" && f.message.startsWith("Failed to index"),
       );
       assertEquals(contentFindings.length, 1);
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Language variants (default.md / default.de.md / default.fr.md) share a route
+// by design — the duplicate-route check must only flag same-route-same-language.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "validateCommand: language variants of one page are not flagged as duplicate routes",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      for (
+        const [file, title] of [["default.md", "Home"], [
+          "default.de.md",
+          "Start",
+        ], ["default.fr.md", "Accueil"]]
+      ) {
+        await Deno.writeTextFile(
+          join(root, "content", "01.home", file),
+          `---\ntitle: ${title}\n---\n\n# ${title}\n`,
+        );
+      }
+
+      await Deno.mkdir(join(root, "themes", "base", "templates"), {
+        recursive: true,
+      });
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "theme.yaml"),
+        "name: base\n",
+      );
+      await Deno.writeTextFile(
+        join(root, "themes", "base", "templates", "default.tsx"),
+        `export default function Default({ children }: { children: unknown }) {\n  return children;\n}\n`,
+      );
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(
+        join(root, "config", "site.yaml"),
+        "theme:\n  name: base\n",
+      );
+      await Deno.writeTextFile(
+        join(root, "config", "system.yaml"),
+        'languages:\n  supported: ["en", "de", "fr"]\n  default: "en"\n  include_default_in_url: false\n',
+      );
+
+      // Sanity: all three variants are indexed, on the same route.
+      const ctx = await bootstrap(root, {});
+      assertEquals(
+        ctx.engine.pages.filter((p) => p.sourcePath.includes("01.home")).length,
+        3,
+      );
+
+      const lines: string[] = [];
+      const origLog = console.log;
+      const origExit = Deno.exit;
+      console.log = (...args: unknown[]) => lines.push(String(args[0]));
+      Deno.exit = ((_code?: number) => {
+        throw new Error("exit");
+      }) as typeof Deno.exit;
+      try {
+        await validateCommand(root, { json: true, skills: false });
+      } catch {
+        // validateCommand exits 1 when invalid.
+      } finally {
+        console.log = origLog;
+        Deno.exit = origExit;
+      }
+
+      const output = JSON.parse(lines.join(""));
+      const dupes = output.findings.filter(
+        (f: { message: string }) => f.message.startsWith("Duplicate route"),
+      );
+      assertEquals(dupes, []);
     });
   },
 );
