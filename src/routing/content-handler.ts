@@ -15,7 +15,7 @@ import { rewriteInternalLinks } from "./link-rewriter.ts";
 import { resolveCollectionForPage, resolveCollectionsForPage } from "./collection-resolver.ts";
 import { resolveThemeConfig } from "./theme-config-resolver.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
-import { dataOutputBody } from "../themes/output.ts";
+import { dataOutputBody, outputSecurityHeaders } from "../themes/output.ts";
 import { markBareResponse } from "./bare-response.ts";
 import { logger } from "../core/logger.ts";
 import { navigationForRequest } from "../auth/gating.ts";
@@ -166,7 +166,9 @@ export async function handleMarkdownPage(
       body = dataOutputBody(result, output, templateName);
     }
     return markBareResponse(
-      new Response(body, { headers: { "Content-Type": output.contentType } }),
+      new Response(body, {
+        headers: { "Content-Type": output.contentType, ...outputSecurityHeaders(output.contentType) },
+      }),
     );
   }
 

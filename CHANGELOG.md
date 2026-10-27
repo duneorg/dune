@@ -35,6 +35,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   a data template that returns the wrong type is a 500 naming the template.
   Islands in a fragment render on the server but do not hydrate when swapped
   into a page after load.
+  SVG output is served under the same sandbox as uploaded SVG (CSP sandbox,
+  X-Frame-Options), including from the page cache; HTML fragments and
+  JavaScript output are not sandboxed, so escaping what a template embeds stays
+  the theme author's job.
 
 - **`dune ps` now tells a hung server from a healthy one, and finds servers
   that registered themselves.** Every listening instance is sent a `GET
