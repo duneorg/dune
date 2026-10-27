@@ -11,6 +11,46 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Fixed
+
+- **Co-located audio and video could not seek, and would not play in
+  Safari/iOS.** Media files were always answered with a full `200` body and no
+  `Accept-Ranges` header, and a `Range` request was ignored. Media responses
+  (both the co-located route and `/content-media/*`) now send
+  `Accept-Ranges: bytes` and honour a single byte range — `bytes=a-b`,
+  `bytes=a-` and `bytes=-n` — with `206 Partial Content`, `Content-Range` and a
+  matching `Content-Length`. A range outside the file gets `416` with
+  `Content-Range: bytes */size`; a malformed or multi-range request is ignored
+  and answered in full, as before. The HTML/SVG sandbox headers are unchanged.
+
+- **Links to co-located files on non-default-language pages 404'd.** The
+  internal-link rewriter prefixed every root-relative `href`, so
+  `[Download](doc.pdf)` on a German page became `/de/<route>/doc.pdf`, but
+  co-located media is only served at its unprefixed route path. The rewriter
+  now leaves links to the page's own co-located files untouched (matched by
+  URL, so page routes like `/old-page.html` or `/pricing.json` are still
+  prefixed), and the media handler also accepts `/<lang>/<route>/<file>` (stripping a
+  supported-language prefix), with access gating still decided by the page
+  that owns the file. Language-prefixed media links that already exist in the
+  wild start working too.
+
+- **`dune ps` missed servers started through the `dune` CLI itself.** It only
+  matched the generated entrypoint (`main.ts dev|serve`), so a dev server run
+  via the global shim or a checkout (`.../cli.ts dev`), via
+  `jsr:@dune/core/cli serve`, or through a `deno task dev|serve` wrapper never
+  showed up — on a real machine it listed 19 hung processes and missed the one
+  server that was actually serving. It now matches those forms too. A bare
+  `cli.ts` or `deno task` match (which could be any project) counts only when a
+  `config/site.yaml` is found via `--root`, `PWD` or the live cwd.
+- **`dune ps` reported "port unknown — is `lsof` installed?" for processes that
+  simply weren't listening.** It now says **not listening** when `lsof` ran and
+  found no open port (typically a server started on a port something else
+  already held, which never exits), and "port unknown (lsof not available)"
+  only when `lsof` can't be run.
+- A server's wrapper, re-exec child and esbuild workers are now reported as one
+  instance, found from a single process-table snapshot (no more `pgrep`), and
+  `--root` on the command line is used to find the site.
+
 ### Added
 
 - **`dune ps` now tells a hung server from a healthy one, and finds servers
@@ -79,28 +119,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 - The main thread also logs `[dune] event loop was blocked for ~N.Ns` whenever
   it was held for over a second, which shows a creeping problem before it
   becomes a hang.
-## [0.34.15] — 2026-10-22
-
-### Fixed
-
-- **`dune ps` missed servers started through the `dune` CLI itself.** It only
-  matched the generated entrypoint (`main.ts dev|serve`), so a dev server run
-  via the global shim or a checkout (`.../cli.ts dev`), via
-  `jsr:@dune/core/cli serve`, or through a `deno task dev|serve` wrapper never
-  showed up — on a real machine it listed 19 hung processes and missed the one
-  server that was actually serving. It now matches those forms too. A bare
-  `cli.ts` or `deno task` match (which could be any project) counts only when a
-  `config/site.yaml` is found via `--root`, `PWD` or the live cwd.
-- **`dune ps` reported "port unknown — is `lsof` installed?" for processes that
-  simply weren't listening.** It now says **not listening** when `lsof` ran and
-  found no open port (typically a server started on a port something else
-  already held, which never exits), and "port unknown (lsof not available)"
-  only when `lsof` can't be run.
-- A server's wrapper, re-exec child and esbuild workers are now reported as one
-  instance, found from a single process-table snapshot (no more `pgrep`), and
-  `--root` on the command line is used to find the site.
-
-### Added
 
 - **`dune stop`** stops dune instances, with their whole process tree (including
   any other tool a `deno task` wrapper started). A target is required, so
@@ -126,29 +144,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   given), never signals itself or its parent processes, and exits 2 for a
   usage error, 1 when a named pid/port matches nothing or something would not
   stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
-
-### Fixed
-
-- **Co-located audio and video could not seek, and would not play in
-  Safari/iOS.** Media files were always answered with a full `200` body and no
-  `Accept-Ranges` header, and a `Range` request was ignored. Media responses
-  (both the co-located route and `/content-media/*`) now send
-  `Accept-Ranges: bytes` and honour a single byte range — `bytes=a-b`,
-  `bytes=a-` and `bytes=-n` — with `206 Partial Content`, `Content-Range` and a
-  matching `Content-Length`. A range outside the file gets `416` with
-  `Content-Range: bytes */size`; a malformed or multi-range request is ignored
-  and answered in full, as before. The HTML/SVG sandbox headers are unchanged.
-
-- **Links to co-located files on non-default-language pages 404'd.** The
-  internal-link rewriter prefixed every root-relative `href`, so
-  `[Download](doc.pdf)` on a German page became `/de/<route>/doc.pdf`, but
-  co-located media is only served at its unprefixed route path. The rewriter
-  now leaves links to the page's own co-located files untouched (matched by
-  URL, so page routes like `/old-page.html` or `/pricing.json` are still
-  prefixed), and the media handler also accepts `/<lang>/<route>/<file>` (stripping a
-  supported-language prefix), with access gating still decided by the page
-  that owns the file. Language-prefixed media links that already exist in the
-  wild start working too.
 
 ## [0.34.14] — 2026-10-21
 
