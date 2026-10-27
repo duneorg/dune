@@ -22,7 +22,7 @@ import {
   probePort,
 } from "../../src/cli/instances.ts";
 import { psCommand } from "../../src/cli/ps.ts";
-import { parseElapsedSeconds, readProcessTable } from "../../src/cli/instances.ts";
+import { commandSiteRootHint, parseElapsedSeconds, readProcessTable } from "../../src/cli/instances.ts";
 import { fakeInstance, makeSite, opts, SERVER, spawnDeno, startTaskTree, stop, waitForPort } from "./ps_helpers.ts";
 
 /**
@@ -224,15 +224,15 @@ Deno.test("matchDuneCommand: the generated entrypoint, the dune CLI and jsr form
     ["/Users/x/.deno/bin/deno run -A --config=/tmp/c.json --no-lock https://jsr.io/@dune/core/0.34.10/src/cli.ts serve --env-file", "serve"],
   ];
   for (const [cmd, mode] of strong) {
-    assertEquals(matchDuneCommand(cmd), { mode, strength: "strong" }, cmd);
+    assertEquals(matchDuneCommand(cmd), { mode, strength: "strong", kind: cmd.includes("main.ts") ? "entry" : "cli" }, cmd);
   }
 });
 
 Deno.test("matchDuneCommand: `deno task dev|serve` and a bare `cli.ts dev|serve` are only weak matches (they could be any project)", () => {
-  assertEquals(matchDuneCommand("deno task serve --port 3100"), { mode: "serve", strength: "weak" });
-  assertEquals(matchDuneCommand("/Users/x/.deno/bin/deno task dev"), { mode: "dev", strength: "weak" });
-  assertEquals(matchDuneCommand("deno run -A src/cli.ts dev --root ../site"), { mode: "dev", strength: "weak" });
-  assertEquals(matchDuneCommand("deno run -A other-tool/cli.ts serve"), { mode: "serve", strength: "weak" });
+  assertEquals(matchDuneCommand("deno task serve --port 3100"), { mode: "serve", strength: "weak", kind: "task" });
+  assertEquals(matchDuneCommand("/Users/x/.deno/bin/deno task dev"), { mode: "dev", strength: "weak", kind: "task" });
+  assertEquals(matchDuneCommand("deno run -A src/cli.ts dev --root ../site"), { mode: "dev", strength: "weak", kind: "cli" });
+  assertEquals(matchDuneCommand("deno run -A other-tool/cli.ts serve"), { mode: "serve", strength: "weak", kind: "cli" });
 });
 
 Deno.test("matchDuneCommand: unrelated commands do not match", () => {
@@ -401,6 +401,58 @@ Deno.test("findDuneInstances: a site is 'confirmed'; a dune-looking process with
     if (b) await stop(b);
     await Deno.remove(site, { recursive: true }).catch(() => {});
     await Deno.remove(bare, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("commandSiteRootHint: only what the command line itself points at counts, never where the process happens to run", () => {
+  const hint = (cmd: string, base: string | null) => {
+    const m = matchDuneCommand(cmd);
+    return m ? commandSiteRootHint(cmd, m, base) : "NO MATCH";
+  };
+  // The generated entrypoint: the directory of the main.ts it runs, whatever the cwd.
+  assertEquals(hint("deno run -A /sites/a/main.ts serve", "/elsewhere"), "/sites/a");
+  assertEquals(hint("deno run -A main.ts serve", "/sites/a"), "/sites/a");
+  assertEquals(hint("deno run -A ./web/main.ts dev", "/sites"), "/sites/web");
+  assertEquals(hint("deno run -A file:///sites/b/main.ts serve", "/elsewhere"), "/sites/b");
+  assertEquals(hint("deno run -A main.ts serve", null), null, "relative path and no cwd: no evidence");
+  // --root wins, absolute or relative to the process's directory.
+  assertEquals(hint("deno run -A /x/dune/src/cli.ts dev --root /sites/c", "/elsewhere"), "/sites/c");
+  assertEquals(hint("deno run -A /x/dune/src/cli.ts dev --root ../d", "/sites/c"), "/sites/d");
+  // The dune CLI with no --root works on its cwd.
+  assertEquals(hint("deno run -A /x/dune/src/cli.ts dev", "/sites/e"), "/sites/e");
+  // A bare `deno task` wrapper carries no evidence of its own.
+  assertEquals(hint("deno task serve", "/sites/f"), null);
+  // A non-dune cli.ts is a weak match: no evidence from the cwd.
+  assertEquals(hint("deno run -A cli.ts serve", "/sites/g"), null);
+});
+
+Deno.test("findDuneInstances: an unrelated main.ts run from INSIDE a site directory is not confirmed by the directory alone", opts, async () => {
+  const site = await makeSite("dune_test_ps_inside_", "Inside");
+  const elsewhere = await Deno.makeTempDir({ prefix: "dune_test_ps_tool_" });
+  const own = await makeSite("dune_test_ps_own_", "Own");
+  let stray: Deno.ChildProcess | undefined;
+  let genuine: Deno.ChildProcess | undefined;
+  try {
+    const body = `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`;
+    await Deno.writeTextFile(join(elsewhere, "main.ts"), body);
+    await Deno.writeTextFile(join(own, "main.ts"), body);
+    // Someone's own tool, started from a shell that happens to be sitting in the site repo.
+    stray = spawnDeno(["run", "-A", join(elsewhere, "main.ts"), "serve"], site);
+    // The site's own entrypoint, started from somewhere else entirely.
+    genuine = spawnDeno(["run", "-A", join(own, "main.ts"), "serve"], elsewhere);
+    await new Promise((r) => setTimeout(r, 800));
+    const found = await findDuneInstances();
+    const a = found.find((i) => i.pid === stray!.pid);
+    const b = found.find((i) => i.pid === genuine!.pid);
+    assertExists(a);
+    assertExists(b);
+    assertEquals(a.confirmed, false, "running from inside a dune site proves nothing about the process");
+    assertEquals(b.confirmed, true, "its main.ts sits in a dune site, wherever it was started from");
+    assertEquals(await realpath(b.root!), await realpath(own));
+  } finally {
+    if (stray) await stop(stray);
+    if (genuine) await stop(genuine);
+    for (const d of [site, elsewhere, own]) await Deno.remove(d, { recursive: true }).catch(() => {});
   }
 });
 
@@ -573,6 +625,33 @@ Deno.test("findDuneInstances: a registered process that command-line matching al
   });
 });
 
+Deno.test("findDuneInstances: a registered process is confirmed even though its command line says nothing about a site", opts, async () => {
+  await withRegistryDir(async () => {
+    const site = await makeSite("dune_test_ps_regconf_", "Registered");
+    const elsewhere = await Deno.makeTempDir({ prefix: "dune_test_ps_regconf_tool_" });
+    let child: Deno.ChildProcess | undefined;
+    try {
+      await Deno.writeTextFile(
+        join(elsewhere, "main.ts"),
+        `import { registerInstance } from ${JSON.stringify(REGISTRY_URL)};\n` +
+          `await registerInstance({ mode: "serve", root: ${JSON.stringify(site)}, title: "Registered", port: null, version: "3.2.1" });\n` +
+          `setInterval(() => {}, 1000);\nawait new Promise(() => {});\n`,
+      );
+      // Started from a directory with no site, from a script outside any site: unconfirmed by its command line.
+      child = spawnDeno(["run", "-A", `--config=${DUNE_CONFIG}`, join(elsewhere, "main.ts"), "serve"], elsewhere);
+      await new Promise((r) => setTimeout(r, 1200));
+      const found = (await findDuneInstances(fastOpts)).find((i) => i.pid === child!.pid);
+      assertExists(found);
+      assertEquals(found.confirmed, true, "the process itself says it is a dune site");
+      assertEquals(found.version, "3.2.1");
+    } finally {
+      if (child) await stop(child);
+      await Deno.remove(site, { recursive: true }).catch(() => {});
+      await Deno.remove(elsewhere, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
 Deno.test("findDuneInstances: a stale registry record (process gone) adds nothing", opts, async () => {
   await withRegistryDir(async (dir) => {
     await Deno.writeTextFile(
@@ -612,6 +691,12 @@ Deno.test("psCommand: shows child-process counts and says so when nothing is run
   const text = await runPs([LIVE()]);
   assertEquals(text.includes("(+1 child process)"), true);
   assertEquals((await runPs([])).includes("No dune dev/serve instances found"), true);
+});
+
+Deno.test("psCommand: marks an unconfirmed instance as such", async () => {
+  const text = await runPs([fakeInstance({ pid: 9, pids: [9], confirmed: false })]);
+  assertEquals(text.includes("not confirmed as a dune site"), true);
+  assertEquals((await runPs([fakeInstance()])).includes("not confirmed"), false);
 });
 
 Deno.test("psCommand: flags a listening-but-unresponsive instance, counts it, and shows the version when known", async () => {

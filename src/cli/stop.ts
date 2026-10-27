@@ -21,7 +21,7 @@
  * @module
  */
 
-import { type DuneInstance, findDuneInstances, readProcessTable, runCommand } from "./instances.ts";
+import { type DuneInstance, findDuneInstances, MissingPermissionError, readProcessTable, runCommand } from "./instances.ts";
 import { formatInstance } from "./ps.ts";
 
 // ── Signalling ───────────────────────────────────────────────────────────────
@@ -52,6 +52,8 @@ export interface StopResult {
   changed: number[];
   /** Pids the operating system refused to signal (owned by another user). */
   denied: number[];
+  /** Pids Deno's own permission system refused to signal (needs `--allow-run`). */
+  needsPermission: number[];
 }
 
 async function alivePids(pids: number[]): Promise<number[]> {
@@ -93,7 +95,7 @@ async function signalVerified(
   pids: number[],
   expected: Map<number, string | undefined>,
   signal: Deno.Signal,
-  sink: { changed: Set<number>; denied: Set<number> },
+  sink: { changed: Set<number>; denied: Set<number>; needsPermission: Set<number> },
 ): Promise<void> {
   const now = await currentStartTimes(pids);
   for (const pid of pids) {
@@ -105,7 +107,8 @@ async function signalVerified(
     try {
       Deno.kill(pid, signal);
     } catch (err) {
-      if (err instanceof Deno.errors.PermissionDenied) sink.denied.add(pid);
+      if (err instanceof Deno.errors.PermissionDenied) sink.denied.add(pid); // EPERM: someone else's
+      else if (err instanceof Deno.errors.NotCapable) sink.needsPermission.add(pid); // Deno's permissions
       else sink.changed.add(pid); // already gone
     }
   }
@@ -128,19 +131,19 @@ export async function stopInstances(
   const toSignal = targets.filter((p) => !protectedPids.has(p));
   const expected = new Map<number, string | undefined>();
   for (const inst of instances) for (const p of inst.pids) expected.set(p, inst.startTimes[p]);
-  const sink = { changed: new Set<number>(), denied: new Set<number>() };
+  const sink = { changed: new Set<number>(), denied: new Set<number>(), needsPermission: new Set<number>() };
 
   await signalVerified(toSignal, expected, "SIGTERM", sink);
-  const signalled = toSignal.filter((p) => !sink.changed.has(p) && !sink.denied.has(p));
+  const signalled = toSignal.filter((p) => !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p));
   const afterTerm = await waitUntilGone(signalled, timeoutMs);
 
   let survivors = afterTerm;
   let killed: number[] = [];
   if (opts.force && afterTerm.length > 0) {
     await signalVerified(afterTerm, expected, "SIGKILL", sink);
-    const sent = afterTerm.filter((p) => !sink.changed.has(p) && !sink.denied.has(p));
+    const sent = afterTerm.filter((p) => !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p));
     const left = await waitUntilGone(sent, killTimeoutMs);
-    survivors = afterTerm.filter((p) => left.includes(p) || sink.denied.has(p));
+    survivors = afterTerm.filter((p) => left.includes(p) || sink.denied.has(p) || sink.needsPermission.has(p));
     killed = sent.filter((p) => !left.includes(p));
   }
   const gone = new Set(signalled.filter((p) => !survivors.includes(p)));
@@ -151,6 +154,7 @@ export async function stopInstances(
     skipped,
     changed: [...sink.changed],
     denied: [...sink.denied],
+    needsPermission: [...sink.needsPermission],
   };
 }
 
@@ -313,7 +317,17 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
     return;
   }
 
-  const all = await (deps.find ?? findDuneInstances)();
+  let all: DuneInstance[];
+  try {
+    all = await (deps.find ?? (() => findDuneInstances({ onWarning: (m) => log(`  ⚠  ${m}`) })))();
+  } catch (err) {
+    if (err instanceof MissingPermissionError) {
+      log(`  ${err.message}`);
+      Deno.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
   if (all.length === 0) {
     log("  No dune dev/serve instances found running locally.");
     // Naming a pid or port that isn't there is a failure; --idle/--all with nothing to do is not.
@@ -330,7 +344,7 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
 
   const { instances, label, notes } = selection;
   log("");
-  for (const inst of instances) for (const line of formatInstance(inst)) log(line);
+  for (const inst of instances) for (const line of formatInstance(inst, { fullCommand: true })) log(line);
   for (const note of notes) log(`  Note: ${note}`);
   if (notes.length > 0) log("");
 
@@ -360,6 +374,10 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
   }
   if (result.denied.length > 0) {
     log(`  Not permitted (owned by another user): ${result.denied.join(", ")}`);
+    Deno.exitCode = 1;
+  }
+  if (result.needsPermission.length > 0) {
+    log(`  Not allowed by Deno's permissions (re-run with --allow-run, or -A): ${result.needsPermission.join(", ")}`);
     Deno.exitCode = 1;
   }
   if (result.killed.length > 0) {

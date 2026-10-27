@@ -109,10 +109,15 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   --idle` (running but not listening for at least 2 minutes — younger ones may
   still be starting; an instance whose port state is unknown, with no `lsof`,
   is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
-  *confirmed* instances (a `config/site.yaml` at the site root): a command line
-  that merely looks like dune, such as another Deno project's `main.ts serve`,
-  is listed by `dune ps` but must be named by pid. Only your own processes are
-  considered. It sends SIGTERM and waits up to 10 seconds for a server to
+  *confirmed* instances: one whose own command line points at a dune site (the
+  directory of the `main.ts` it runs, its `--root`, or the dune CLI's working
+  directory, each holding a `config/site.yaml`). Merely running from inside a
+  site directory confirms nothing, so another Deno project's `main.ts serve`
+  is listed by `dune ps`, marked unconfirmed, and must be named by pid. The
+  prompt shows each instance's full command line. Only your own processes are
+  considered (read from the process table, no `--allow-sys` needed); without
+  `--allow-run` it says what to re-run with instead of reporting no instances,
+  and a kill Deno's permissions refuse is reported as such. It sends SIGTERM and waits up to 10 seconds for a server to
   drain; a process that ignores it is reported, and only `--force` escalates to
   SIGKILL. Each pid's start time is re-checked immediately before it is
   signalled, so a pid that exited and was reused while the prompt was open is
