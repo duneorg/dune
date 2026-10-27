@@ -21,6 +21,7 @@ import type { SearchEngine } from "../search/engine.ts";
 import type { ContentApi } from "../content/api.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { generateSearchPage } from "../search/page.ts";
+import { mediaBodyResponse } from "./media-response.ts";
 import { RateLimiter, clientIp } from "../security/rate-limit.ts";
 import {
   canAccessIndexEntry,
@@ -90,7 +91,6 @@ export function duneRoutes(
       // sufficient and documents the intent clearly.
       const headers: Record<string, string> = {
         "Content-Type": media.contentType,
-        "Content-Length": String(media.size),
         "Cache-Control": "public, max-age=3600",
         "X-Content-Type-Options": "nosniff",
       };
@@ -106,7 +106,7 @@ export function duneRoutes(
         headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups";
         headers["X-Frame-Options"] = "SAMEORIGIN";
       }
-      return new Response(media.data as BodyInit, { headers });
+      return mediaBodyResponse(req, media, headers);
     },
 
     /**

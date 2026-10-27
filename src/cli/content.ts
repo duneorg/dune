@@ -112,9 +112,11 @@ export const contentCommands = {
         issues.push({ sourcePath: page.sourcePath, message: "No route generated" });
       }
 
-      // Check for duplicate routes
+      // Check for duplicate routes (language variants share a route by design)
       const duplicates = engine.pages.filter(
-        (p) => p.route === page.route && p.sourcePath !== page.sourcePath,
+        (p) =>
+          p.route === page.route && p.language === page.language &&
+          p.sourcePath !== page.sourcePath,
       );
       if (duplicates.length > 0 && page.route) {
         issues.push({
