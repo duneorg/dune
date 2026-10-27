@@ -7,7 +7,7 @@
  * @module
  */
 
-import { type DuneInstance, findDuneInstances } from "./instances.ts";
+import { type DuneInstance, findDuneInstances, MissingPermissionError } from "./instances.ts";
 
 /** Injection points so the command's output is testable without touching real processes. */
 export interface PsDeps {
@@ -22,7 +22,7 @@ export function describePort(inst: DuneInstance): string {
 }
 
 /** The lines `dune ps` prints for one instance (shared with `dune stop`, which shows what it is about to stop). */
-export function formatInstance(inst: DuneInstance): string[] {
+export function formatInstance(inst: DuneInstance, opts: { fullCommand?: boolean } = {}): string[] {
   const extra = inst.pids.length > 1
     ? `  (+${inst.pids.length - 1} child process${inst.pids.length > 2 ? "es" : ""})`
     : "";
@@ -31,7 +31,9 @@ export function formatInstance(inst: DuneInstance): string[] {
     `    ${inst.title ?? "(untitled)"}`,
     `    ${inst.root ?? "(site root unconfirmed — no config/site.yaml via --root, PWD or live cwd)"}`,
     `    ${describePort(inst)}`,
-    `    $ ${inst.command.length > 110 ? inst.command.slice(0, 107) + "..." : inst.command}\n`,
+    `    $ ${!opts.fullCommand && inst.command.length > 110 ? inst.command.slice(0, 107) + "..." : inst.command}`,
+    ...(inst.confirmed ? [] : [`    (not confirmed as a dune site: no config/site.yaml at the root its command line points to)`]),
+    "",
   ];
 }
 
@@ -43,7 +45,17 @@ export async function psCommand(deps: PsDeps = {}): Promise<void> {
   }
 
   log("🏜️  Dune — scanning for running instances...\n");
-  const all = await (deps.find ?? findDuneInstances)();
+  let all: DuneInstance[];
+  try {
+    all = await (deps.find ?? (() => findDuneInstances({ onWarning: (m) => log(`  ⚠  ${m}`) })))();
+  } catch (err) {
+    if (err instanceof MissingPermissionError) {
+      log(`  ${err.message}`);
+      Deno.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
 
   if (all.length === 0) {
     log("  No dune dev/serve instances found running locally.");

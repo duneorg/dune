@@ -40,7 +40,7 @@
  * @module
  */
 
-import { isAbsolute, join, resolve } from "@std/path";
+import { dirname, fromFileUrl, isAbsolute, join, resolve } from "@std/path";
 import { parseUserYaml } from "../security/safe-yaml.ts";
 
 /** A dune dev/serve-shaped process (tree) found running on this machine. */
@@ -87,6 +87,9 @@ export interface DuneInstance {
   command: string;
 }
 
+/** Deno's permission system refused something `dune ps`/`dune stop` needs. */
+export class MissingPermissionError extends Error {}
+
 export async function runCommand(
   cmd: string,
   args: string[],
@@ -102,8 +105,15 @@ export async function runCommand(
     const { code, stdout } = await command.output();
     if (code !== 0) return null;
     return new TextDecoder().decode(stdout);
-  } catch {
-    // Binary not found, no permission, etc. — treat as "can't tell", not fatal.
+  } catch (err) {
+    // Deno's own permission system refusing is not "can't tell": silently
+    // reporting no instances (or all pids as gone) would mislead.
+    if (err instanceof Deno.errors.NotCapable) {
+      throw new MissingPermissionError(
+        `\`dune ps\`/\`dune stop\` need to run \`${cmd}\`: re-run with --allow-run (or -A).`,
+      );
+    }
+    // Binary not found, etc. — treat as "can't tell", not fatal.
     return null;
   }
 }
@@ -164,6 +174,8 @@ export async function readProcessTable(): Promise<ProcRow[]> {
 export interface CommandMatch {
   mode: "dev" | "serve";
   strength: "strong" | "weak";
+  /** Which invocation shape matched; decides how the site root is read from the command line. */
+  kind: "entry" | "cli" | "task";
 }
 
 const DENO_EXE = /^(?:\S*\/)?deno\s/;
@@ -186,15 +198,15 @@ export function matchDuneCommand(command: string): CommandMatch | null {
   if (!DENO_EXE.test(command)) return null;
 
   const entry = command.match(/\bmain\.ts\s+(dev|serve)\b/);
-  if (entry) return { mode: entry[1] as "dev" | "serve", strength: "strong" };
+  if (entry) return { mode: entry[1] as "dev" | "serve", strength: "strong", kind: "entry" };
 
   const cli = command.match(/(?:^|[\s/])cli(?:\.ts)?\s+(dev|serve)\b/);
   if (cli) {
-    return { mode: cli[1] as "dev" | "serve", strength: /dune/i.test(command) ? "strong" : "weak" };
+    return { mode: cli[1] as "dev" | "serve", strength: /dune/i.test(command) ? "strong" : "weak", kind: "cli" };
   }
 
   const task = command.match(/\bdeno\s+task\s+(dev|serve)\b/);
-  if (task) return { mode: task[1] as "dev" | "serve", strength: "weak" };
+  if (task) return { mode: task[1] as "dev" | "serve", strength: "weak", kind: "task" };
 
   return null;
 }
@@ -203,6 +215,40 @@ export function matchDuneCommand(command: string): CommandMatch | null {
 export function parseRootArg(command: string): string | null {
   const m = command.match(/--root(?:=|\s+)("[^"]+"|'[^']+'|\S+)/);
   return m ? m[1].replace(/^["']|["']$/g, "") : null;
+}
+
+/**
+ * The site root the command line itself points at, or null. This is the strict
+ * evidence behind "confirmed": a process merely *running from inside* a site
+ * directory (its `PWD` or cwd) proves nothing, since any tool started from a
+ * site repo inherits that.
+ *   - `--root <dir>`, when given;
+ *   - the generated entrypoint: the directory holding the `main.ts` it runs
+ *     (`cli({ root: import.meta.dirname })`), however the process was started;
+ *   - the dune CLI proper: its working directory, since `dune dev` defaults
+ *     `--root` to `.`;
+ *   - nothing for a bare `deno task` wrapper (its child carries the evidence).
+ * `base` is the process's PWD/cwd, used to resolve relative paths.
+ */
+export function commandSiteRootHint(command: string, match: CommandMatch, base: string | null): string | null {
+  const rootArg = parseRootArg(command);
+  if (rootArg) return isAbsolute(rootArg) ? rootArg : base ? resolve(base, rootArg) : null;
+  if (match.kind === "entry") {
+    const m = command.match(/(\S*main\.ts)\s+(?:dev|serve)\b/);
+    if (!m) return null;
+    let script = m[1].replace(/^["']|["']$/g, "");
+    if (script.startsWith("file://")) {
+      try {
+        script = fromFileUrl(script);
+      } catch {
+        return null;
+      }
+    }
+    if (isAbsolute(script)) return dirname(script);
+    return base ? dirname(resolve(base, script)) : null;
+  }
+  if (match.kind === "cli" && match.strength === "strong") return base;
+  return null;
 }
 
 /** All descendant pids of `pid`, from an in-memory process table. */
@@ -359,12 +405,18 @@ async function confirmSiteRoot(dirs: (string | null)[]): Promise<string | null> 
  * port, uptime, command) rather than a false negative — but `root`/`title`
  * are null in that case, and the caller should say so plainly.
  */
-export async function findDuneInstances(): Promise<DuneInstance[]> {
+export async function findDuneInstances(
+  opts: { onWarning?: (message: string) => void } = {},
+): Promise<DuneInstance[]> {
   const allRows = await readProcessTable();
   // Only this user's processes: another user's server is not ours to list or
-  // signal (the kill would be refused anyway). Where the uid can't be read
-  // (not POSIX) nothing is filtered.
-  const myUid = Deno.build.os === "windows" ? null : Deno.uid();
+  // signal (the kill would be refused anyway). Our own uid comes from our own
+  // row in the table (Deno.uid() would need --allow-sys); if that row is
+  // missing nothing can be filtered, and we say so.
+  const myUid = allRows.find((r) => r.pid === Deno.pid)?.uid ?? null;
+  if (myUid === null && allRows.length > 0) {
+    opts.onWarning?.("Could not tell which user owns this process, so processes of other users are not filtered out.");
+  }
   const table = myUid === null ? allRows : allRows.filter((r) => r.uid === myUid);
   const byPid = new Map(table.map((r) => [r.pid, r]));
   const children = new Map<number, number[]>();
@@ -375,6 +427,12 @@ export async function findDuneInstances(): Promise<DuneInstance[]> {
     match: CommandMatch;
     root: string | null;
   }
+  /** A site root the command line itself points at (see commandSiteRootHint), verified on disk. */
+  const strictRootOf = async (row: ProcRow, match: CommandMatch): Promise<string | null> => {
+    const [pwd, cwd] = await Promise.all([getPwdEnv(row.pid), getLiveCwd(row.pid)]);
+    const hint = commandSiteRootHint(row.command, match, pwd ?? cwd);
+    return hint ? await confirmSiteRoot([hint]) : null;
+  };
   const cands: Cand[] = [];
   for (const row of table) {
     const match = matchDuneCommand(row.command);
@@ -408,7 +466,22 @@ export async function findDuneInstances(): Promise<DuneInstance[]> {
   for (const c of tops) {
     const pids = [c.pid, ...descendantsOf(c.pid, children)];
     // A tree's site root can sit on any member (e.g. the `--root` is on the child).
-    let root = c.root;
+    // Confirmed only on evidence from the command line, never from where the
+    // process happens to be running: any tool started from inside a site repo
+    // inherits that directory. Any member of the tree can provide it (a
+    // `deno task` wrapper has none of its own).
+    let confirmedRoot = await strictRootOf(c, c.match);
+    if (!confirmedRoot) {
+      for (const pid of pids.slice(1)) {
+        const row = byPid.get(pid);
+        const childMatch = row ? matchDuneCommand(row.command) : null;
+        if (row && childMatch) {
+          confirmedRoot = await strictRootOf(row, childMatch);
+          if (confirmedRoot) break;
+        }
+      }
+    }
+    let root = confirmedRoot ?? c.root;
     if (!root) {
       for (const pid of pids.slice(1)) {
         const row = byPid.get(pid);
@@ -435,7 +508,7 @@ export async function findDuneInstances(): Promise<DuneInstance[]> {
       portStatus: !haveLsof ? "unknown" : ports.length > 0 ? "listening" : "not-listening",
       elapsed: c.elapsed,
       ageSeconds: parseElapsedSeconds(c.elapsed),
-      confirmed: root !== null,
+      confirmed: confirmedRoot !== null,
       startTimes: Object.fromEntries(pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : [])),
       command: c.command,
     });

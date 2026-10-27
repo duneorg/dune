@@ -133,6 +133,79 @@ Deno.test("stopInstances: a process the operating system refuses to signal is re
   assertEquals(result.survivors, []);
 });
 
+const STOP_URL = new URL("../../src/cli/stop.ts", import.meta.url).href;
+const INSTANCES_URL = new URL("../../src/cli/instances.ts", import.meta.url).href;
+const PS_URL = new URL("../../src/cli/ps.ts", import.meta.url).href;
+const DUNE_CONFIG = new URL("../../deno.json", import.meta.url).pathname;
+
+/** Run a small script under a restricted set of permissions and return what it printed. */
+async function runRestricted(dir: string, code: string, permFlags: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const script = join(dir, "restricted.ts");
+  await Deno.writeTextFile(script, code);
+  const out = await new Deno.Command(Deno.execPath(), {
+    args: ["run", `--config=${DUNE_CONFIG}`, ...permFlags, script],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const dec = new TextDecoder();
+  return { ok: out.success, stdout: dec.decode(out.stdout), stderr: dec.decode(out.stderr) };
+}
+
+Deno.test("dune ps works without --allow-sys (our own uid comes from our own process-table row)", opts, async () => {
+  const dir = await Deno.makeTempDir({ prefix: "stop_test_perm_" });
+  try {
+    const r = await runRestricted(
+      dir,
+      `import { psCommand } from ${JSON.stringify(PS_URL)};\nawait psCommand({ log: () => {} });\nconsole.log("fine");\n`,
+      ["--allow-run", "--allow-read", "--allow-env"],
+    );
+    assertEquals(r.ok, true, r.stderr);
+    assertEquals(r.stdout.includes("fine"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("without --allow-run, finding instances fails loudly with the fix, instead of reporting none", opts, async () => {
+  const dir = await Deno.makeTempDir({ prefix: "stop_test_perm_" });
+  try {
+    const r = await runRestricted(
+      dir,
+      `import { findDuneInstances, MissingPermissionError } from ${JSON.stringify(INSTANCES_URL)};\n` +
+        `try { await findDuneInstances(); console.log("NO ERROR"); } catch (e) { console.log(e instanceof MissingPermissionError ? e.message : "WRONG " + e); }\n`,
+      ["--allow-read", "--allow-env"],
+    );
+    assertEquals(r.stdout.includes("--allow-run"), true, r.stdout + r.stderr);
+  } finally {
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("a kill refused by Deno's own permissions is reported as needing --allow-run, not as 'already gone'", opts, async () => {
+  await withStubbornProcess(async (pid, child) => {
+    const dir = await Deno.makeTempDir({ prefix: "stop_test_perm_" });
+    try {
+      const times = await realStartTimes([pid]);
+      const r = await runRestricted(
+        dir,
+        `import { stopInstances } from ${JSON.stringify(STOP_URL)};\n` +
+          `const inst = { pid: ${pid}, pids: [${pid}], mode: "serve", root: null, title: null, ports: [], portStatus: "not-listening", elapsed: "1:00", ageSeconds: 60, confirmed: true, startTimes: ${JSON.stringify(times)}, command: "x" };\n` +
+          `console.log(JSON.stringify(await stopInstances([inst], { timeoutMs: 300 })));\n`,
+        // `ps` may run, signalling may not.
+        ["--allow-run=ps", "--allow-read", "--allow-env", "--allow-sys"],
+      );
+      assertEquals(r.ok, true, r.stderr);
+      const result = JSON.parse(r.stdout.trim().split("\n").pop()!);
+      assertEquals(result.needsPermission, [pid], r.stdout);
+      assertEquals(result.changed, [], "must not be reported as 'already exited'");
+      // And it really was not signalled.
+      assertEquals(await Promise.race([child.status.then(() => "exited"), new Promise((x) => setTimeout(() => x("alive"), 300))]), "alive");
+    } finally {
+      await Deno.remove(dir, { recursive: true }).catch(() => {});
+    }
+  });
+});
+
 // ── selectInstances ──────────────────────────────────────────────────────────
 
 const LIVE = () => fakeInstance({ pid: 10, pids: [10, 11], ports: [3000], portStatus: "listening", title: "Live Site" });
@@ -285,6 +358,7 @@ async function runStop(
           skipped: [],
           changed: deps.changed ?? [],
           denied: deps.denied ?? [],
+          needsPermission: [],
         });
       },
       isInteractive: () => deps.interactive ?? false,
