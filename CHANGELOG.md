@@ -11,20 +11,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
-### Security
-
-- **Template `output` that is `image/svg+xml` is served under the same sandbox
-  as uploaded SVG media** (`Content-Security-Policy: sandbox allow-scripts
-  allow-popups`, `X-Frame-Options: SAMEORIGIN`), including when it comes from
-  the page cache. Template code is trusted, so this is defence in depth: if a
-  theme interpolates page content into SVG without escaping it, script in the
-  SVG can no longer reach the site's cookies or same-origin endpoints when the
-  SVG is opened directly (SVG used as an `<img>` is unaffected). HTML
-  fragments are deliberately not sandboxed — they must stay embeddable, and
-  Preact escapes them — and `text/javascript` cannot be sandboxed, so escaping
-  what a template embeds in JavaScript or XML output stays the theme author's
-  job (documented).
-
 ### Added
 
 - **Template `output` modes: serve bare fragments, JSON, XML, text or any
@@ -49,6 +35,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   a data template that returns the wrong type is a 500 naming the template.
   Islands in a fragment render on the server but do not hydrate when swapped
   into a page after load.
+  SVG output is served under the same sandbox as uploaded SVG (CSP sandbox,
+  X-Frame-Options), including from the page cache; HTML fragments and
+  JavaScript output are not sandboxed, so escaping what a template embeds stays
+  the theme author's job.
 
 - **`dune ps` now tells a hung server from a healthy one, and finds servers
   that registered themselves.** Every listening instance is sent a `GET
