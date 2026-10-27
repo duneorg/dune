@@ -27,6 +27,8 @@ import { join, dirname, resolve } from "@std/path";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { TemplateComponent, Page, PageIndex } from "../content/types.ts";
 import type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./types.ts";
+import { parseTemplateOutput, type TemplateOutput } from "./output.ts";
+import { logger } from "../core/logger.ts";
 import type { ThemePackageIndex } from "./packages.ts";
 import {
   defaultThemeNameFromSpecifier,
@@ -269,6 +271,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
     absPath: string;
     /** Timestamp (ms) of the last mtime stat — used to throttle Deno.stat. */
     lastChecked: number;
+    /** Templates only: the module's validated `output` export, if any. */
+    output?: TemplateOutput;
   }
   const templateCache = new Map<string, CacheEntry>();
   const layoutCache = new Map<string, CacheEntry>();
@@ -366,12 +370,12 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
       if (cached) {
         const now = Date.now();
         if (now - cached.lastChecked < MTIME_CHECK_TTL_MS) {
-          return { name, component: cached.component, fromTheme: theme.manifest.name };
+          return { name, component: cached.component, fromTheme: theme.manifest.name, output: cached.output };
         }
         const currentMtime = await getMtime(cached.absPath);
         if (currentMtime === cached.mtime) {
           cached.lastChecked = now;
-          return { name, component: cached.component, fromTheme: theme.manifest.name };
+          return { name, component: cached.component, fromTheme: theme.manifest.name, output: cached.output };
         }
         // File changed — invalidate this entry and re-import with a bumped version
         templateCache.delete(name);
@@ -398,8 +402,20 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
           const component = mod.default as TemplateComponent;
           const templatePath = join(active.dir, "templates", `${name}.tsx`);
           warnStaticLayoutImport(templatePath, active.storage);
-          templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now() });
-          return { name, component, fromTheme: active.manifest.name };
+          let output: TemplateOutput | undefined;
+          if (mod.output !== undefined) {
+            output = parseTemplateOutput(mod.output) ?? undefined;
+            if (!output && !_warnedTemplateFailures.has(`output:${absPath}`)) {
+              _warnedTemplateFailures.add(`output:${absPath}`);
+              logger.warn("theme.template.invalid_output", {
+                template: templatePath,
+                output: String(mod.output),
+                reason: 'expected "fragment", "json", "xml", "text" or a media type like "text/csv"; rendering as a normal HTML page',
+              });
+            }
+          }
+          templateCache.set(name, { component, mtime, absPath, lastChecked: Date.now(), output });
+          return { name, component, fromTheme: active.manifest.name, output };
         } catch (err) {
           // A missing template file is caught here too (Deno.stat above
           // throws NotFound rather than returning) and is not warning-worthy

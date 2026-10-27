@@ -14,6 +14,8 @@ import {
   renderErrorPage,
   withSecurityHeaders,
 } from "../cli/serve-utils.ts";
+import { scrubMarkersFromResponse } from "../cli/marker-scrub.ts";
+import { isBareResponse } from "../routing/bare-response.ts";
 import { hasAdminSessionCookie } from "../cli/admin-bar-inject.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
 import {
@@ -91,6 +93,26 @@ export function registerContentCatchAll(
   const { engine, imageHandler, hooks, config, metrics, authz, authzSchema } = ctx;
   // deno-lint-ignore no-explicit-any
   const getAdminAuth = () => (ctx.adminContext as any)?.auth ?? null;
+
+  // Plugin response transforms (admin bar and friends) for a content response.
+  // A bare response (template `output` mode) is not an HTML document, so only
+  // editing markers are scrubbed — never the plugin pass, which assumes a page.
+  const transformContentResponse = (
+    req: Request,
+    response: Response,
+    bare: boolean,
+  ): Promise<Response> =>
+    bare ? scrubMarkersFromResponse(response) : runPluginResponseTransforms({
+      req,
+      response,
+      plugins: hooks.plugins(),
+      auth: getAdminAuth(),
+      authz,
+      actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
+      resolve: engine.router.resolve,
+      config,
+      adminPrefix,
+    });
 
   app.all("/*", async (fc) => {
     const startMs = performance.now();
@@ -205,7 +227,7 @@ export function registerContentCatchAll(
                   new Response(cached.body as BodyInit, {
                     status: 200,
                     headers: {
-                      "Content-Type": "text/html; charset=utf-8",
+                      "Content-Type": cached.contentType,
                       "ETag": etag,
                       "Cache-Control": ccValue,
                     },
@@ -241,20 +263,14 @@ export function registerContentCatchAll(
         }
 
         response = await routes.contentHandler(req, renderJsx);
-        if (feedEnabled) response = injectFeedLinks(siteName, response);
+        // A template with an `output` mode (fragment/json/xml/text) is not an HTML
+        // document: skip the document-oriented steps (feed links, plugin transforms
+        // such as the admin bar, RTL `dir`). Editing markers are still scrubbed.
+        const bare = isBareResponse(response);
+        if (feedEnabled && !bare) response = injectFeedLinks(siteName, response);
 
         // Plugin response transforms (e.g. admin bar injection) — must run before caching.
-        response = await runPluginResponseTransforms({
-          req,
-          response,
-          plugins: hooks.plugins(),
-          auth: getAdminAuth(),
-          authz,
-          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
-          resolve: engine.router.resolve,
-          config,
-          adminPrefix,
-        });
+        response = await transformContentResponse(req, response, bare);
 
         // RTL direction injection
         const rtlSupportedLangs = config.system.languages?.supported ?? [];
@@ -263,10 +279,12 @@ export function registerContentCatchAll(
             rtlSupportedLangs.includes(rtlUrlSegments[1])
           ? rtlUrlSegments[1]
           : (config.system.languages?.default ?? "en");
-        response = injectRtlDir(
-          response,
-          isRtl(pageLang, config.system.languages?.rtl_override),
-        );
+        if (!bare) {
+          response = injectRtlDir(
+            response,
+            isRtl(pageLang, config.system.languages?.rtl_override),
+          );
+        }
         response = injectBasePath(response, config.site.basePath);
 
         // Cache headers. Admin responses get private/no-store so CDNs/browsers
@@ -293,6 +311,7 @@ export function registerContentCatchAll(
           const body = await response.arrayBuffer();
           pageCache.set(url.pathname, {
             body: new Uint8Array(body),
+            contentType: response.headers.get("Content-Type") ?? "text/html; charset=utf-8",
             etag,
             cacheControl: ccValue,
           });
@@ -306,24 +325,15 @@ export function registerContentCatchAll(
       } else {
         // Dev mode: no cache, inject live reload + feed links
         response = await routes.contentHandler(req, renderJsx);
+        const bare = isBareResponse(response);
         if (response.status === 200) {
           const h = new Headers(response.headers);
           h.set("Cache-Control", "no-store");
           response = new Response(response.body, { status: 200, headers: h });
         }
-        if (feedEnabled) response = injectFeedLinks(siteName, response);
+        if (feedEnabled && !bare) response = injectFeedLinks(siteName, response);
 
-        response = await runPluginResponseTransforms({
-          req,
-          response,
-          plugins: hooks.plugins(),
-          auth: getAdminAuth(),
-          authz,
-          actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
-          resolve: engine.router.resolve,
-          config,
-          adminPrefix,
-        });
+        response = await transformContentResponse(req, response, bare);
 
         const devSupportedLangs = config.system.languages?.supported ?? [];
         const devUrlSegments = url.pathname.split("/");
@@ -331,12 +341,14 @@ export function registerContentCatchAll(
             devSupportedLangs.includes(devUrlSegments[1])
           ? devUrlSegments[1]
           : (config.system.languages?.default ?? "en");
-        response = injectRtlDir(
-          response,
-          isRtl(devLang, config.system.languages?.rtl_override),
-        );
+        if (!bare) {
+          response = injectRtlDir(
+            response,
+            isRtl(devLang, config.system.languages?.rtl_override),
+          );
+        }
         response = injectBasePath(response, config.site.basePath);
-        response = injectLiveReload(response);
+        if (!bare) response = injectLiveReload(response);
       }
     } catch (err) {
       const safePath = sanitizeForLog(url.pathname);
