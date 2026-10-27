@@ -1,5 +1,4 @@
 import type { MediaFile } from "../content/types.ts";
-import { isMediaFile } from "../content/path-utils.ts";
 
 /**
  * Strip a leading supported-language segment from a URL pathname:
@@ -16,7 +15,8 @@ export function stripLangPrefix(
 
 /**
  * Rewrite internal links in HTML to include language prefix when needed.
- * E.g. /contact → /de/contact when rendering a German page.
+ * E.g. /contact → /de/contact when rendering a German page. Links to the
+ * page's own `colocatedMedia` are left alone.
  */
 export function rewriteInternalLinks(
   html: string,
@@ -24,12 +24,14 @@ export function rewriteInternalLinks(
   defaultLang: string,
   includeDefaultInUrl: boolean,
   supportedLangs: string[],
+  colocatedMedia: MediaFile[] = [],
 ): string {
   const needsPrefix = lang !== defaultLang || includeDefaultInUrl;
   if (!needsPrefix) return html;
 
   const langPrefix = `/${lang}`;
   const skipPrefixes = ["/themes/", "/content-media/", "/api/", "/admin/", "//", "mailto:", "tel:"];
+  const mediaUrls = new Set(colocatedMedia.map((m) => m.url));
   const hasLangPrefix = new RegExp(`^/(${supportedLangs.join("|")})(/|$)`);
 
   return html.replace(
@@ -38,9 +40,9 @@ export function rewriteInternalLinks(
       if (hasLangPrefix.test(path)) return `href="${path}"`;
       if (skipPrefixes.some((p) => path.startsWith(p))) return `href="${path}"`;
       if (path.includes(":")) return `href="${path}"`;
-      // Co-located media is only served at its unprefixed route path.
-      const pathOnly = path.split(/[?#]/)[0];
-      if (isMediaFile(pathOnly.split("/").pop() ?? "")) return `href="${path}"`;
+      // The page's own co-located files are served at their unprefixed path.
+      // Matched by URL, not extension: /old-page.html is a page, not a file.
+      if (mediaUrls.has(path.split(/[?#]/)[0])) return `href="${path}"`;
       const newPath = path === "/" ? langPrefix : `${langPrefix}${path}`;
       return `href="${newPath}"`;
     },

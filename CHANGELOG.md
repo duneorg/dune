@@ -27,8 +27,9 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   internal-link rewriter prefixed every root-relative `href`, so
   `[Download](doc.pdf)` on a German page became `/de/<route>/doc.pdf`, but
   co-located media is only served at its unprefixed route path. The rewriter
-  now leaves hrefs whose file name has a media extension untouched, and the
-  media handler also accepts `/<lang>/<route>/<file>` (stripping a
+  now leaves links to the page's own co-located files untouched (matched by
+  URL, so page routes like `/old-page.html` or `/pricing.json` are still
+  prefixed), and the media handler also accepts `/<lang>/<route>/<file>` (stripping a
   supported-language prefix), with access gating still decided by the page
   that owns the file. Language-prefixed media links that already exist in the
   wild start working too.
