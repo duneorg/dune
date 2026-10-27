@@ -53,6 +53,9 @@ Use GitHub Issues; the templates ask for what we need: Deno version
 happened. For questions and ideas that aren't bugs, the feature template or a
 discussion works too.
 
+**Security problems are the exception: don't file an issue, PR or branch for them.**
+Report them privately as described in [SECURITY.md](SECURITY.md).
+
 ## Code style
 
 Follow the patterns already in the codebase. `deno fmt` and `deno lint` are
