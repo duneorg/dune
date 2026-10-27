@@ -84,6 +84,51 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   that owns the file. Language-prefixed media links that already exist in the
   wild start working too.
 
+- **`dune ps` missed servers started through the `dune` CLI itself.** It only
+  matched the generated entrypoint (`main.ts dev|serve`), so a dev server run
+  via the global shim or a checkout (`.../cli.ts dev`), via
+  `jsr:@dune/core/cli serve`, or through a `deno task dev|serve` wrapper never
+  showed up — on a real machine it listed 19 hung processes and missed the one
+  server that was actually serving. It now matches those forms too. A bare
+  `cli.ts` or `deno task` match (which could be any project) counts only when a
+  `config/site.yaml` is found via `--root`, `PWD` or the live cwd.
+- **`dune ps` reported "port unknown — is `lsof` installed?" for processes that
+  simply weren't listening.** It now says **not listening** when `lsof` ran and
+  found no open port (typically a server started on a port something else
+  already held, which never exits), and "port unknown (lsof not available)"
+  only when `lsof` can't be run.
+- A server's wrapper, re-exec child and esbuild workers are now reported as one
+  instance, found from a single process-table snapshot (no more `pgrep`), and
+  `--root` on the command line is used to find the site.
+
+### Added
+
+- **`dune stop`** stops dune instances, with their whole process tree (including
+  any other tool a `deno task` wrapper started). A target is required, so
+  stopping every server on a machine always has to be asked for by name: `dune
+  stop <pid>` (any process of an instance), `dune stop --port <n>`, `dune stop
+  --idle` (running but not listening for at least 2 minutes — younger ones may
+  still be starting; an instance whose port state is unknown, with no `lsof`,
+  is never assumed idle) or `dune stop --all`. `--all` and `--idle` act only on
+  *confirmed* instances: one whose own command line points at a dune site (the
+  directory of the `main.ts` it runs, its `--root`, or the dune CLI's working
+  directory, each holding a `config/site.yaml`). Merely running from inside a
+  site directory confirms nothing, so another Deno project's `main.ts serve`
+  is listed by `dune ps`, marked unconfirmed, and must be named by pid. The
+  prompt shows each instance's full command line. Only your own processes are
+  considered (read from the process table, no `--allow-sys` needed); without
+  `--allow-run` it says what to re-run with instead of reporting no instances,
+  and a kill Deno's permissions refuse is reported as such. It sends SIGTERM and waits up to 10 seconds for a server to
+  drain; a process that ignores it is reported, and only `--force` escalates to
+  SIGKILL. Each pid's start time is re-checked immediately before it is
+  signalled, so a pid that exited and was reused while the prompt was open is
+  never hit, and a signal the OS refuses is reported as such. It asks first
+  (`--yes` skips the prompt; with no terminal it refuses unless `--yes` is
+  given), never signals itself or its parent processes, and exits 2 for a
+  usage error, 1 when a named pid/port matches nothing or something would not
+  stop, and 0 otherwise. `dune ps` stays read-only and now points at it.
+
+
 ## [0.34.14] — 2026-10-21
 
 ### Security

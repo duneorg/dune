@@ -20,7 +20,16 @@ Commands:
                       (for developing Dune itself — refreshes its frozen
                       import-map snapshot after deno.json's imports change)
   ps                  List dune dev/serve instances currently running on
-                      this machine (PID, site, port — macOS/Linux only)
+                      this machine (PID, site, port or "not listening" —
+                      macOS/Linux only)
+  stop <pid>          Stop a dune instance (and its child processes) — any
+                      PID shown by \`dune ps\`. SIGTERM; asks first
+  stop --port <n>     Stop the instance listening on that port
+  stop --idle         Stop only instances that are running but not listening
+                      (hung or leftover)
+  stop --all          Stop every instance \`dune ps\` lists
+                      (--force SIGKILLs processes that ignore SIGTERM;
+                      --yes skips the prompt)
   build               Build content index and validate config
   build --static      Generate a fully static site (SSG)
   serve               Start production server (--frozen enforces deno.lock;
