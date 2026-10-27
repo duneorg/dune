@@ -23,6 +23,8 @@ import { checkLockfileStaleness } from "./lockfile.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { registerEsbuildWorkerCleanup } from "./esbuild-cleanup.ts";
 import { startWatchdog } from "../runtime/watchdog.ts";
+import { registerInstance } from "../runtime/instance-registry.ts";
+import { CORE_VERSION } from "../plugins/mod.ts";
 
 export interface DevOptions {
   port?: number;
@@ -65,6 +67,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     const { MultisiteManager } = await import("../multisite/mod.ts");
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: true });
+    await registerInstance({ mode: "dev", root, title: null, port, version: CORE_VERSION });
     console.log(`\n  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
     Deno.serve({ port, handler: (req, info) => manager.handle(req, info) });
     watchdog.ready();
@@ -76,6 +79,12 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, collections, taxonomy, search, config, pluginPublicRoutes, hooks } = ctx;
+  // For `dune ps` (runtime/instance-registry.ts). Dev ends via signals or a
+  // --watch restart rather than a graceful path, so the record is left to the
+  // unload handler and, failing that, to readers pruning it.
+  await registerInstance({
+    mode: "dev", root, title: config.site.title ?? null, port, version: CORE_VERSION,
+  });
   const adminPrefix = config.admin?.path ?? "/admin";
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);

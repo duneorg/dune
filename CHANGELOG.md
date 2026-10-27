@@ -13,6 +13,16 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
+- **Running instances now register themselves.** `dune dev` and `dune serve`
+  write a small record (pid, process start time, mode, site root, title, port,
+  `@dune/core` version) to `~/.dune/instances/<pid>.json`
+  (`DUNE_REGISTRY_DIR` overrides the directory) and remove it on a graceful
+  exit. A kill or crash leaves the file behind, so readers confirm the pid is
+  alive *and* has the recorded start time (pids get reused) and delete the ones
+  that fail. This is groundwork for `dune ps` to list instances from what each
+  one says about itself rather than guessing from command lines and `lsof`;
+  nothing reads it yet, and a registry that can't be written never stops a
+  server from starting. Unix only.
 - **Event-loop watchdog: a server whose main thread gets stuck no longer hangs
   silently until someone restarts it.** One synchronous loop (catastrophic
   regex backtracking, a conversion that never terminates) blocks the single
