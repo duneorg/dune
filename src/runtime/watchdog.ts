@@ -346,8 +346,11 @@ export function startWatchdog(opts: WatchdogOptions): Watchdog {
   const url = URL.createObjectURL(
     new Blob([WORKER_SOURCE], { type: "application/javascript" }),
   );
+  // Never revoke `url`: Deno loads a module worker's source asynchronously,
+  // so revoking right after construction races the load and kills the
+  // process at boot ("Module not found blob:null/..."). One small blob per
+  // process lifetime is harmless.
   const worker = new Worker(url, { type: "module" });
-  URL.revokeObjectURL(url);
   activeWorker = worker;
   worker.postMessage({
     type: "init",
@@ -388,6 +391,13 @@ export function startWatchdog(opts: WatchdogOptions): Watchdog {
   // shutdown) must therefore call stop(); signal-driven and Deno.exit()
   // exits end the process regardless. 'unload' is a best-effort backstop.
   globalThis.addEventListener("unload", stop);
+  // A worker that fails to load or throws must not take the process down: an
+  // unhandled worker error exits it. Degrade to "no watchdog" instead.
+  worker.addEventListener("error", (e) => {
+    e.preventDefault();
+    console.error(`[dune] watchdog: worker failed (${e.message}); watchdog disabled`);
+    stop();
+  });
   return {
     ready: () => {
       if (!stopped) worker.postMessage({ type: "ready" });

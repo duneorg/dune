@@ -199,6 +199,34 @@ Deno.test(
 );
 
 Deno.test(
+  "watchdog: a worker that fails to load disables the watchdog instead of crashing the process",
+  noSanitize,
+  async () => {
+    await withRoot(async (root) => {
+      const script = join(root, "child.ts");
+      await Deno.writeTextFile(
+        script,
+        `const Real = globalThis.Worker;\n` +
+          `globalThis.Worker = class extends Real {\n` +
+          `  constructor(_url, o) { super("data:application/javascript,throw new Error('boom')", o); }\n` +
+          `};\n` +
+          `const { startWatchdog } = await import(${JSON.stringify(WATCHDOG_URL)});\n` +
+          `startWatchdog({ root: ${JSON.stringify(root)}, mode: "exit" });\n` +
+          `await new Promise((r) => setTimeout(r, 1000));\n` +
+          `console.log("survived");\n`,
+      );
+      const r = await finish(
+        new Deno.Command(Deno.execPath(), { args: ["run", "-A", script], stdout: "piped", stderr: "piped" }).spawn(),
+      );
+      assert(!r.timedOut, "process lingered");
+      assertEquals(r.code, 0, r.stderr);
+      assertStringIncludes(r.stdout, "survived");
+      assertStringIncludes(r.stderr, "watchdog disabled");
+    });
+  },
+);
+
+Deno.test(
   "watchdog (off): starts nothing and the process exits normally",
   noSanitize,
   async () => {
@@ -466,3 +494,8 @@ Deno.test(
     });
   },
 );
+
+Deno.test("watchdog: the worker blob URL is never revoked (revoking races the async module load)", async () => {
+  const src = await Deno.readTextFile(new URL("../../src/runtime/watchdog.ts", import.meta.url));
+  assert(!/revokeObjectURL\s*\(/.test(src.replace(/\/\/.*$/gm, "")), "revokeObjectURL would race the worker load");
+});

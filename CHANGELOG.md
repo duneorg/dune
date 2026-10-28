@@ -9,6 +9,18 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- The event-loop watchdog no longer crashes the process at boot intermittently
+  (`Module not found "blob:null/…"`): it revoked its worker's blob URL right
+  after `new Worker()`, racing Deno's async module load. The URL is no longer
+  revoked, and a worker that fails to load now disables the watchdog with a log
+  line instead of exiting the process (#60).
+
+---
+
 ## [0.35.0] — 2026-10-27
 
 ### Changed
