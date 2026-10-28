@@ -1,12 +1,15 @@
 /**
  * dune upgrade — Update @dune/core to the latest version.
  *
- * Reads the site's deno.json, updates the @dune/core import specifier to the
- * latest version published on JSR, and writes the file back. Deno will fetch
- * the new version automatically on the next startup.
+ * Reads the site's deno.json and moves every `jsr:@dune/core@…` reference to
+ * the target version: the `@dune/core` import, its subpath entries (e.g.
+ * `@dune/core/ui/editable`) and the CLI specifier in legacy `tasks`. Each
+ * reference keeps its own style (exact `0.35.1`, caret `^0.35.1`, or a partial
+ * `0.35`), so a site that pins exactly stays pinned exactly. Then it syncs the
+ * lockfile. Deno fetches the new version on the next startup.
  *
  * Usage:
- *   dune upgrade
+ *   dune upgrade [version]    # default: latest on JSR
  */
 
 import { resolve, join, dirname, fromFileUrl } from "@std/path";
@@ -17,6 +20,43 @@ const JSR_META_URL = "https://jsr.io/@dune/core/meta.json";
 
 export interface UpgradeOptions {
   debug?: boolean;
+  /** Target version; defaults to the latest published on JSR. */
+  version?: string;
+}
+
+/** One `jsr:@dune/core@…` reference that was (or would be) rewritten. */
+export interface CoreRefChange {
+  from: string;
+  to: string;
+}
+
+/**
+ * Rewrite every `jsr:@dune/core@<version>` reference in a deno.json text to
+ * `version`, keeping each reference's own style: a `^`/`~` prefix and the
+ * number of version segments (`0.34.13` -> exact, `^0.35` -> caret + minor).
+ * References that already point at `version` (or, unless `force`, at something
+ * newer) are left alone. JSON keys (`"jsr:@dune/core@^0.34": …`) are never
+ * touched, only values and task commands. Text-based, so formatting survives.
+ */
+export function rewriteCoreRefs(
+  raw: string,
+  version: string,
+  force = false,
+): { updated: string; changes: CoreRefChange[] } {
+  const changes: CoreRefChange[] = [];
+  const re = /jsr:@dune\/core@(\^|~)?(\d+(?:\.\d+){0,2})/g;
+  const updated = raw.replace(re, (match, prefix: string | undefined, ver: string, offset: number) => {
+    // Skip JSON keys: the enclosing string is followed by a colon.
+    const close = raw.indexOf('"', offset + match.length);
+    if (close !== -1 && /^\s*:/.test(raw.slice(close + 1, close + 40))) return match;
+    if (!force && !isNewer(version, ver)) return match;
+    const segments = ver.split(".").length;
+    const next = version.split(".").slice(0, segments).join(".");
+    const to = `jsr:@dune/core@${prefix ?? ""}${next}`;
+    if (to !== match) changes.push({ from: match, to });
+    return to;
+  });
+  return { updated, changes };
 }
 
 export async function upgradeCommand(
@@ -69,43 +109,39 @@ export async function upgradeCommand(
 
   console.log("🏜️  Dune — checking for updates...\n");
 
-  // Fetch latest version from JSR
-  let latest: string;
-  try {
-    const res = await fetch(JSR_META_URL, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const meta = await res.json() as { latest?: string };
-    if (!meta.latest) throw new Error("No latest version in JSR response");
-    latest = meta.latest;
-  } catch (err) {
-    console.error(`  ✗ Could not fetch latest version: ${err instanceof Error ? err.message : err}`);
-    Deno.exit(1);
+  // Target version: explicit argument, or the latest published on JSR
+  let target: string;
+  if (_options.version) {
+    target = _options.version.replace(/^v/, "");
+    if (!/^\d+\.\d+\.\d+$/.test(target)) {
+      console.error(`  ✗ "${_options.version}" is not a full version (expected e.g. 0.35.1)`);
+      Deno.exit(1);
+    }
+  } else {
+    try {
+      const res = await fetch(JSR_META_URL, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const meta = await res.json() as { latest?: string };
+      if (!meta.latest) throw new Error("No latest version in JSR response");
+      target = meta.latest;
+    } catch (err) {
+      console.error(`  ✗ Could not fetch latest version: ${err instanceof Error ? err.message : err}`);
+      Deno.exit(1);
+    }
   }
 
-  // Match "@dune/core": "jsr:@dune/core@..." (any specifier form)
-  const specRe = /("@dune\/core"\s*:\s*")(jsr:@dune\/core[^"]*)(")/;
-  const match = raw.match(specRe);
-
-  if (!match) {
+  if (!/jsr:@dune\/core@/.test(raw)) {
     console.log(`  ─  No @dune/core entry found in ${denoJsonPath}`);
-    console.log(`     Add it manually: "@dune/core": "jsr:@dune/core@^${latest}"`);
+    console.log(`     Add it manually: "@dune/core": "jsr:@dune/core@${target}"`);
     return;
   }
 
-  const currentSpec = match[2]; // e.g. "jsr:@dune/core@^0.6"
+  const { updated, changes } = rewriteCoreRefs(raw, target, _options.version !== undefined);
 
-  // Extract bare version from the current specifier for comparison
-  const versionMatch = currentSpec.match(/@([^@"]+)$/);
-  const currentVersion = versionMatch ? versionMatch[1].replace(/^\^/, "") : "0.0.0";
-
-  if (!isNewer(latest, currentVersion)) {
-    console.log(`  ✅ Already up to date — @dune/core ${currentVersion}`);
+  if (changes.length === 0) {
+    console.log(`  ✅ Already up to date — @dune/core ${target}`);
     return;
   }
-
-  // Replace with new pinned range
-  const newSpec = `jsr:@dune/core@^${latest}`;
-  const updated = raw.replace(specRe, `$1${newSpec}$3`);
 
   await Deno.writeTextFile(denoJsonPath, updated);
 
@@ -119,7 +155,16 @@ export async function upgradeCommand(
     // Cache file absent — no problem
   }
 
-  console.log(`  ✅ @dune/core updated: ${currentSpec} → ${newSpec}`);
+  console.log(`  ✅ @dune/core updated to ${target} (${changes.length} reference${changes.length === 1 ? "" : "s"}):`);
+  for (const c of changes) console.log(`       ${c.from} → ${c.to}`);
+
+  // The CLI specifier in tasks (jsr:@dune/core@X/cli) is a separate re-exec path
+  // that bypasses the import map; the entrypoint pattern has a single pin.
+  if (/jsr:@dune\/core@[^"\s]*\/cli/.test(updated)) {
+    console.log(`\n  💡 This site still launches through a versioned CLI specifier in its tasks.`);
+    console.log(`     \`dune migrate:entrypoint\` moves it to the single-pin entrypoint pattern.`);
+  }
+  console.log(`  💡 Plugin versions are separate: \`dune plugin:update\` bumps the ones in site.yaml.`);
 
   console.log(`\n  🔒 Syncing lockfile...`);
   try {
