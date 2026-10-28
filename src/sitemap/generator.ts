@@ -72,6 +72,17 @@ export function generateSitemap(
     return base + "/" + p.language + path;
   };
 
+  // Parent lookup: the first page (in index order) whose directory is the given
+  // path, per language. Built once so ancestor checks are O(depth), not a scan
+  // of every page per ancestor.
+  const parentKey = (dir: string, language: string | undefined): string =>
+    JSON.stringify([dir, language ?? null]);
+  const pagesByDir = new Map<string, PageIndex>();
+  for (const q of pages) {
+    const key = parentKey(dirname(q.sourcePath), q.language);
+    if (!pagesByDir.has(key)) pagesByDir.set(key, q);
+  }
+
   /** Check if page has any unpublished ancestor (exclude from sitemap if so) */
   const hasUnpublishedAncestor = (p: PageIndex): boolean => {
     let current: PageIndex | null = p;
@@ -82,9 +93,7 @@ export function generateSitemap(
       const key = `${current.sourcePath}|${current.language ?? ""}`;
       if (seen.has(key)) break;
       seen.add(key);
-      const parent = pages.find(
-        (q) => dirname(q.sourcePath) === current!.parentPath && q.language === current!.language,
-      );
+      const parent = pagesByDir.get(parentKey(current.parentPath, current.language));
       if (!parent) break;
       if (!parent.published) return true;
       current = parent;
