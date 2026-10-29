@@ -9,7 +9,7 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
-## [Unreleased]
+## [0.35.1] — 2026-10-29
 
 ### Changed
 
