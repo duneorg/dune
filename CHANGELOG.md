@@ -11,6 +11,20 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Changed
+
+- **`dune upgrade` moves every `@dune/core` reference, not just one import.** It
+  used to rewrite only the `"@dune/core"` import entry, which left
+  `@dune/core/ui/editable` and the `jsr:@dune/core@X/cli` specifier in legacy
+  `tasks` on the old version (the CLI one bypasses the import map, so the site
+  could start a different core than its imports). All of them are now updated
+  together, each keeping its own style: an exact pin stays exact, `^0.35` stays
+  a caret on the minor. `dune upgrade <version>` sets an explicit version
+  (rollbacks included) instead of the latest on JSR, which is useful when the
+  newest release is still inside Deno's minimum-dependency-age window. After
+  upgrading, sites still on the versioned-CLI tasks are pointed at
+  `dune migrate:entrypoint`, and plugin pins at `dune plugin:update`.
+
 ### Fixed
 
 - The event-loop watchdog no longer crashes the process at boot intermittently
@@ -18,7 +32,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   after `new Worker()`, racing Deno's async module load. The URL is no longer
   revoked, and a worker that fails to load now disables the watchdog with a log
   line instead of exiting the process (#60).
-
 - **Sitemap generation no longer scans every page for every ancestor of every
   page** (#62). `hasUnpublishedAncestor` called `pages.find()` for each ancestor
   of each page, which is quadratic: about 5 s of start-up on a 4,474-page site

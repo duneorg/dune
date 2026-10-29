@@ -65,7 +65,7 @@ Commands:
   blueprint:show      Show full field schema for a template blueprint
   blueprint:validate  Validate a content file's frontmatter against its blueprint
 
-  upgrade             Update @dune/core to the latest version
+  upgrade [version]   Move every @dune/core reference to the latest (or given) version
   update:skills       Reinstall AI coding agent skill files from current package
 
   schema:export       Print JSON Schema for site.yaml to stdout

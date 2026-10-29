@@ -38,7 +38,7 @@
  *   dune blueprint:list                — List all available blueprints (frontmatter schemas)
  *   dune blueprint:show <template>     — Show full field schema for a blueprint
  *   dune blueprint:validate <file>     — Validate a content file's frontmatter against its blueprint
- *   dune upgrade                       — Update @dune/core to the latest version
+ *   dune upgrade [version]             — Move every @dune/core reference to the latest (or given) version
  *   dune update:skills                 — Reinstall AI agent skill files from current package
  *   dune content:delete <route>        — Delete a content page by route (requires --confirm or --dry-run)
  *   dune backup [--output file.tar.gz] — Back up content, data, uploads, and config
@@ -552,7 +552,10 @@ export async function main(args: string[] = Deno.args) {
         break;
 
       case "upgrade":
-        await upgradeCommand(root, { debug: options.debug === true });
+        await upgradeCommand(root, {
+          debug: options.debug === true,
+          version: options.positional as string | undefined,
+        });
         break;
 
       case "deploy:init":
