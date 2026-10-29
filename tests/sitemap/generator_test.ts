@@ -391,3 +391,140 @@ Deno.test("generateSitemap: lastmod prefers dateModified over mtime", () => {
   assertEquals(entry("/edited").includes("<lastmod>2020-01-02</lastmod>"), true);
   assertEquals(entry("/untouched").includes("<lastmod>2025-06-15</lastmod>"), true);
 });
+
+// ── Unpublished-ancestor exclusion ────────────────────────────────────────────
+
+const locs = (xml: string): string[] =>
+  [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) =>
+    m[1].replace("https://example.com", "")
+  ).sort();
+
+Deno.test("generateSitemap: excludes descendants of an unpublished section, at any depth", () => {
+  const pages = [
+    makePage({
+      route: "/docs",
+      sourcePath: "02.docs/default.md",
+      parentPath: null,
+      published: false,
+    }),
+    makePage({
+      route: "/docs/intro",
+      sourcePath: "02.docs/01.intro/default.md",
+      parentPath: "02.docs",
+      depth: 1,
+    }),
+    makePage({
+      route: "/docs/intro/deep",
+      sourcePath: "02.docs/01.intro/01.deep/default.md",
+      parentPath: "02.docs/01.intro",
+      depth: 2,
+    }),
+    makePage({
+      route: "/about",
+      sourcePath: "03.about/default.md",
+      parentPath: null,
+    }),
+  ];
+  assertEquals(locs(generateSitemap(pages, "https://example.com")), ["/about"]);
+});
+
+Deno.test("generateSitemap: published ancestors keep their descendants", () => {
+  const pages = [
+    makePage({
+      route: "/docs",
+      sourcePath: "02.docs/default.md",
+      parentPath: null,
+    }),
+    makePage({
+      route: "/docs/intro",
+      sourcePath: "02.docs/01.intro/default.md",
+      parentPath: "02.docs",
+      depth: 1,
+    }),
+  ];
+  assertEquals(locs(generateSitemap(pages, "https://example.com")), [
+    "/docs",
+    "/docs/intro",
+  ]);
+});
+
+Deno.test("generateSitemap: ancestor lookup is per language", () => {
+  const pages = [
+    makePage({
+      route: "/docs",
+      sourcePath: "02.docs/default.en.md",
+      parentPath: null,
+      language: "en",
+    }),
+    makePage({
+      route: "/de/docs",
+      sourcePath: "02.docs/default.de.md",
+      parentPath: null,
+      language: "de",
+      published: false,
+    }),
+    makePage({
+      route: "/docs/intro",
+      sourcePath: "02.docs/01.intro/default.en.md",
+      parentPath: "02.docs",
+      language: "en",
+      depth: 1,
+    }),
+    makePage({
+      route: "/de/docs/intro",
+      sourcePath: "02.docs/01.intro/default.de.md",
+      parentPath: "02.docs",
+      language: "de",
+      depth: 1,
+    }),
+  ];
+  const result = locs(generateSitemap(pages, "https://example.com"));
+  assertEquals(result.includes("/docs/intro"), true);
+  assertEquals(result.includes("/de/docs/intro"), false);
+});
+
+Deno.test("generateSitemap: when several pages share a directory the first one is the parent", () => {
+  // Same as the previous linear search: first match in index order decides.
+  const pages = [
+    makePage({
+      route: "/docs",
+      sourcePath: "02.docs/default.md",
+      parentPath: null,
+      published: false,
+    }),
+    makePage({
+      route: "/docs-b",
+      sourcePath: "02.docs/other.md",
+      parentPath: null,
+    }),
+    makePage({
+      route: "/docs/intro",
+      sourcePath: "02.docs/01.intro/default.md",
+      parentPath: "02.docs",
+      depth: 1,
+    }),
+  ];
+  assertEquals(locs(generateSitemap(pages, "https://example.com")), [
+    "/docs-b",
+  ]);
+});
+
+Deno.test("generateSitemap: handles a few thousand pages quickly (no per-page scan of all pages)", () => {
+  // Every page lives in its own directory (the usual 01.slug/default.md shape),
+  // so a linear parent search per page walks half the index on average.
+  const pages: PageIndex[] = [];
+  for (let i = 0; i < 6000; i++) {
+    pages.push(
+      makePage({
+        route: `/p${i}`,
+        sourcePath: `${i}.p${i}/default.md`,
+        parentPath: `${i}.p${i}`,
+      }),
+    );
+  }
+  const start = performance.now();
+  const xml = generateSitemap(pages, "https://example.com");
+  const ms = performance.now() - start;
+  assertEquals(locs(xml).length, 6000);
+  assertEquals(ms < 250, true, `took ${ms.toFixed(0)} ms`);
+});

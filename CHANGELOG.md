@@ -19,6 +19,14 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   revoked, and a worker that fails to load now disables the watchdog with a log
   line instead of exiting the process (#60).
 
+- **Sitemap generation no longer scans every page for every ancestor of every
+  page** (#62). `hasUnpublishedAncestor` called `pages.find()` for each ancestor
+  of each page, which is quadratic: about 5 s of start-up on a 4,474-page site
+  on a small VPS. Parents are now looked up in a map built once per generation.
+  Output is unchanged (including the first-match rule when several pages share a
+  directory, and per-language lookup). The new tests also cover unpublished
+  ancestors, which had none.
+
 ---
 
 ## [0.35.0] — 2026-10-27
