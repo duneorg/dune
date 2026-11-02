@@ -13,6 +13,28 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Changed
 
+- **Startup failures now say what failed and why, without `--debug`.** The CLI
+  used to print only `err.message`, so an unreachable search backend showed up
+  as `✗ fetch failed`. It now prints the message plus one `caused by:` line per
+  entry on the error's `cause` chain (messages only; stacks still need
+  `--debug`), and the failure-prone bootstrap steps name themselves: a search
+  engine that fails to build or rebuild reads `Search engine "meilisearch"
+  failed to build: …`, plugin loading reads `Failed to load plugins: …`, and
+  the content index reads `Failed to index content: …`.
+- **A global `dune <cmd>` now runs a self-governing site the way the site runs
+  itself.** In a site on the generated `main.ts` entrypoint pattern, `dune dev`
+  and `deno task dev` looked interchangeable but were not: the shim re-executed
+  its own core (a local checkout, or whatever was installed), with the merged
+  workspace config's local plugin checkouts, and without the flags the site's
+  tasks carry (`--env-file`, `--watch`). When the root holds an unedited
+  template `main.ts`, `dune <cmd> [args]` now hands over to the site: `deno task
+  <cmd> [args]` if the site has such a task that runs `main.ts`, otherwise
+  `deno run -A main.ts <cmd> [args]`. One line on stderr says so. `dune new`,
+  `ps`, `stop`, `dev:link`, `upgrade`, `lockfile:*` and `migrate:entrypoint`
+  are about the install, not the site, and are never handed over. To run this
+  dune against such a site anyway (working on Dune itself), set
+  `DUNE_SITE_ENTRYPOINT=off`.
+
 ### Fixed
 
 - **`admin:` in `system.yaml` was silently ignored, including `admin.enabled: false`.**
