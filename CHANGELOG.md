@@ -33,6 +33,14 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   documented `admin:` key takes effect. **Sites that already had an `admin:`
   block will now see it applied**; check it still says what you want. `dune dev`
   and `dune serve` also stop printing the "Admin panel" URL when admin is off.
+- **`dune migrate:entrypoint` now moves every task off the versioned CLI
+  specifier, not just `dev`, `build` and `serve`.** A task such as `validate` or
+  `content:list` that ran `deno run -A jsr:@dune/core@X.Y.Z/cli <cmd>` was left
+  as is, and because that specifier is resolved outside the import map, the core
+  version still lived in two places. Such tasks are now rewritten to
+  `deno run <flags> main.ts <args>` with flags and args kept, the command lists
+  which tasks it moved, and leftover versioned-CLI tasks count as "not fully
+  migrated" so a re-run finishes the job.
 
 ---
 

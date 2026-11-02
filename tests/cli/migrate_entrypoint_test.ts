@@ -183,3 +183,85 @@ Deno.test("migrate:entrypoint: rewrites .mcp.json when present", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+// ── Other tasks on the versioned CLI specifier (#66) ────────────────────────
+
+async function makeSiteWithVersionedTasks(
+  tasks: Record<string, string>,
+): Promise<string> {
+  const dir = await Deno.makeTempDir();
+  await Deno.writeTextFile(
+    join(dir, "deno.json"),
+    JSON.stringify({
+      imports: { "@dune/core": "jsr:@dune/core@^0.35" },
+      tasks: {
+        dev: "deno run -A jsr:@dune/core@0.35.0/cli dev",
+        build: "deno run -A jsr:@dune/core@0.35.0/cli build",
+        serve: "deno run -A jsr:@dune/core@0.35.0/cli serve",
+        ...tasks,
+      },
+    }),
+  );
+  return dir;
+}
+
+Deno.test("migrate:entrypoint: moves every other versioned-CLI task onto main.ts, keeping flags and args", async () => {
+  const dir = await makeSiteWithVersionedTasks({
+    validate: "deno run -A jsr:@dune/core@0.35.0/cli validate",
+    "content:list": "deno run --allow-read --allow-env jsr:@dune/core@^0.35/cli content:list --json",
+    lint: "deno lint",
+  });
+  try {
+    const result = await migrateEntrypointCommand(dir);
+    assertEquals(result.rewroteOtherTasks.sort(), ["content:list", "validate"]);
+
+    const { tasks } = JSON.parse(await Deno.readTextFile(join(dir, "deno.json")));
+    assertEquals(tasks.validate, "deno run -A main.ts validate");
+    assertEquals(tasks["content:list"], "deno run --allow-read --allow-env main.ts content:list --json");
+    assertEquals(tasks.lint, "deno lint");
+    assertEquals(Object.values(tasks).some((t) => String(t).includes("jsr:@dune/core")), false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("migrate:entrypoint: leftover versioned-CLI tasks mean 'not fully migrated', then a re-run finishes the job", async () => {
+  const dir = await makeSiteWithVersionedTasks({});
+  try {
+    await migrateEntrypointCommand(dir);
+    // The site later gains a task on the versioned specifier (or was migrated by an older dune).
+    const path = join(dir, "deno.json");
+    const json = JSON.parse(await Deno.readTextFile(path));
+    json.tasks.validate = "deno run -A jsr:@dune/core@0.35.0/cli validate";
+    await Deno.writeTextFile(path, JSON.stringify(json));
+
+    const second = await migrateEntrypointCommand(dir);
+    assertEquals(second.alreadyMigrated, false);
+    assertEquals(second.rewroteOtherTasks, ["validate"]);
+
+    const third = await migrateEntrypointCommand(dir);
+    assertEquals(third.alreadyMigrated, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("migrate:entrypoint: re-running keeps flags already on dev/serve", async () => {
+  const dir = await makeSiteWithVersionedTasks({
+    serve: "deno run -A jsr:@dune/core@0.35.0/cli serve --port 8080",
+    validate: "deno run -A jsr:@dune/core@0.35.0/cli validate",
+  });
+  try {
+    await migrateEntrypointCommand(dir);
+    const path = join(dir, "deno.json");
+    const json = JSON.parse(await Deno.readTextFile(path));
+    json.tasks.extra = "deno run -A jsr:@dune/core@0.35.0/cli content:list";
+    await Deno.writeTextFile(path, JSON.stringify(json));
+    await migrateEntrypointCommand(dir);
+    const { tasks } = JSON.parse(await Deno.readTextFile(path));
+    assertStringIncludes(tasks.serve, "--port 8080");
+    assertEquals(tasks.extra, "deno run -A main.ts content:list");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
