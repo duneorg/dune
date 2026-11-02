@@ -45,6 +45,8 @@ export interface MigrateEntrypointResult {
   alreadyMigrated: boolean;
   addedImports: string[];
   rewroteTasks: boolean;
+  /** Names of other tasks moved off the versioned `jsr:@dune/core@X/cli` specifier. */
+  rewroteOtherTasks: string[];
   rewroteMcpJson: boolean;
   /** Set when refusing to proceed — main.ts exists but doesn't match the template. */
   refusedReason?: string;
@@ -84,12 +86,41 @@ function extractExtraArgs(oldTaskCmd: string | undefined, commandName: string): 
   return tokens.slice(idx + 1);
 }
 
+/** A task still launching the CLI through the versioned JSR specifier. */
+const VERSIONED_CLI = /jsr:@dune\/core@[^\s"']*\/cli(?=\s|$)/g;
+
+function usesVersionedCli(value: unknown): boolean {
+  return typeof value === "string" && /\bdeno\s+run\b/.test(value) &&
+    new RegExp(VERSIONED_CLI.source).test(value);
+}
+
+/**
+ * Move every task other than dev/build/serve (which the template rewrites)
+ * from `deno run <flags> jsr:@dune/core@X/cli <args>` to
+ * `deno run <flags> main.ts <args>`, keeping flags and args. A versioned
+ * specifier is resolved outside the import map, so left in place it keeps a
+ * second copy of the core version in the site.
+ */
+function rewriteVersionedCliTasks(
+  tasks: Record<string, unknown>,
+): { tasks: Record<string, unknown>; rewritten: string[] } {
+  const out = { ...tasks };
+  const rewritten: string[] = [];
+  for (const [name, value] of Object.entries(tasks)) {
+    if (name in ENTRYPOINT_TASKS || !usesVersionedCli(value)) continue;
+    out[name] = (value as string).replace(VERSIONED_CLI, "main.ts");
+    rewritten.push(name);
+  }
+  return { tasks: out, rewritten };
+}
+
 function tasksAlreadyMigrated(tasks: Record<string, unknown> | undefined): boolean {
   if (!tasks) return false;
-  return ["dev", "build", "serve"].every((cmd) => {
+  const entrypointTasksDone = ["dev", "build", "serve"].every((cmd) => {
     const value = tasks[cmd];
     return typeof value === "string" && value.includes("main.ts");
   });
+  return entrypointTasksDone && !Object.values(tasks).some(usesVersionedCli);
 }
 
 export async function migrateEntrypointCommand(
@@ -112,7 +143,7 @@ export async function migrateEntrypointCommand(
 
   if (existingMainTs === MAIN_TS_TEMPLATE && tasksAlreadyMigrated(tasks)) {
     console.log(`  ✅ ${absRoot} already uses the main.ts entrypoint pattern — nothing to do.`);
-    return { migrated: false, alreadyMigrated: true, addedImports: [], rewroteTasks: false, rewroteMcpJson: false };
+    return { migrated: false, alreadyMigrated: true, addedImports: [], rewroteTasks: false, rewroteOtherTasks: [], rewroteMcpJson: false };
   }
 
   if (existingMainTs !== null && existingMainTs !== MAIN_TS_TEMPLATE) {
@@ -127,6 +158,7 @@ export async function migrateEntrypointCommand(
       alreadyMigrated: false,
       addedImports: [],
       rewroteTasks: false,
+      rewroteOtherTasks: [],
       rewroteMcpJson: false,
       refusedReason: reason,
     };
@@ -149,8 +181,12 @@ export async function migrateEntrypointCommand(
       for (const key of addedImports) console.log(`    + ${key}`);
     }
     console.log(`  Would rewrite tasks (dev/build/serve) to invoke main.ts`);
+    const { rewritten: wouldRewrite } = rewriteVersionedCliTasks(tasks);
+    if (wouldRewrite.length > 0) {
+      console.log(`  Would also move ${wouldRewrite.join(", ")} off the versioned jsr:@dune/core CLI specifier`);
+    }
     console.log(`  Would rewrite .mcp.json to invoke main.ts`);
-    return { migrated: false, alreadyMigrated: false, addedImports, rewroteTasks: false, rewroteMcpJson: false };
+    return { migrated: false, alreadyMigrated: false, addedImports, rewroteTasks: false, rewroteOtherTasks: [], rewroteMcpJson: false };
   }
 
   // ── Step 2: write main.ts and merge imports BEFORE touching tasks ────────────
@@ -160,7 +196,8 @@ export async function migrateEntrypointCommand(
   // Preserve any flags the site had customized on the old task (e.g. a
   // non-default --port, --frozen) instead of clobbering them with the bare
   // template — see extractExtraArgs.
-  const newTasks = { ...tasks };
+  const { tasks: otherTasksMigrated, rewritten: rewroteOtherTasks } = rewriteVersionedCliTasks(tasks);
+  const newTasks = { ...otherTasksMigrated };
   for (const [commandName, template] of Object.entries(ENTRYPOINT_TASKS)) {
     const oldValue = typeof tasks[commandName] === "string" ? tasks[commandName] as string : undefined;
     const extraArgs = extractExtraArgs(oldValue, commandName);
@@ -188,9 +225,12 @@ export async function migrateEntrypointCommand(
     for (const key of addedImports) console.log(`       + ${key}`);
   }
   console.log(`     Rewrote tasks: dev, build, serve`);
+  if (rewroteOtherTasks.length > 0) {
+    console.log(`     Moved off the versioned CLI specifier: ${rewroteOtherTasks.join(", ")}`);
+  }
   if (rewroteMcpJson) console.log(`     Rewrote .mcp.json`);
   console.log(`\n  This cutover is one commit — rollback is \`git revert\` + restart.`);
   console.log(`  Soak-test this site before migrating the rest of the fleet.\n`);
 
-  return { migrated: true, alreadyMigrated: false, addedImports, rewroteTasks: true, rewroteMcpJson };
+  return { migrated: true, alreadyMigrated: false, addedImports, rewroteTasks: true, rewroteOtherTasks, rewroteMcpJson };
 }
