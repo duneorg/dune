@@ -12,6 +12,7 @@
  *   - .tsx → Fast path: read .frontmatter.yaml sidecar. Fallback: AST extract.
  */
 
+import { isWithinPublishWindow, parseScheduleDate } from "./schedule.ts";
 import { ContentError } from "../core/errors.ts";
 import type { StorageAdapter, StorageEntry } from "../storage/types.ts";
 import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
@@ -295,7 +296,12 @@ export async function updateIndex(
     const stat = await storage.stat(entry.path);
     const existingPage = existing.get(relativePath);
 
-    if (existingPage && existingPage.mtime === stat.mtime) {
+    // A page with a publish window is time-dependent, so its entry can't be
+    // reused on mtime alone.
+    if (
+      existingPage && existingPage.mtime === stat.mtime &&
+      existingPage.publishAt === undefined && existingPage.unpublishAt === undefined
+    ) {
       // Unchanged — reuse existing index entry
       pages.push(existingPage);
 
@@ -482,6 +488,13 @@ function buildPageIndex(
   // Compute a hash of the frontmatter for change detection
   const hash = computeHash(JSON.stringify(frontmatter));
 
+  // `published: false` always wins; publish_date / unpublish_date can only
+  // narrow it to a time window (see content/schedule.ts).
+  const publishAt = parseScheduleDate(frontmatter.publish_date, "publish_date", sourcePath);
+  const unpublishAt = parseScheduleDate(frontmatter.unpublish_date, "unpublish_date", sourcePath);
+  const published = (frontmatter.published ?? true) &&
+    isWithinPublishWindow(Date.now(), publishAt, unpublishAt);
+
   return {
     sourcePath,
     route: finalRoute,
@@ -500,8 +513,10 @@ function buildPageIndex(
       ? (frontmatter.date as unknown as Date).toISOString().slice(0, 10)
       : (frontmatter.date ?? null),
     ...normaliseDateModified(frontmatter.dateModified),
-    published: frontmatter.published ?? true,
-    status: inferStatus(frontmatter),
+    published,
+    ...(publishAt !== undefined ? { publishAt } : {}),
+    ...(unpublishAt !== undefined ? { unpublishAt } : {}),
+    status: inferStatus(frontmatter, published),
     visible: frontmatter.visible ?? true,
     routable: frontmatter.routable ?? true,
     isModule,
@@ -638,6 +653,7 @@ function stripContentDir(path: string, contentDir: string): string {
 /** Infer workflow status from frontmatter. */
 function inferStatus(
   frontmatter: PageFrontmatter,
+  published: boolean,
 ): "draft" | "in_review" | "published" | "archived" {
   // Explicit status takes precedence
   const status = frontmatter.status;
@@ -647,8 +663,8 @@ function inferStatus(
   ) {
     return status;
   }
-  // Infer from published flag
-  return (frontmatter.published ?? true) ? "published" : "draft";
+  // Infer from the effective published flag (includes the publish window)
+  return published ? "published" : "draft";
 }
 
 /**

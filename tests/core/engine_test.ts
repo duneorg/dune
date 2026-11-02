@@ -575,3 +575,36 @@ Deno.test("init(): loadThemeConfig defaults to an empty object when the active t
 
   assertEquals(engine.themeConfig, {});
 });
+
+// ---------------------------------------------------------------------------
+// publish_date / unpublish_date: the engine rebuilds at the next boundary
+// ---------------------------------------------------------------------------
+
+Deno.test("publish window: a page goes live and goes away on time, without a restart", async () => {
+  const goLive = Date.now() + 400;
+  const goAway = Date.now() + 1_000;
+  const fm = new Map([
+    ["content/01.soon/default.md", { title: "Soon", publish_date: new Date(goLive).toISOString() }],
+    ["content/02.brief/default.md", {
+      title: "Brief",
+      publish_date: new Date(Date.now() - 1_000).toISOString(),
+      unpublish_date: new Date(goAway).toISOString(),
+    }],
+  ]);
+  const engine = await createDuneEngine({
+    storage: makeStorage([contentFile("01.soon", "Soon"), contentFile("02.brief", "Brief")]),
+    config: makeConfig(),
+    formats: makeFormats(fm),
+  });
+  await engine.init();
+
+  const state = () =>
+    Object.fromEntries(engine.pages.map((p) => [p.sourcePath.split("/")[0], p.published]));
+  assertEquals(state(), { "01.soon": false, "02.brief": true });
+
+  await new Promise((r) => setTimeout(r, 700));
+  assertEquals(state(), { "01.soon": true, "02.brief": true });
+
+  await new Promise((r) => setTimeout(r, 600));
+  assertEquals(state(), { "01.soon": true, "02.brief": false });
+});

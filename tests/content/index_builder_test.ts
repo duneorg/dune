@@ -501,3 +501,60 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
   assertEquals(byRoute.get("/nonleap/")?.dateModified, undefined);
   assertEquals(byRoute.get("/leap/")?.dateModified, "2024-02-29");
 });
+
+// ---------------------------------------------------------------------------
+// publish_date / unpublish_date
+// ---------------------------------------------------------------------------
+
+async function indexWith(fm: Record<string, unknown>) {
+  const file = fakeFile("01.timed", fm as Partial<PageFrontmatter>);
+  const formats = makeFormats(new Map([["content/01.timed/default.md", { title: "Timed", ...fm } as Partial<PageFrontmatter>]]));
+  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats });
+  return result.pages[0];
+}
+
+Deno.test("buildIndex: a future publish_date keeps the page unpublished (draft) and records publishAt", async () => {
+  const when = new Date(Date.now() + 3_600_000);
+  const page = await indexWith({ publish_date: when.toISOString() });
+  assertEquals(page.published, false);
+  assertEquals(page.status, "draft");
+  assertEquals(page.publishAt, when.getTime());
+});
+
+Deno.test("buildIndex: a past publish_date and a future unpublish_date is live", async () => {
+  const page = await indexWith({
+    publish_date: new Date(Date.now() - 3_600_000),
+    unpublish_date: new Date(Date.now() + 3_600_000),
+  });
+  assertEquals(page.published, true);
+  assertEquals(page.status, "published");
+  assertEquals(typeof page.unpublishAt, "number");
+});
+
+Deno.test("buildIndex: a past unpublish_date takes the page down", async () => {
+  const page = await indexWith({ unpublish_date: "2020-01-01" });
+  assertEquals(page.published, false);
+});
+
+Deno.test("buildIndex: published: false wins over an open window", async () => {
+  const page = await indexWith({ published: false, publish_date: "2020-01-01" });
+  assertEquals(page.published, false);
+});
+
+Deno.test("buildIndex: an invalid date is ignored, not fatal", async () => {
+  const page = await indexWith({ publish_date: "whenever" });
+  assertEquals(page.published, true);
+  assertEquals(page.publishAt, undefined);
+});
+
+Deno.test("updateIndex: a page with a publish window is re-evaluated even when its mtime is unchanged", async () => {
+  const file = fakeFile("01.timed", {});
+  const soon = Date.now() + 200;
+  const formats = makeFormats(new Map([["content/01.timed/default.md", { title: "Timed", publish_date: new Date(soon).toISOString() } as Partial<PageFrontmatter>]]));
+  const storage = makeStorage([file]);
+  const first = await buildIndex({ storage, contentDir: "content", formats });
+  assertEquals(first.pages[0].published, false);
+  await new Promise((r) => setTimeout(r, 300));
+  const second = await updateIndex(first.pages, first.taxonomyMap, { storage, contentDir: "content", formats });
+  assertEquals(second.pages[0].published, true);
+});

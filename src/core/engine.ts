@@ -10,6 +10,7 @@
  * @module
  */
 
+import { nextScheduleBoundary } from "../content/schedule.ts";
 import { join } from "@std/path";
 import { logger } from "./logger.ts";
 import { tracer } from "../tracing/mod.ts";
@@ -355,6 +356,31 @@ export async function createDuneEngine(
     await rebuild();
   }
 
+  // publish_date / unpublish_date: `published` is evaluated against the clock
+  // when the index is built, so rebuild at the next window boundary and a page
+  // appears or disappears on time without a restart or an admin plugin. The
+  // timer is unref'd (never keeps a process alive) and re-armed after every
+  // rebuild; delays beyond setTimeout's range just re-arm early.
+  const MAX_TIMER_MS = 2 ** 31 - 1;
+  const SCHEDULE_SLACK_MS = 50;
+  let scheduleTimer: ReturnType<typeof setTimeout> | undefined;
+  function armScheduleTimer(): void {
+    if (scheduleTimer !== undefined) clearTimeout(scheduleTimer);
+    scheduleTimer = undefined;
+    const now = Date.now();
+    const next = nextScheduleBoundary(pages, now);
+    if (next === undefined) return;
+    scheduleTimer = setTimeout(() => {
+      scheduleTimer = undefined;
+      engine.rebuild().catch((err) =>
+        logger.warn("content.schedule.rebuild_failed", {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }, Math.min(next - now + SCHEDULE_SLACK_MS, MAX_TIMER_MS));
+    Deno.unrefTimer(scheduleTimer as unknown as number);
+  }
+
   // Rebuild guard — prevents concurrent rebuilds from interleaving their
   // mutations to pages/taxonomyMap/router, which would expose partial state.
   // In dev mode, rapid file changes can trigger multiple rebuild() calls;
@@ -427,6 +453,7 @@ export async function createDuneEngine(
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
     indexErrors = result.errors;
+    armScheduleTimer();
 
     if (config.system.debug) {
       logger.debug("index.built", {
@@ -621,6 +648,7 @@ export async function createDuneEngine(
         taxonomyMap = result.taxonomyMap;
         indexErrors = result.errors;
         router.rebuild(pages, result.homeSlug);
+        armScheduleTimer();
 
         span.setAttribute("pageCount", pages.length);
 
