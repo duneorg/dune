@@ -67,12 +67,39 @@ import { waitForwardingSignals } from "./cli/forward-signals.ts";
 import { buildMergedConfig } from "./cli/merge-config.ts";
 import { findWorkspaceRoot } from "./cli/local-checkout-detect.ts";
 import { loadEnvFile, parseEnvFileArg } from "./cli/env-file.ts";
+import { planSiteEntrypoint } from "./cli/site-entrypoint.ts";
 import {
   computeLockPolicy,
   lockPolicyToArgs,
   parseRootArg,
   preflightLockPolicy,
 } from "./cli/lock-policy.ts";
+
+// ── 0a. Hand over to a self-governing site ───────────────────────────────────
+//
+// A site on the generated main.ts entrypoint pattern runs itself (its own
+// core pin, tasks and flags). Run that instead of a second, different copy of
+// the CLI — see cli/site-entrypoint.ts.
+
+if (import.meta.main) {
+  const plan = await planSiteEntrypoint(Deno.args);
+  if (plan) {
+    console.error(
+      `dune: running this site's own entrypoint (${plan.description}); ` +
+        `set DUNE_SITE_ENTRYPOINT=off to run this dune instead.`,
+    );
+    const cmd = new Deno.Command(Deno.execPath(), {
+      args: plan.denoArgs,
+      cwd: plan.cwd,
+      env: { ...Deno.env.toObject(), DUNE_VIA_SITE_ENTRYPOINT: "1" },
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const status = await waitForwardingSignals(cmd.spawn());
+    Deno.exit(status.code);
+  }
+}
 
 // ── 0. Optional --env-file loading ─────────────────────────────────────────────
 //
