@@ -47,6 +47,7 @@
 
 /** @module */
 
+import { formatErrorChain } from "./cli/error-format.ts";
 import { devCommand } from "./cli/dev.ts";
 import { devLinkCommand } from "./cli/dev-link.ts";
 import { psCommand } from "./cli/ps.ts";
@@ -602,7 +603,9 @@ export async function main(args: string[] = Deno.args) {
         Deno.exit(1);
     }
   } catch (err) {
-    console.error(`\n✗ ${err instanceof Error ? err.message : err}`);
+    const [message, ...causes] = formatErrorChain(err);
+    console.error(`\n✗ ${message}`);
+    for (const line of causes) console.error(line);
     if (options.debug) {
       console.error(err);
     }

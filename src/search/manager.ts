@@ -40,6 +40,16 @@ export interface SearchManager extends SearchEngine {
   isParallelMode(): boolean;
 }
 
+/** Run an engine operation; a failure names the engine and keeps the original as `cause`. */
+async function named(name: string, op: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Search engine "${name}" failed to ${op}: ${detail}`, { cause: err });
+  }
+}
+
 /** Create a SearchManager with the built-in engine pre-registered as `"built-in"`. */
 export function createSearchManager(
   builtInEngine: SearchEngine,
@@ -79,11 +89,15 @@ export function createSearchManager(
     },
 
     async build(): Promise<void> {
-      await Promise.all([...engines.values()].map((e) => e.build()));
+      await Promise.all(
+        [...engines].map(([name, e]) => named(name, "build", () => e.build())),
+      );
     },
 
     async rebuild(pages: PageIndex[]): Promise<void> {
-      await Promise.all([...engines.values()].map((e) => e.rebuild(pages)));
+      await Promise.all(
+        [...engines].map(([name, e]) => named(name, "rebuild", () => e.rebuild(pages))),
+      );
     },
 
     async search(

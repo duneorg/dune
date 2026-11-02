@@ -5,6 +5,7 @@
  * @module
  */
 
+import { startupStep } from "./startup-step.ts";
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { ADMIN_PLUGIN_SPECIFIER, adminCoreMismatch } from "../plugins/builtin.ts";
@@ -332,7 +333,7 @@ export async function bootstrap(
     sharedThemesDir,
   });
 
-  await engine.init();
+  await startupStep("Failed to index content", () => engine.init());
 
   // 5. Hooks
   const hooks = createHookRegistry({ config, storage });
@@ -351,7 +352,7 @@ export async function bootstrap(
   const adminCfg = config.admin ??
     { dataDir: "data", runtimeDir: ".dune/admin" };
   await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
-  await loadPlugins({ config, hooks, storage, root });
+  await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root }));
 
   // Collect plugin asset dirs, template dirs, and public routes.
   // pluginAdminPages are no longer aggregated here — @dune/plugin-admin's
