@@ -138,6 +138,32 @@ jobs:
             exit 1
           fi
 
+  # Admin is optional: with `admin.enabled: false` a site must still serve
+  # everything its public visitors see. Runs this checkout's CLI against a
+  # freshly scaffolded, headless site (see scripts/headless-smoke.ts). A
+  # feature that silently needs the admin plugin fails here.
+  headless-smoke-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "2.9.6"
+
+      - name: Scaffold a fresh site
+        run: deno run -A src/cli.ts new /tmp/headless-smoke-site
+
+      - name: Cache the scaffolded site's dependency graph
+        working-directory: /tmp/headless-smoke-site
+        timeout-minutes: 10
+        run: deno cache main.ts
+
+      - name: Boot it with admin off and check the public surface
+        timeout-minutes: 5
+        run: deno run -A scripts/headless-smoke.ts /tmp/headless-smoke-site
+
   # Deliberately non-blocking: a sibling package's published @dune/core pin
   # can only be re-covered by publishing a new sibling version, which can't
   # happen before this repo's own core bump ships. Every commit to main
