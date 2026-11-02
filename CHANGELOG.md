@@ -11,6 +11,17 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Changed
+
+- **Startup failures now say what failed and why, without `--debug`.** The CLI
+  used to print only `err.message`, so an unreachable search backend showed up
+  as `✗ fetch failed`. It now prints the message plus one `caused by:` line per
+  entry on the error's `cause` chain (messages only; stacks still need
+  `--debug`), and the failure-prone bootstrap steps name themselves: a search
+  engine that fails to build or rebuild reads `Search engine "meilisearch"
+  failed to build: …`, plugin loading reads `Failed to load plugins: …`, and
+  the content index reads `Failed to index content: …`.
+
 ### Fixed
 
 - **`admin:` in `system.yaml` was silently ignored, including `admin.enabled: false`.**
