@@ -187,6 +187,51 @@ Deno.test("loadConfig: merges system.yaml into system config", async () => {
   assertEquals(config.system.cache.driver, "filesystem");
 });
 
+Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.system", async () => {
+  const storage = new MemoryStorage({
+    "config/system.yaml": `admin:\n  enabled: false\n  maxRevisions: 7\ndebug: true`,
+  });
+  const config = await loadConfig({
+    storage,
+    rootDir: "/tmp/test",
+    skipConfigTs: true,
+    skipValidation: true,
+  });
+  assertEquals(config.admin?.enabled, false);
+  assertEquals(config.admin?.maxRevisions, 7);
+  // Unset admin keys keep their defaults
+  assertEquals(config.admin?.path, "/admin");
+  assertEquals((config.system as unknown as Record<string, unknown>).admin, undefined);
+  // The rest of system.yaml is unaffected
+  assertEquals(config.system.debug, true);
+});
+
+Deno.test("loadConfig: admin stays enabled when system.yaml has no admin block", async () => {
+  const config = await loadConfig({
+    storage: new MemoryStorage({ "config/system.yaml": `debug: true` }),
+    rootDir: "/tmp/test",
+    skipConfigTs: true,
+    skipValidation: true,
+  });
+  assertEquals(config.admin?.enabled, true);
+});
+
+Deno.test("loadConfig: env system.yaml `admin:` overrides the base file", async () => {
+  const storage = new MemoryStorage({
+    "config/system.yaml": `admin:\n  enabled: true\n  maxRevisions: 7`,
+    "config/env/production/system.yaml": `admin:\n  enabled: false`,
+  });
+  const config = await loadConfig({
+    storage,
+    rootDir: "/tmp/test",
+    env: "production",
+    skipConfigTs: true,
+    skipValidation: true,
+  });
+  assertEquals(config.admin?.enabled, false);
+  assertEquals(config.admin?.maxRevisions, 7);
+});
+
 Deno.test("loadConfig: environment-specific overrides", async () => {
   const storage = new MemoryStorage({
     "config/system.yaml": `debug: false`,

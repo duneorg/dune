@@ -9,6 +9,22 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`admin:` in `system.yaml` was silently ignored, including `admin.enabled: false`.**
+  The loader nested all of `system.yaml` under `config.system`, but the admin
+  plugin and bootstrap read `config.admin`, which only ever held the defaults. A
+  site that set `admin.enabled: false` to run headless still served the admin
+  panel and created a default admin user. The `admin:` block (also in
+  `config/env/<env>/system.yaml`) now merges into `config.admin`, so every
+  documented `admin:` key takes effect. **Sites that already had an `admin:`
+  block will now see it applied**; check it still says what you want. `dune dev`
+  and `dune serve` also stop printing the "Admin panel" URL when admin is off.
+
+---
+
 ## [0.35.1] — 2026-10-29
 
 ### Changed
