@@ -90,7 +90,9 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🏷️  ${taxonomy.names().length} taxonomies`);
   console.log(`  🔍 Search index built`);
-  console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
+  if (config.admin?.enabled !== false) {
+    console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
+  }
 
   // ── Content file watcher ─────────────────────────────────────────────────────
   // notifyReload comes from createDuneApp (called inside builder.listen below).

@@ -375,7 +375,9 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🗺️  Sitemap generated`);
   if (feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
-  console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
+  if (config.admin?.enabled !== false) {
+    console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
+  }
   console.log(`  🌐 http://localhost:${port}\n`);
 
   // ── Graceful shutdown (single site) ──────────────────────────────────────
