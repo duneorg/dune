@@ -12,6 +12,7 @@ import { createTaxonomyEngine } from "../../src/taxonomy/engine.ts";
 import { createCollectionEngine } from "../../src/collections/engine.ts";
 import type { DuneEngine, ResolveResult } from "../../src/core/engine.ts";
 import type { SearchEngine } from "../../src/search/engine.ts";
+import { SearchUnavailableError } from "../../src/search/manager.ts";
 import type { Page, PageIndex } from "../../src/content/types.ts";
 import type { DuneConfig, SiteConfig } from "../../src/config/types.ts";
 import type { TaxonomyMap } from "../../src/content/index-builder.ts";
@@ -340,6 +341,27 @@ function makeHandlerWithSearch(search: SearchEngine): (req: Request) => Promise<
   const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
   return createApiHandler({ engine, collections, taxonomy, search });
 }
+
+Deno.test("createApiHandler GET /api/search: no engine available is a 503 with Retry-After, not a 500", async () => {
+  const handler = makeHandlerWithSearch({
+    ...stubSearch,
+    search: () => Promise.reject(new SearchUnavailableError("No search engine is available")),
+  } as unknown as SearchEngine);
+  const res = await handler(new Request("http://localhost/api/search?q=test"));
+  assertEquals(res!.status, 503);
+  assertEquals(res!.headers.get("retry-after"), "30");
+  assertEquals(await res!.json(), { error: "Search is temporarily unavailable" });
+});
+
+Deno.test("createApiHandler GET /api/search: other engine errors stay a generic 500 without the message", async () => {
+  const handler = makeHandlerWithSearch({
+    ...stubSearch,
+    search: () => Promise.reject(new Error("meili key abc123 rejected")),
+  } as unknown as SearchEngine);
+  const res = await handler(new Request("http://localhost/api/search?q=test"));
+  assertEquals(res!.status, 500);
+  assertEquals(await res!.json(), { error: "Internal server error" });
+});
 
 Deno.test("createApiHandler GET /api/search: hasMore is false when results fit within limit", async () => {
   const handler = makeHandlerWithSearch(makeFakeSearchEngine(5));

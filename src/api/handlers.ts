@@ -21,6 +21,7 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
+import { SearchUnavailableError } from "../search/manager.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
@@ -202,6 +203,15 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
       }
       return jsonResponse(result, 200, corsHeaders);
     } catch (err) {
+      // Search is down but the site is not: say so, and tell clients to retry.
+      if (err instanceof SearchUnavailableError) {
+        logger.warn("api.search.unavailable", { path, error: err.message });
+        return jsonResponse(
+          { error: "Search is temporarily unavailable" },
+          503,
+          { ...corsHeaders, "Retry-After": "30" },
+        );
+      }
       // Never reflect internal error strings on the public, unauthenticated
       // API. Server-side log retains full context for operators.
       logger.error("api.public.error", {

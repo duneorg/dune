@@ -323,6 +323,12 @@ export const CONFIG_SCHEMA = {
         search: {
           type: "object",
           properties: {
+            fail_on_startup: {
+              type: "boolean",
+              default: false,
+              description:
+                "Stop startup when a search engine fails to build. Default: log it, retry in the background, and fall back to the built-in engine.",
+            },
             customFields: {
               type: "array",
               items: { type: "string" },
