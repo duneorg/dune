@@ -11,6 +11,13 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Changed
+
+- **`dune new` tells you to create the first admin.** Dune creates no default
+  admin account, so the next-steps list now includes
+  `dune users:create you@example.com --role admin --password-prompt` before
+  `deno task dev`, and the admin panel line says so.
+
 ## [0.35.3] — 2026-11-03
 
 ### Added

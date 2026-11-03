@@ -5,6 +5,7 @@
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.14",
     "jsr:@denosaurs/plug@1": "1.1.0",
+    "jsr:@dune/core@~0.34.2": "0.34.14",
     "jsr:@dune/plugin-admin@3": "3.0.0",
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@2": "2.3.3",
@@ -87,9 +88,28 @@
         "jsr:@std/path@1"
       ]
     },
+    "@dune/core@0.34.14": {
+      "integrity": "73a43da4d74c507eb92078f91c62e17de91b1693022a4aa98f024acd5db8c224",
+      "dependencies": [
+        "jsr:@db/sqlite",
+        "jsr:@fresh/core",
+        "jsr:@std/crypto",
+        "jsr:@std/encoding@1",
+        "jsr:@std/fs@1",
+        "jsr:@std/path@^1.1.4",
+        "jsr:@std/yaml",
+        "npm:ioredis",
+        "npm:nodemailer",
+        "npm:polizy",
+        "npm:postgres",
+        "npm:preact-render-to-string@6",
+        "npm:preact@10"
+      ]
+    },
     "@dune/plugin-admin@3.0.0": {
       "integrity": "48c7bc839a8fc4b7196a2ac5728f70c9cf4ce7bc4cf8facd7d2101e44fa70e0d",
       "dependencies": [
+        "jsr:@dune/core",
         "jsr:@fresh/core",
         "jsr:@std/encoding@1",
         "jsr:@std/path@^1.1.4",
