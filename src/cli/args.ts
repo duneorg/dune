@@ -111,6 +111,10 @@ export function parseCliOptions(args: string[]): ParsedCliArgs {
       options.boot = true;
     } else if (args[i] === "--verify") {
       options.verify = true;
+    } else if (args[i] === "--stdin") {
+      options.stdin = true;
+    } else if (args[i] === "--generate") {
+      options.generate = true;
     } else if (!args[i].startsWith("--")) {
       // Accept multiple positional args (e.g. migrate source path)
       if (!options.positional) {

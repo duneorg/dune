@@ -123,6 +123,9 @@ Commands:
                                 admin-provisioned account use case; see the
                                 command's own doc comment for OAuth vs.
                                 magic-link first-login caveats
+  users:passwd <email|username>   Set/reset a local user's password (prompted, no echo;
+                                --stdin to pipe it, --generate for a random one);
+                                revokes the user's existing sessions
   users:grant-role <email> <role>   Grant an admin-tier role (admin/editor/author) to a user
   users:revoke-role <email> <role>  Revoke an admin-tier role from a user
 

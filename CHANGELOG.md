@@ -11,6 +11,23 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **`dune users:passwd <email|username>`** sets or resets a local user's
+  password from the command line — lockout recovery, rotating a password nobody
+  has the plaintext of, or setting a first admin's password without a plaintext
+  file on disk. The password is prompted for with no echo (asked twice);
+  `--stdin` reads it from stdin for scripts and `--generate` prints a random one
+  once. It applies the same strength rules as the admin UI, revokes all of the
+  user's existing admin and site sessions, and refuses accounts that have no
+  local password (OAuth, magic link, invited). Works with the flat-file and DB
+  user stores.
+- **`@dune/core/auth/passwords`** exports `hashPassword`, `verifyPassword`,
+  `needsRehash` and `changePassword` (strength check, hash, write through the
+  user store). The hash format is unchanged (`pbkdf2:600000:<salt>:<key>`), so
+  existing hashes keep verifying. This is the credential primitive that moves
+  into core so admin implementations can share it (see #69, #64).
+
 ## [0.35.2] — 2026-11-03
 
 ### Added
