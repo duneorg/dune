@@ -33,6 +33,7 @@ import { resolve } from "@std/path";
 import { encodeBase64Url } from "@std/encoding/base64url";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
+import { resolveFormsConfig } from "../forms/config.ts";
 import { createLocalUserStore } from "../auth/user-store.ts";
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
@@ -65,7 +66,9 @@ async function openContext(root: string): Promise<Context> {
     rootDir: root,
     skipConfigTs: true,
   });
-  const dataDir = config.admin?.dataDir ?? "data";
+  // Same resolution as the admin plugin and core: system.data_dir, falling
+  // back to the deprecated admin.dataDir.
+  const dataDir = resolveFormsConfig(config).dataDir;
   const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
   const siteAuth = (config.site as { auth?: { userStore?: string } }).auth;
 
@@ -175,7 +178,15 @@ export async function usersPasswdCommand(
       if (err instanceof WeakPasswordError) fail(err.message);
       throw err;
     }
-    await ctx.revokeSessions(user.id);
+    try {
+      await ctx.revokeSessions(user.id);
+    } catch (err) {
+      fail(
+        `Password was changed, but revoking existing sessions failed: ${
+          err instanceof Error ? err.message : String(err)
+        }. Old sessions may still be valid; check the session store.`,
+      );
+    }
 
     const label = user.username ?? user.email;
     console.log(

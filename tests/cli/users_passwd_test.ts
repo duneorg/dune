@@ -224,3 +224,33 @@ Deno.test("users:passwd rejects --stdin together with --generate", async () => {
     assertEquals(code, 1);
   });
 });
+
+Deno.test("users:passwd looks in system.data_dir, like core and the admin plugin", async () => {
+  await withTempSite(async (root) => {
+    await Deno.mkdir(`${root}/config`, { recursive: true });
+    await Deno.writeTextFile(`${root}/config/site.yaml`, "title: T\n");
+    await Deno.writeTextFile(`${root}/config/system.yaml`, "data_dir: var\n");
+    const store = createLocalUserStore({
+      storage: createStorage({ rootDir: root }),
+      usersDir: "var/users",
+    });
+    await store.create({
+      email: "admin@example.com",
+      username: "admin",
+      provider: "local",
+      roles: ["admin"],
+      passwordHash: "pbkdf2:600000:00:00",
+    });
+    await quiet(() =>
+      usersPasswdCommand(root, "admin", {
+        readPassword: () => Promise.resolve("a-long-enough-passphrase"),
+      })
+    );
+    const user = await store.getByUsername("admin");
+    assertExists(user);
+    assertEquals(
+      await verifyPassword("a-long-enough-passphrase", user!.passwordHash!),
+      true,
+    );
+  });
+});

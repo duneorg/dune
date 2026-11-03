@@ -18,12 +18,24 @@ export async function promptSecret(prompt: string): Promise<string> {
       const n = await Deno.stdin.read(buf);
       if (n === null) break;
       const c = buf[0];
-      if (c === 13 || c === 10) break;
+      if (c === 13 || c === 10 || c === 4) break; // Enter, or Ctrl-D
       if (c === 3) {
         Deno.stdin.setRaw(false);
         await Deno.stdout.write(enc.encode("\n"));
         Deno.exit(130);
       }
+      if (c === 27) {
+        // Escape sequence (arrow keys etc.): swallow it instead of adding
+        // its bytes to the password.
+        if ((await Deno.stdin.read(buf)) === null) break;
+        if (buf[0] === 0x5b) {
+          while ((await Deno.stdin.read(buf)) !== null) {
+            if (buf[0] >= 0x40 && buf[0] <= 0x7e) break;
+          }
+        }
+        continue;
+      }
+      if (c < 32 && c !== 8) continue; // other control characters (8 = backspace)
       if (c === 127 || c === 8) {
         // Backspace: drop a whole UTF-8 character
         while (bytes.length && (bytes[bytes.length - 1] & 0xc0) === 0x80) {
