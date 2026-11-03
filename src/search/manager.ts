@@ -52,6 +52,16 @@ export class SearchConfigError extends Error {
   override name = "SearchConfigError";
 }
 
+/**
+ * True for a {@link SearchConfigError}, including one thrown by another copy of
+ * `@dune/core` (a plugin resolved against a different version has its own
+ * class, so `instanceof` alone would miss it).
+ */
+export function isSearchConfigError(err: unknown): boolean {
+  return err instanceof SearchConfigError ||
+    (err instanceof Error && err.name === "SearchConfigError");
+}
+
 /** No search engine can serve the request right now. The HTTP API answers 503. */
 export class SearchUnavailableError extends Error {
   override name = "SearchUnavailableError";
@@ -185,7 +195,7 @@ export function createSearchManager(
       const err = new Error(`Search engine "${name}" failed to ${op}: ${detail}`, { cause });
       entry.state = "failed";
       entry.attempts++;
-      entry.retryable = !(cause instanceof SearchConfigError);
+      entry.retryable = !isSearchConfigError(cause);
       entry.error = formatErrorChain(err).join(" ").replace(/\s+/g, " ");
       scheduleRetry(name, entry);
       // Loud the first time; later retries stay at debug so a long outage is not a log flood.
@@ -303,7 +313,7 @@ export function createSearchManager(
 
     async build(): Promise<void> {
       const errors = (await runAll("build", (e) => e.build())).filter((e): e is Error => e !== null);
-      const configError = errors.find((e) => e.cause instanceof SearchConfigError);
+      const configError = errors.find((e) => isSearchConfigError(e.cause));
       const abort = configError ?? (options.failOnStartup ? errors[0] : undefined);
       if (abort) {
         // Startup is about to fail; nothing should keep retrying behind it.

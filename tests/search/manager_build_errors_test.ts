@@ -32,3 +32,15 @@ Deno.test("SearchManager.build: a SearchConfigError aborts startup even without 
   assertEquals(manager.status().find((s) => s.name === "meilisearch")?.nextRetryAt, undefined);
   manager.close();
 });
+
+Deno.test("SearchManager.build: a SearchConfigError from another copy of core (same name, different class) still aborts", async () => {
+  class SearchConfigError extends Error {
+    override name = "SearchConfigError";
+  }
+  const manager = createSearchManager(stubEngine(), { retry: { baseMs: 5 } });
+  manager.register("meilisearch", stubEngine({ build: () => Promise.reject(new SearchConfigError("invalid API key")) }));
+
+  await assertRejects(() => manager.build(), Error, "invalid API key");
+  assertEquals(manager.status().find((s) => s.name === "meilisearch")?.nextRetryAt, undefined);
+  manager.close();
+});

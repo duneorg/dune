@@ -62,7 +62,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   warns about it. `SearchManager` gains `status()`, `isDegraded()`,
   `servingEngineName()` and `close()`. Two things still stop startup: an engine
   that throws the new `SearchConfigError` (a failure retrying cannot fix, such
-  as a rejected API key), and `system.search.fail_on_startup: true` for anyone
+  as a rejected API key; recognised by name too, so a plugin built against another
+  copy of core still counts), and `system.search.fail_on_startup: true` for anyone
   who prefers a failed deploy over a degraded one. Before, any engine failure
   aborted startup.
 - **Startup failures now say what failed and why, without `--debug`.** The CLI
