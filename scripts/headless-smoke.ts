@@ -28,7 +28,28 @@ const base = `http://localhost:${port}`;
 
 const systemPath = `${root}/config/system.yaml`;
 const system = await Deno.readTextFile(systemPath);
-await Deno.writeTextFile(systemPath, `${system.trimEnd()}\nadmin:\n  enabled: false\n`);
+// Public forms and the deploy webhook use their own config keys, not admin:.
+await Deno.writeTextFile(
+  systemPath,
+  `${system.trimEnd()}\nadmin:\n  enabled: false\nwebhooks:\n  incoming:\n    - token: smoke-token\n      actions: [purge-cache]\n`,
+);
+const sitePath = `${root}/config/site.yaml`;
+await Deno.writeTextFile(
+  sitePath,
+  `${(await Deno.readTextFile(sitePath)).trimEnd()}\nforms:\n  honeypot: _hp\n`,
+);
+await Deno.mkdir(`${root}/forms`, { recursive: true });
+await Deno.writeTextFile(
+  `${root}/forms/contact.yaml`,
+  [
+    "title: Contact",
+    "success_url: /thanks",
+    "fields:",
+    "  name: { type: text, label: Name, required: true }",
+    "  message: { type: textarea, label: Message, required: true }",
+    "",
+  ].join("\n"),
+);
 
 const page = (title: string, extra = "") => `---\ntitle: ${title}\n${extra}---\n\n${title} body.\n`;
 for (
@@ -122,6 +143,67 @@ try {
       const { text } = await get("/api/search?q=body");
       const bad = ["Future", "Expired", "Draft"].filter((t) => text.includes(t));
       return bad.length ? `hidden pages found: ${bad.join(", ")}` : undefined;
+    });
+
+    // Public forms and the incoming webhook (no admin plugin to register them)
+    const submissionsDir = `${root}/data/submissions/contact`;
+    const stored = async () => {
+      try {
+        return [...Deno.readDirSync(submissionsDir)].filter((e) => e.name.endsWith(".json")).length;
+      } catch {
+        return 0;
+      }
+    };
+    const post = (path: string, body: BodyInit, headers: Record<string, string> = {}) =>
+      get(path, { method: "POST", body, headers });
+    const asJson = { "content-type": "application/json", accept: "application/json" };
+
+    await check("form schema is served", async () => {
+      const res = await get("/api/forms/contact");
+      return res.status === 200 && res.text.includes('"honeypot":"_hp"') ? undefined : `status ${res.status}`;
+    });
+    await check("unknown form is 404", expectStatus("/api/forms/nope", 404));
+    await check("form submission is accepted and stored", async () => {
+      const before = await stored();
+      const res = await post("/api/forms/contact", JSON.stringify({ name: "A", message: "hello" }), asJson);
+      if (res.status !== 200) return `status ${res.status}: ${res.text}`;
+      return (await stored()) === before + 1 ? undefined : "no submission file written";
+    });
+    await check("form-encoded submission redirects to success_url", async () => {
+      const res = await fetch(`${base}/api/forms/contact`, {
+        method: "POST",
+        redirect: "manual",
+        body: new URLSearchParams({ name: "B", message: "hello" }),
+      });
+      await res.body?.cancel();
+      return res.status === 302 && res.headers.get("location") === "/thanks"
+        ? undefined
+        : `status ${res.status} → ${res.headers.get("location")}`;
+    });
+    await check("invalid submission is rejected, not stored", async () => {
+      const before = await stored();
+      const res = await post("/api/forms/contact", JSON.stringify({ name: "" }), asJson);
+      return res.status === 422 && (await stored()) === before ? undefined : `status ${res.status}`;
+    });
+    await check("honeypot submission is swallowed, not stored", async () => {
+      const before = await stored();
+      const res = await post("/api/forms/contact", JSON.stringify({ name: "A", message: "x", _hp: "bot" }), asJson);
+      return res.status === 200 && (await stored()) === before ? undefined : `status ${res.status}`;
+    });
+    await check("incoming webhook rejects a wrong token", async () => {
+      const res = await post("/api/webhook/incoming", "{}", { authorization: "Bearer nope" });
+      return res.status === 401 ? undefined : `status ${res.status}`;
+    });
+    await check("incoming webhook runs a permitted action", async () => {
+      const res = await post("/api/webhook/incoming", "{}", { authorization: "Bearer smoke-token" });
+      return res.status === 200 && res.text.includes("purge-cache") ? undefined : `status ${res.status}: ${res.text}`;
+    });
+    await check("form submissions are rate limited", async () => {
+      for (let i = 0; i < 8; i++) {
+        const res = await post("/api/forms/contact", JSON.stringify({ name: "R", message: "hello" }), asJson);
+        if (res.status === 429) return undefined;
+      }
+      return "never got a 429 in 8 submissions";
     });
 
     // Admin must be genuinely absent, not just unlinked
