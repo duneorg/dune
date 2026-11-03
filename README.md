@@ -87,6 +87,7 @@ This snapshots `deno.json` at install time rather than reading it live, so it go
 | `dune config:validate` | Validate all config files |
 | `dune content:list` | List all pages with routes and templates |
 | `dune content:check` | Check content for broken links, missing templates |
+| `dune users:passwd <email\|username>` | Set or reset a local user's password (prompt, `--stdin` or `--generate`; revokes their sessions) |
 
 ## Features
 
