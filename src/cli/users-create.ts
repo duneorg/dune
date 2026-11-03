@@ -29,6 +29,12 @@
  * admin-tier role is immediately effective — not just present in roles[]
  * but inert until the user's first login re-syncs it.
  *
+ * With --password-prompt (or --stdin / --generate) it instead creates a
+ * *local-password* account (`provider: "local"`, `--username`, default the
+ * email's local part) — the explicit first-admin bootstrap:
+ *   dune users:create admin@example.com --role admin --username admin --password-prompt
+ * The password is never an argument; see password-input.ts.
+ *
  * Usage:
  *   dune users:create alice@example.com
  *   dune users:create alice@example.com --role editor
@@ -38,21 +44,35 @@
 import { resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
-import { createLocalUserStore, DuplicateEmailError } from "../auth/user-store.ts";
+import {
+  createLocalUserStore,
+  DuplicateEmailError,
+} from "../auth/user-store.ts";
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
+import { acquirePassword, PasswordInputError } from "./password-input.ts";
+import type { PasswordInputOptions } from "./password-input.ts";
+import { hashPassword } from "../auth/passwords.ts";
+import { checkPasswordStrength } from "../security/password-strength.ts";
 
 const ADMIN_TIER_ROLES = new Set(["admin", "editor", "author"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export interface UsersCreateOptions {
+export interface UsersCreateOptions extends PasswordInputOptions {
   roles?: string[];
   name?: string;
   dryRun?: boolean;
+  /**
+   * Create a local-password account instead of an invited one: the password
+   * is prompted for (or --stdin / --generate). Implied by --stdin/--generate.
+   */
+  passwordPrompt?: boolean;
+  /** Login name for a local-password account. */
+  username?: string;
 }
 
 interface Context {
@@ -117,9 +137,13 @@ export async function usersCreateCommand(
 ): Promise<void> {
   root = resolve(root);
   const { roles = [], name, dryRun = false } = opts;
+  const withPassword = opts.passwordPrompt === true || opts.stdin === true ||
+    opts.generate === true || opts.readPassword !== undefined;
 
   if (!email) {
-    console.error(`  ✗ Usage: dune users:create <email> [--role x[,y]] [--name "Display Name"]`);
+    console.error(
+      `  ✗ Usage: dune users:create <email> [--role x[,y]] [--name "Display Name"]`,
+    );
     Deno.exit(1);
   }
   const normalizedEmail = email.trim().toLowerCase();
@@ -134,17 +158,52 @@ export async function usersCreateCommand(
   try {
     const existing = await ctx.userStore.getByEmail(normalizedEmail);
     if (existing) {
-      console.error(`  ✗ A user with email "${normalizedEmail}" already exists.`);
+      console.error(
+        `  ✗ A user with email "${normalizedEmail}" already exists.`,
+      );
       Deno.exit(1);
     }
 
     const adminTierRole = roles.find((r) => ADMIN_TIER_ROLES.has(r));
 
+    // Local-password account (first-admin bootstrap, scripted provisioning):
+    // validate everything before writing so a bad password or taken username
+    // never leaves a half-created account behind.
+    const username = (opts.username ?? normalizedEmail.split("@")[0]).trim();
+    let password: string | undefined;
+    let generated = false;
+    if (withPassword) {
+      if (await ctx.userStore.getByUsername(username)) {
+        console.error(
+          `  ✗ Username "${username}" is already taken — pick another with --username.`,
+        );
+        Deno.exit(1);
+      }
+      if (!dryRun) {
+        try {
+          ({ password, generated } = await acquirePassword(opts));
+        } catch (err) {
+          if (err instanceof PasswordInputError) {
+            console.error(`  ✗ ${err.message}`);
+            Deno.exit(1);
+          }
+          throw err;
+        }
+        const strength = checkPasswordStrength(password);
+        if (!strength.ok) {
+          console.error(`  ✗ ${strength.reason}`);
+          Deno.exit(1);
+        }
+      }
+    }
+
     if (dryRun) {
       console.log(
         `  ~ Would create user ${normalizedEmail} (roles: ${
           JSON.stringify(roles)
-        }, provider: "invited")`,
+        }, provider: "${withPassword ? "local" : "invited"}"${
+          withPassword ? `, username: "${username}"` : ""
+        })`,
       );
       if (adminTierRole) {
         console.log(`  ~ Would sync app:admin tuple (none → ${adminTierRole})`);
@@ -157,12 +216,20 @@ export async function usersCreateCommand(
       user = await ctx.userStore.create({
         email: normalizedEmail,
         name,
-        provider: "invited",
+        ...(password !== undefined
+          ? {
+            provider: "local",
+            username,
+            passwordHash: await hashPassword(password),
+          }
+          : { provider: "invited" }),
         roles,
       });
     } catch (err) {
       if (err instanceof DuplicateEmailError) {
-        console.error(`  ✗ A user with email "${normalizedEmail}" already exists.`);
+        console.error(
+          `  ✗ A user with email "${normalizedEmail}" already exists.`,
+        );
         Deno.exit(1);
       }
       throw err;
@@ -170,7 +237,20 @@ export async function usersCreateCommand(
 
     await syncAdminTuple(ctx, user.id, adminTierRole);
 
-    console.log(`  ✓ Created ${normalizedEmail}${roles.length ? ` (roles: ${roles.join(", ")})` : ""}`);
+    console.log(
+      `  ✓ Created ${normalizedEmail}${
+        roles.length ? ` (roles: ${roles.join(", ")})` : ""
+      }`,
+    );
+    if (password !== undefined) {
+      console.log(`  ✓ Local password set; they can sign in as "${username}".`);
+      if (generated) {
+        console.log(
+          `\n  Generated password (shown once — store it now):\n\n    ${password}\n`,
+        );
+      }
+      return;
+    }
     console.log(
       `  ℹ️  They can now log in via magic link and land in this account. ` +
         `A first login via OAuth will be rejected (no linked provider yet) — ` +

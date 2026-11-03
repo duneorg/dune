@@ -42,6 +42,15 @@ async function deriveKey(
   return new Uint8Array(bits);
 }
 
+/**
+ * A well-formed hash that never verifies. Login paths run `verifyPassword()`
+ * against it when the username is unknown, so a miss costs the same CPU as a
+ * hit and response time can't be used to enumerate accounts. Its iteration
+ * count must equal the current cost for that to hold.
+ */
+export const DUMMY_HASH =
+  `pbkdf2:${ITERATIONS}:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000`;
+
 /** Hash a plaintext password. Returns `pbkdf2:600000:<salt>:<key>`. */
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));

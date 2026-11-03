@@ -13,6 +13,21 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
+- **`dune users:create --password-prompt`** (also `--stdin`, `--generate`,
+  `--username`) creates a local-password account instead of an invited one: the
+  explicit first-admin step, e.g.
+  `dune users:create admin@example.com --role admin --username admin --password-prompt`.
+  The password is validated before anything is written, so a weak password or a
+  taken username leaves no half-created account.
+- **First admin from the environment.** If `DUNE_ADMIN_EMAIL` and
+  `DUNE_ADMIN_PASSWORD` are set (optionally `DUNE_ADMIN_USERNAME`, default
+  `admin`) and the site has no enabled admin, boot creates one. It never
+  overrides or resets an existing account, requires both variables, fails boot
+  on a weak password, and never logs the password. It lives in core, so it works
+  with any admin implementation or none. Intended for container and server
+  deployments; this is the groundwork for dropping the default admin (#69).
+- **`DUMMY_HASH`** is exported from `@dune/core/auth/passwords`, for login paths
+  that need equal-cost verification for unknown users.
 - **`dune users:passwd <email|username>`** sets or resets a local user's
   password from the command line — lockout recovery, rotating a password nobody
   has the plaintext of, or setting a first admin's password without a plaintext

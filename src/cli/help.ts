@@ -122,7 +122,10 @@ Commands:
                                 (--role x[,y], --name "Display Name") — the
                                 admin-provisioned account use case; see the
                                 command's own doc comment for OAuth vs.
-                                magic-link first-login caveats
+                                magic-link first-login caveats.
+                                --password-prompt (or --stdin / --generate, --username)
+                                creates a local-password account instead — the
+                                first-admin bootstrap
   users:passwd <email|username>   Set/reset a local user's password (prompted, no echo;
                                 --stdin to pipe it, --generate for a random one);
                                 revokes the user's existing sessions

@@ -6,6 +6,7 @@
 
 import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { usersCreateCommand } from "../../src/cli/users-create.ts";
+import { verifyPassword } from "../../src/auth/passwords.ts";
 import { createLocalUserStore } from "../../src/auth/user-store.ts";
 import { createStorage } from "../../src/storage/mod.ts";
 import { AuthzLocalAdapter } from "../../src/auth/authz-adapter-local.ts";
@@ -153,5 +154,75 @@ Deno.test("users:create --dry-run makes no changes", async () => {
 
     const user = await userStoreFor(root).getByEmail("alice@example.com");
     assertEquals(user, null);
+  });
+});
+
+Deno.test("users:create --password-prompt creates a local account with a verifiable hash", async () => {
+  await withTempSite(async (root) => {
+    await usersCreateCommand(root, "admin@example.com", {
+      roles: ["admin"],
+      username: "admin",
+      readPassword: () => Promise.resolve("a-long-enough-passphrase"),
+    });
+
+    const user = await userStoreFor(root).getByUsername("admin");
+    assertExists(user);
+    assertEquals(user!.provider, "local");
+    assertEquals(user!.roles, ["admin"]);
+    assertEquals(await verifyPassword("a-long-enough-passphrase", user!.passwordHash!), true);
+    assertEquals(await hasAdminTuple(root, user!.id, "admin"), true);
+  });
+});
+
+Deno.test("users:create with a password defaults the username to the email's local part", async () => {
+  await withTempSite(async (root) => {
+    await usersCreateCommand(root, "alice@example.com", {
+      readPassword: () => Promise.resolve("a-long-enough-passphrase"),
+    });
+    assertExists(await userStoreFor(root).getByUsername("alice"));
+  });
+});
+
+Deno.test("users:create exits 1 on a weak password and creates nothing", async () => {
+  await withTempSite(async (root) => {
+    const code = await withMockedExit(() =>
+      usersCreateCommand(root, "alice@example.com", { readPassword: () => Promise.resolve("short") })
+    );
+    assertEquals(code, 1);
+    assertEquals(await userStoreFor(root).getByEmail("alice@example.com"), null);
+  });
+});
+
+Deno.test("users:create exits 1 when the username is taken", async () => {
+  await withTempSite(async (root) => {
+    await usersCreateCommand(root, "a@example.com", {
+      username: "boss",
+      readPassword: () => Promise.resolve("a-long-enough-passphrase"),
+    });
+    const code = await withMockedExit(() =>
+      usersCreateCommand(root, "b@example.com", {
+        username: "boss",
+        readPassword: () => Promise.resolve("a-long-enough-passphrase"),
+      })
+    );
+    assertEquals(code, 1);
+    assertEquals(await userStoreFor(root).getByEmail("b@example.com"), null);
+  });
+});
+
+Deno.test("users:create --generate prints a usable password once", async () => {
+  await withTempSite(async (root) => {
+    const lines: string[] = [];
+    const log = console.log;
+    console.log = (...a: unknown[]) => lines.push(a.join(" "));
+    try {
+      await usersCreateCommand(root, "gen@example.com", { generate: true });
+    } finally {
+      console.log = log;
+    }
+    const printed = lines.flatMap((l) => l.split("\n")).map((l) => l.trim()).find((l) => /^[A-Za-z0-9_-]{24}$/.test(l));
+    assertExists(printed);
+    const user = await userStoreFor(root).getByUsername("gen");
+    assertEquals(await verifyPassword(printed!, user!.passwordHash!), true);
   });
 });
