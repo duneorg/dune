@@ -116,7 +116,7 @@ export interface BootstrapResult {
    * Store for public form submissions (`<data_dir>/submissions/<form>/`).
    * Core writes to it from the public form routes; an admin plugin reads it
    * to manage them.
-   * @since v0.36
+   * @since v0.35.2
    */
   submissions: import("../forms/submissions.ts").SubmissionManager;
   /**
