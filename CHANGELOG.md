@@ -11,6 +11,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+## [0.35.2] — 2026-11-03
+
 ### Added
 
 - **`publish_date` and `unpublish_date` now work.** They were typed and listed in
