@@ -87,6 +87,7 @@ This snapshots `deno.json` at install time rather than reading it live, so it go
 | `dune config:validate` | Validate all config files |
 | `dune content:list` | List all pages with routes and templates |
 | `dune content:check` | Check content for broken links, missing templates |
+| `dune users:create <email> --password-prompt` | Create a local-password account (the explicit first admin; `--stdin`, `--generate`, `--username`). `DUNE_ADMIN_EMAIL` + `DUNE_ADMIN_PASSWORD` do the same at boot when no admin exists |
 | `dune users:passwd <email\|username>` | Set or reset a local user's password (prompt, `--stdin` or `--generate`; revokes their sessions) |
 
 ## Features
