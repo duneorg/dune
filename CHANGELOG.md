@@ -11,6 +11,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+## [0.35.3] — 2026-11-03
+
 ### Added
 
 - **`dune users:create --password-prompt`** (also `--stdin`, `--generate`,
