@@ -4,7 +4,7 @@
  * Form YAML files live at `forms/{name}.yaml` in the project root and define
  * the fields, validation rules, and behaviour for public-facing forms.
  *
- * ## Public API endpoints (registered by the admin server)
+ * ## Public API endpoints (registered by core, no admin plugin needed)
  *
  *   GET  /api/forms/:name   Return the form schema as JSON (for JS-driven forms)
  *   POST /api/forms/:name   Accept and validate a form submission
@@ -38,6 +38,17 @@
 
 export { loadForms, loadForm } from "./loader.ts";
 export { validateFormSubmission } from "./validator.ts";
+export { createSubmissionManager } from "./submissions.ts";
+export type {
+  Submission,
+  SubmissionFile,
+  SubmissionManager,
+  SubmissionManagerConfig,
+  SubmissionMeta,
+  SubmissionStatus,
+} from "./submissions.ts";
+export { resolveFormsConfig } from "./config.ts";
+export type { ResolvedFormsConfig } from "./config.ts";
 export type {
   FormDefinition,
   FormField,

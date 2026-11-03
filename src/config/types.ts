@@ -23,6 +23,13 @@ export type {
 } from "./admin-config.ts";
 
 export type {
+  FormsConfig,
+  FormNotificationsConfig,
+  FormEmailNotificationConfig,
+  IncomingWebhookConfig,
+} from "./forms-config.ts";
+
+export type {
   HttpCacheRule,
   /** Site-level configuration (content, identity, metadata) */
   SiteConfig,

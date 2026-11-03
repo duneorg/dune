@@ -110,6 +110,7 @@ function parseFormYaml(
   const title = typeof data.title === "string" ? data.title : name;
   const success_url = typeof data.success_url === "string" ? data.success_url : undefined;
   const honeypot = typeof data.honeypot === "string" ? data.honeypot : undefined;
+  const enabled = typeof data.enabled === "boolean" ? data.enabled : undefined;
 
   // Parse per-form notification overrides
   let notifications: FormDefinition["notifications"];
@@ -126,6 +127,7 @@ function parseFormYaml(
   const form: FormDefinition = { title, fields };
   if (success_url) form.success_url = success_url;
   if (honeypot) form.honeypot = honeypot;
+  if (enabled !== undefined) form.enabled = enabled;
   if (notifications) form.notifications = notifications;
 
   return form;
