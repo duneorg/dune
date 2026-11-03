@@ -37,11 +37,24 @@ export function createFormsRuntime(ctx: BootstrapResult): FormsRuntime {
   };
 }
 
+/** Apps that already have the routes, so a second call is a no-op. */
+const registered = new WeakSet<object>();
+
+/**
+ * Register `POST /api/contact`, `GET/POST /api/forms/:name` and
+ * `POST /api/webhook/incoming` on a Fresh app.
+ *
+ * `createDuneApp()` does this itself. Call it directly only if you assemble
+ * the app yourself from `bootstrap()` (headless mode). Calling it twice for
+ * the same app is harmless.
+ */
 export function registerFormRoutes(
   // deno-lint-ignore no-explicit-any
   app: App<any>,
   ctx: BootstrapResult,
 ): void {
+  if (registered.has(app)) return;
+  registered.add(app);
   const rt = createFormsRuntime(ctx);
   app.post("/api/contact", (fc) => handleContactSubmission(rt, fc.req));
   app.get("/api/forms/:name", (fc) => handleFormSchema(rt, fc.params.name));
