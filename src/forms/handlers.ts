@@ -84,6 +84,32 @@ function safeRedirectPath(target: string, req: Request): string {
   }
 }
 
+/**
+ * Path (+query) of the request's Referer with `param=1` set, or "/" when the
+ * Referer is missing, unparseable or from another origin (open redirect).
+ * Behind a TLS-terminating proxy req.url carries the internal origin
+ * (http://localhost:PORT), so the public origin from Host + X-Forwarded-Proto
+ * is accepted too. Only the path is returned, so a forged Host cannot
+ * redirect off-site.
+ */
+function refererRedirectPath(req: Request, param: string): string {
+  const referer = req.headers.get("referer");
+  if (!referer) return "/";
+  try {
+    const host = req.headers.get("host");
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
+    const publicOrigin = host ? `${proto}://${host}` : null;
+    const u = new URL(referer);
+    if (
+      u.origin !== new URL(req.url).origin && u.origin !== publicOrigin
+    ) return "/";
+    u.searchParams.set(param, "1");
+    return u.pathname + u.search;
+  } catch {
+    return "/";
+  }
+}
+
 // Hard ceiling on a single form submission body (multipart or urlencoded).
 // Mirrors the per-file (10 MB) × per-submission (5 files) budget plus a small
 // allowance for boundaries, headers, and non-file fields.
@@ -304,18 +330,7 @@ export async function handleFormSubmission(
         );
       }
       // For regular form POST, redirect back with error indicator
-      const requestOrigin = new URL(req.url).origin;
-      const referer = req.headers.get("referer");
-      let redirectPath = "/";
-      if (referer) {
-        try {
-          const u = new URL(referer);
-          if (u.origin === requestOrigin) {
-            u.searchParams.set("form_error", "1");
-            redirectPath = u.pathname + u.search;
-          }
-        } catch { /* bad referer */ }
-      }
+      const redirectPath = refererRedirectPath(req, "form_error");
       return new Response(null, {
         status: 302,
         headers: { Location: redirectPath },
@@ -583,31 +598,8 @@ export async function handleContactSubmission(
       return json({ ok: true });
     }
 
-    // Redirect back (form POST) — validate Referer is same-origin to prevent open redirect.
-    // If Referer is missing, cross-origin, or unparseable, fall back to "/".
-    // Behind a reverse proxy req.url has the internal origin (http://localhost:PORT),
-    // so also accept the public origin derived from Host + X-Forwarded-Proto headers.
-    const requestOrigin = new URL(req.url).origin;
-    const host = req.headers.get("host");
-    const proto = req.headers.get("x-forwarded-proto") ?? "https";
-    const publicOrigin = host ? `${proto}://${host}` : null;
-    const refererHeader = req.headers.get("referer");
-    let redirectPath = "/";
-    if (refererHeader) {
-      try {
-        const refererUrl = new URL(refererHeader);
-        if (
-          refererUrl.origin === requestOrigin ||
-          (publicOrigin && refererUrl.origin === publicOrigin)
-        ) {
-          // Safe: same-origin — keep the path+query, append ?submitted=1
-          refererUrl.searchParams.set("submitted", "1");
-          redirectPath = refererUrl.pathname + refererUrl.search;
-        }
-      } catch {
-        // Unparseable Referer — fall back to "/"
-      }
-    }
+    // Redirect back (form POST); same-origin Referer only, else "/".
+    const redirectPath = refererRedirectPath(req, "submitted");
     return new Response(null, {
       status: 302,
       headers: { "Location": redirectPath },

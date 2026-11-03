@@ -11,6 +11,17 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Fixed
+
+- **A form's validation-failure redirect works behind a TLS proxy (#89).**
+  `POST /api/forms/:name` only sent the visitor back to the page (with
+  `?form_error=1`) when the Referer's origin matched `req.url`; behind a
+  TLS-terminating proxy that is the internal `http://` origin, so it always
+  fell back to `/` and the error banner never showed. It now also accepts the
+  public origin from `Host` + `X-Forwarded-Proto`, as `POST /api/contact`
+  already did, through one shared helper. Only the path is ever returned, so a
+  forged Host cannot redirect off-site.
+
 ### Changed
 
 - **`dune new` tells you to create the first admin.** Dune creates no default
