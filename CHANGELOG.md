@@ -11,6 +11,22 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **`publish_date` and `unpublish_date` now work.** They were typed and listed in
+  the frontmatter and workflow docs, but nothing read them. A page is live when
+  `publish_date <= now < unpublish_date` (either bound may be left out); before
+  its `publish_date` or from its `unpublish_date` it is unpublished everywhere
+  `published` is honoured (routes, feeds, sitemap, search, taxonomy, static
+  builds). `published: false` always wins; the dates only narrow it to a window.
+  Dates are ISO 8601; a value without a zone, including a bare `2026-12-01`, is
+  read as UTC. An unparseable date is ignored with a warning rather than
+  failing the index. Nothing is written to the file, and no admin plugin or
+  scheduler state is needed: the engine rebuilds at the next window boundary,
+  so a page appears and disappears on time without a restart. `PageIndex` gains
+  `publishAt` / `unpublishAt` (epoch ms). A static build (`dune build
+  --static`) reflects the moment it ran.
+
 ### Changed
 
 - **Startup failures now say what failed and why, without `--debug`.** The CLI

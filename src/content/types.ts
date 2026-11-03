@@ -261,7 +261,16 @@ export interface PageIndex {
   date: string | null;
   /** `YYYY-MM-DD` from the `dateModified` frontmatter field, when present and valid. */
   dateModified?: string;
+  /**
+   * Whether the page is live right now: `published` (default true) AND inside
+   * its `publish_date` / `unpublish_date` window. Evaluated when the index is
+   * built; the engine rebuilds at the next window boundary.
+   */
   published: boolean;
+  /** `publish_date` as epoch ms, when set and valid. */
+  publishAt?: number;
+  /** `unpublish_date` as epoch ms, when set and valid. */
+  unpublishAt?: number;
   /** Content workflow status */
   status: "draft" | "in_review" | "published" | "archived";
   visible: boolean;
