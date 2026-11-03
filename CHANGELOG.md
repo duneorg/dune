@@ -90,6 +90,9 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Fixed
 
+- **Hardened the incoming-webhook token check.** Token handling for
+  `POST /api/webhook/incoming` is stricter; no configuration change is needed.
+
 - **Headless apps keep the public form routes.** `mountDuneAdmin()` used to
   register `/api/forms/:name`, `/api/contact` and `/api/webhook/incoming`; now
   that core serves them, an app assembled from `bootstrap()` without

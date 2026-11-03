@@ -294,6 +294,20 @@ Deno.test("webhook: $ENV tokens are expanded", async () => {
   }
 });
 
+Deno.test("webhook: a $ENV token whose variable is unset matches nothing, not its own name", async () => {
+  Deno.env.delete("DUNE_TEST_WEBHOOK_UNSET");
+  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "$DUNE_TEST_WEBHOOK_UNSET", actions: ["rebuild"] }] }));
+  assertEquals((await handleIncomingWebhook(h.rt, hook("$DUNE_TEST_WEBHOOK_UNSET"))).status, 401);
+  assertEquals((await handleIncomingWebhook(h.rt, hook("DUNE_TEST_WEBHOOK_UNSET"))).status, 401);
+  Deno.env.set("DUNE_TEST_WEBHOOK_UNSET", "");
+  try {
+    // Set but empty is just as unusable.
+    assertEquals((await handleIncomingWebhook(h.rt, hook("$DUNE_TEST_WEBHOOK_UNSET"))).status, 401);
+  } finally {
+    Deno.env.delete("DUNE_TEST_WEBHOOK_UNSET");
+  }
+});
+
 Deno.test("webhook: an oversized body is rejected before parsing (413)", async () => {
   const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "t", actions: ["rebuild"] }] }));
   const req = post("/api/webhook/incoming", "{}", { "content-length": String(2 * 1024 * 1024) });

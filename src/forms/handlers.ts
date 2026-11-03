@@ -413,11 +413,13 @@ export async function handleIncomingWebhook(
   // Find a matching webhook config entry (expand $ENV_VAR tokens). Compare
   // SHA-256 digests in constant time so neither the token's content nor its
   // length can be recovered by measuring response timing.
-  const expandToken = (t: string): string => {
+  // A "$VAR" token whose variable is unset or empty matches nothing: falling
+  // back to the literal "$VAR" would make that string a valid token.
+  const expandToken = (t: string): string | null => {
     if (t.startsWith("$")) {
-      return Deno.env.get(t.slice(1)) ?? t;
+      return Deno.env.get(t.slice(1)) || null;
     }
-    return t;
+    return t || null;
   };
   const digest = async (t: string): Promise<string> =>
     encodeHex(
@@ -429,9 +431,12 @@ export async function handleIncomingWebhook(
   const tokenDigest = await digest(token);
   let matched: (typeof incomingWebhooks)[number] | undefined;
   for (const wh of incomingWebhooks) {
-    if (
-      timingSafeEqualStrings(await digest(expandToken(wh.token)), tokenDigest)
-    ) matched = wh;
+    const expected = expandToken(wh.token);
+    if (expected === null) {
+      logger.warn("forms.webhook.token_unresolved", { token: wh.token.startsWith("$") ? wh.token : "(empty)" });
+      continue;
+    }
+    if (timingSafeEqualStrings(await digest(expected), tokenDigest)) matched = wh;
   }
 
   if (!matched) {
