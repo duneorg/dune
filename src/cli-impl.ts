@@ -98,6 +98,7 @@ import { migrateRolesToTuplesCommand } from "./cli/migrate-roles-to-tuples.ts";
 import { migrateUsersCommand } from "./cli/migrate-users.ts";
 import { grantRoleCommand, revokeRoleCommand } from "./cli/users-role.ts";
 import { usersCreateCommand } from "./cli/users-create.ts";
+import { usersPasswdCommand } from "./cli/users-passwd.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 import { parseCliOptions } from "./cli/args.ts";
 import { maybeReexecWithSiteConfig } from "./cli/reexec.ts";
@@ -476,6 +477,13 @@ export async function main(args: string[] = Deno.args) {
             dryRun: options.dryRun === true,
           },
         );
+        break;
+
+      case "users:passwd":
+        await usersPasswdCommand(root, options.positional as string, {
+          stdin: options.stdin === true,
+          generate: options.generate === true,
+        });
         break;
 
       case "users:grant-role":
