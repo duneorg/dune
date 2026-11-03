@@ -111,6 +111,15 @@ export interface SystemConfig {
   /** Full-text search configuration. */
   search?: {
     /**
+     * Stop startup when any search engine fails to build. By default a failed
+     * engine is logged, retried in the background, and search falls back to
+     * the built-in engine (or answers 503 if nothing can serve it) while the
+     * site keeps serving content. Set this to let a failed health check on
+     * the new instance block a deploy instead.
+     * Default: false.
+     */
+    fail_on_startup?: boolean;
+    /**
      * Additional frontmatter field names to include in the full-text index.
      * By default only title, body, and taxonomy values are indexed.
      * Add field names here to make custom frontmatter searchable.

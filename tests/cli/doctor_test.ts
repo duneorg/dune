@@ -5,7 +5,7 @@
 
 import { assertEquals, assertMatch } from "@std/assert";
 import { join } from "@std/path";
-import { evaluateDenoVersion, runDoctorChecks } from "../../src/cli/doctor.ts";
+import { evaluateDenoVersion, runDoctorChecks, searchDegradedFindings } from "../../src/cli/doctor.ts";
 
 // ── evaluateDenoVersion (pure) ────────────────────────────────────────────────
 
@@ -179,3 +179,19 @@ Deno.test(
     }
   },
 );
+
+Deno.test("searchDegradedFindings: silent unless /health says degraded", () => {
+  assertEquals(searchDegradedFindings("ok", ""), []);
+  assertEquals(searchDegradedFindings(undefined, ""), []);
+});
+
+Deno.test("searchDegradedFindings: a warning that names the failed engine from the boot log", () => {
+  const log = [
+    "starting",
+    '\x1b[33m[WARN] \x1b[0m search.engine.failed  engine="meilisearch" op="build" reason="fetch failed"',
+  ].join("\n");
+  const [finding] = searchDegradedFindings("degraded", log);
+  assertEquals(finding.severity, "warning");
+  assertEquals(finding.message.includes('engine="meilisearch"'), true);
+  assertEquals(finding.message.includes("\x1b"), false);
+});

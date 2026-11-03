@@ -117,6 +117,26 @@ async function findFreePort(): Promise<number> {
   return port;
 }
 
+/**
+ * A site can boot and still have search degraded: a search backend that was
+ * down at startup is logged and retried, not fatal. `/health` says so; the
+ * log line names the engine and the cause.
+ */
+export function searchDegradedFindings(healthStatus: unknown, bootOutput: string): DoctorFinding[] {
+  if (healthStatus !== "degraded") return [];
+  // deno-lint-ignore no-control-regex
+  const failures = bootOutput.split("\n").map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""))
+    .filter((l) => l.includes("search.engine.failed"))
+    .map((l) => `  ${l.trim()}`);
+  return [{
+    category: "boot",
+    severity: "warning",
+    message: "The site boots, but a search engine failed at startup. Search is served by the " +
+      "fallback engine while Dune retries in the background." +
+      (failures.length ? `\n${failures.join("\n")}` : ""),
+  }];
+}
+
 const BOOT_TIMEOUT_MS = 20_000;
 const BOOT_POLL_INTERVAL_MS = 250;
 
@@ -160,6 +180,7 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
   child.status.then(() => { exited = true; });
 
   let ok = false;
+  let healthStatus: unknown;
   try {
     const deadline = Date.now() + BOOT_TIMEOUT_MS;
     while (Date.now() < deadline) {
@@ -167,6 +188,12 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
       try {
         const res = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(2000) });
         ok = res.status < 500;
+        if (ok) {
+          try {
+            const health = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(2000) });
+            healthStatus = (await health.json()).status;
+          } catch { /* no /health: nothing to report */ }
+        }
         break;
       } catch {
         await new Promise((r) => setTimeout(r, BOOT_POLL_INTERVAL_MS));
@@ -190,7 +217,7 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
       message: `Site did not boot and serve a response within ${BOOT_TIMEOUT_MS}ms.\n${output.trim()}`,
     }];
   }
-  return [];
+  return searchDegradedFindings(healthStatus, output);
 }
 
 /** Run doctor's checks and return the findings, without printing or exiting. */

@@ -412,6 +412,7 @@ export async function createDuneApp(
     engine,
     pageCache,
     startTime,
+    search: ctx.search,
   });
 
   // 4. Sitemap, feeds, staged preview, dev SSE

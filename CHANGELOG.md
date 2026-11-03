@@ -49,6 +49,22 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Changed
 
+- **A search backend that is down no longer takes the site down.** Search engines
+  now build independently: one that fails at startup (a Meilisearch that is
+  still booting, say) is logged once with its cause, marked failed and retried
+  in the background with exponential backoff (5 s doubling to 5 min), and the
+  site starts and serves content. Meanwhile queries use the next usable engine,
+  normally the built-in one, and switch back when the engine recovers. If no
+  engine can answer, `/api/search` returns `503` with `Retry-After` instead of
+  `500`. A failed engine shows as `"degraded"` in `/health` (still HTTP 200, so
+  the instance stays in rotation; engine names and errors need the health
+  token), `/health/ready` carries `degraded: true`, and `dune doctor --boot`
+  warns about it. `SearchManager` gains `status()`, `isDegraded()`,
+  `servingEngineName()` and `close()`. Two things still stop startup: an engine
+  that throws the new `SearchConfigError` (a failure retrying cannot fix, such
+  as a rejected API key), and `system.search.fail_on_startup: true` for anyone
+  who prefers a failed deploy over a degraded one. Before, any engine failure
+  aborted startup.
 - **Startup failures now say what failed and why, without `--debug`.** The CLI
   used to print only `err.message`, so an unreachable search backend showed up
   as `✗ fetch failed`. It now prints the message plus one `caused by:` line per

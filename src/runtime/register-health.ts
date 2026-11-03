@@ -2,12 +2,18 @@ import type { App } from "fresh";
 import type { PageCache } from "../cache/mod.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
 import { timingSafeEqualStrings as timingSafeEqual } from "../security/timing-safe.ts";
+import type { SearchManager } from "../search/manager.ts";
 
 export interface HealthRouteOptions {
   config: BootstrapResult["config"];
   engine: BootstrapResult["engine"];
   pageCache: PageCache | null;
   startTime: number;
+  /**
+   * When given, a failed search engine shows up as `"degraded"` (still HTTP 200:
+   * the site serves content, so the instance stays in rotation).
+   */
+  search?: SearchManager;
 }
 
 /** Register /health, /health/live, /health/ready. Returns setShuttingDown for graceful drain. */
@@ -16,7 +22,8 @@ export function registerHealthRoutes(
   app: App<any>,
   opts: HealthRouteOptions,
 ): { setShuttingDown: (value: boolean) => void } {
-  const { config, engine, pageCache, startTime } = opts;
+  const { config, engine, pageCache, startTime, search } = opts;
+  const degraded = () => search?.isDegraded() === true;
   let shuttingDown = false;
 
   // Constant-time comparison prevents timing-side-channel probing of /health?token=.
@@ -35,13 +42,19 @@ export function registerHealthRoutes(
 
     if (detailed && tokenOk) {
       return Response.json({
-        status: "ok",
+        status: degraded() ? "degraded" : "ok",
         uptime: Math.floor((Date.now() - startTime) / 1000),
         pages: engine.pages.length,
         cache: pageCache ? pageCache.stats() : null,
+        search: search
+          ? { serving: search.servingEngineName(), engines: search.status() }
+          : null,
       }, { headers: { "Cache-Control": "no-cache" } });
     }
-    return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-cache" } });
+    return Response.json(
+      { status: degraded() ? "degraded" : "ok" },
+      { headers: { "Cache-Control": "no-cache" } },
+    );
   });
 
   app.get("/health/live", () =>
@@ -57,7 +70,11 @@ export function registerHealthRoutes(
     }
     const ready = Array.isArray(engine.pages);
     return Response.json(
-      { status: ready ? "ready" : "not_ready", pages: engine.pages.length },
+      {
+        status: ready ? "ready" : "not_ready",
+        pages: engine.pages.length,
+        ...(degraded() ? { degraded: true } : {}),
+      },
       { status: ready ? 200 : 503, headers: { "Cache-Control": "no-cache" } },
     );
   });

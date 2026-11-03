@@ -450,7 +450,9 @@ export async function bootstrap(
     formats,
     injectedRecords,
   });
-  const search = createSearchManager(builtInEngine);
+  const search = createSearchManager(builtInEngine, {
+    failOnStartup: config.system.search?.fail_on_startup === true,
+  });
 
   const engineCtx = await hooks.fire<SearchEngineCreateContext>(
     "onSearchEngineCreate",
