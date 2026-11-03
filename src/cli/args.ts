@@ -111,6 +111,10 @@ export function parseCliOptions(args: string[]): ParsedCliArgs {
       options.boot = true;
     } else if (args[i] === "--verify") {
       options.verify = true;
+    } else if (args[i] === "--password-prompt") {
+      options.passwordPrompt = true;
+    } else if (args[i] === "--username" && args[i + 1]) {
+      options.username = args[++i];
     } else if (args[i] === "--stdin") {
       options.stdin = true;
     } else if (args[i] === "--generate") {

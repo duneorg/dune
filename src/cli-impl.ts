@@ -475,6 +475,10 @@ export async function main(args: string[] = Deno.args) {
             roles: roleValues.length > 0 ? roleValues : undefined,
             name: options.themeName as string | undefined,
             dryRun: options.dryRun === true,
+            passwordPrompt: options.passwordPrompt === true,
+            stdin: options.stdin === true,
+            generate: options.generate === true,
+            username: options.username as string | undefined,
           },
         );
         break;

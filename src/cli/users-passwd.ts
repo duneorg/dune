@@ -30,7 +30,6 @@
  */
 
 import { resolve } from "@std/path";
-import { encodeBase64Url } from "@std/encoding/base64url";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { resolveFormsConfig } from "../forms/config.ts";
@@ -41,16 +40,10 @@ import { changePassword, WeakPasswordError } from "../auth/passwords.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
 import { createSessionManager, createSessionStore } from "../session/mod.ts";
-import { promptSecret, readSecretFromStdin } from "./prompt-secret.ts";
+import { acquirePassword, PasswordInputError } from "./password-input.ts";
+import type { PasswordInputOptions } from "./password-input.ts";
 
-export interface UsersPasswdOptions {
-  /** Read the password from stdin instead of prompting. */
-  stdin?: boolean;
-  /** Generate a random password and print it once. */
-  generate?: boolean;
-  /** Prompt/stdin overrides — tests only. */
-  readPassword?: () => Promise<string>;
-}
+export type UsersPasswdOptions = PasswordInputOptions;
 
 interface Context {
   userStore: UserStore;
@@ -112,10 +105,6 @@ async function openContext(root: string): Promise<Context> {
   return { userStore, revokeSessions, closeDb };
 }
 
-function generatePassword(): string {
-  return encodeBase64Url(crypto.getRandomValues(new Uint8Array(18)));
-}
-
 function fail(message: string): never {
   console.error(`  ✗ ${message}`);
   Deno.exit(1);
@@ -153,23 +142,12 @@ export async function usersPasswdCommand(
     }
 
     let password: string;
-    if (opts.generate) {
-      password = generatePassword();
-    } else if (opts.stdin) {
-      password = await readSecretFromStdin();
-    } else if (opts.readPassword) {
-      password = await opts.readPassword();
-    } else {
-      if (!Deno.stdin.isTerminal()) {
-        fail(
-          "No terminal to prompt on — use --stdin (password on stdin) or --generate.",
-        );
-      }
-      password = await promptSecret("New password: ");
-      const again = await promptSecret("Repeat it:    ");
-      if (password !== again) {
-        fail("The two entries differ; nothing was changed.");
-      }
+    let generated: boolean;
+    try {
+      ({ password, generated } = await acquirePassword(opts));
+    } catch (err) {
+      if (err instanceof PasswordInputError) fail(err.message);
+      throw err;
     }
 
     try {
@@ -192,7 +170,7 @@ export async function usersPasswdCommand(
     console.log(
       `  ✓ Password updated for ${label}; existing sessions revoked.`,
     );
-    if (opts.generate) {
+    if (generated) {
       console.log(
         `\n  Generated password (shown once — store it now):\n\n    ${password}\n`,
       );

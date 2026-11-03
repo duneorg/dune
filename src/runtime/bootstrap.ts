@@ -561,6 +561,45 @@ export async function bootstrap(
     }
   }
 
+  // First-admin bootstrap from DUNE_ADMIN_EMAIL / DUNE_ADMIN_PASSWORD. Dune
+  // never creates a default admin; this is the explicit env route (the CLI
+  // route is `dune users:create --password-prompt`). Only touches the user
+  // store when the env vars are set, and only when no enabled admin exists.
+  if (Deno.env.get("DUNE_ADMIN_EMAIL") || Deno.env.get("DUNE_ADMIN_PASSWORD")) {
+    const { ensureAdminFromEnv } = await import("../auth/bootstrap-admin.ts");
+    const { createLocalUserStore } = await import("../auth/user-store.ts");
+    const useDb = (config.site as { auth?: { userStore?: string } }).auth?.userStore === "db";
+    let closeDb: () => Promise<void> = () => Promise.resolve();
+    let userStore: import("../auth/user-store.ts").UserStore;
+    if (useDb) {
+      const { createDbAdapter } = await import("../db/adapters/mod.ts");
+      const { createDbUserStore } = await import("../auth/user-store-db.ts");
+      const dbAdapter = await createDbAdapter();
+      userStore = await createDbUserStore({ adapter: dbAdapter });
+      closeDb = () => dbAdapter.close();
+    } else {
+      userStore = createLocalUserStore({ storage, usersDir: `${dataDir}/users` });
+    }
+    try {
+      const result = await ensureAdminFromEnv({
+        userStore,
+        onCreated: async (user) => {
+          if (!bootstrappedAuthz || !bootstrappedAuthzAdapter) return;
+          const { bootstrapAdminTuples } = await import("../auth/authz.ts");
+          await bootstrapAdminTuples(bootstrappedAuthz, bootstrappedAuthzAdapter, [user]);
+        },
+      });
+      if (result.created) {
+        logger.info("bootstrap.first_admin.created", {
+          username: result.username,
+          source: "DUNE_ADMIN_EMAIL",
+        });
+      }
+    } finally {
+      await closeDb();
+    }
+  }
+
   // 12. Register the built-in admin plugin before user plugins so user plugins
   // can override its services via adminServices(). The plugin's setup() runs
   // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
