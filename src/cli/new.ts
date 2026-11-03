@@ -667,8 +667,9 @@ async function _newHeadlessCommand(dir: string, options: { verify?: boolean } = 
   console.log(`    You own:       routes/, islands/, static/`);
   console.log(`\n  Next steps:`);
   console.log(`    cd ${dir}`);
+  console.log(`    dune users:create you@example.com --role admin --password-prompt   (your first admin)`);
   console.log(`    deno task dev`);
-  console.log(`\n  Admin panel: http://localhost:3000/admin\n`);
+  console.log(`\n  Admin panel: http://localhost:3000/admin (Dune creates no default admin)\n`);
 
   await warnIfUnregisteredWorkspaceMember(dir);
   await runPostScaffoldChecks(dir, options.verify);
