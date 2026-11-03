@@ -73,6 +73,12 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Fixed
 
+- **Headless apps keep the public form routes.** `mountDuneAdmin()` used to
+  register `/api/forms/:name`, `/api/contact` and `/api/webhook/incoming`; now
+  that core serves them, an app assembled from `bootstrap()` without
+  `createDuneApp()` needs `registerFormRoutes(app, ctx)` from `@dune/core/forms`.
+  Calling it more than once for the same app is a no-op, so
+  `@dune/plugin-admin`'s `mountDuneAdmin()` calls it for you.
 - **A form with `enabled: false` is now actually paused.** `enabled` was typed
   and checked by the public handlers (MED-20) but the form loader never read it
   from `forms/<name>.yaml`, so a paused form kept accepting submissions and

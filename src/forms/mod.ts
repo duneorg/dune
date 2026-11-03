@@ -47,6 +47,7 @@ export type {
   SubmissionMeta,
   SubmissionStatus,
 } from "./submissions.ts";
+export { registerFormRoutes } from "./register.ts";
 export { resolveFormsConfig } from "./config.ts";
 export type { ResolvedFormsConfig } from "./config.ts";
 export type {
