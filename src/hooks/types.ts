@@ -81,7 +81,7 @@ export type HookEvent =
  * Payload of `onFormSubmit`: a public form submission was accepted and stored.
  * Spam (honeypot) and invalid submissions never fire it.
  *
- * @since 0.36.0
+ * @since 0.35.2
  */
 export interface FormSubmitPayload {
   /** Form name (the `forms/<name>.yaml` file, or "contact" for legacy `/api/contact`). */
@@ -94,7 +94,7 @@ export interface FormSubmitPayload {
  * Payload of `onSystemAction`: an incoming webhook (`POST /api/webhook/incoming`)
  * ran an action. Fired once per action. Use it to audit or mirror the action.
  *
- * @since 0.36.0
+ * @since 0.35.2
  */
 export interface SystemActionPayload {
   action: "rebuild" | "purge-cache";
