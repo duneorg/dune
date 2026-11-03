@@ -27,6 +27,26 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   `publishAt` / `unpublishAt` (epoch ms). A static build (`dune build
   --static`) reflects the moment it ran.
 
+- **Public forms and the incoming webhook no longer need the admin plugin (#78).**
+  `POST /api/forms/:name`, `GET /api/forms/:name`, `POST /api/contact` and
+  `POST /api/webhook/incoming` are registered by core, so a site with
+  `admin.enabled: false` (or no admin plugin) serves them. The submission store
+  (same on-disk format, `<data_dir>/submissions/<form>/`) is exposed as
+  `BootstrapResult.submissions`, and the rate limiter is per app instead of
+  shared across tenants. Their settings moved out of `admin:`:
+  `forms:` in site.yaml (`honeypot`, `notifications`), `webhooks.incoming` and
+  `data_dir` in system.yaml. The old `admin.honeypot`, `admin.notifications`,
+  `admin.incoming_webhooks` and `admin.dataDir` still work and log a
+  deprecation warning. Form notification emails now go through `site.email`, so
+  they can use any provider; a notification block that still carries its own
+  `smtp:` keeps working, with a warning. Two new hooks: `onFormSubmit`
+  (a submission was stored) and `onSystemAction` (the webhook ran `rebuild` or
+  `purge-cache`; an admin plugin can use it to write its audit log).
+  `POST /api/contact` is deprecated: define `forms/contact.yaml` and post to
+  `/api/forms/contact`. The headless smoke test now covers these routes.
+  With an older `@dune/plugin-admin` the result is unchanged: core's routes match
+  first and behave the same.
+
 ### Changed
 
 - **Startup failures now say what failed and why, without `--debug`.** The CLI
@@ -53,6 +73,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Fixed
 
+- **A form with `enabled: false` is now actually paused.** `enabled` was typed
+  and checked by the public handlers (MED-20) but the form loader never read it
+  from `forms/<name>.yaml`, so a paused form kept accepting submissions and
+  serving its schema.
 - **`admin:` in `system.yaml` was silently ignored, including `admin.enabled: false`.**
   The loader nested all of `system.yaml` under `config.system`, but the admin
   plugin and bootstrap read `config.admin`, which only ever held the defaults. A

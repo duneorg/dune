@@ -3,6 +3,8 @@
  * multi-site, and shared inspector types.
  */
 
+import type { IncomingWebhookConfig } from "./forms-config.ts";
+
 /** System-level configuration (engine behavior) */
 export interface SystemConfig {
   content: {
@@ -227,6 +229,27 @@ export interface SystemConfig {
    * @since 1.0.0
    */
   trusted_proxies?: boolean;
+  /**
+   * Persistent data directory (git-tracked, user-authored records): form
+   * submissions and, with the admin plugin, its users. Default: "data".
+   * Replaces `admin.dataDir`.
+   */
+  data_dir?: string;
+  /**
+   * Webhooks. `incoming` lets external systems trigger actions by POSTing to
+   * `/api/webhook/incoming` with a token, no admin plugin needed.
+   *
+   * @example
+   * ```yaml
+   * webhooks:
+   *   incoming:
+   *     - token: "$DEPLOY_WEBHOOK_TOKEN"
+   *       actions: [rebuild]
+   * ```
+   */
+  webhooks?: {
+    incoming?: IncomingWebhookConfig[];
+  };
   /**
    * Distributed tracing configuration (OpenTelemetry-compatible).
    * When enabled, the engine wraps key operations in spans and optionally

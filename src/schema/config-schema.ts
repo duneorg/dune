@@ -25,6 +25,49 @@ export const CONFIG_SCHEMA = {
       description: "Site identity and content settings",
       required: ["title"],
       properties: {
+        forms: {
+          type: "object",
+          description:
+            "Public form behaviour (forms are defined in forms/*.yaml). Needs no admin plugin.",
+          properties: {
+            honeypot: {
+              type: "string",
+              default: "_hp",
+              description: "Spam-trap field name; a submission that fills it is silently discarded",
+            },
+            notifications: {
+              type: "object",
+              description: "Sent after each stored submission",
+              properties: {
+                email: {
+                  type: "object",
+                  required: ["to"],
+                  description: "Sent through site.email",
+                  properties: {
+                    to: {
+                      oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+                    },
+                    subject: { type: "string", description: "{form} is replaced by the form name" },
+                    from: { type: "string", description: "Defaults to site.email.from" },
+                    smtp: {
+                      type: "object",
+                      description: "Deprecated: configure site.email instead",
+                    },
+                  },
+                },
+                webhook: {
+                  type: "object",
+                  required: ["url"],
+                  properties: {
+                    url: { type: "string" },
+                    secret: { type: "string", description: "HMAC-SHA256 signing secret; supports $ENV_VAR" },
+                    allow_private: { type: "boolean", default: false },
+                  },
+                },
+              },
+            },
+          },
+        },
         title: { type: "string", description: "Site title" },
         description: { type: "string", description: "Site meta description" },
         url: {
@@ -312,6 +355,34 @@ export const CONFIG_SCHEMA = {
           default: "UTC",
           description: "IANA timezone name (e.g. America/New_York)",
         },
+        data_dir: {
+          type: "string",
+          default: "data",
+          description:
+            "Persistent data directory (git-tracked): form submissions, admin users. Replaces admin.dataDir.",
+        },
+        webhooks: {
+          type: "object",
+          description: "Webhooks that need no admin plugin",
+          properties: {
+            incoming: {
+              type: "array",
+              description:
+                "Tokens that let external systems POST to /api/webhook/incoming to trigger actions",
+              items: {
+                type: "object",
+                required: ["token", "actions"],
+                properties: {
+                  token: { type: "string", description: 'Secret token; supports "$ENV_VAR" expansion' },
+                  actions: {
+                    type: "array",
+                    items: { type: "string", enum: ["rebuild", "purge-cache"] },
+                  },
+                },
+              },
+            },
+          },
+        },
         trusted_proxies: {
           type: "boolean",
           default: false,
@@ -418,10 +489,10 @@ export const CONFIG_SCHEMA = {
           default: 86400,
           description: "Admin session TTL in seconds",
         },
-        dataDir: { type: "string", default: "data" },
+        dataDir: { type: "string", default: "data", description: "Deprecated: use system.data_dir" },
         runtimeDir: { type: "string", default: ".dune/admin" },
         maxRevisions: { type: "integer", minimum: 0, default: 50 },
-        honeypot: { type: "string", default: "_hp" },
+        honeypot: { type: "string", default: "_hp", description: "Deprecated: use site.forms.honeypot" },
         maxUploadMb: { type: "integer", minimum: 1, default: 100 },
         git_commit: {
           type: "boolean",
@@ -473,7 +544,7 @@ export const CONFIG_SCHEMA = {
         },
         incoming_webhooks: {
           type: "array",
-          description: "Incoming webhook tokens for external triggers",
+          description: "Deprecated: use system.webhooks.incoming",
           items: {
             type: "object",
             required: ["token", "actions"],

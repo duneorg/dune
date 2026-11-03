@@ -57,6 +57,8 @@ import type { ImageCache } from "../images/cache.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { DuneConfig } from "../config/types.ts";
+import { createSubmissionManager } from "../forms/submissions.ts";
+import { resolveFormsConfig } from "../forms/config.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 
 /**
@@ -110,6 +112,13 @@ export interface BootstrapResult {
    */
   /** Populated by `@dune/plugin-admin`'s `mount()` hook; `null` until then. */
   adminContext: Record<string, unknown> | null;
+  /**
+   * Store for public form submissions (`<data_dir>/submissions/<form>/`).
+   * Core writes to it from the public form routes; an admin plugin reads it
+   * to manage them.
+   * @since v0.36
+   */
+  submissions: import("../forms/submissions.ts").SubmissionManager;
   /**
    * Section registry for the Visual Page Builder. Handed to
    * `@dune/plugin-admin` through this result so the admin panel reads the
@@ -642,6 +651,10 @@ export async function bootstrap(
     pluginPublicRoutes,
     sections: sectionRegistry,
     contentApi,
+    submissions: createSubmissionManager({
+      storage,
+      submissionsDir: `${resolveFormsConfig(config).dataDir}/submissions`,
+    }),
     // adminContext is null until @dune/plugin-admin's mount() runs inside mountPlugins()
     adminContext: null,
     // adminServices is null until mountPlugins() runs inside createDuneApp()

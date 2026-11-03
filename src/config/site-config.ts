@@ -4,6 +4,7 @@
 
 import type { WorkflowStage, WorkflowTransition } from "../workflow/types.ts";
 import type { MachineTranslationConfig } from "../mt/types.ts";
+import type { FormsConfig } from "./forms-config.ts";
 
 /**
  * A per-route HTTP cache rule.
@@ -410,6 +411,23 @@ export interface SiteConfig {
     postmark?: { apiKey: string };
     sendgrid?: { apiKey: string };
   };
+  /**
+   * Public form behaviour: spam trap and what happens after a submission.
+   * The forms themselves are defined in `forms/*.yaml`. Needs no admin plugin.
+   *
+   * @example
+   * ```yaml
+   * forms:
+   *   honeypot: _hp
+   *   notifications:
+   *     email:
+   *       to: hello@example.com
+   *     webhook:
+   *       url: https://hooks.example.com/dune
+   *       secret: "$FORM_WEBHOOK_SECRET"
+   * ```
+   */
+  forms?: FormsConfig;
   /**
    * Public file upload configuration.
    * Controls the `POST /api/upload` endpoint available to anonymous (or

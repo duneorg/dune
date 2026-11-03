@@ -26,6 +26,7 @@ import { createApiHandler } from "../api/handlers.ts";
 import { createPageCache, type PageCache } from "../cache/mod.ts";
 import { registerHealthRoutes } from "./register-health.ts";
 import { registerFeeds } from "./register-feeds.ts";
+import { registerFormRoutes } from "../forms/register.ts";
 import { registerStaticRoutes } from "./register-static.ts";
 import { registerContentCatchAll } from "./register-middleware.ts";
 import { registerPluginPublicRoutes } from "./register-plugin-routes.ts";
@@ -415,6 +416,11 @@ export async function createDuneApp(
 
   // 4. Sitemap, feeds, staged preview, dev SSE
   const { notifyReload } = await registerFeeds(app, ctx, { port, dev });
+
+  // 4a. Public forms + incoming webhook — core-owned, no admin plugin needed.
+  // Registered before plugins mount: with an older @dune/plugin-admin that
+  // still registers the same paths, core's handlers match first (same behaviour).
+  registerFormRoutes(app, ctx);
 
   // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
   // Must run before plugin public routes below: @dune/plugin-admin's own

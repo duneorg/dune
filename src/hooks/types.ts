@@ -72,7 +72,36 @@ export type HookEvent =
   | "onPageCreate" // page file created via admin panel
   | "onPageUpdate" // page file updated via admin panel
   | "onPageDelete" // page file deleted via admin panel
-  | "onWorkflowChange"; // page workflow status changed
+  | "onWorkflowChange" // page workflow status changed
+  // Public features (fired by core, so they work without an admin plugin)
+  | "onFormSubmit" // a form submission was accepted and stored
+  | "onSystemAction"; // an incoming webhook triggered rebuild / purge-cache
+
+/**
+ * Payload of `onFormSubmit`: a public form submission was accepted and stored.
+ * Spam (honeypot) and invalid submissions never fire it.
+ *
+ * @since 0.36.0
+ */
+export interface FormSubmitPayload {
+  /** Form name (the `forms/<name>.yaml` file, or "contact" for legacy `/api/contact`). */
+  form: string;
+  /** The stored submission, including `id`, `fields`, `meta` and any `files`. */
+  submission: import("../forms/submissions.ts").Submission;
+}
+
+/**
+ * Payload of `onSystemAction`: an incoming webhook (`POST /api/webhook/incoming`)
+ * ran an action. Fired once per action. Use it to audit or mirror the action.
+ *
+ * @since 0.36.0
+ */
+export interface SystemActionPayload {
+  action: "rebuild" | "purge-cache";
+  /** Source IP (honours `system.trusted_proxies`), or null when unknown. */
+  ip: string | null;
+  userAgent: string | null;
+}
 
 /** Hook handler signature */
 export type HookHandler<T = unknown> = (
