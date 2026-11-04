@@ -505,6 +505,7 @@ export async function main(args: string[] = Deno.args) {
         await usersPasswdCommand(root, options.positional as string, {
           stdin: options.stdin === true,
           generate: options.generate === true,
+          siteId: options.site as string | undefined,
         });
         break;
 
