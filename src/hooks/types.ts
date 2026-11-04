@@ -170,6 +170,13 @@ export interface PluginApi {
   config: DuneConfig;
   /** Storage adapter for reading/writing plugin-specific data */
   storage: StorageAdapter;
+  /**
+   * Services built by core: security policy, sessions, users, passwords,
+   * rate limiting, logger. Reach policy through these instead of importing it
+   * from `@dune/core`, so the plugin always runs against the running core's
+   * policy. See `@dune/core/plugin-api`.
+   */
+  services: import("../plugin-api/services.ts").PluginServices;
 }
 
 /**
@@ -861,6 +868,8 @@ export interface MountApi {
    * Typed via import() to avoid a circular type dependency with bootstrap.ts.
    */
   bootstrap: import("../runtime/bootstrap.ts").BootstrapResult;
+  /** The same services object `setup()` received (`PluginApi.services`). */
+  services: import("../plugin-api/services.ts").PluginServices;
   /**
    * Merged output of all plugins' `adminServices()` factories, collected just
    * before `mount()` is called. Plugins that contribute an `inlineEdit` manager

@@ -484,7 +484,7 @@ export async function mountPlugins(
   for (const plugin of adminFirstOrder) {
     if (!plugin.mountEarly) continue;
     try {
-      await plugin.mountEarly({ app, bootstrap: ctx, adminServices });
+      await plugin.mountEarly({ app, bootstrap: ctx, adminServices, services: ctx.pluginServices });
     } catch (err) {
       const detail = Deno.env.get("DUNE_DEV") && err instanceof Error
         ? (err.stack ?? err.message)
@@ -500,7 +500,7 @@ export async function mountPlugins(
   for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;
     try {
-      await plugin.mount({ app, bootstrap: ctx, adminServices });
+      await plugin.mount({ app, bootstrap: ctx, adminServices, services: ctx.pluginServices });
     } catch (err) {
       // Full stack in dev (DUNE_DEV) — matches the pattern already used for
       // MDX render errors (see content/formats/mdx.ts's sanitizeMdxError):

@@ -19,6 +19,7 @@
 
 export class BodyTooLargeError extends Error {
   readonly status = 413;
+  readonly code = "body_too_large";
   constructor(maxBytes: number) {
     super(`Request body exceeds ${maxBytes} bytes`);
     this.name = "BodyTooLargeError";

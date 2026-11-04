@@ -90,6 +90,7 @@ export async function verifyPassword(
 /** Thrown by {@link changePassword} when the new password fails the strength check. */
 export class WeakPasswordError extends Error {
   override name = "WeakPasswordError";
+  readonly code = "weak_password";
 }
 
 /**
