@@ -68,9 +68,9 @@ export function resolveFormsConfig(config: DuneConfig): ResolvedFormsConfig {
   }
 
   let dataDir = config.system?.data_dir;
-  if (dataDir === undefined && admin?.dataDir && admin.dataDir !== DEFAULT_DATA_DIR) {
-    deprecated("admin.dataDir", "data_dir (system.yaml)");
-    dataDir = admin.dataDir;
+  if (dataDir === undefined && admin?.data_dir && admin.data_dir !== DEFAULT_DATA_DIR) {
+    deprecated("admin.data_dir", "data_dir (system.yaml)");
+    dataDir = admin.data_dir;
   }
 
   return {

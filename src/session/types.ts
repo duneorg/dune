@@ -19,7 +19,7 @@ export interface Session {
   /**
    * Full user object embedded in the session. Set when the caller has no
    * persistent user record to look up from — public auth's
-   * `userStore: "session"` mode synthesises a User from OAuth/magic-link
+   * `user_store: "session"` mode synthesises a User from OAuth/magic-link
    * claims at login and carries it in the session for the cookie's
    * lifetime. Admin sessions never set this.
    */

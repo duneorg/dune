@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
         auto_links: true,
         auto_url_links: true,
       },
-      allowTsxFormat: ["admin"],
+      allow_tsx_format: ["admin"],
     },
     cache: {
       enabled: true,
@@ -60,11 +60,11 @@ export const DEFAULT_CONFIG: DuneConfig = {
   autoDiscoverPlugins: false,
   admin: {
     path: "/admin",
-    sessionLifetime: 86400,
-    dataDir: "data",
-    runtimeDir: ".dune/admin",
+    session_lifetime: 86400,
+    data_dir: "data",
+    runtime_dir: ".dune/admin",
     enabled: true,
-    maxRevisions: 50,
-    maxUploadMb: 100,
+    max_revisions: 50,
+    max_upload_mb: 100,
   },
 };

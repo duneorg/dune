@@ -154,7 +154,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     }
     if (userStoreType === "session") {
       return new Response(
-        "Account linking is not supported when userStore: session (no persistent record to link to)",
+        "Account linking is not supported when user_store: session (no persistent record to link to)",
         { status: 400 },
       );
     }

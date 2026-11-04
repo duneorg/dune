@@ -48,7 +48,7 @@ Deno.test(
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withApp(
-      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  userStore: session\n",
+      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  user_store: session\n",
       async (handler) => {
         const res = await handler(new Request("http://localhost/auth/me"));
         assertEquals(res.status, 401);
@@ -76,7 +76,7 @@ Deno.test(
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     await withApp(
-      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  userStore: session\n",
+      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  user_store: session\n",
       async (handler) => {
         const res = await handler(new Request("http://localhost/auth/me"));
         assertEquals(res.status, 404);

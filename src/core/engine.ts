@@ -203,7 +203,7 @@ export async function createDuneEngine(
     : storageRoot;
   const sharedThemesDir = options.sharedThemesDir;
   const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
-  const dataDir = config.admin?.dataDir ?? "data";
+  const dataDir = config.admin?.data_dir ?? "data";
   const themeConfigPath = `${dataDir}/theme-config.json`;
 
   // State

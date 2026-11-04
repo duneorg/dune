@@ -115,6 +115,7 @@ Commands:
   generate:admin-route <name>   Scaffold an admin API route in src/admin/routes/api/{name}.ts
 
   authz:sign [--dry-run]       Sign existing permission tuple files with DUNE_AUTHZ_HMAC_SECRET
+  migrate:config               Rename camelCase config keys to snake_case in config/*.yaml (idempotent)
   migrate:users                Reshape pre-Phase-5b data/users/ accounts + build email index (idempotent)
   migrate:auth-to-db           Migrate flat-file users + tuples to DB (idempotent)
   migrate:roles-to-tuples      Ensure polizy tuples exist for all user roles[] (idempotent)

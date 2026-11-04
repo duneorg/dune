@@ -64,9 +64,9 @@ async function openContext(root: string): Promise<Context> {
   });
   // Relative to `storage`'s own rootDir, not joined with `root` — StorageAdapter
   // requires relative paths (see the doc comment on syncAdminTuple below).
-  const dataDir = config.admin?.dataDir ?? "data";
-  const siteAuth = (config.site as { auth?: { userStore?: string } }).auth;
-  const userStoreTier = siteAuth?.userStore ?? "local";
+  const dataDir = config.admin?.data_dir ?? "data";
+  const siteAuth = (config.site as { auth?: { user_store?: string } }).auth;
+  const userStoreTier = siteAuth?.user_store ?? "local";
 
   if (userStoreTier === "db") {
     const dbAdapter: DbAdapter = await createDbAdapter();

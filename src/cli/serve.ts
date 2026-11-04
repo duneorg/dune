@@ -222,7 +222,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
   // directory aligns with the admin preview route regardless of runtimeDir customisation.
-  const runtimeDirForEmail = config.admin?.runtimeDir ?? ".dune/admin";
+  const runtimeDirForEmail = config.admin?.runtime_dir ?? ".dune/admin";
   if (Deno.env.get("DUNE_ENV") === "dev") {
     Deno.env.set("DUNE_DEV_EMAIL_DIR", join(resolve(root), runtimeDirForEmail, "dev-email"));
   }
@@ -236,7 +236,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const workers = Number(Deno.env.get("DUNE_WORKERS") ?? "1");
   warnIfMultiprocess(jobDefs.length, workers);
 
-  const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
+  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
   const jobStateDir = `${runtimeDir}/jobs`;
   const jobLogger = {
     info: (event: string, data?: Record<string, unknown>) => logger.info(event, data),

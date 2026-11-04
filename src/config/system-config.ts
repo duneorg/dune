@@ -27,7 +27,7 @@ export interface SystemConfig {
      * as equivalent to server shell access. Default: `["admin"]`.
      * Set to `[]` to disable TSX content entirely.
      */
-    allowTsxFormat?: string[];
+    allow_tsx_format?: string[];
   };
   cache: {
     enabled: boolean;
@@ -125,7 +125,7 @@ export interface SystemConfig {
      * Add field names here to make custom frontmatter searchable.
      * @example ["summary", "tags", "author"]
      */
-    customFields?: string[];
+    custom_fields?: string[];
     /** Per-field relevance weights. Higher = more important. Default weight: 1. */
     fields?: {
       title?: { weight: number };
@@ -212,7 +212,7 @@ export interface SystemConfig {
      * Slow query threshold in milliseconds (default: 100).
      * Collection and search queries exceeding this are logged.
      */
-    slowQueryThresholdMs?: number;
+    slow_query_threshold_ms?: number;
   };
   /**
    * Structured logging configuration.

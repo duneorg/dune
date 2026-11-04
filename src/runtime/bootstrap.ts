@@ -374,8 +374,8 @@ export async function bootstrap(
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
   const adminCfg = config.admin ??
-    { dataDir: "data", runtimeDir: ".dune/admin" };
-  await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
+    { data_dir: "data", runtime_dir: ".dune/admin" };
+  await loadPluginAdminConfigs(config, storage, adminCfg.data_dir ?? "data");
   await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root }));
 
   // Collect plugin asset dirs, template dirs, and public routes.
@@ -522,18 +522,18 @@ export async function bootstrap(
   // can both access it without depending on the admin plugin.
   const adminConfig = config.admin ?? {
     path: "/admin",
-    sessionLifetime: 86400,
-    dataDir: "data",
-    runtimeDir: ".dune/admin",
+    session_lifetime: 86400,
+    data_dir: "data",
+    runtime_dir: ".dune/admin",
     enabled: true,
   };
-  const runtimeDir = adminConfig.runtimeDir ?? ".dune/admin";
-  const dataDir = adminConfig.dataDir ?? "data";
+  const runtimeDir = adminConfig.runtime_dir ?? ".dune/admin";
+  const dataDir = adminConfig.data_dir ?? "data";
 
   const history = createHistoryEngine({
     storage,
     dataDir: runtimeDir,
-    maxRevisions: adminConfig.maxRevisions ?? 50,
+    maxRevisions: adminConfig.max_revisions ?? 50,
   });
 
   // 11. Authorization (Polizy) — created in core so that admin-user tuples
@@ -542,13 +542,13 @@ export async function bootstrap(
   // Admin-side authz creation reads `admin.authzStore` — its own setting,
   // independent of `site.auth`'s (public-auth) mode/authzStore. It used to
   // read the public-auth config for this too, which meant a site running
-  // `site.auth.mode: "external-jwt"` (or `site.auth.authzStore: "db"`)
+  // `site.auth.mode: "external-jwt"` (or `site.auth.authz_store: "db"`)
   // silently lost real admin-panel permission checking as well, even though
   // Admin User tuples (bootstrapAdminTuples(), @dune/plugin-admin) have nothing to do with how
   // public site users authenticate. Default is "local", created whenever
   // the admin panel itself is enabled — see AdminConfig.authzStore's doc
   // comment (src/config/admin-config.ts) for the full reasoning.
-  const adminAuthzStoreCfg = adminConfig.authzStore ?? "local";
+  const adminAuthzStoreCfg = adminConfig.authz_store ?? "local";
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
@@ -583,7 +583,7 @@ export async function bootstrap(
   if (Deno.env.get("DUNE_ADMIN_EMAIL") || Deno.env.get("DUNE_ADMIN_PASSWORD")) {
     const { ensureAdminFromEnv } = await import("../auth/bootstrap-admin.ts");
     const { createLocalUserStore } = await import("../auth/user-store.ts");
-    const useDb = (config.site as { auth?: { userStore?: string } }).auth?.userStore === "db";
+    const useDb = (config.site as { auth?: { user_store?: string } }).auth?.user_store === "db";
     let closeDb: () => Promise<void> = () => Promise.resolve();
     let userStore: import("../auth/user-store.ts").UserStore;
     if (useDb) {
@@ -645,7 +645,7 @@ export async function bootstrap(
   // 13. Metrics collector
   const metricsEnabled = config.system.metrics?.enabled !== false;
   const metrics = new MetricsCollector({
-    slowQueryThresholdMs: config.system.metrics?.slowQueryThresholdMs ?? 100,
+    slowQueryThresholdMs: config.system.metrics?.slow_query_threshold_ms ?? 100,
   });
 
   // Record page count on every rebuild via the onRebuild hook.

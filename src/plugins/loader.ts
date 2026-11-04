@@ -463,7 +463,7 @@ export async function mountPlugins(
     storage: ctx.storage,
     history: ctx.history,
     config: ctx.config,
-    dataDir: adminCfg?.runtimeDir ?? ".dune/admin",
+    dataDir: adminCfg?.runtime_dir ?? ".dune/admin",
     // NOTE: intentionally still the raw config value, not engine.contentDir.
     // AdminServicesContext.storage is dual-purpose (content AND data files),
     // so this pair only stays correct when content.src is unset. Properly

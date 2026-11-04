@@ -39,8 +39,8 @@ export async function pluginListCommand(root: string): Promise<void> {
   });
 
   const hooks = createHookRegistry({ config, storage });
-  const adminCfg = config.admin ?? { dataDir: "data" };
-  await loadPluginAdminConfigs(config, storage, adminCfg.dataDir ?? "data");
+  const adminCfg = config.admin ?? { data_dir: "data" };
+  await loadPluginAdminConfigs(config, storage, adminCfg.data_dir ?? "data");
   await loadPlugins({ config, hooks, storage, root });
 
   const plugins = hooks.plugins();

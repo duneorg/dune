@@ -44,7 +44,7 @@ export async function migrateUsersCommand(
     rootDir: root,
     skipConfigTs: true,
   });
-  const dataDir = join(root, config.admin?.dataDir ?? "data");
+  const dataDir = join(root, config.admin?.data_dir ?? "data");
   const usersDir = join(dataDir, "users");
   const byEmailDir = join(usersDir, "by-email");
 

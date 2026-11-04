@@ -20,26 +20,26 @@ export type AuthProviderConfig =
   | {
     type: "ldap";
     url: string;
-    baseDn: string;
-    usernameAttr?: string;
-    bindDn?: string;
-    bindPassword?: string;
-    emailAttr?: string;
-    nameAttr?: string;
-    roleMap?: Array<{ group: string; role: Role }>;
-    defaultRole?: Role;
+    base_dn: string;
+    username_attr?: string;
+    bind_dn?: string;
+    bind_password?: string;
+    email_attr?: string;
+    name_attr?: string;
+    role_map?: Array<{ group: string; role: Role }>;
+    default_role?: Role;
   }
   | {
     type: "saml";
-    entityId: string;
-    acsUrl: string;
-    idpMetadata: string;
-    usernameAttr?: string;
-    emailAttr?: string;
-    nameAttr?: string;
-    roleMap?: Array<{ value: string; role: Role }>;
-    roleAttr?: string;
-    defaultRole?: Role;
+    entity_id: string;
+    acs_url: string;
+    idp_metadata: string;
+    username_attr?: string;
+    email_attr?: string;
+    name_attr?: string;
+    role_map?: Array<{ value: string; role: Role }>;
+    role_attr?: string;
+    default_role?: Role;
   };
 
 /** Notifications sent after a form submission is accepted. */
@@ -137,26 +137,26 @@ export interface AdminConfig {
   /** Admin panel route prefix (default: "/admin") */
   path: string;
   /** Session lifetime in seconds (default: 86400 = 24h) */
-  sessionLifetime: number;
+  session_lifetime: number;
   /**
    * Persistent data directory — git-tracked, user-authored records.
    * Stores: admin users, form submissions.
    * (default: "data")
    */
-  dataDir: string;
+  data_dir: string;
   /**
    * Runtime directory — ephemeral, machine-local, gitignored.
    * Stores: sessions, scheduled actions, revision history, workflow state.
    * (default: ".dune/admin")
    */
-  runtimeDir: string;
+  runtime_dir: string;
   /** Whether admin panel is enabled (default: true) */
   enabled: boolean;
   /**
    * Maximum number of revisions to retain per page (default: 50).
    * When the limit is reached, the oldest revision is pruned on each save.
    */
-  maxRevisions?: number;
+  max_revisions?: number;
   /**
    * Honeypot field name for form spam protection.
    * If this field is present and non-empty in a submission, the submission
@@ -172,7 +172,7 @@ export interface AdminConfig {
    * is buffered into memory. Public form submissions are gated separately at
    * a fixed 55 MB ceiling. Default: 100.
    */
-  maxUploadMb?: number;
+  max_upload_mb?: number;
   /**
    * Automatically create a git commit after every page save via the admin panel.
    * Requires the site directory to be a git repository.
@@ -235,7 +235,7 @@ export interface AdminConfig {
   /**
    * Polizy authz tuple store for the admin panel's own permission checks
    * (`pages.update`, `users.update`, etc.) — independent of
-   * `site.auth.authzStore`, which is a *public*-auth setting for site
+   * `site.auth.authz_store`, which is a *public*-auth setting for site
    * visitors. Default: `"local"`, created automatically whenever the admin
    * panel is enabled, regardless of what (if anything) `site.auth` is
    * configured to. Deliberately decoupled: an admin's tuples
@@ -243,15 +243,15 @@ export interface AdminConfig {
    * site-user tuples, and previously creation of this authz instance was
    * accidentally gated on the public-auth config instead of its own
    * setting — a site running `site.auth.mode: external-jwt` (or
-   * `authzStore: "db"`) would silently lose the admin-panel authz instance.
+   * `authz_store: "db"`) would silently lose the admin-panel authz instance.
    * That path now fails closed (deny) when `authz` is missing; there is no
    * role-table fallback.
    *
    * Only `"local"` is implemented today — a `"db"` tier (mirroring
-   * `site.auth.authzStore`'s db-backed option) isn't wired up for the
+   * `site.auth.authz_store`'s db-backed option) isn't wired up for the
    * admin side yet.
    */
-  authzStore?: "local";
+  authz_store?: "local";
   /**
    * Audit log configuration.
    * Records admin panel actions with actor, timestamp, IP, and outcome.
@@ -266,6 +266,6 @@ export interface AdminConfig {
      * Relative to runtimeDir, or absolute.
      * Default: "{runtimeDir}/audit.log"
      */
-    logFile?: string;
+    log_file?: string;
   };
 }

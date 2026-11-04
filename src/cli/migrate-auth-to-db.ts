@@ -3,7 +3,7 @@
  *
  * One-time migration: reads flat-file user records and permission tuples,
  * imports them into the configured DB, then updates site.yaml to enable
- * `userStore: db` and `authzStore: db`.
+ * `user_store: db` and `authz_store: db`.
  *
  * Idempotent — existing records (matched by id) are skipped.
  *
@@ -35,7 +35,7 @@ export async function migrateAuthToDbCommand(
 
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-  const dataDir = join(root, config.admin?.dataDir ?? "data");
+  const dataDir = join(root, config.admin?.data_dir ?? "data");
 
   const dbAdapter = await createDbAdapter();
 
@@ -143,8 +143,8 @@ export async function migrateAuthToDbCommand(
   if (!dryRun && (usersImported > 0 || tuplesImported > 0)) {
     console.log(`\n  ℹ️  Update site.yaml to activate the db tier:`);
     console.log(`     auth:`);
-    console.log(`       userStore: db`);
-    console.log(`       authzStore: db`);
+    console.log(`       user_store: db`);
+    console.log(`       authz_store: db`);
   }
 
   await dbAdapter.close();

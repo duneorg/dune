@@ -38,7 +38,7 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   }
 
   // Resolve state directory from config
-  const runtimeDir = config.admin?.runtimeDir ?? ".dune/admin";
+  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
   const jobStateDir = `${runtimeDir}/jobs`;
 
   // Minimal context for state reads — email is a no-op since we won't run handlers
@@ -115,7 +115,7 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
     Deno.exit(1);
   });
 
-  const runtimeDir = ctx.config.admin?.runtimeDir ?? ".dune/admin";
+  const runtimeDir = ctx.config.admin?.runtime_dir ?? ".dune/admin";
   const jobLogger = {
     info: (event: string, data?: Record<string, unknown>) =>
       console.log(`[jobs] ${event}`, data ?? ""),

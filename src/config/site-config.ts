@@ -228,8 +228,8 @@ export interface SiteConfig {
    *   auth:
    *     providers:
    *       github:
-   *         clientId: "$GITHUB_CLIENT_ID"
-   *         clientSecret: "$GITHUB_CLIENT_SECRET"
+   *         client_id: "$GITHUB_CLIENT_ID"
+   *         client_secret: "$GITHUB_CLIENT_SECRET"
    * ```
    *
    * @example External JWT (Clerk, Auth0, etc.)
@@ -250,23 +250,23 @@ export interface SiteConfig {
     mode?: "dune" | "external-jwt";
     /** OAuth provider credentials. */
     providers?: {
-      github?: { clientId: string; clientSecret: string };
-      google?: { clientId: string; clientSecret: string };
-      discord?: { clientId: string; clientSecret: string };
-      magicLink?: { enabled: boolean };
+      github?: { client_id: string; client_secret: string };
+      google?: { client_id: string; client_secret: string };
+      discord?: { client_id: string; client_secret: string };
+      magic_link?: { enabled: boolean };
     };
     /** JWT verification options — used when mode is "external-jwt". */
     jwt?: {
       /** HMAC-SHA256 shared secret for HS256 tokens. */
       secret?: string;
       /** JWKS endpoint URL for RS256 tokens (Clerk, Auth0, etc.). */
-      jwksUrl?: string;
+      jwks_url?: string;
       /** JWT claim containing the user ID. Default: "sub". */
-      userIdClaim?: string;
+      user_id_claim?: string;
       /** JWT claim containing the user email. Default: "email". */
-      emailClaim?: string;
+      email_claim?: string;
       /** JWT claim containing role(s) (string or string[]). Default: "roles". */
-      rolesClaim?: string;
+      roles_claim?: string;
       /**
        * Expected `iss` claim. Required in external-jwt mode: without it,
        * any token signed by the same IdP (e.g. another tenant on a shared
@@ -291,7 +291,7 @@ export interface SiteConfig {
      * Session lifetime in seconds. Default: 2592000 (30 days).
      * Not used in external-jwt mode (sessions are stateless).
      */
-    sessionLifetime?: number;
+    session_lifetime?: number;
     /**
      * User store backend.
      *   "local"   — flat-file records in data/users/ (default)
@@ -300,7 +300,7 @@ export interface SiteConfig {
      *               login (e.g. via payment) are not reflected until the user logs
      *               out and back in. A database-backed store is planned.
      */
-    userStore?: "local" | "session" | "db";
+    user_store?: "local" | "session" | "db";
     /**
      * Polizy authz tuple store for *public*-auth permission checks (content
      * gating via `roles:` frontmatter, `authz.check()` calls against
@@ -323,7 +323,7 @@ export interface SiteConfig {
      * even though an earlier version of the runtime accidentally read it
      * for that too. See `admin.authzStore`.
      */
-    authzStore?: "local" | "db";
+    authz_store?: "local" | "db";
     /**
      * IdP webhook configuration — enables POST /auth/webhook for receiving
      * user lifecycle events from the external identity provider.
@@ -337,7 +337,7 @@ export interface SiteConfig {
      * ```yaml
      * auth:
      *   mode: external-jwt
-     *   authzStore: local
+     *   authz_store: local
      *   webhook:
      *     provider: clerk
      *     secret: "$DUNE_CLERK_WEBHOOK_SECRET"
@@ -352,7 +352,7 @@ export interface SiteConfig {
        * Custom signature header name for "generic" provider.
        * Default: "x-dune-signature".
        */
-      signatureHeader?: string;
+      signature_header?: string;
     };
   };
   /**
@@ -447,20 +447,20 @@ export interface SiteConfig {
      * Requests with a declared Content-Length above this limit are rejected
      * with HTTP 413 before the body is buffered. Default: 10.
      */
-    maxSizeMb?: number;
+    max_size_mb?: number;
     /**
      * MIME types permitted for upload.
      * Defaults to common images (JPEG, PNG, WebP, GIF, AVIF) plus PDF.
      * The server derives the MIME type from the file extension — the
      * client-supplied type is never trusted.
      */
-    allowedTypes?: string[];
+    allowed_types?: string[];
     /**
      * Require a logged-in site user to upload.
      * When `true`, requests without a valid session token are rejected
      * with HTTP 401. Default: false (anonymous upload permitted).
      */
-    requireAuth?: boolean;
+    require_auth?: boolean;
   };
   /**
    * Background jobs — explicit list of job files to load.

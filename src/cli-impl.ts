@@ -102,6 +102,7 @@ import { usersPasswdCommand } from "./cli/users-passwd.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 import { parseCliOptions } from "./cli/args.ts";
 import { maybeReexecWithSiteConfig } from "./cli/reexec.ts";
+import { migrateConfigCommand } from "./cli/migrate-config.ts";
 import { resolveSiteRoot, SiteResolutionError } from "./cli/resolve-site.ts";
 import { COMMAND_HELP, HELP } from "./cli/help.ts";
 
@@ -465,6 +466,10 @@ export async function main(args: string[] = Deno.args) {
         await authzSignCommand(root, {
           dryRun: options.dryRun === true,
         });
+        break;
+
+      case "migrate:config":
+        await migrateConfigCommand(root, { dryRun: options.dryRun === true });
         break;
 
       case "migrate:users":
