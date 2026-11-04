@@ -16,9 +16,101 @@
  */
 
 import { CORE_INSTANCE, CORE_VERSION } from "./mod.ts";
+import { DEFAULT_CONFIG } from "../config/defaults.ts";
+import type { DuneConfig } from "../config/types.ts";
 
-/** The built-in admin plugin package (bootstrap.ts's dynamic import). */
-export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@^3.0";
+/**
+ * The built-in admin plugin package (bootstrap.ts's dynamic import).
+ *
+ * The range is deliberately `*`: `jsr:` specifiers cannot express "3.x or 4.x",
+ * and 0.36 has to keep resolving while `@dune/plugin-admin` 4.0.0 (which reads
+ * the snake_case config keys) is not yet published, then pick it up the moment
+ * it is. {@link checkAdminVersion} is the real guard: bootstrap refuses an admin
+ * below {@link MIN_ADMIN_MAJOR} when the site sets a renamed admin key, so a
+ * stale lockfile or cache can never run the old camelCase reader against a
+ * snake_case `DuneConfig` and drop settings unnoticed. Tighten to `^4` in
+ * the release after admin 4.0.0 ships.
+ */
+export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@*";
+
+/** Oldest `@dune/plugin-admin` major that reads the 0.36 snake_case config keys. */
+export const MIN_ADMIN_MAJOR = 4;
+
+/**
+ * Admin-read settings that 0.36 renamed to snake_case and that the site has
+ * moved off their defaults. Empty when the site configures none of them.
+ *
+ * An admin plugin older than {@link MIN_ADMIN_MAJOR} still reads the camelCase
+ * properties, which are now `undefined`, so it falls back to its own defaults.
+ * That is harmless for a site on all defaults but silently drops any value the
+ * site set (`runtime_dir`, `authz_store: db`, ...).
+ */
+export function adminSettingsAtRisk(config: DuneConfig): string[] {
+  const out: string[] = [];
+  const admin = (config.admin ?? {}) as unknown as Record<string, unknown>;
+  const defaults = DEFAULT_CONFIG.admin as unknown as Record<string, unknown>;
+  for (
+    const key of [
+      "session_lifetime",
+      "data_dir",
+      "runtime_dir",
+      "max_upload_mb",
+      "authz_store",
+    ]
+  ) {
+    if (
+      admin[key] !== undefined &&
+      JSON.stringify(admin[key]) !== JSON.stringify(defaults[key])
+    ) {
+      out.push(`admin.${key}`);
+    }
+  }
+  const audit = admin.audit as Record<string, unknown> | undefined;
+  if (audit?.log_file !== undefined) out.push("admin.audit.log_file");
+  if (admin.auth_provider !== undefined) out.push("admin.auth_provider");
+  const tsx = config.system?.content?.allow_tsx_format;
+  if (
+    tsx !== undefined &&
+    JSON.stringify(tsx) !==
+      JSON.stringify(DEFAULT_CONFIG.system.content?.allow_tsx_format)
+  ) {
+    out.push("content.allow_tsx_format");
+  }
+  return out;
+}
+
+/**
+ * Outcome of checking the resolved admin plugin against the snake_case config:
+ * `ok` (new enough, or version unreadable — never treated as old), `warn` (old,
+ * but the site sets nothing it would drop), or `refuse` (old and it would
+ * silently ignore the listed settings). `message` is set unless `ok`.
+ */
+export function checkAdminVersion(
+  version: unknown,
+  config: DuneConfig,
+): { level: "ok" | "warn" | "refuse"; message?: string } {
+  if (typeof version !== "string") return { level: "ok" };
+  const major = Number.parseInt(version.split(".")[0], 10);
+  if (!Number.isFinite(major) || major >= MIN_ADMIN_MAJOR) {
+    return { level: "ok" };
+  }
+  const atRisk = adminSettingsAtRisk(config);
+  const base =
+    `[dune] @dune/plugin-admin@${version} predates the snake_case config keys ` +
+    `(@dune/core ${CORE_VERSION} wants @dune/plugin-admin ${MIN_ADMIN_MAJOR}.x or newer)`;
+  if (atRisk.length === 0) {
+    return {
+      level: "warn",
+      message:
+        `${base}; no admin setting is customised, so it runs on defaults.`,
+    };
+  }
+  return {
+    level: "refuse",
+    message: `${base}, and would silently ignore: ${atRisk.join(", ")}. ` +
+      `Update the plugin (\`dune lockfile:sync\` refreshes a stale deno.lock) or remove those settings.`,
+  };
+}
 
 /**
  * The `DunePlugin.name` value `@dune/plugin-admin`'s `createAdminPlugin()`
@@ -30,7 +122,7 @@ export const ADMIN_PLUGIN_SPECIFIER = "jsr:@dune/plugin-admin@^3.0";
 export const ADMIN_PLUGIN_NAME = "dune-admin";
 
 /** The admin mount subpath used by the multisite manager. */
-export const ADMIN_MOUNT_SPECIFIER = "jsr:@dune/plugin-admin@^3.0/admin/mount";
+export const ADMIN_MOUNT_SPECIFIER = "jsr:@dune/plugin-admin@*/admin/mount";
 
 /**
  * Core-instance handshake for the dynamically imported admin plugin.

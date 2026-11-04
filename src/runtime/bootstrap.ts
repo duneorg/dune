@@ -8,7 +8,7 @@
 import { startupStep } from "./startup-step.ts";
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { ADMIN_PLUGIN_SPECIFIER, adminCoreMismatch } from "../plugins/builtin.ts";
+import { ADMIN_PLUGIN_SPECIFIER, adminCoreMismatch, checkAdminVersion } from "../plugins/builtin.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
@@ -639,6 +639,11 @@ export async function bootstrap(
       authzAdapter: bootstrappedAuthzAdapter,
       hmacKey,
     } as Record<string, unknown>);
+    const versionCheck = checkAdminVersion(adminPlugin.version, config);
+    if (versionCheck.level === "refuse") throw new Error(versionCheck.message);
+    if (versionCheck.level === "warn") {
+      logger.warn("bootstrap.admin_plugin.pre_snake_case", { detail: versionCheck.message });
+    }
     hooks.registerPlugin(adminPlugin);
   }
 

@@ -37,7 +37,15 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   preview; idempotent; keys it cannot reach, such as flow style, are reported
   and the file is left alone). At a multisite install root it needs `--site`.
 - `@dune/plugin-admin` reads the `admin:` block and needs a matching release
-  (the admin major in 0.36).
+  (the admin major in 0.36). Core's built-in admin range is now `@dune/plugin-admin@*`
+  (a `jsr:` specifier cannot say "3.x or 4.x"), and bootstrap checks the version it
+  resolved: an admin older than 4.0.0 together with a customised renamed admin key
+  (`runtime_dir`, `authz_store`, `max_upload_mb`, `session_lifetime`, `data_dir`,
+  `audit.log_file`, `auth_provider`, `content.allow_tsx_format`) **refuses to start**
+  instead of silently falling back to defaults; with no such key it logs a warning
+  and runs. Refresh a stale `deno.lock` with `dune lockfile:sync`.
+- Programmatic config in `dune.config.ts` is not checked for the old names: an old key
+  there is ignored, so rename it by hand.
 
 ### Added
 
