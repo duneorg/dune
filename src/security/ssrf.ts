@@ -100,6 +100,7 @@ export interface SsrfCheckOptions {
 /** Thrown when a URL is blocked as an SSRF risk (private/loopback destination or denylisted hostname). */
 export class SsrfBlockedError extends Error {
   override name = "SsrfBlockedError";
+  readonly code = "ssrf_blocked";
 }
 
 /**

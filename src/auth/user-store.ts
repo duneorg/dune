@@ -21,6 +21,7 @@ import type { User, UserCreate } from "./types.ts";
  */
 export class DuplicateEmailError extends Error {
   override name = "DuplicateEmailError";
+  readonly code = "duplicate_email";
   constructor(email: string) {
     super(`A user with email ${email} already exists`);
   }

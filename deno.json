@@ -49,6 +49,7 @@
     "./flex": "./src/flex/engine.ts",
     "./images": "./src/images/cache.ts",
     "./forms": "./src/forms/mod.ts",
+    "./plugin-api": "./src/plugin-api/mod.ts",
     "./jobs": "./src/jobs/mod.ts",
     "./blueprints": "./src/blueprints/mod.ts",
     "./search": "./src/search/mod.ts",
