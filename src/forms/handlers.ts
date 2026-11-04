@@ -1,7 +1,6 @@
 /**
  * Public form and incoming-webhook handlers — no auth required.
  *
- *   POST /api/contact            — legacy contact form (deprecated: use /api/forms/contact)
  *   GET  /api/forms/:name        — form schema (JSON)
  *   POST /api/forms/:name        — form submission
  *   POST /api/webhook/incoming   — token-authenticated action trigger
@@ -205,7 +204,6 @@ async function guardAndParseSubmission(
   return { fields, uploadedFiles };
 }
 
-let warnedContactDeprecated = false;
 
 const MAX_STORED_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES_PER_SUBMISSION = 5;
@@ -512,99 +510,3 @@ export async function handleIncomingWebhook(
 }
 
 // ── Contact form submission handler (public) ──────────────────────────────────
-
-/**
- * Handle `POST /api/contact` — stores the submission under the `form_name`
- * field (default "contact") and sends the configured notifications.
- *
- * @deprecated Define `forms/contact.yaml` and post to `/api/forms/contact`:
- * that route validates against the form's schema.
- */
-export async function handleContactSubmission(
-  ctx: FormsRuntime,
-  req: Request,
-): Promise<Response> {
-  const { storage, submissions, forms } = ctx;
-
-  if (!warnedContactDeprecated) {
-    warnedContactDeprecated = true;
-    logger.warn("forms.contact_deprecated", {
-      reason:
-        "POST /api/contact is deprecated; post to /api/forms/contact (define forms/contact.yaml)",
-    });
-  }
-  try {
-    const parsed = await guardAndParseSubmission(req, ctx);
-    if (parsed instanceof Response) return parsed;
-    const { fields, uploadedFiles } = parsed;
-
-    // ── Honeypot anti-spam ────────────────────────────────────────────────
-    // If the configured honeypot field is present and non-empty, a bot filled
-    // it in. Silently accept (so bots get no useful signal) but don't save.
-    const honeypotField = forms.honeypot;
-    if (fields[honeypotField]) {
-      // Looks like a bot submission — return success without saving
-      const acceptsJson = req.headers.get("accept")?.includes(
-        "application/json",
-      );
-      if (acceptsJson) return json({ ok: true });
-      return new Response(null, { status: 302, headers: { "Location": "/" } });
-    }
-    delete fields[honeypotField]; // remove the empty honeypot field from data
-
-    // Basic required field validation
-    if (!fields.name && !fields.email) {
-      return json({ error: "Missing required fields" }, 400);
-    }
-
-    const language = req.headers.get("accept-language") ?? undefined;
-    const userAgent = req.headers.get("user-agent") ?? undefined;
-
-    // Use form_name field if provided (allows multiple forms), otherwise default to "contact".
-    // Validate form_name: it becomes a filesystem directory name, so restrict to safe chars.
-    // Only alphanumeric, hyphens, and underscores — no slashes, dots, or special chars.
-    const rawFormName = fields.form_name ?? "contact";
-    delete fields.form_name;
-    const formName = /^[a-zA-Z0-9_-]{1,64}$/.test(rawFormName)
-      ? rawFormName
-      : "contact";
-
-    // Pre-generate submission ID so we can store files before creating the record.
-    const submissionId = encodeHex(crypto.getRandomValues(new Uint8Array(6)));
-    const storedFiles = await storeUploads(
-      storage,
-      forms.dataDir,
-      formName,
-      submissionId,
-      uploadedFiles,
-    );
-
-    const submitterIp = clientIp(req, {
-      trustForwardedFor: ctx.config.system?.trusted_proxies === true,
-    });
-    const submission = await submissions.create(formName, fields, {
-      ip: submitterIp === "unknown" ? undefined : submitterIp,
-      language,
-      userAgent,
-    }, { id: submissionId, files: storedFiles });
-
-    // Notifications (fire-and-forget) — global config only for the contact form.
-    ctx.notifier.dispatch(submission);
-    await ctx.hooks.fire("onFormSubmit", { form: formName, submission });
-
-    // Support both JSON and form POST responses
-    const acceptsJson = req.headers.get("accept")?.includes("application/json");
-    if (acceptsJson) {
-      return json({ ok: true });
-    }
-
-    // Redirect back (form POST); same-origin Referer only, else "/".
-    const redirectPath = refererRedirectPath(req, "submitted");
-    return new Response(null, {
-      status: 302,
-      headers: { "Location": redirectPath },
-    });
-  } catch (err) {
-    return serverError(err);
-  }
-}

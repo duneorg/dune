@@ -15,8 +15,6 @@ export type {
   AuthProviderConfig,
   /** Admin panel configuration */
   AdminConfig,
-  AdminNotificationsConfig,
-  SmtpNotificationConfig,
   WebhookNotificationConfig,
   WebhookContentEvent,
   WebhookEndpointConfig,

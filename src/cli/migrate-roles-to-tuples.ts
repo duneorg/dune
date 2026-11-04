@@ -16,6 +16,7 @@
  *   dune migrate:roles-to-tuples --dry-run    # report without writing
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
@@ -46,7 +47,7 @@ export async function migrateRolesToTuplesCommand(
   // list()/getByEmail() etc.) anything absolute. This was a real, previously
   // latent bug: joining `root` here meant this command silently reported
   // "No users with roles found" on every real site, every time it ran.
-  const dataDir = config.admin?.data_dir ?? "data";
+  const dataDir = resolveDataDir(config);
   const siteAuth = (config.site as { auth?: { user_store?: string; authz_store?: string } }).auth;
   const userStoreTier = siteAuth?.user_store ?? "local";
   const authzStoreTier = siteAuth?.authz_store ?? "local";

@@ -25,7 +25,6 @@ const RULES: Rule[] = [
     parent: ["admin"],
     renames: {
       sessionLifetime: "session_lifetime",
-      dataDir: "data_dir",
       runtimeDir: "runtime_dir",
       maxRevisions: "max_revisions",
       maxUploadMb: "max_upload_mb",
@@ -79,6 +78,65 @@ const RULES: Rule[] = [
     renames: { maxSizeMb: "max_size_mb", allowedTypes: "allowed_types", requireAuth: "require_auth" },
   },
 ];
+
+/**
+ * Keys that no longer exist at all because the setting moved. They are not
+ * renamed in place (the destination is another file or section), so
+ * `dune migrate:config` reports them and the loader refuses them.
+ */
+interface MovedRule {
+  file: ConfigFileKind;
+  parent: string[];
+  keys: Record<string, string>;
+}
+
+const MOVED: MovedRule[] = [
+  {
+    file: "system",
+    parent: ["admin"],
+    keys: {
+      honeypot: "forms.honeypot in site.yaml",
+      notifications: "forms.notifications in site.yaml",
+      incoming_webhooks: "webhooks.incoming in system.yaml",
+      incomingWebhooks: "webhooks.incoming in system.yaml",
+      data_dir: "data_dir at the top level of system.yaml",
+      dataDir: "data_dir at the top level of system.yaml",
+    },
+  },
+  {
+    file: "site",
+    parent: ["forms", "notifications", "email"],
+    keys: { smtp: "site.email (one provider for every email the site sends)" },
+  },
+];
+
+/** A removed key and where its setting lives now. */
+export interface MovedKey {
+  path: string;
+  to: string;
+}
+
+/** Moved or removed keys present in an already-parsed config file. */
+export function findMovedKeys(file: ConfigFileKind, parsed: unknown): MovedKey[] {
+  const found: MovedKey[] = [];
+  const walk = (node: unknown, path: string[]) => {
+    if (node === null || typeof node !== "object" || Array.isArray(node)) return;
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      for (const r of MOVED) {
+        if (r.file === file && matches(r.parent, path) && key in r.keys) {
+          found.push({ path: [...path, key].join("."), to: r.keys[key] });
+        }
+      }
+      walk(value, [...path, key]);
+    }
+  };
+  walk(parsed, []);
+  return found;
+}
+
+export function describeMovedKeys(keys: MovedKey[]): string {
+  return keys.map((k) => `${k.path} → ${k.to}`).join(", ");
+}
 
 /** A legacy key found in a config file. `path` is the dotted location of the old key. */
 export interface LegacyKey {

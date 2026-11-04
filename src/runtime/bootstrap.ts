@@ -5,6 +5,7 @@
  * @module
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { startupStep } from "./startup-step.ts";
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
@@ -373,9 +374,7 @@ export async function bootstrap(
   // 5b. Plugin loading — load admin-saved config overrides first, then
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
-  const adminCfg = config.admin ??
-    { data_dir: "data", runtime_dir: ".dune/admin" };
-  await loadPluginAdminConfigs(config, storage, adminCfg.data_dir ?? "data");
+  await loadPluginAdminConfigs(config, storage, resolveDataDir(config));
   await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root }));
 
   // Collect plugin asset dirs, template dirs, and public routes.
@@ -469,12 +468,11 @@ export async function bootstrap(
     failOnStartup: config.system.search?.fail_on_startup === true,
   });
 
-  const engineCtx = await hooks.fire<SearchEngineCreateContext>(
+  await hooks.fire<SearchEngineCreateContext>(
     "onSearchEngineCreate",
     {
       register: (name, eng) => search.register(name, eng),
       setActiveEngine: (name) => search.setActiveEngine(name),
-      engine: null,
       pages: engine.pages,
       injectedRecords,
       storage: engine.contentStorage,
@@ -489,13 +487,6 @@ export async function bootstrap(
         }),
     },
   );
-
-  // Legacy backwards-compat: if a plugin set ctx.engine directly (old API),
-  // register it as "default" and activate it.
-  if (engineCtx.engine) {
-    search.register("default", engineCtx.engine);
-    search.setActiveEngine("default");
-  }
 
   if (buildSearch) {
     await search.build();
@@ -523,12 +514,11 @@ export async function bootstrap(
   const adminConfig = config.admin ?? {
     path: "/admin",
     session_lifetime: 86400,
-    data_dir: "data",
     runtime_dir: ".dune/admin",
     enabled: true,
   };
   const runtimeDir = adminConfig.runtime_dir ?? ".dune/admin";
-  const dataDir = adminConfig.data_dir ?? "data";
+  const dataDir = resolveDataDir(config);
 
   const history = createHistoryEngine({
     storage,

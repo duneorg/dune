@@ -14,7 +14,6 @@ import { resolveFormsConfig } from "./config.ts";
 import {
   createSubmissionRateLimiter,
   type FormsRuntime,
-  handleContactSubmission,
   handleFormSchema,
   handleFormSubmission,
   handleIncomingWebhook,
@@ -41,7 +40,7 @@ export function createFormsRuntime(ctx: BootstrapResult): FormsRuntime {
 const registered = new WeakSet<object>();
 
 /**
- * Register `POST /api/contact`, `GET/POST /api/forms/:name` and
+ * Register `GET/POST /api/forms/:name` and
  * `POST /api/webhook/incoming` on a Fresh app.
  *
  * `createDuneApp()` does this itself. Call it directly only if you assemble
@@ -56,7 +55,6 @@ export function registerFormRoutes(
   if (registered.has(app)) return;
   registered.add(app);
   const rt = createFormsRuntime(ctx);
-  app.post("/api/contact", (fc) => handleContactSubmission(rt, fc.req));
   app.get("/api/forms/:name", (fc) => handleFormSchema(rt, fc.params.name));
   app.post("/api/forms/:name", (fc) => handleFormSubmission(rt, fc.req, fc.params.name));
   app.post("/api/webhook/incoming", (fc) => handleIncomingWebhook(rt, fc.req));

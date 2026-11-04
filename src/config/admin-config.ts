@@ -42,41 +42,6 @@ export type AuthProviderConfig =
     default_role?: Role;
   };
 
-/** Notifications sent after a form submission is accepted. */
-export interface AdminNotificationsConfig {
-  /** Send an email for every new submission. */
-  email?: SmtpNotificationConfig;
-  /** POST submission JSON to a webhook URL for every new submission. */
-  webhook?: WebhookNotificationConfig;
-}
-
-/**
- * SMTP-based email notification.
- *
- * String values that start with "$" are treated as environment variable names
- * and expanded at runtime:  pass: "$SMTP_PASSWORD"  →  Deno.env.get("SMTP_PASSWORD")
- */
-export interface SmtpNotificationConfig {
-  smtp: {
-    host: string;
-    port: number;
-    /** true = implicit TLS on port 465; false = STARTTLS on port 587 (default) */
-    secure: boolean;
-    user: string;
-    /** Supports "$ENV_VAR" expansion */
-    pass: string;
-  };
-  /** RFC 5321 envelope from address, e.g. "Dune CMS <noreply@example.com>" */
-  from: string;
-  /** Recipient address(es) */
-  to: string | string[];
-  /**
-   * Email subject.  Supports {form} placeholder.
-   * Default: "New {form} submission"
-   */
-  subject?: string;
-}
-
 /** HTTP webhook notification. */
 export interface WebhookNotificationConfig {
   /** URL to POST the submission JSON to. */
@@ -139,12 +104,6 @@ export interface AdminConfig {
   /** Session lifetime in seconds (default: 86400 = 24h) */
   session_lifetime: number;
   /**
-   * Persistent data directory — git-tracked, user-authored records.
-   * Stores: admin users, form submissions.
-   * (default: "data")
-   */
-  data_dir: string;
-  /**
    * Runtime directory — ephemeral, machine-local, gitignored.
    * Stores: sessions, scheduled actions, revision history, workflow state.
    * (default: ".dune/admin")
@@ -157,15 +116,6 @@ export interface AdminConfig {
    * When the limit is reached, the oldest revision is pruned on each save.
    */
   max_revisions?: number;
-  /**
-   * Honeypot field name for form spam protection.
-   * If this field is present and non-empty in a submission, the submission
-   * is silently discarded (bots fill hidden fields; humans leave them empty).
-   * Default: "_hp"
-   */
-  honeypot?: string;
-  /** Outbound notifications fired after each form submission is saved. */
-  notifications?: AdminNotificationsConfig;
   /**
    * Maximum upload body size (in MB) for admin-side multipart uploads
    * (media library, content attachments). Rejected with 413 before the body
@@ -187,26 +137,6 @@ export interface AdminConfig {
    */
   webhooks?: WebhookEndpointConfig[];
   /**
-   * Incoming webhook tokens — allow external systems to trigger actions
-   * (e.g. rebuild, cache purge) by POSTing to POST /api/webhook/incoming.
-   *
-   * @example
-   * ```yaml
-   * admin:
-   *   incoming_webhooks:
-   *     - token: "$DEPLOY_WEBHOOK_TOKEN"
-   *       actions: [rebuild]
-   *     - token: "$CACHE_WEBHOOK_TOKEN"
-   *       actions: [purge-cache]
-   * ```
-   */
-  incoming_webhooks?: Array<{
-    /** Secret token — supports "$ENV_VAR" expansion */
-    token: string;
-    /** Permitted actions for this token */
-    actions: Array<"rebuild" | "purge-cache">;
-  }>;
-  /**
    * External authentication provider configuration.
    * When omitted, the built-in local password auth is used.
    *
@@ -216,9 +146,9 @@ export interface AdminConfig {
    *   auth_provider:
    *     type: "ldap"
    *     url: "ldaps://ldap.example.com"
-   *     baseDn: "ou=users,dc=example,dc=com"
-   *     bindDn: "cn=service,dc=example,dc=com"
-   *     bindPassword: "$LDAP_BIND_PASSWORD"
+   *     base_dn: "ou=users,dc=example,dc=com"
+   *     bind_dn: "cn=service,dc=example,dc=com"
+   *     bind_password: "$LDAP_BIND_PASSWORD"
    * ```
    *
    * @example SAML
@@ -226,9 +156,9 @@ export interface AdminConfig {
    * admin:
    *   auth_provider:
    *     type: "saml"
-   *     entityId: "https://example.com/admin"
-   *     acsUrl: "https://example.com/admin/saml/acs"
-   *     idpMetadata: "https://idp.example.com/metadata.xml"
+   *     entity_id: "https://example.com/admin"
+   *     acs_url: "https://example.com/admin/saml/acs"
+   *     idp_metadata: "https://idp.example.com/metadata.xml"
    * ```
    */
   auth_provider?: AuthProviderConfig;

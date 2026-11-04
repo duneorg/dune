@@ -11,8 +11,6 @@ export type {
   WorkflowStage,
   WorkflowTransition,
   WorkflowConfig,
-  /** @deprecated Use WorkflowTransition instead. Kept for backward compatibility. */
-  StatusTransition,
   /** Scheduled action */
   ScheduledAction,
   /** Content revision record */
@@ -21,10 +19,6 @@ export type {
   ContentDiff,
   /** i18n translation status for a page */
   TranslationStatus,
-} from "./types.ts";
-export {
-  /** @deprecated Use WorkflowConfig.transitions instead. */
-  TRANSITIONS,
 } from "./types.ts";
 export {
   /** Create a workflow engine. */

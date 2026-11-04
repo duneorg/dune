@@ -473,8 +473,8 @@ export interface SiteConfig {
    * the `jobs/` directory are ignored, preventing arbitrary code execution if
    * an attacker can write files into that directory.
    *
-   * When this key is absent, Dune falls back to auto-discovering all *.ts
-   * files under `jobs/` (legacy behaviour, emits a startup warning).
+   * When this key is absent no job runs (a startup warning is logged if
+   * `jobs/` holds .ts files, which are not discovered automatically).
    * Set `jobs: []` to disable all background jobs with no warning.
    *
    * @example

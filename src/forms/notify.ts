@@ -9,7 +9,6 @@
 import type { DuneConfig, FormEmailNotificationConfig } from "../config/types.ts";
 import type { WebhookNotificationConfig } from "../config/types.ts";
 import { createEmailProvider } from "../email/providers/mod.ts";
-import { SmtpEmailProvider } from "../email/providers/smtp.ts";
 import type { EmailProvider } from "../email/types.ts";
 import { safeFetch } from "../security/mod.ts";
 import { logger } from "../core/logger.ts";
@@ -116,20 +115,12 @@ export interface SubmissionNotifier {
   dispatch(submission: Submission, overrides?: NotificationOverrides): void;
 }
 
-/**
- * Pick the provider for an email notification: the site's `site.email`
- * provider, or — for configs that still carry their own `smtp:` block — an
- * SMTP provider built from it.
- */
+/** Pick the provider for an email notification: the site's `site.email` provider. */
 function providerFor(
   cfg: FormEmailNotificationConfig,
   config: DuneConfig,
 ): { provider: EmailProvider; from: string } {
   const siteEmail = config.site?.email ?? {};
-  if (cfg.smtp) {
-    const from = cfg.from ?? siteEmail.from ?? "";
-    return { provider: new SmtpEmailProvider({ ...cfg.smtp, from }), from };
-  }
   const from = cfg.from ?? siteEmail.from ?? defaultFrom(config);
   return { provider: createEmailProvider(siteEmail), from };
 }

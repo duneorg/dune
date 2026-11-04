@@ -12,6 +12,7 @@
  *   dune authz:sign --dry-run    # print what would be signed without writing
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { join, resolve } from "@std/path";
 import { loadHmacKeyFromEnv, signTuple, verifyTuple } from "../auth/authz-hmac.ts";
 import type { SignedTuple } from "../auth/authz-hmac.ts";
@@ -42,7 +43,7 @@ export async function authzSignCommand(root: string, opts: AuthzSignOptions = {}
 
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-  const dataDir = config.admin?.data_dir ?? "data";
+  const dataDir = resolveDataDir(config);
   const permissionsDir = join(root, dataDir, "permissions");
 
   let entries: Deno.DirEntry[] = [];

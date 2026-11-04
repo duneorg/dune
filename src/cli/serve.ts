@@ -229,8 +229,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
 
   // ── Background jobs ─────────────────────────────────────────────────────────
   // Pass config.site.jobs so only explicitly declared files are loaded.
-  // When the key is absent, scanJobs falls back to auto-discovery with a
-  // deprecation warning (backward compat for existing deployments).
+  // When the key is absent no job runs (and scanJobs warns if jobs/ has files).
   const declaredJobs = (config.site as { jobs?: string[] }).jobs;
   const jobDefs = await scanJobs(root, declaredJobs);
   const workers = Number(Deno.env.get("DUNE_WORKERS") ?? "1");

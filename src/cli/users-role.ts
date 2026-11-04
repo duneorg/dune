@@ -31,6 +31,7 @@
  *   dune users:grant-role alice@example.com editor --dry-run
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
@@ -64,7 +65,7 @@ async function openContext(root: string): Promise<Context> {
   });
   // Relative to `storage`'s own rootDir, not joined with `root` — StorageAdapter
   // requires relative paths (see the doc comment on syncAdminTuple below).
-  const dataDir = config.admin?.data_dir ?? "data";
+  const dataDir = resolveDataDir(config);
   const siteAuth = (config.site as { auth?: { user_store?: string } }).auth;
   const userStoreTier = siteAuth?.user_store ?? "local";
 

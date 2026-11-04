@@ -248,13 +248,11 @@ export { createScheduler } from "./workflow/scheduler.ts";
 export type { Scheduler, SchedulerConfig } from "./workflow/scheduler.ts";
 export type {
   ContentStatus,
-  StatusTransition,
   ScheduledAction,
   ContentRevision,
   ContentDiff,
   TranslationStatus,
 } from "./workflow/types.ts";
-export { TRANSITIONS } from "./workflow/types.ts";
 
 // ── History ────────────────────────────────────────────────────────────────
 

@@ -187,12 +187,6 @@ export interface SearchEngineCreateContext {
    * To activate at startup, call this after `register` inside the hook handler.
    */
   setActiveEngine: (name: string) => void;
-  /**
-   * @deprecated Assign `engine` to replace the built-in (single-engine path).
-   * Prefer `register()` + `setActiveEngine()` for multi-engine support.
-   * If set, the engine is registered as "default" and set active.
-   */
-  engine: SearchEngine | null;
   /** Content pages available to index. */
   pages: PageIndex[];
   /** Records collected from the `onSearchRecordsCollect` hook. */

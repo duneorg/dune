@@ -21,6 +21,7 @@
  *   dune migrate:users --dry-run    # report without writing
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { join, resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
@@ -44,7 +45,7 @@ export async function migrateUsersCommand(
     rootDir: root,
     skipConfigTs: true,
   });
-  const dataDir = join(root, config.admin?.data_dir ?? "data");
+  const dataDir = join(root, resolveDataDir(config));
   const usersDir = join(dataDir, "users");
   const byEmailDir = join(usersDir, "by-email");
 

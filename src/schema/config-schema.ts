@@ -49,10 +49,6 @@ export const CONFIG_SCHEMA = {
                     },
                     subject: { type: "string", description: "{form} is replaced by the form name" },
                     from: { type: "string", description: "Defaults to site.email.from" },
-                    smtp: {
-                      type: "object",
-                      description: "Deprecated: configure site.email instead",
-                    },
                   },
                 },
                 webhook: {
@@ -495,10 +491,8 @@ export const CONFIG_SCHEMA = {
           default: 86400,
           description: "Admin session TTL in seconds",
         },
-        data_dir: { type: "string", default: "data", description: "Deprecated: use system.data_dir" },
         runtime_dir: { type: "string", default: ".dune/admin" },
         max_revisions: { type: "integer", minimum: 0, default: 50 },
-        honeypot: { type: "string", default: "_hp", description: "Deprecated: use site.forms.honeypot" },
         max_upload_mb: { type: "integer", minimum: 1, default: 100 },
         git_commit: {
           type: "boolean",
@@ -545,21 +539,6 @@ export const CONFIG_SCHEMA = {
               enabled: { type: "boolean", default: true },
               label: { type: "string" },
               allow_private: { type: "boolean", default: false },
-            },
-          },
-        },
-        incoming_webhooks: {
-          type: "array",
-          description: "Deprecated: use system.webhooks.incoming",
-          items: {
-            type: "object",
-            required: ["token", "actions"],
-            properties: {
-              token: { type: "string" },
-              actions: {
-                type: "array",
-                items: { type: "string", enum: ["rebuild", "purge-cache"] },
-              },
             },
           },
         },

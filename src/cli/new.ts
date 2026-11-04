@@ -396,7 +396,7 @@ const app = new App();
 // 2. Static files from /_fresh/js/* (island bundles) and /static/
 app.use(staticFiles());
 
-// 3. Dune admin panel (/admin/*) + public API (/api/contact, /api/forms/*)
+// 3. Dune admin panel (/admin/*) + public API (/api/forms/*)
 await mountDuneAdmin(app, ctx);
 
 // 4. Make the content API available to your own routes via ctx.state —

@@ -69,8 +69,7 @@ async function openContext(root: string, siteId?: string): Promise<Context> {
     rootDir: root,
     skipConfigTs: true,
   });
-  // Same resolution as the admin plugin and core: system.data_dir, falling
-  // back to the deprecated admin.dataDir.
+  // Same resolution as the admin plugin and core: system.data_dir.
   const dataDir = resolveFormsConfig(config).dataDir;
   const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
   const siteAuth = (config.site as { auth?: { user_store?: string } }).auth;

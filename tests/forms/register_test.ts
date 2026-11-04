@@ -20,12 +20,11 @@ const ctx = {
   imageCache: {},
 } as unknown as BootstrapResult;
 
-Deno.test("registerFormRoutes: registers the four public routes", () => {
+Deno.test("registerFormRoutes: registers the three public routes", () => {
   const { app, routes } = stubApp();
   registerFormRoutes(app, ctx);
   assertEquals(routes.sort(), [
     "GET /api/forms/:name",
-    "POST /api/contact",
     "POST /api/forms/:name",
     "POST /api/webhook/incoming",
   ]);
@@ -35,5 +34,5 @@ Deno.test("registerFormRoutes: a second call for the same app registers nothing"
   const { app, routes } = stubApp();
   registerFormRoutes(app, ctx);
   registerFormRoutes(app, ctx);
-  assertEquals(routes.length, 4);
+  assertEquals(routes.length, 3);
 });
