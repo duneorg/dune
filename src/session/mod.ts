@@ -17,6 +17,9 @@ import type { User } from "../auth/types.ts";
 import { createLocalSessionStore } from "./local.ts";
 import { createKVSessionStore } from "./kv.ts";
 import { createRedisSessionStoreFromUrl } from "./redis.ts";
+import { assertValidSessionPrefix } from "./prefix.ts";
+
+export { assertValidSessionPrefix, resolveSessionPrefix } from "./prefix.ts";
 
 export type {
   /** Session store interface — backend-agnostic contract for session persistence. */
@@ -35,6 +38,12 @@ export interface SessionStoreOptions {
   sessionsDir?: string;
   /** Session lifetime in milliseconds. */
   lifetimeMs: number;
+  /**
+   * Key namespace for the Redis and KV backends (ignored by "local", which is
+   * already per site). Omit for the original, unprefixed keys. See
+   * {@link resolveSessionPrefix}.
+   */
+  prefix?: string;
 }
 
 /**
@@ -46,10 +55,11 @@ export interface SessionStoreOptions {
 export async function createSessionStore(opts: SessionStoreOptions): Promise<SessionStore> {
   const resolvedLifetimeMs = opts.lifetimeMs;
   const resolved = resolveType(opts);
+  if (opts.prefix !== undefined) assertValidSessionPrefix(opts.prefix);
 
   if (resolved === "kv") {
     const kv = await Deno.openKv();
-    return createKVSessionStore({ kv, lifetimeMs: resolvedLifetimeMs });
+    return createKVSessionStore({ kv, lifetimeMs: resolvedLifetimeMs, prefix: opts.prefix });
   }
 
   if (resolved === "redis") {
@@ -59,7 +69,7 @@ export async function createSessionStore(opts: SessionStoreOptions): Promise<Ses
         "Set session_store.url in config or pass redisUrl to createSessionStore().",
       );
     }
-    return createRedisSessionStoreFromUrl(opts.redisUrl, resolvedLifetimeMs / 1000);
+    return createRedisSessionStoreFromUrl(opts.redisUrl, resolvedLifetimeMs / 1000, opts.prefix);
   }
 
   // local

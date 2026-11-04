@@ -120,8 +120,10 @@ export async function mountDuneAuth(
   // ── Session manager ─────────────────────────────────────────────────────────
   // Same SessionStore/SessionManager mechanism admin sessions use
   // (dec-identity-unification Phase 5c) — local/KV/Redis, chosen the same
-  // way via system.session_store. Site sessions live in a separate
-  // directory/key namespace from admin sessions so the two don't collide.
+  // way via system.session_store. Local site sessions live in a separate
+  // directory from admin sessions; on Redis/KV both kinds share the key space
+  // on purpose (one user store, so a revoke-all reaches both), scoped per site
+  // by session_store.prefix.
   const sessionStoreCfg = config.system?.session_store;
   const siteSessionStore = await createSessionStore({
     type: sessionStoreCfg?.type ?? "local",
@@ -133,6 +135,7 @@ export async function mountDuneAuth(
     storage,
     sessionsDir: `${runtimeDir}/site-sessions`,
     lifetimeMs: sessionLifetimeSec * 1000,
+    prefix: sessionStoreCfg?.prefix,
   });
   const sessionMgr = createSessionManager(
     siteSessionStore,
