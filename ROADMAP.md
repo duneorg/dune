@@ -25,11 +25,13 @@ The core is complete and in production use:
 - Flex objects — schema-defined custom data types with generated admin CRUD
 - Database layer — SQLite/KV/Postgres backends, typed repositories, SQL migrations
 - CRUD API generation — declare an `api:` block in a schema and get REST endpoints (list/get/create/update/delete) with auth and ownership checks
+- Public features without the admin plugin — pages, feeds, sitemap, search, the content API, forms (`/api/forms/:name`), the contact endpoint, the incoming webhook, and scheduled publishing (`publish_date`/`unpublish_date`) are served by core and covered by a headless smoke test in CI
+- Resilience — an event-loop watchdog restarts a stuck `dev`/`serve`; a search backend that is down degrades search (built-in fallback, `/health` reports it) instead of stopping startup
 - Public file upload, payments (Stripe), background jobs (cron), and a configurable search engine (field weighting, facets, highlighted excerpts, Flex indexing)
 - CDN cache invalidation — Fastly, Bunny, Cloudflare, and custom providers; cache-tags and purge-on-publish
 - Multisite — multiple sites from one process
 - Deno Deploy support — `KvStorageAdapter` (no persistent filesystem required), auto-selected via `DENO_KV_URL`
-- CLI — `dune new`, `dev`, `serve`, `validate`, `build`, `migrate:*`, `deploy:init`, `lockfile:*`, `generate:*`, `jobs:*`, `plugin:*`, `theme:*`, `users:create`/`grant-role`/`revoke-role`, `content:*` (list/check/i18n-status/create/delete), `authz:sign`, `backup`/`restore`, `add`, `codegen`, `schema:export`
+- CLI — `dune new`, `dev`, `dev:link`, `serve`, `ps`, `stop`, `doctor`, `upgrade`, `validate`, `build`, `migrate:*`, `deploy:init`, `lockfile:*`, `generate:*`, `jobs:*`, `plugin:*`, `theme:*`, `users:create`/`passwd`/`grant-role`/`revoke-role`, `content:*` (list/check/i18n-status/create/delete), `authz:sign`, `backup`/`restore`, `add`, `codegen`, `schema:export`
 - MCP server — read tools (pages, search, taxonomy, config) and write tools (content/config mutations); scaffolding via `generate:*`
 - Lockfile — Deno-level `--frozen` enforcement on `serve` (opt-in via `--frozen`/`DUNE_FROZEN=1`), no command implicitly writes `deno.lock`, `dune upgrade`/`add` auto-sync, staleness hint at startup
 - Testing infrastructure — `@dune/testing` in-process harness (`createTestHarness()`, `h.fetch()`/`h.render()`) for plugin/theme authors; Playwright E2E suite covering the admin panel's critical paths
@@ -42,7 +44,7 @@ The core is complete and in production use:
 
 The install workflow, marketplace UI, and JSR distribution path all exist. First-party packages published: `@dune/plugin-admin` (admin panel), `@dune/plugin-inline-edit` (WYSIWYG inline editing), `@dune/plugin-pdf` (PDF serving, text extraction, browser viewer), `@dune/plugin-meilisearch` and `@dune/plugin-orama` (search backends, runtime-switchable via the multi-engine slot and an admin panel toggle). All register via `plugins:` in `site.yaml` with no manual wiring.
 
-The next first-party priorities are analytics, sitemaps, and contact forms.
+Sitemaps and contact/forms ship in core. The next first-party priority is analytics.
 
 ### 1.0
 
@@ -51,7 +53,7 @@ No new features for 1.0 — the milestone is an API stability guarantee. The pub
 Two concrete things remain before the cutover:
 
 - **`BootstrapResult` service-locator cleanup.** Flagged during the pre-1.0 architecture review (v0.26) and explicitly deferred — it's still a flat bag of 17+ unrelated fields (and has grown since, not shrunk). Needs typed phases/sub-contexts; deferred specifically because it requires wider plugin API changes, so it should land deliberately as part of the 1.0 surface review, not incrementally.
-- **Re-pin all four first-party plugins from `jsr:@dune/core@0` to `^1.0.0`**, in lockstep with the actual 1.0.0 release — they cannot publish against a 1.0.0 core with a stale `@0` range (JSR's floor-compatibility check on a bare `0` range validates against `0.0.0`, which was never really true for any of them). This is what's currently blocking `plugin-admin`'s JSR publish.
+- **Re-pin the first-party plugins to `^1.0.0`**, in lockstep with the 1.0.0 release. Until then each plugin pins the `@dune/core` minor it was built against (a bare `@0` range is not accepted by JSR's floor-compatibility check).
 
 ---
 
