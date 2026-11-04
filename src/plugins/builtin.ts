@@ -52,7 +52,6 @@ export function adminSettingsAtRisk(config: DuneConfig): string[] {
   for (
     const key of [
       "session_lifetime",
-      "data_dir",
       "runtime_dir",
       "max_upload_mb",
       "authz_store",
