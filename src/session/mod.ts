@@ -100,7 +100,7 @@ function resolveType(opts: SessionStoreOptions): "local" | "kv" | "redis" {
  * sessions (dec-identity-unification Phase 5c) — one mechanism,
  * parameterized by which SessionStore backend it's given, rather than two
  * independently-implemented stacks. `create()`'s `embeddedUser` param is
- * only ever used by public auth's `userStore: "session"` mode; admin
+ * only ever used by public auth's `user_store: "session"` mode; admin
  * sessions never pass it.
  */
 export interface SessionManager {

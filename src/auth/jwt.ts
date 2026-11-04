@@ -40,6 +40,34 @@ export interface ExternalJwtOptions {
   algorithm?: "HS256" | "RS256";
 }
 
+/** The `site.auth.jwt` config block (snake_case keys) as authored in site.yaml. */
+export interface ExternalJwtConfig {
+  secret?: string;
+  jwks_url?: string;
+  user_id_claim?: string;
+  email_claim?: string;
+  roles_claim?: string;
+  issuer?: string;
+  audience?: string;
+  algorithm?: "HS256" | "RS256";
+}
+
+/** Map the authored `site.auth.jwt` block to the verifier's options. */
+export function externalJwtOptionsFromConfig(
+  cfg: ExternalJwtConfig,
+): ExternalJwtOptions {
+  return {
+    secret: cfg.secret,
+    jwksUrl: cfg.jwks_url,
+    userIdClaim: cfg.user_id_claim,
+    emailClaim: cfg.email_claim,
+    rolesClaim: cfg.roles_claim,
+    issuer: cfg.issuer,
+    audience: cfg.audience,
+    algorithm: cfg.algorithm,
+  };
+}
+
 export interface JwtVerifyResult {
   userId: string;
   email?: string;

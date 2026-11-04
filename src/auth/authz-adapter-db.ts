@@ -65,17 +65,17 @@ function rowToTuple(row: TupleRow): PolizyStoredTuple {
  * Throw a clear error when the KV adapter is used, since AuthzDbAdapter requires
  * a SQL-capable backend. KVAdapter is selected automatically on Deno Deploy when
  * DENO_DEPLOYMENT_ID is set — users must explicitly configure DUNE_DB_URL (Postgres)
- * or DUNE_DB_PATH (SQLite) to use authzStore: db on Deno Deploy.
+ * or DUNE_DB_PATH (SQLite) to use authz_store: db on Deno Deploy.
  */
 function assertNotKv(adapter: DbAdapter): void {
   // Duck-type: KVAdapter doesn't support raw SQL DDL — its query() implementation
   // throws or no-ops on CREATE TABLE. Check for a well-known KVAdapter property.
   if ("_kv" in adapter || (adapter.constructor && adapter.constructor.name === "KVAdapter")) {
     throw new Error(
-      "[dune/authz] authzStore: db requires a SQL-capable database (SQLite or Postgres). " +
+      "[dune/authz] authz_store: db requires a SQL-capable database (SQLite or Postgres). " +
         "The Deno KV adapter does not support raw SQL. " +
-        "Set DUNE_DB_URL (Postgres) or DUNE_DB_PATH (SQLite) to use authzStore: db, " +
-        "or switch to authzStore: local.",
+        "Set DUNE_DB_URL (Postgres) or DUNE_DB_PATH (SQLite) to use authz_store: db, " +
+        "or switch to authz_store: local.",
     );
   }
 }

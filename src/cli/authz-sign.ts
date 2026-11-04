@@ -42,7 +42,7 @@ export async function authzSignCommand(root: string, opts: AuthzSignOptions = {}
 
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-  const dataDir = config.admin?.dataDir ?? "data";
+  const dataDir = config.admin?.data_dir ?? "data";
   const permissionsDir = join(root, dataDir, "permissions");
 
   let entries: Deno.DirEntry[] = [];

@@ -28,7 +28,7 @@ async function withAuthMountedApp(
     await Deno.mkdir(join(root, "config"), { recursive: true });
     await Deno.writeTextFile(
       join(root, "config", "site.yaml"),
-      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  userStore: session\n",
+      "title: Test Site\nurl: http://localhost:3000\nauth:\n  mode: dune\n  user_store: session\n",
     );
 
     const ctx = await bootstrap(root, {});
@@ -90,7 +90,7 @@ Deno.test(
       await Deno.writeTextFile(
         join(root, "config", "site.yaml"),
         "title: Test Site\nurl: http://localhost:3000\n" +
-          "auth:\n  mode: dune\n  userStore: session\n  providers:\n    magicLink:\n      enabled: true\n",
+          "auth:\n  mode: dune\n  user_store: session\n  providers:\n    magic_link:\n      enabled: true\n",
       );
       Deno.env.set("DUNE_AUTH_SECRET", "a".repeat(32));
 

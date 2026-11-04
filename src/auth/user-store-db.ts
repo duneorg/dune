@@ -97,10 +97,10 @@ function assertNotKv(adapter: DbAdapter): void {
     (adapter.constructor && adapter.constructor.name === "KVAdapter")
   ) {
     throw new Error(
-      "[dune/auth] userStore: db requires a SQL-capable database (SQLite or Postgres). " +
+      "[dune/auth] user_store: db requires a SQL-capable database (SQLite or Postgres). " +
         "The Deno KV adapter does not support raw SQL. " +
         "Set DUNE_DB_URL (Postgres) or DUNE_DB_PATH (SQLite), " +
-        "or switch to userStore: local.",
+        "or switch to user_store: local.",
     );
   }
 }

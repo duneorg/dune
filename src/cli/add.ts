@@ -137,7 +137,7 @@ async function scaffoldPolizy(root: string): Promise<void> {
  * and route handlers.
  *
  * In most cases you don't need this file — Dune wires authz automatically
- * when authzStore: local is set in site.yaml. Import from here when you need
+ * when authz_store: local is set in site.yaml. Import from here when you need
  * direct access to authz outside of plugin hooks (e.g. in a custom API route).
  */
 
@@ -164,7 +164,7 @@ export function getAuthz() {
   }
 
   console.log(`\n  Next steps:`);
-  console.log(`    1. In site.yaml, set:  auth:\n                             authzStore: local`);
+  console.log(`    1. In site.yaml, set:  auth:\n                             authz_store: local`);
 
   // Try to auto-install polizy skills from the package's skills/ directory
   await installPackageSkills(root, "polizy", ["polizy-core.md", "polizy-schema.md"]);

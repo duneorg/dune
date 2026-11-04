@@ -329,7 +329,7 @@ export const CONFIG_SCHEMA = {
               description:
                 "Stop startup when a search engine fails to build. Default: log it, retry in the background, and fall back to the built-in engine.",
             },
-            customFields: {
+            custom_fields: {
               type: "array",
               items: { type: "string" },
               description: "Additional frontmatter fields to include in search index",
@@ -346,7 +346,7 @@ export const CONFIG_SCHEMA = {
           type: "object",
           properties: {
             enabled: { type: "boolean", default: true },
-            slowQueryThresholdMs: { type: "integer", minimum: 0, default: 100 },
+            slow_query_threshold_ms: { type: "integer", minimum: 0, default: 100 },
           },
         },
         typography: {
@@ -489,17 +489,17 @@ export const CONFIG_SCHEMA = {
           default: "/admin",
           description: "Admin panel route prefix (e.g. /admin, /cms)",
         },
-        sessionLifetime: {
+        session_lifetime: {
           type: "integer",
           minimum: 0,
           default: 86400,
           description: "Admin session TTL in seconds",
         },
-        dataDir: { type: "string", default: "data", description: "Deprecated: use system.data_dir" },
-        runtimeDir: { type: "string", default: ".dune/admin" },
-        maxRevisions: { type: "integer", minimum: 0, default: 50 },
+        data_dir: { type: "string", default: "data", description: "Deprecated: use system.data_dir" },
+        runtime_dir: { type: "string", default: ".dune/admin" },
+        max_revisions: { type: "integer", minimum: 0, default: 50 },
         honeypot: { type: "string", default: "_hp", description: "Deprecated: use site.forms.honeypot" },
-        maxUploadMb: { type: "integer", minimum: 1, default: 100 },
+        max_upload_mb: { type: "integer", minimum: 1, default: 100 },
         git_commit: {
           type: "boolean",
           default: false,
@@ -509,7 +509,7 @@ export const CONFIG_SCHEMA = {
           type: "object",
           properties: {
             enabled: { type: "boolean", default: true },
-            logFile: { type: "string", description: "Path to JSONL audit log file" },
+            log_file: { type: "string", description: "Path to JSONL audit log file" },
           },
         },
         auth_provider: {

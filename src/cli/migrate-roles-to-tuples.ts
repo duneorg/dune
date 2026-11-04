@@ -46,10 +46,10 @@ export async function migrateRolesToTuplesCommand(
   // list()/getByEmail() etc.) anything absolute. This was a real, previously
   // latent bug: joining `root` here meant this command silently reported
   // "No users with roles found" on every real site, every time it ran.
-  const dataDir = config.admin?.dataDir ?? "data";
-  const siteAuth = (config.site as { auth?: { userStore?: string; authzStore?: string } }).auth;
-  const userStoreTier = siteAuth?.userStore ?? "local";
-  const authzStoreTier = siteAuth?.authzStore ?? "local";
+  const dataDir = config.admin?.data_dir ?? "data";
+  const siteAuth = (config.site as { auth?: { user_store?: string; authz_store?: string } }).auth;
+  const userStoreTier = siteAuth?.user_store ?? "local";
+  const authzStoreTier = siteAuth?.authz_store ?? "local";
 
   // ── Load users ─────────────────────────────────────────────────────────────
   let userStore: UserStore;

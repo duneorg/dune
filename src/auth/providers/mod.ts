@@ -14,9 +14,9 @@ import { createDiscordProvider } from "./discord.ts";
 import type { OAuthProvider } from "./types.ts";
 
 export interface OAuthProvidersConfig {
-  github?: { clientId: string; clientSecret: string };
-  google?: { clientId: string; clientSecret: string };
-  discord?: { clientId: string; clientSecret: string };
+  github?: { client_id: string; client_secret: string };
+  google?: { client_id: string; client_secret: string };
+  discord?: { client_id: string; client_secret: string };
 }
 
 /**
@@ -26,14 +26,19 @@ export interface OAuthProvidersConfig {
 export function createProviders(config: OAuthProvidersConfig): Map<string, OAuthProvider> {
   const providers = new Map<string, OAuthProvider>();
 
-  if (config.github?.clientId) {
-    providers.set("github", createGitHubProvider(config.github));
+  // Config keys are snake_case; the provider factories keep their own option names.
+  const creds = (c: { client_id: string; client_secret: string }) => ({
+    clientId: c.client_id,
+    clientSecret: c.client_secret,
+  });
+  if (config.github?.client_id) {
+    providers.set("github", createGitHubProvider(creds(config.github)));
   }
-  if (config.google?.clientId) {
-    providers.set("google", createGoogleProvider(config.google));
+  if (config.google?.client_id) {
+    providers.set("google", createGoogleProvider(creds(config.google)));
   }
-  if (config.discord?.clientId) {
-    providers.set("discord", createDiscordProvider(config.discord));
+  if (config.discord?.client_id) {
+    providers.set("discord", createDiscordProvider(creds(config.discord)));
   }
 
   return providers;

@@ -30,7 +30,7 @@ Deno.test("forms config: deprecated admin.* keys still work", () => {
   resetFormsConfigWarnings();
   const c = fresh();
   c.admin!.honeypot = "old";
-  c.admin!.dataDir = "olddata";
+  c.admin!.data_dir = "olddata";
   c.admin!.incoming_webhooks = [{ token: "t", actions: ["purge-cache"] }];
   c.admin!.notifications = { webhook: { url: "https://x.example/h" } };
   const r = resolveFormsConfig(c);
@@ -44,7 +44,7 @@ Deno.test("forms config: new keys win over deprecated ones", () => {
   const c = fresh();
   c.admin!.honeypot = "old";
   c.site.forms = { honeypot: "new" };
-  c.admin!.dataDir = "olddata";
+  c.admin!.data_dir = "olddata";
   c.system.data_dir = "newdata";
   const r = resolveFormsConfig(c);
   assertEquals(r.honeypot, "new");

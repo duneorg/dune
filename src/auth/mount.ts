@@ -30,7 +30,7 @@ import { setGatingAuthz } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 import { handleWebhook } from "./webhook.ts";
 import { logger } from "../core/logger.ts";
-import { assertExternalJwtBound } from "./jwt.ts";
+import { assertExternalJwtBound, externalJwtOptionsFromConfig } from "./jwt.ts";
 import type { SiteConfig } from "../config/site-config.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -76,9 +76,9 @@ export async function mountDuneAuth(
   const authConfig: SiteConfig["auth"] = config.site.auth;
 
   const adminCfg = config.admin ??
-    { dataDir: "data", runtimeDir: ".dune/admin" };
-  const dataDir = adminCfg.dataDir ?? "data";
-  const runtimeDir = adminCfg.runtimeDir ?? ".dune/admin";
+    { data_dir: "data", runtime_dir: ".dune/admin" };
+  const dataDir = adminCfg.data_dir ?? "data";
+  const runtimeDir = adminCfg.runtime_dir ?? ".dune/admin";
 
   const mode = authConfig?.mode ?? "dune";
   if (mode === "external-jwt") {
@@ -89,9 +89,9 @@ export async function mountDuneAuth(
     }
     assertExternalJwtBound(authConfig.jwt);
   }
-  const sessionLifetimeSec = authConfig?.sessionLifetime ?? 30 * 24 * 60 * 60;
+  const sessionLifetimeSec = authConfig?.session_lifetime ?? 30 * 24 * 60 * 60;
   const userStoreType: "local" | "session" | "db" =
-    (authConfig?.userStore ?? "local") as "local" | "session" | "db";
+    (authConfig?.user_store ?? "local") as "local" | "session" | "db";
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
@@ -144,7 +144,7 @@ export async function mountDuneAuth(
 
   // ── Auth middleware ─────────────────────────────────────────────────────────
   const jwtOpts = mode === "external-jwt" && authConfig?.jwt
-    ? authConfig.jwt
+    ? externalJwtOptionsFromConfig(authConfig.jwt)
     : undefined;
 
   const authMiddleware = createSiteAuthMiddleware({
@@ -159,7 +159,7 @@ export async function mountDuneAuth(
 
   // ── Authorization (polizy) ─────────────────────────────────────────────────
   // Local polizy authz is the default in "dune" mode and an explicit opt-in in
-  // "external-jwt" mode (set authzStore: local in site.yaml to enable).
+  // "external-jwt" mode (set authz_store: local in site.yaml to enable).
   //
   // external-jwt + authzStore:local — JWT claims seed initial group-membership
   // tuples on first user appearance; polizy is the authority from that point.
@@ -179,8 +179,8 @@ export async function mountDuneAuth(
     | null = null;
 
   const authzStoreCfg = mode === "dune"
-    ? (authConfig?.authzStore ?? "local") // default local in dune mode
-    : authConfig?.authzStore; // must be explicit in external-jwt mode
+    ? (authConfig?.authz_store ?? "local") // default local in dune mode
+    : authConfig?.authz_store; // must be explicit in external-jwt mode
 
   if (authzStoreCfg === "db") {
     const { createDbAdapter } = await import("../db/adapters/mod.ts");
@@ -235,7 +235,7 @@ export async function mountDuneAuth(
   });
 
   // ── Magic link ─────────────────────────────────────────────────────────────
-  const magicEnabled = authConfig?.providers?.magicLink?.enabled === true &&
+  const magicEnabled = authConfig?.providers?.magic_link?.enabled === true &&
     mode === "dune";
   const envSecret = Deno.env.get("DUNE_AUTH_SECRET");
 
@@ -303,9 +303,9 @@ export async function mountDuneAuth(
   if (userStoreType === "session" && config.site.payments?.secret_key) {
     logger.warn("auth.userstore.session_payments_lossy", {
       reason:
-        "userStore: session + payments: enabled — role grants after payment " +
+        "user_store: session + payments: enabled — role grants after payment " +
         "will NOT be reflected in the user's session until they log out and log in again. " +
-        "Consider userStore: local to persist role assignments across sessions.",
+        "Consider user_store: local to persist role assignments across sessions.",
     });
   }
 
@@ -470,7 +470,7 @@ export async function mountDuneAuth(
     const whConfig = {
       provider: webhookCfg.provider,
       secret: whSecret,
-      signatureHeader: webhookCfg.signatureHeader,
+      signatureHeader: webhookCfg.signature_header,
     };
     const whAuthz = mountAuthz;
 

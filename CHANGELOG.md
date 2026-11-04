@@ -11,6 +11,42 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
+  are renamed, with no aliases, in `site.yaml`, `system.yaml` and the `admin:`
+  block: `auth.userStore` → `user_store`, `authzStore` → `authz_store`,
+  `sessionLifetime` → `session_lifetime`, `providers.magicLink` → `magic_link`,
+  `providers.<name>.clientId` / `clientSecret` → `client_id` / `client_secret`,
+  `jwt.jwksUrl` / `userIdClaim` / `emailClaim` / `rolesClaim` → `jwks_url` /
+  `user_id_claim` / `email_claim` / `roles_claim`, `webhook.signatureHeader` →
+  `signature_header`, `uploads.maxSizeMb` / `allowedTypes` / `requireAuth` →
+  `max_size_mb` / `allowed_types` / `require_auth`, `content.allowTsxFormat` →
+  `allow_tsx_format`, `search.customFields` → `custom_fields`,
+  `metrics.slowQueryThresholdMs` → `slow_query_threshold_ms`, and in `admin:`
+  `sessionLifetime`, `dataDir`, `runtimeDir`, `maxRevisions`, `maxUploadMb`,
+  `authzStore`, `audit.logFile` and the LDAP/SAML `auth_provider` fields
+  (`baseDn`, `bindDn`, `bindPassword`, `usernameAttr`, `emailAttr`, `nameAttr`,
+  `roleMap`, `defaultRole`, `entityId`, `acsUrl`, `idpMetadata`, `roleAttr`).
+  The `DuneConfig` TypeScript properties follow the same names. A config that
+  still carries an old key now **refuses to load** and names the new key, so a
+  renamed security setting (for example `jwt.jwksUrl`) can never be silently
+  ignored.
+- **`dune migrate:config`** rewrites `config/site.yaml`, `config/system.yaml`
+  and `config/env/*/` in place, keeping comments and order (`--dry-run` to
+  preview; idempotent; keys it cannot reach, such as flow style, are reported
+  and the file is left alone). At a multisite install root it needs `--site`.
+- `@dune/plugin-admin` reads the `admin:` block and needs a matching release
+  (the admin major in 0.36). Core's built-in admin range is now `@dune/plugin-admin@*`
+  (a `jsr:` specifier cannot say "3.x or 4.x"), and bootstrap checks the version it
+  resolved: an admin older than 4.0.0 together with a customised renamed admin key
+  (`runtime_dir`, `authz_store`, `max_upload_mb`, `session_lifetime`, `data_dir`,
+  `audit.log_file`, `auth_provider`, `content.allow_tsx_format`) **refuses to start**
+  instead of silently falling back to defaults; with no such key it logs a warning
+  and runs. Refresh a stale `deno.lock` with `dune lockfile:sync`.
+- Programmatic config in `dune.config.ts` is not checked for the old names: an old key
+  there is ignored, so rename it by hand.
+
 ### Added
 
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has

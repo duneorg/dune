@@ -1,0 +1,135 @@
+import { assertEquals, assertStringIncludes } from "@std/assert";
+import { parse as parseYaml } from "@std/yaml";
+import {
+  findLegacyKeys,
+  renameLegacyKeysInText,
+} from "../../src/config/legacy-keys.ts";
+import { loadConfig } from "../../src/config/loader.ts";
+import { MemoryStorageAdapter } from "../../src/storage/memory.ts";
+
+const SITE = `# my site
+title: Test
+auth:
+  mode: dune
+  userStore: session   # keep sessions
+  sessionLifetime: 3600
+  providers:
+    github:
+      clientId: "$GH_ID"
+      clientSecret: "$GH_SECRET"
+    magicLink:
+      enabled: true
+  jwt:
+    jwksUrl: https://example.com/jwks
+    userIdClaim: sub
+  webhook:
+    provider: clerk
+    signatureHeader: x-sig
+uploads:
+  maxSizeMb: 5
+  allowedTypes: ["image/png"]
+  requireAuth: true
+plugins:
+  - src: x
+plugin_configs:
+  thing:
+    userStore: untouched   # plugin-owned, same name elsewhere
+`;
+
+const SYSTEM = `content:
+  allowTsxFormat: [admin]
+search:
+  customFields: [summary]
+metrics:
+  slowQueryThresholdMs: 50
+admin:
+  enabled: true
+  maxUploadMb: 20
+  runtimeDir: .dune/admin
+  audit:
+    logFile: data/audit.log
+  auth_provider:
+    type: ldap
+    baseDn: dc=example
+    roleMap: []
+`;
+
+Deno.test("findLegacyKeys: finds every renamed key and nothing else", () => {
+  const site = findLegacyKeys("site", parseYaml(SITE));
+  assertEquals(
+    site.map((k) => k.path).sort(),
+    [
+      "auth.jwt.jwksUrl",
+      "auth.jwt.userIdClaim",
+      "auth.providers.github.clientId",
+      "auth.providers.github.clientSecret",
+      "auth.providers.magicLink",
+      "auth.sessionLifetime",
+      "auth.userStore",
+      "auth.webhook.signatureHeader",
+      "uploads.allowedTypes",
+      "uploads.maxSizeMb",
+      "uploads.requireAuth",
+    ],
+  );
+  const system = findLegacyKeys("system", parseYaml(SYSTEM));
+  assertEquals(system.length, 8);
+});
+
+Deno.test("findLegacyKeys: a key with the same name under another parent is left alone", () => {
+  assertEquals(findLegacyKeys("site", { plugin_configs: { thing: { userStore: 1 } } }), []);
+  assertEquals(findLegacyKeys("system", { auth: { userStore: 1 } }), []); // site-only rule
+});
+
+Deno.test("renameLegacyKeysInText: renames keys, keeps comments, order and values", () => {
+  const { text, renamed } = renameLegacyKeysInText("site", SITE);
+  assertEquals(renamed.length, 11);
+  assertStringIncludes(text, "  user_store: session   # keep sessions");
+  assertStringIncludes(text, '      client_id: "$GH_ID"');
+  assertStringIncludes(text, "    magic_link:");
+  assertStringIncludes(text, "# my site");
+  assertStringIncludes(text, "    userStore: untouched   # plugin-owned, same name elsewhere");
+  assertEquals(findLegacyKeys("site", parseYaml(text)), []);
+  // same values, only key names differ
+  assertEquals((parseYaml(text) as Record<string, any>).auth.jwt.jwks_url, "https://example.com/jwks");
+});
+
+Deno.test("renameLegacyKeysInText: idempotent", () => {
+  const once = renameLegacyKeysInText("system", SYSTEM).text;
+  const twice = renameLegacyKeysInText("system", once);
+  assertEquals(twice.text, once);
+  assertEquals(twice.renamed, []);
+});
+
+Deno.test("renameLegacyKeysInText: flow style cannot be rewritten and stays detectable", () => {
+  const src = "auth: { userStore: db }\n";
+  const { text } = renameLegacyKeysInText("site", src);
+  assertEquals(text, src);
+  assertEquals(findLegacyKeys("site", parseYaml(text)).length, 1);
+});
+
+async function load(files: Record<string, string>) {
+  const storage = new MemoryStorageAdapter();
+  for (const [p, c] of Object.entries(files)) await storage.write(p, c);
+  return loadConfig({ storage, rootDir: "/x", skipConfigTs: true });
+}
+
+Deno.test("loadConfig refuses a legacy key and names the new one", async () => {
+  let message = "";
+  try {
+    await load({ "config/site.yaml": "title: T\nauth:\n  userStore: db\n" });
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  assertStringIncludes(message, "auth.userStore → user_store");
+  assertStringIncludes(message, "dune migrate:config");
+});
+
+Deno.test("loadConfig accepts the migrated keys", async () => {
+  const cfg = await load({
+    "config/site.yaml": "title: T\nauth:\n  user_store: db\n",
+    "config/system.yaml": "admin:\n  max_revisions: 7\n",
+  });
+  assertEquals((cfg.site as any).auth.user_store, "db");
+  assertEquals(cfg.admin?.max_revisions, 7);
+});

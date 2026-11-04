@@ -96,7 +96,7 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
       if (requestIp && requestIp !== session.ip) return null;
     }
 
-    // userStore: session — identity is embedded in the session, no disk lookup.
+    // user_store: session — identity is embedded in the session, no disk lookup.
     if (session.embeddedUser) {
       return session.embeddedUser.enabled !== false ? session.embeddedUser : null;
     }

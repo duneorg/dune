@@ -20,6 +20,7 @@ export const SITE_SCOPED_COMMANDS: ReadonlySet<string> = new Set([
   "users:grant-role",
   "users:revoke-role",
   "authz:sign",
+  "migrate:config",
   "migrate:users",
   "migrate:auth-to-db",
   "migrate:roles-to-tuples",
