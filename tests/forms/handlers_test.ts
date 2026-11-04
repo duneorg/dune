@@ -144,6 +144,48 @@ Deno.test("submit: a cross-origin success_url is not followed (open redirect)", 
   assertEquals(res.headers.get("location"), "/");
 });
 
+const BAD_FORM_BODY = new URLSearchParams({ name: "A" }); // message is required
+
+Deno.test("submit: validation failure redirects back to the Referer with form_error", async () => {
+  const h = harness();
+  const res = await handleFormSubmission(
+    h.rt,
+    post("/api/forms/contact", BAD_FORM_BODY, {
+      referer: "http://localhost/contact/",
+    }),
+    "contact",
+  );
+  assertEquals(res.status, 302);
+  assertEquals(res.headers.get("location"), "/contact/?form_error=1");
+});
+
+Deno.test("submit: validation failure behind a TLS proxy uses the public origin (Host + X-Forwarded-Proto)", async () => {
+  const h = harness();
+  const res = await handleFormSubmission(
+    h.rt,
+    post("/api/forms/contact", BAD_FORM_BODY, {
+      referer: "https://example.com/contact/",
+      host: "example.com",
+      "x-forwarded-proto": "https",
+    }),
+    "contact",
+  );
+  assertEquals(res.headers.get("location"), "/contact/?form_error=1");
+});
+
+Deno.test("submit: validation failure with a cross-origin Referer falls back to /", async () => {
+  const h = harness();
+  const res = await handleFormSubmission(
+    h.rt,
+    post("/api/forms/contact", BAD_FORM_BODY, {
+      referer: "https://evil.example/contact/",
+      host: "example.com",
+    }),
+    "contact",
+  );
+  assertEquals(res.headers.get("location"), "/");
+});
+
 Deno.test("submit: honeypot is swallowed with a success response and not stored", async () => {
   const h = harness();
   const res = await handleFormSubmission(
