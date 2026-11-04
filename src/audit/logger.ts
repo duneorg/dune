@@ -31,13 +31,19 @@ export class AuditLogger {
     this.maxQueryEntries = opts.maxQueryEntries ?? 1000;
   }
 
-  /** Initialize — ensure shard directory exists */
-  async init(): Promise<void> {
-    await ensureDir(this.shardDir);
+  private ready: Promise<void> | null = null;
+
+  /** Initialize — ensure shard directory exists. Idempotent; `log()` calls it on first use. */
+  init(): Promise<void> {
+    return this.ready ??= ensureDir(this.shardDir).then(() => undefined, (err) => {
+      this.ready = null;
+      throw err;
+    });
   }
 
   /** Write an audit entry to today's shard */
   async log(entry: Omit<AuditEntry, "id" | "ts">): Promise<void> {
+    await this.init();
     const ts = new Date();
     const full: AuditEntry = {
       id: crypto.randomUUID(),

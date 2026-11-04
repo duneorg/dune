@@ -365,7 +365,15 @@ export async function bootstrap(
   await startupStep("Failed to index content", () => engine.init());
 
   // 5. Hooks
-  const pluginServices = createPluginServices({ config, storage });
+  // The authz system is created further down; plugins reach it only through
+  // services.authz, so the getter resolves it at call time.
+  let authzForServices: { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
+  const pluginServices = createPluginServices({
+    config,
+    storage,
+    root,
+    getAuthz: () => authzForServices,
+  });
   const hooks = createHookRegistry({ config, storage, services: pluginServices });
 
   // 5a. Pre-registered plugins (e.g. from @dune/testing harness) — registered
@@ -564,6 +572,7 @@ export async function bootstrap(
       }, storage);
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
+      authzForServices = { authz: bundle.authz, adapter: bundle.adapter };
       // Admin-user tuples are bootstrapped by @dune/plugin-admin's mount() hook
       // after it creates the UserManager. Core only creates the empty system here.
     } catch (err) {
