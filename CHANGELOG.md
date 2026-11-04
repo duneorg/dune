@@ -13,7 +13,7 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
-- **`--site <id>` for multisite installs.** In a multisite install every site has
+- **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one
   `--root`. `dune users:passwd alice --site blog` now resolves `blog` from
   `config/sites.yaml` (relative roots resolve against `config/`, as the server
