@@ -39,11 +39,21 @@ import { createDbUserStore } from "../auth/user-store-db.ts";
 import { changePassword, WeakPasswordError } from "../auth/passwords.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
-import { createSessionManager, createSessionStore } from "../session/mod.ts";
+import {
+  createSessionManager,
+  createSessionStore,
+  resolveSessionPrefix,
+} from "../session/mod.ts";
 import { acquirePassword, PasswordInputError } from "./password-input.ts";
 import type { PasswordInputOptions } from "./password-input.ts";
 
-export type UsersPasswdOptions = PasswordInputOptions;
+export interface UsersPasswdOptions extends PasswordInputOptions {
+  /**
+   * Multisite site id (`--site`). Selects the same Redis/KV session key prefix
+   * the running site uses, so revocation reaches its sessions.
+   */
+  siteId?: string;
+}
 
 interface Context {
   userStore: UserStore;
@@ -52,7 +62,7 @@ interface Context {
   closeDb: () => Promise<void>;
 }
 
-async function openContext(root: string): Promise<Context> {
+async function openContext(root: string, siteId?: string): Promise<Context> {
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({
     storage,
@@ -83,6 +93,7 @@ async function openContext(root: string): Promise<Context> {
       ? Deno.env.get(sessionCfg.url.slice(1))
       : sessionCfg.url)
     : undefined;
+  const prefix = resolveSessionPrefix(sessionCfg?.prefix, siteId);
   const lifetimeMs = 24 * 60 * 60 * 1000; // irrelevant for deletion
   const managers = await Promise.all(
     ["sessions", "site-sessions"].map(async (dir) =>
@@ -93,6 +104,7 @@ async function openContext(root: string): Promise<Context> {
           storage,
           sessionsDir: `${runtimeDir}/${dir}`,
           lifetimeMs,
+          prefix,
         }),
         lifetimeMs,
       )
@@ -125,7 +137,7 @@ export async function usersPasswdCommand(
 
   console.log(`🏜️  Dune — users:passwd\n`);
 
-  const ctx = await openContext(root);
+  const ctx = await openContext(root, opts.siteId);
   try {
     const needle = identifier.trim();
     const user = needle.includes("@")

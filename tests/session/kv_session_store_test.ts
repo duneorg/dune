@@ -113,3 +113,30 @@ Deno.test("KVSessionStore: cleanup returns 0 (KV handles TTL natively)", async (
   assertEquals(await store.cleanup(), 0);
   kv.close();
 });
+
+// ── key prefix (multisite / session_store.prefix) ────────────────────────────
+
+Deno.test("KVSessionStore: no prefix keeps the original keys", async () => {
+  const kv = await Deno.openKv(":memory:");
+  const store = createKVSessionStore({ kv, lifetimeMs: 3600 * 1000 });
+  await store.set(makeSession({ id: "s1", userId: "u1" }));
+  assertEquals((await kv.get(["sessions", "s1"])).value !== null, true);
+  assertEquals((await kv.get(["sessions_by_user", "u1", "s1"])).value, true);
+  kv.close();
+});
+
+Deno.test("KVSessionStore: two prefixes in one database do not share sessions or revocation", async () => {
+  const kv = await Deno.openKv(":memory:");
+  const blog = createKVSessionStore({ kv, lifetimeMs: 3600 * 1000, prefix: "dune:blog" });
+  const shop = createKVSessionStore({ kv, lifetimeMs: 3600 * 1000, prefix: "dune:shop" });
+  await blog.set(makeSession({ id: "b1", userId: "u1" }));
+  await shop.set(makeSession({ id: "s1", userId: "u1" }));
+
+  assertEquals(await shop.get("b1"), null);
+  assertEquals(await blog.get("s1"), null);
+
+  await blog.deleteByUserId("u1");
+  assertEquals(await blog.get("b1"), null);
+  assertNotEquals(await shop.get("s1"), null);
+  kv.close();
+});

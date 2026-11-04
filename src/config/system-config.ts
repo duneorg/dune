@@ -193,6 +193,14 @@ export interface SystemConfig {
      * @example "redis://localhost:6379"
      */
     url?: string;
+    /**
+     * Key namespace for the "redis" and "kv" backends: 1-64 characters from
+     * `A-Za-z0-9_.:-`. Sites that share one Redis (or one KV database) share
+     * sessions unless their prefixes differ. In multisite it defaults to
+     * `dune:<site id>`; single-site installs default to the original unprefixed
+     * keys. Setting it changes the keys, so existing sessions are signed out.
+     */
+    prefix?: string;
   };
   /** Performance metrics collection settings. */
   metrics?: {

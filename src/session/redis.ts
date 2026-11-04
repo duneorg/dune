@@ -5,6 +5,9 @@
  *   dune:session:{id}          — JSON-encoded Session (with EX TTL)
  *   dune:session_user:{userId} — Redis Set of session IDs for the user
  *
+ * With a `prefix` (multisite, or `session_store.prefix`) the leading `dune`
+ * becomes the prefix, e.g. `dune:blog:session:{id}`; without one the keys above
+ * are used unchanged. *
  * The store connects lazily — the Redis client is not contacted until the
  * first method call. This avoids blocking bootstrap when Redis is not yet
  * available or when the store is configured but not exercised in tests.
@@ -33,23 +36,25 @@ export interface RedisSessionStoreConfig {
   client: RedisClient;
   /** Session lifetime in seconds — used as the Redis EX TTL. */
   lifetimeSec: number;
+  /** Key namespace replacing the leading `dune`. Omit for the original keys. */
+  prefix?: string;
 }
 
-const SESSION_PREFIX = "dune:session:";
-const USER_SET_PREFIX = "dune:session_user:";
+const DEFAULT_PREFIX = "dune";
 
 /**
  * Create a Redis-backed session store using a pre-constructed Redis client.
  */
 export function createRedisSessionStore(config: RedisSessionStoreConfig): SessionStore {
   const { client, lifetimeSec } = config;
+  const base = config.prefix ?? DEFAULT_PREFIX;
 
   function sessionKey(id: string): string {
-    return `${SESSION_PREFIX}${id}`;
+    return `${base}:session:${id}`;
   }
 
   function userSetKey(userId: string): string {
-    return `${USER_SET_PREFIX}${userId}`;
+    return `${base}:session_user:${userId}`;
   }
 
   function ttlFor(session: Session): number {
@@ -126,6 +131,7 @@ export function createRedisSessionStore(config: RedisSessionStoreConfig): Sessio
 export async function createRedisSessionStoreFromUrl(
   url: string,
   lifetimeSec: number,
+  prefix?: string,
 ): Promise<SessionStore> {
   // Dynamic import so ioredis is not bundled when the Redis backend is not used.
   // Cast through unknown because the ioredis type declaration uses a class
@@ -134,5 +140,5 @@ export async function createRedisSessionStoreFromUrl(
   const mod = await import("npm:ioredis@^5");
   const RedisClass = (mod.default ?? mod) as unknown as new (url: string) => RedisClient;
   const client = new RedisClass(url);
-  return createRedisSessionStore({ client, lifetimeSec });
+  return createRedisSessionStore({ client, lifetimeSec, prefix });
 }

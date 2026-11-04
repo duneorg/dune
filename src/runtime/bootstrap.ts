@@ -47,6 +47,7 @@ import { CdnManager } from "../cdn/manager.ts";
 import { createContentApi, type ContentApi } from "../content/api.ts";
 import { resolve, toFileUrl } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
+import { resolveSessionPrefix } from "../session/prefix.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
@@ -183,6 +184,11 @@ export interface BootstrapOptions {
    */
   basePath?: string;
   /**
+   * This site's id in `config/sites.yaml` (multisite). Scopes the Redis/KV
+   * session keys to the site unless `system.session_store.prefix` is set.
+   */
+  siteId?: string;
+  /**
    * When true, disables the Secure cookie flag so session cookies work over
    * plain HTTP in local dev. Defaults to false (production-safe).
    * Also honoured when DUNE_ENV=dev is set in the environment.
@@ -262,6 +268,15 @@ export async function bootstrap(
 
   if (basePath) {
     config.site.basePath = basePath;
+  }
+
+  // Multisite: scope shared session backends (Redis, KV) to this site.
+  const sessionPrefix = resolveSessionPrefix(
+    config.system.session_store?.prefix,
+    options.siteId,
+  );
+  if (sessionPrefix !== undefined) {
+    config.system.session_store = { ...config.system.session_store, prefix: sessionPrefix };
   }
 
   // Apply test/harness config overrides after all file-based config is loaded.

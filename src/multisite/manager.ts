@@ -110,6 +110,7 @@ export class MultisiteManager {
         buildSearch: true,
         sharedThemesDir,
         basePath: entry.pathPrefix,
+        siteId: entry.id,
       });
 
       // Create a per-site Fresh app (admin + content in one handler).

@@ -1,7 +1,7 @@
 /**
  * Deno KV-backed session store.
  *
- * Sessions are keyed by `["sessions", id]` with a TTL so Deno KV handles
+ * Sessions are keyed by `sKey(id)` (`[prefix, "sessions", id]` with a prefix) with a TTL so Deno KV handles
  * expiry natively. A secondary index at `["sessions_by_user", userId, id]`
  * (also with TTL) supports efficient deleteByUserId without a full scan.
  *
@@ -17,6 +17,11 @@ export interface KVSessionStoreConfig {
   kv: Deno.Kv;
   /** Session lifetime in milliseconds (used as the KV TTL). */
   lifetimeMs: number;
+  /**
+   * Key namespace, prepended to every key. Omit for the original keys. Sites
+   * sharing one KV database (multisite in one process) need distinct prefixes.
+   */
+  prefix?: string;
 }
 
 /**
@@ -24,14 +29,18 @@ export interface KVSessionStoreConfig {
  */
 export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore {
   const { kv, lifetimeMs } = config;
+  const ns: string[] = config.prefix ? [config.prefix] : [];
+  const sKey = (id: string): Deno.KvKey => [...ns, "sessions", id];
+  const uKey = (userId: string, id?: string): Deno.KvKey =>
+    id === undefined ? [...ns, "sessions_by_user", userId] : [...ns, "sessions_by_user", userId, id];
 
   async function get(id: string): Promise<Session | null> {
-    const result = await kv.get<Session>(["sessions", id]);
+    const result = await kv.get<Session>(sKey(id));
     if (result.value === null) return null;
 
     // Belt-and-suspenders expiry check in case TTL is not enforced yet.
     if (result.value.expiresAt < Date.now()) {
-      await kv.delete(["sessions", id]);
+      await kv.delete(sKey(id));
       return null;
     }
 
@@ -42,38 +51,38 @@ export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore
     const ttlMs = Math.max(0, session.expiresAt - Date.now());
     // Write the session data and the user index entry atomically.
     await kv.atomic()
-      .set(["sessions", session.id], session, { expireIn: ttlMs || lifetimeMs })
-      .set(["sessions_by_user", session.userId, session.id], true, { expireIn: ttlMs || lifetimeMs })
+      .set(sKey(session.id), session, { expireIn: ttlMs || lifetimeMs })
+      .set(uKey(session.userId, session.id), true, { expireIn: ttlMs || lifetimeMs })
       .commit();
   }
 
   async function del(id: string): Promise<void> {
     // Retrieve to get userId for index cleanup, then delete both entries.
-    const result = await kv.get<Session>(["sessions", id]);
+    const result = await kv.get<Session>(sKey(id));
     if (result.value !== null) {
       await kv.atomic()
-        .delete(["sessions", id])
-        .delete(["sessions_by_user", result.value.userId, id])
+        .delete(sKey(id))
+        .delete(uKey(result.value.userId, id))
         .commit();
     } else {
-      await kv.delete(["sessions", id]);
+      await kv.delete(sKey(id));
     }
   }
 
   async function deleteByUserId(userId: string): Promise<void> {
     // List all entries in the user index prefix and delete each.
-    const iter = kv.list<boolean>({ prefix: ["sessions_by_user", userId] });
+    const iter = kv.list<boolean>({ prefix: uKey(userId) });
     const ops = kv.atomic();
     const sessionIds: string[] = [];
 
     for await (const entry of iter) {
-      const sessionId = entry.key[2] as string;
+      const sessionId = entry.key[entry.key.length - 1] as string;
       sessionIds.push(sessionId);
-      ops.delete(["sessions_by_user", userId, sessionId]);
+      ops.delete(uKey(userId, sessionId));
     }
 
     for (const sid of sessionIds) {
-      ops.delete(["sessions", sid]);
+      ops.delete(sKey(sid));
     }
 
     await ops.commit();

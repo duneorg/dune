@@ -43,6 +43,21 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   already did, through one shared helper. Only the path is ever returned, so a
   forged Host cannot redirect off-site.
 
+- **Multisite sites no longer share Redis/KV sessions (#93).** The Redis and
+  Deno KV session stores used fixed keys (`dune:session:<id>`,
+  `dune:session_user:<userId>`; `["sessions", id]`), so sites pointing at the
+  same Redis or running in one process on the same KV database shared one
+  session namespace: revoking a user on one site revoked them on every site
+  holding the same user id, and a session minted by one site was accepted by the
+  others. In multisite the keys are now scoped by site id (`dune:<site id>`).
+  `system.session_store.prefix` sets the namespace explicitly (1-64 characters
+  from `A-Za-z0-9_.:-`). Single-site installs keep the original keys, so
+  nothing changes for them. **Upgrade note:** a multisite install using Redis or
+  KV sessions signs its users out once. `dune users:passwd` takes the same
+  prefix (`siteId`, set by `--site`). The file-based
+  session store was never affected. `@dune/plugin-admin` needs a follow-up
+  release to pass the prefix for its own admin sessions.
+
 ## [0.35.3] — 2026-11-03
 
 ### Added

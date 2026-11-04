@@ -259,3 +259,43 @@ Deno.test("RedisSessionStore: cleanup returns 0 (Redis handles TTL natively)", a
   await store.set(s);
   assertEquals(await store.cleanup(), 0);
 });
+
+// ── key prefix (multisite / session_store.prefix) ────────────────────────────
+
+Deno.test("RedisSessionStore: no prefix keeps the original keys", async () => {
+  const client = new FakeRedisClient();
+  const store = createRedisSessionStore({ client, lifetimeSec: 3600 });
+  await store.set(makeSession({ id: "s1", userId: "u1" }));
+  assertEquals([...client.strings.keys()], ["dune:session:s1"]);
+  assertEquals([...client.sets.keys()], ["dune:session_user:u1"]);
+});
+
+Deno.test("RedisSessionStore: a prefix replaces the leading 'dune'", async () => {
+  const client = new FakeRedisClient();
+  const store = createRedisSessionStore({
+    client,
+    lifetimeSec: 3600,
+    prefix: "dune:blog",
+  });
+  await store.set(makeSession({ id: "s1", userId: "u1" }));
+  assertEquals([...client.strings.keys()], ["dune:blog:session:s1"]);
+  assertEquals([...client.sets.keys()], ["dune:blog:session_user:u1"]);
+});
+
+Deno.test("RedisSessionStore: two prefixes on one Redis do not share sessions or revocation", async () => {
+  const client = new FakeRedisClient();
+  const blog = createRedisSessionStore({ client, lifetimeSec: 3600, prefix: "dune:blog" });
+  const shop = createRedisSessionStore({ client, lifetimeSec: 3600, prefix: "dune:shop" });
+  // The same user id on both sites (users copied between sites).
+  await blog.set(makeSession({ id: "b1", userId: "u1" }));
+  await shop.set(makeSession({ id: "s1", userId: "u1" }));
+
+  // A session minted on one site is not accepted by the other.
+  assertEquals(await shop.get("b1"), null);
+  assertEquals(await blog.get("s1"), null);
+
+  // Revoking the user on one site leaves the other site's session alone.
+  await blog.deleteByUserId("u1");
+  assertEquals(await blog.get("b1"), null);
+  assertNotEquals(await shop.get("s1"), null);
+});
