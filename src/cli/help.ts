@@ -146,6 +146,8 @@ Commands:
 Options:
   --port <n>          Server port (default: 3000)
   --root <dir>        Site root directory (default: .)
+  --site <id>         Multisite: run against that site of config/sites.yaml
+                      (required for users:* / authz:sign / migrate:users et al.)
   --env-file[=path]   Load KEY=VALUE pairs from a dotenv file (default: .env)
                       into the environment before startup. Off by default —
                       nothing is auto-loaded without this flag. Values already
