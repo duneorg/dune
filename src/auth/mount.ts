@@ -13,6 +13,8 @@
  */
 
 // deno-lint-ignore no-explicit-any
+import { createEmailProvider } from "../email/providers/mod.ts";
+import { resolveDataDir } from "../forms/config.ts";
 import type { App } from "fresh";
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalUserStore } from "./user-store.ts";
@@ -76,8 +78,8 @@ export async function mountDuneAuth(
   const authConfig: SiteConfig["auth"] = config.site.auth;
 
   const adminCfg = config.admin ??
-    { data_dir: "data", runtime_dir: ".dune/admin" };
-  const dataDir = adminCfg.data_dir ?? "data";
+    { runtime_dir: ".dune/admin" };
+  const dataDir = resolveDataDir(config);
   const runtimeDir = adminCfg.runtime_dir ?? ".dune/admin";
 
   const mode = authConfig?.mode ?? "dune";
@@ -254,7 +256,8 @@ export async function mountDuneAuth(
   const magicSecret = envSecret ?? "";
 
   // ── Email sender ────────────────────────────────────────────────────────────
-  // Reuse the admin SMTP config if present, same pattern as admin/email.ts
+  // Magic links go out through the same `site.email` provider as every other
+  // email the site sends (forms notifications, jobs).
   let sendEmail:
     | ((
       to: string,
@@ -263,26 +266,13 @@ export async function mountDuneAuth(
       html: string,
     ) => Promise<void>)
     | undefined;
-  if (magicEnabled) {
-    const smtpCfg = config.admin?.notifications?.email?.smtp;
-    if (smtpCfg) {
-      // Lazy import to avoid pulling in nodemailer when not used
-      const { default: nodemailer } = await import("nodemailer");
-      const transporter = nodemailer.createTransport({
-        host: smtpCfg.host,
-        port: smtpCfg.port,
-        secure: smtpCfg.secure,
-        auth: {
-          user: expandEnv(smtpCfg.user),
-          pass: expandEnv(smtpCfg.pass),
-        },
-      });
-      const from = config.admin?.notifications?.email?.from ??
-        `noreply@${new URL(siteUrl).hostname}`;
-      sendEmail = async (to, subject, text, html) => {
-        await transporter.sendMail({ from, to, subject, text, html });
-      };
-    }
+  if (magicEnabled && config.site.email?.provider) {
+    const siteEmail = config.site.email;
+    const provider = createEmailProvider(siteEmail);
+    const from = siteEmail.from ?? `noreply@${new URL(siteUrl).hostname}`;
+    sendEmail = async (to, subject, text, html) => {
+      await provider.send({ from, to, subject, text, html });
+    };
   }
 
   // ── Magic token store (single-use enforcement) ─────────────────────────────

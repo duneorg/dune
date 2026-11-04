@@ -16,6 +16,7 @@
  * line-based edit can't handle make the command exit without writing.
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { parse as parseYaml } from "@std/yaml";
 import { join } from "@std/path";
 import { createStorage } from "../storage/mod.ts";
@@ -39,8 +40,7 @@ export async function pluginListCommand(root: string): Promise<void> {
   });
 
   const hooks = createHookRegistry({ config, storage });
-  const adminCfg = config.admin ?? { data_dir: "data" };
-  await loadPluginAdminConfigs(config, storage, adminCfg.data_dir ?? "data");
+  await loadPluginAdminConfigs(config, storage, resolveDataDir(config));
   await loadPlugins({ config, hooks, storage, root });
 
   const plugins = hooks.plugins();

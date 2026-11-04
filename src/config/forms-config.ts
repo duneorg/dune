@@ -24,18 +24,6 @@ export interface FormEmailNotificationConfig {
   subject?: string;
   /** From address. Defaults to `site.email.from`. */
   from?: string;
-  /**
-   * Deprecated: SMTP credentials private to form notifications. Configure
-   * `site.email` instead; it serves every email the site sends.
-   */
-  smtp?: {
-    host: string;
-    port: number;
-    secure: boolean;
-    user: string;
-    /** Supports "$ENV_VAR" expansion */
-    pass: string;
-  };
 }
 
 /** Notifications fired after a form submission is stored. */

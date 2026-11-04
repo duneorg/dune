@@ -2,6 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
 import {
   findLegacyKeys,
+  findMovedKeys,
   renameLegacyKeysInText,
 } from "../../src/config/legacy-keys.ts";
 import { loadConfig } from "../../src/config/loader.ts";
@@ -132,4 +133,32 @@ Deno.test("loadConfig accepts the migrated keys", async () => {
   });
   assertEquals((cfg.site as any).auth.user_store, "db");
   assertEquals(cfg.admin?.max_revisions, 7);
+});
+
+Deno.test("findMovedKeys: the removed forms aliases, admin.data_dir and the smtp block", () => {
+  const system = findMovedKeys(
+    "system",
+    parseYaml("admin:\n  honeypot: x\n  notifications: {}\n  incoming_webhooks: []\n  data_dir: d\n  dataDir: d\n  enabled: true\n"),
+  );
+  assertEquals(
+    system.map((k) => k.path).sort(),
+    ["admin.dataDir", "admin.data_dir", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
+  );
+  const site = findMovedKeys(
+    "site",
+    parseYaml("forms:\n  notifications:\n    email:\n      to: a@b.c\n      smtp: {host: h}\n"),
+  );
+  assertEquals(site.map((k) => k.path), ["forms.notifications.email.smtp"]);
+  assertEquals(findMovedKeys("system", parseYaml("data_dir: var\nwebhooks:\n  incoming: []\n")), []);
+});
+
+Deno.test("loadConfig refuses a moved key and says where it went", async () => {
+  let message = "";
+  try {
+    await load({ "config/system.yaml": "admin:\n  data_dir: old\n" });
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  assertStringIncludes(message, "admin.data_dir → data_dir at the top level of system.yaml");
+  assertStringIncludes(message, "Move the moved or removed keys by hand");
 });

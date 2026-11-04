@@ -12,6 +12,7 @@
  *   dune migrate:auth-to-db --dry-run    # report what would be migrated, no writes
  */
 
+import { resolveDataDir } from "../forms/config.ts";
 import { join, resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
@@ -35,7 +36,7 @@ export async function migrateAuthToDbCommand(
 
   const storage = createStorage({ rootDir: root });
   const config = await loadConfig({ storage, rootDir: root, skipConfigTs: true });
-  const dataDir = join(root, config.admin?.data_dir ?? "data");
+  const dataDir = join(root, resolveDataDir(config));
 
   const dbAdapter = await createDbAdapter();
 

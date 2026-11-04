@@ -171,13 +171,15 @@ Deno.test("onSearchEngineCreate: a handler can provide an alternative engine", a
     storage: makeStorage(),
   });
   hooks.on<SearchEngineCreateContext>("onSearchEngineCreate", (ctx) => {
-    ctx.data.engine = fakeEngine;
+    ctx.data.register("fake", fakeEngine);
+    ctx.data.setActiveEngine("fake");
   });
 
-  const result = await hooks.fire<SearchEngineCreateContext>(
+  const registered = new Map<string, SearchEngine>();
+  let active: string | undefined;
+  await hooks.fire<SearchEngineCreateContext>(
     "onSearchEngineCreate",
     {
-      engine: null,
       pages: [],
       injectedRecords: [],
       storage: makeStorage(),
@@ -185,25 +187,27 @@ Deno.test("onSearchEngineCreate: a handler can provide an alternative engine", a
       config: {} as DuneConfig,
       formats: makeFormats(),
       loadText: () => Promise.resolve(""),
-      register: () => {},
-      setActiveEngine: () => {},
+      register: (name, eng) => registered.set(name, eng),
+      setActiveEngine: (name) => {
+        active = name;
+      },
     },
   );
 
-  assertEquals(result.engine, fakeEngine);
-  const hits = await result.engine!.search("anything");
+  assertEquals(active, "fake");
+  const hits = await registered.get("fake")!.search("anything");
   assertEquals(hits[0].excerpt, "from fake engine");
 });
 
-Deno.test("onSearchEngineCreate: engine stays null when no handler provides one", async () => {
+Deno.test("onSearchEngineCreate: nothing is registered when no handler provides an engine", async () => {
   const hooks = createHookRegistry({
     config: {} as DuneConfig,
     storage: makeStorage(),
   });
-  const result = await hooks.fire<SearchEngineCreateContext>(
+  const registered = new Map<string, SearchEngine>();
+  await hooks.fire<SearchEngineCreateContext>(
     "onSearchEngineCreate",
     {
-      engine: null,
       pages: [],
       injectedRecords: [],
       storage: makeStorage(),
@@ -211,9 +215,9 @@ Deno.test("onSearchEngineCreate: engine stays null when no handler provides one"
       config: {} as DuneConfig,
       formats: makeFormats(),
       loadText: () => Promise.resolve(""),
-      register: () => {},
+      register: (name, eng) => registered.set(name, eng),
       setActiveEngine: () => {},
     },
   );
-  assertEquals(result.engine, null);
+  assertEquals(registered.size, 0);
 });

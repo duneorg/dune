@@ -6,6 +6,11 @@
  * `src/config/legacy-keys.ts` for the list). Comments, order and formatting
  * are preserved; only the key names change. Idempotent.
  *
+ * Settings that moved to another file or section (the old `admin.honeypot`,
+ * `admin.notifications`, `admin.incoming_webhooks`, `admin.data_dir` and the
+ * `smtp:` block of form notifications) are reported for a manual move and make
+ * the command exit 1.
+ *
  * Keys it cannot reach (flow style `{a: 1}`, quoted keys, mappings inside list
  * items) are reported and the file is left untouched so you can edit it by
  * hand.
@@ -20,7 +25,9 @@ import { parse as parseYaml } from "@std/yaml";
 import {
   type ConfigFileKind,
   describeLegacyKeys,
+  describeMovedKeys,
   findLegacyKeys,
+  findMovedKeys,
   renameLegacyKeysInText,
 } from "../config/legacy-keys.ts";
 
@@ -53,6 +60,7 @@ export async function migrateConfigCommand(
 
   let changed = 0;
   let unresolvedFiles = 0;
+  let movedFiles = 0;
   for (const { path, kind } of await candidateFiles(root)) {
     let text: string;
     try {
@@ -61,7 +69,15 @@ export async function migrateConfigCommand(
       continue; // file does not exist
     }
     const rel = path.slice(root.length + 1);
-    const legacy = findLegacyKeys(kind, parseYaml(text));
+    const parsedBefore = parseYaml(text);
+    const moved = findMovedKeys(kind, parsedBefore);
+    if (moved.length > 0) {
+      movedFiles++;
+      console.error(
+        `  ✗ ${rel}: move by hand — ${describeMovedKeys(moved)}`,
+      );
+    }
+    const legacy = findLegacyKeys(kind, parsedBefore);
     if (legacy.length === 0) continue;
 
     const result = renameLegacyKeysInText(kind, text);
@@ -79,10 +95,10 @@ export async function migrateConfigCommand(
     if (!opts.dryRun) await Deno.writeTextFile(path, result.text);
   }
 
-  if (changed === 0 && unresolvedFiles === 0) {
+  if (changed === 0 && unresolvedFiles === 0 && movedFiles === 0) {
     console.log("  Nothing to migrate — all config keys are already snake_case.");
   } else if (opts.dryRun && changed > 0) {
     console.log("\n  Dry run: nothing written. Re-run without --dry-run to apply.");
   }
-  if (unresolvedFiles > 0) Deno.exit(1);
+  if (unresolvedFiles > 0 || movedFiles > 0) Deno.exit(1);
 }

@@ -63,7 +63,6 @@ export function registerPluginPublicRoutes(
   registeredFor.add(ctx);
   const reservedPrefixes = [
     options.adminPrefix,
-    "/api/contact",
     "/api/forms",
     "/api/webhook",
     "/api/inline-edit",

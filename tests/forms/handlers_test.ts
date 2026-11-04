@@ -12,7 +12,6 @@ import { createSubmissionManager } from "../../src/forms/submissions.ts";
 import {
   createSubmissionRateLimiter,
   type FormsRuntime,
-  handleContactSubmission,
   handleFormSchema,
   handleFormSubmission,
   handleIncomingWebhook,
@@ -268,23 +267,6 @@ Deno.test("submit: uploads with disallowed extensions are skipped, allowed ones 
   assertEquals(res.status, 200);
   const [sub] = await h.rt.submissions.list("contact");
   assertEquals(sub.files?.map((f) => f.name), ["ok.pdf"]);
-});
-
-// ── Legacy contact route ────────────────────────────────────────────────────
-
-Deno.test("contact (deprecated): stores under form_name, sanitising it", async () => {
-  const h = harness();
-  const ok = await handleContactSubmission(h.rt, postJson("/api/contact", { name: "A", email: "a@b.c", form_name: "sales" }));
-  assertEquals(ok.status, 200);
-  assertEquals((await h.rt.submissions.list("sales")).length, 1);
-
-  await handleContactSubmission(h.rt, postJson("/api/contact", { name: "A", form_name: "../../etc" }));
-  assertEquals((await h.rt.submissions.list("contact")).length, 1);
-});
-
-Deno.test("contact (deprecated): needs a name or an email", async () => {
-  const h = harness();
-  assertEquals((await handleContactSubmission(h.rt, postJson("/api/contact", { message: "x" }))).status, 400);
 });
 
 // ── Incoming webhook ────────────────────────────────────────────────────────

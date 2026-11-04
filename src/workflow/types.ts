@@ -52,28 +52,6 @@ export interface WorkflowConfig {
   transitions: WorkflowTransition[];
 }
 
-/**
- * @deprecated Use WorkflowTransition instead.
- * Kept for backward compatibility with code that references StatusTransition.
- */
-export interface StatusTransition {
-  from: ContentStatus;
-  to: ContentStatus;
-  /** Required permission to perform this transition */
-  permission: string;
-}
-
-/** @deprecated Use WorkflowConfig.transitions instead. */
-export const TRANSITIONS: StatusTransition[] = [
-  { from: "draft", to: "in_review", permission: "pages.update" },
-  { from: "draft", to: "published", permission: "pages.update" },
-  { from: "in_review", to: "published", permission: "pages.update" },
-  { from: "in_review", to: "draft", permission: "pages.update" },
-  { from: "published", to: "archived", permission: "pages.update" },
-  { from: "published", to: "draft", permission: "pages.update" },
-  { from: "archived", to: "draft", permission: "pages.update" },
-];
-
 /** Scheduled action */
 export interface ScheduledAction {
   /** Unique ID */

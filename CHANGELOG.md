@@ -11,6 +11,35 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Removed — BREAKING
+
+Everything that was marked deprecated is gone, so nothing deprecated is frozen
+into 1.0. A config file that still uses a removed key refuses to load and says
+where the setting lives now (see `dune migrate:config`, which reports these too).
+
+- **The `admin.*` form settings.** `admin.honeypot` → `forms.honeypot` (site.yaml),
+  `admin.notifications` → `forms.notifications` (site.yaml),
+  `admin.incoming_webhooks` → `webhooks.incoming` (system.yaml), `admin.data_dir`
+  → `data_dir` at the top level of system.yaml. Every CLI command and the
+  runtime now resolve the data directory from `system.data_dir` through
+  `resolveDataDir()` (`@dune/core/forms`); before, several commands
+  (`users:create`, `users:grant-role`, `authz:sign`, the `migrate:*` user and
+  auth migrations) read only `admin.data_dir` and ignored `system.data_dir`.
+- **The legacy `smtp:` block in form notifications.** Use `site.email`.
+  Magic-link login emails also go through `site.email` now (they used to need
+  the legacy `admin.notifications.email.smtp`); a site without
+  `site.email.provider` behaves as before (no sender, link logged in dev).
+- **`POST /api/contact`.** Define `forms/contact.yaml` and post to
+  `/api/forms/contact`. `/api/contact` is no longer reserved from plugin routes.
+- **Job auto-discovery.** Files in `jobs/` are never loaded implicitly. Without a
+  `jobs:` list in site.yaml no job runs, and a warning (`jobs.undeclared`) is
+  logged if `jobs/` contains `.ts` files. `jobs: []` still disables jobs silently.
+- **The single-engine search path.** `SearchEngineCreateContext.engine` is gone;
+  a search plugin calls `register(name, engine)` and `setActiveEngine(name)`.
+- **`StatusTransition` and `TRANSITIONS`** (use `WorkflowTransition` /
+  `WorkflowConfig.transitions`), and the unused `AdminNotificationsConfig` and
+  `SmtpNotificationConfig` types.
+
 ### Changed — BREAKING
 
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase

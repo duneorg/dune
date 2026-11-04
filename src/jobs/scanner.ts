@@ -20,23 +20,19 @@
  * normalisation containment — paths that escape the root (e.g. `../../etc/`)
  * are rejected at load time with an error rather than silently loaded.
  *
- * ## Auto-discovery fallback (legacy, deprecated)
+ * ## No auto-discovery
  *
- * When `declaredPaths` is `undefined`, all `*.ts` files under `{root}/jobs/`
- * are imported automatically. This behaviour is deprecated: any file written
- * to `jobs/` is executed within one scheduler tick, so write access to that
- * directory is equivalent to remote code execution.
- *
- * Migrate by adding a `jobs:` key to `site.yaml`:
+ * Jobs are loaded only from the explicit list. When `declaredPaths` is
+ * `undefined` no job runs, and a warning is logged if a `jobs/` directory with
+ * `*.ts` files exists, because any file written to `jobs/` used to be executed
+ * within one scheduler tick (write access to that directory was equivalent to
+ * remote code execution). Declare the files in `site.yaml`:
  *
  *   site:
  *     jobs:
  *       - ./jobs/weekly-digest.ts
  *
  * Set `jobs: []` to disable all background jobs with no warning.
- *
- * ⚠️  SECURITY: auto-discovery is retained only for backward compatibility.
- * New deployments should always use the explicit list.
  */
 
 import { isAbsolute, join, normalize, resolve, SEPARATOR } from "@std/path";
@@ -135,7 +131,8 @@ async function loadJobFile(filePath: string, displayName: string): Promise<JobDe
  * @param root          Absolute path to the project root.
  * @param declaredPaths Explicit job file list from `config.site.jobs`.
  *                      - `string[]` (even empty) → allowlist mode; only listed files are loaded.
- *                      - `undefined` → legacy auto-discovery with a deprecation warning.
+ *                      - `undefined` → no jobs; warns if a `jobs/` directory with
+ *                        `*.ts` files exists (they are not loaded automatically).
  */
 export async function scanJobs(
   root: string,
@@ -144,7 +141,8 @@ export async function scanJobs(
   if (declaredPaths !== undefined) {
     return loadDeclared(root, declaredPaths);
   }
-  return loadAutoDiscovered(root);
+  await warnIfUndeclaredJobsDir(root);
+  return [];
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────────
@@ -163,43 +161,20 @@ async function loadDeclared(root: string, declared: string[]): Promise<JobDefini
   return definitions;
 }
 
-/** Auto-discover all *.ts files under {root}/jobs/ — legacy fallback. */
-async function loadAutoDiscovered(root: string): Promise<JobDefinition[]> {
+/** Warn when a jobs/ directory holds files that will not be loaded. */
+async function warnIfUndeclaredJobsDir(root: string): Promise<void> {
   const jobsDir = join(root, "jobs");
-
-  // Only emit the deprecation warning when the directory actually exists —
-  // sites with no jobs/ should not see noise.
-  let hasJobsDir = false;
-  try {
-    const stat = await Deno.stat(jobsDir);
-    hasJobsDir = stat.isDirectory;
-  } catch { /* not found — fine */ }
-
-  if (!hasJobsDir) return [];
-
-  logger.warn("jobs.autodiscovery.deprecated", {
-    reason:
-      "Auto-discovery is deprecated and will be removed in a future release. Any file " +
-      "written to jobs/ is executed automatically — this is a code-execution risk. Add an " +
-      "explicit list to site.yaml (site.jobs: [./jobs/your-job.ts]) to silence this warning, " +
-      "or set jobs: [] to disable all background jobs.",
-  });
-
-  let entries: Deno.DirEntry[] = [];
   try {
     for await (const entry of Deno.readDir(jobsDir)) {
-      if (entry.isFile && entry.name.endsWith(".ts")) entries.push(entry);
+      if (entry.isFile && entry.name.endsWith(".ts")) {
+        logger.warn("jobs.undeclared", {
+          reason:
+            "jobs/ contains .ts files but site.yaml has no `jobs:` list, so no background " +
+            "jobs run. Jobs are no longer discovered automatically; declare them " +
+            "(site.jobs: [./jobs/your-job.ts]) or set jobs: [] to silence this warning.",
+        });
+        return;
+      }
     }
-  } catch {
-    return [];
-  }
-
-  entries = entries.sort((a, b) => a.name.localeCompare(b.name));
-
-  const definitions: JobDefinition[] = [];
-  for (const entry of entries) {
-    const def = await loadJobFile(join(jobsDir, entry.name), entry.name);
-    if (def) definitions.push(def);
-  }
-  return definitions;
+  } catch { /* no jobs/ directory — fine */ }
 }

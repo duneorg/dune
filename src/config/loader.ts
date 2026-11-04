@@ -9,7 +9,12 @@
  *   5. Page frontmatter (handled at render time, not here)
  */
 
-import { describeLegacyKeys, findLegacyKeys } from "./legacy-keys.ts";
+import {
+  describeLegacyKeys,
+  describeMovedKeys,
+  findLegacyKeys,
+  findMovedKeys,
+} from "./legacy-keys.ts";
 import { parse as parseYaml } from "@std/yaml";
 import { join, normalize, resolve } from "@std/path";
 import { ConfigError } from "../core/errors.ts";
@@ -96,19 +101,21 @@ async function loadYamlFile(
     const kind = path.endsWith("/site.yaml") ? "site" : path.endsWith("/system.yaml") ? "system" : null;
     if (kind) {
       const legacy = findLegacyKeys(kind, parsed);
-      if (legacy.length > 0) {
+      const moved = findMovedKeys(kind, parsed);
+      if (legacy.length > 0 || moved.length > 0) {
+        const parts = [
+          legacy.length > 0 ? `renamed to snake_case: ${describeLegacyKeys(legacy)}` : "",
+          moved.length > 0 ? `moved or removed: ${describeMovedKeys(moved)}` : "",
+        ].filter(Boolean);
+        const hints = [
+          legacy.length > 0 ? "Run `dune migrate:config` to rename the renamed keys." : "",
+          moved.length > 0 ? "Move the moved or removed keys by hand." : "",
+        ].filter(Boolean);
         throw new ConfigError(
-          `Config keys were renamed to snake_case: ${describeLegacyKeys(legacy)}. ` +
-            `Run \`dune migrate:config\` to update the file.`,
+          `Config keys changed: ${parts.join("; ")}. ${hints.join(" ")}`,
           path,
         );
       }
-    }
-    if (typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new ConfigError(
-        `Expected an object but got ${Array.isArray(parsed) ? "an array" : typeof parsed}`,
-        path,
-      );
     }
     return parsed as Record<string, unknown>;
   } catch (err) {

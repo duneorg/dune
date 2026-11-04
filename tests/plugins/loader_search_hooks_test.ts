@@ -19,6 +19,7 @@ import { loadPlugins } from "../../src/plugins/loader.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";
 import {
   createSearchEngine,
+  type SearchEngine,
   type SearchEngineCreateContext,
   type SearchRecordsCollectContext,
 } from "../../src/search/engine.ts";
@@ -74,7 +75,7 @@ function createTestSearchPlugin(config) {
         });
       },
       onSearchEngineCreate: (ctx) => {
-        ctx.data.engine = {
+        ctx.data.register("test-search", {
           build: () => Promise.resolve(),
           rebuild: () => Promise.resolve(),
           search: () =>
@@ -82,7 +83,8 @@ function createTestSearchPlugin(config) {
               { page: { route: "/x" }, score: 1, excerpt: "plugin-engine:" + (config.label ?? "default") },
             ]),
           suggest: () => Promise.resolve([]),
-        };
+        });
+        ctx.data.setActiveEngine("test-search");
       },
     },
   };
@@ -122,10 +124,11 @@ Deno.test("loadPlugins: a factory plugin's search hooks fire through bootstrap's
       "onSearchRecordsCollect",
       { records: [] },
     );
-    const engineCtx = await hooks.fire<SearchEngineCreateContext>(
+    const registered = new Map<string, SearchEngine>();
+    let active: string | undefined;
+    await hooks.fire<SearchEngineCreateContext>(
       "onSearchEngineCreate",
       {
-        engine: null,
         pages: [],
         injectedRecords: recordsCtx.records,
         storage,
@@ -133,11 +136,13 @@ Deno.test("loadPlugins: a factory plugin's search hooks fire through bootstrap's
         config,
         formats: makeFormats(),
         loadText: () => Promise.resolve(""),
-        register: () => {},
-        setActiveEngine: () => {},
+        register: (name, eng) => registered.set(name, eng),
+        setActiveEngine: (name) => {
+          active = name;
+        },
       },
     );
-    const search = engineCtx.engine ??
+    const search = (active ? registered.get(active) : undefined) ??
       createSearchEngine({
         pages: [],
         storage,
@@ -152,7 +157,8 @@ Deno.test("loadPlugins: a factory plugin's search hooks fire through bootstrap's
     assertEquals(recordsCtx.records[0].title, "PDF Doc");
 
     // 3b. onSearchEngineCreate replaced the built-in engine with the plugin's.
-    assertExists(engineCtx.engine);
+    assertEquals(active, "test-search");
+    assertExists(registered.get("test-search"));
     const hits = await search.search("anything");
     assertEquals(hits[0].excerpt, "plugin-engine:meili");
   } finally {
@@ -184,10 +190,10 @@ Deno.test("loadPlugins: no search hooks registered → engine falls back to buil
       "onSearchRecordsCollect",
       { records: [] },
     );
-    const engineCtx = await hooks.fire<SearchEngineCreateContext>(
+    const registered = new Map<string, SearchEngine>();
+    await hooks.fire<SearchEngineCreateContext>(
       "onSearchEngineCreate",
       {
-        engine: null,
         pages: [],
         injectedRecords: recordsCtx.records,
         storage,
@@ -195,13 +201,13 @@ Deno.test("loadPlugins: no search hooks registered → engine falls back to buil
         config,
         formats: makeFormats(),
         loadText: () => Promise.resolve(""),
-        register: () => {},
+        register: (name, eng) => registered.set(name, eng),
         setActiveEngine: () => {},
       },
     );
 
     assertEquals(recordsCtx.records.length, 0);
-    assertEquals(engineCtx.engine, null);
+    assertEquals(registered.size, 0);
   } finally {
     await Deno.remove(tmp, { recursive: true });
   }

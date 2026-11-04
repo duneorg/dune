@@ -84,7 +84,7 @@ export type HookEvent =
  * @since 0.35.2
  */
 export interface FormSubmitPayload {
-  /** Form name (the `forms/<name>.yaml` file, or "contact" for legacy `/api/contact`). */
+  /** Form name (the `forms/<name>.yaml` file). */
   form: string;
   /** The stored submission, including `id`, `fields`, `meta` and any `files`. */
   submission: import("../forms/submissions.ts").Submission;

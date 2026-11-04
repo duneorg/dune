@@ -61,7 +61,6 @@ export const DEFAULT_CONFIG: DuneConfig = {
   admin: {
     path: "/admin",
     session_lifetime: 86400,
-    data_dir: "data",
     runtime_dir: ".dune/admin",
     enabled: true,
     max_revisions: 50,
