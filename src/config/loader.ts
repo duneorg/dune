@@ -98,6 +98,12 @@ async function loadYamlFile(
 
     const parsed = parseYaml(text);
     if (parsed === null || parsed === undefined) return {};
+    if (typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new ConfigError(
+        `Expected an object but got ${Array.isArray(parsed) ? "an array" : typeof parsed}`,
+        path,
+      );
+    }
     const kind = path.endsWith("/site.yaml") ? "site" : path.endsWith("/system.yaml") ? "system" : null;
     if (kind) {
       const legacy = findLegacyKeys(kind, parsed);

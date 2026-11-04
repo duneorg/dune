@@ -162,3 +162,15 @@ Deno.test("loadConfig refuses a moved key and says where it went", async () => {
   assertStringIncludes(message, "admin.data_dir → data_dir at the top level of system.yaml");
   assertStringIncludes(message, "Move the moved or removed keys by hand");
 });
+
+Deno.test("loadConfig rejects a config file whose top level is not a mapping", async () => {
+  for (const [yaml, kind] of [["- a\n- b\n", "an array"], ["just a string\n", "string"]]) {
+    let message = "";
+    try {
+      await load({ "config/site.yaml": yaml });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    assertStringIncludes(message, `Expected an object but got ${kind}`);
+  }
+});
