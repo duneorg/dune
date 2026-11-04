@@ -15,6 +15,8 @@ import { createStagingEngine } from "../staging/engine.ts";
 import { createMachineTranslator } from "../mt/factory.ts";
 import { AuditLogger } from "../audit/logger.ts";
 import { bootstrapAdminTuples } from "../auth/authz.ts";
+import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
+import { resolveDataDir } from "../forms/config.ts";
 import { join } from "@std/path";
 import { logger } from "../core/logger.ts";
 
@@ -74,6 +76,16 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       mt: config.site?.machine_translation ? createMachineTranslator(config.site.machine_translation) : null,
       audit: createAuditTrail(opts, runtimeDir),
     },
+    blueprints: {
+      has: (template) => !!opts.getBlueprints?.()[template],
+      resolve(template) {
+        const all = opts.getBlueprints?.() ?? {};
+        const bp = all[template];
+        return bp ? resolveBlueprint(template, bp, all, 0) : null;
+      },
+      validate: (frontmatter, template) => validateFrontmatter(frontmatter, template, opts.getBlueprints?.() ?? {}),
+    },
+    paths: { dataDir: resolveDataDir(config), runtimeDir },
     authz: {
       async seedAdminTuples(users) {
         const bundle = opts.getAuthz?.();

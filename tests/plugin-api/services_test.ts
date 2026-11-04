@@ -131,3 +131,33 @@ Deno.test("engines: an audit log_file outside the site root is refused", () => {
 Deno.test("authz service: seedAdminTuples is a no-op without an authz system", async () => {
   await services().authz.seedAdminTuples([{ id: "u1", role: "admin" }]);
 });
+
+Deno.test("blueprints service: has/resolve/validate follow the loaded blueprints, extends included", () => {
+  const blueprints = {
+    base: { title: "Base", fields: { title: { type: "text", required: true } } },
+    post: { title: "Post", extends: "base", fields: { author: { type: "text" } } },
+  };
+  const { blueprints: bp } = createPluginServices({
+    config: config(),
+    storage: new MemoryStorageAdapter(),
+    getBlueprints: () => blueprints as never,
+  });
+  assertEquals(bp.has("post"), true);
+  assertEquals(bp.has("nope"), false);
+  assertEquals(bp.resolve("nope"), null);
+  assertEquals(Object.keys(bp.resolve("post")!.fields).sort(), ["author", "title"]);
+  assertEquals(bp.validate({} as never, "nope"), []);
+  assertEquals(bp.validate({} as never, "post").length > 0, true, "missing required inherited field");
+  assertEquals(bp.validate({ title: "x" } as never, "post"), []);
+});
+
+Deno.test("paths service: data dir and runtime dir default, and follow config", () => {
+  assertEquals(services().paths, { dataDir: "data", runtimeDir: ".dune/admin" });
+  const cfg = config();
+  cfg.system = { ...cfg.system, data_dir: "var/data" } as never;
+  cfg.admin = { ...cfg.admin, runtime_dir: ".state" } as never;
+  assertEquals(createPluginServices({ config: cfg, storage: new MemoryStorageAdapter() }).paths, {
+    dataDir: "var/data",
+    runtimeDir: ".state",
+  });
+});

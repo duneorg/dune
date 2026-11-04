@@ -372,6 +372,7 @@ export async function bootstrap(
     config,
     storage,
     root,
+    getBlueprints: () => engine.blueprints,
     getAuthz: () => authzForServices,
   });
   const hooks = createHookRegistry({ config, storage, services: pluginServices });
