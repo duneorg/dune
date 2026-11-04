@@ -102,6 +102,7 @@ import { usersPasswdCommand } from "./cli/users-passwd.ts";
 import { lockfileCheckCommand, lockfileSyncCommand } from "./cli/lockfile.ts";
 import { parseCliOptions } from "./cli/args.ts";
 import { maybeReexecWithSiteConfig } from "./cli/reexec.ts";
+import { resolveSiteRoot, SiteResolutionError } from "./cli/resolve-site.ts";
 import { COMMAND_HELP, HELP } from "./cli/help.ts";
 
 /** Resolve version string and install source from runtime context. */
@@ -165,9 +166,26 @@ export async function main(args: string[] = Deno.args) {
 
   const { options, upgradeKeys, roleValues } = parseCliOptions(args);
 
-  const root = (options.root as string) || ".";
+  const installRoot = (options.root as string) || ".";
 
-  await maybeReexecWithSiteConfig(args, command, root);
+  await maybeReexecWithSiteConfig(args, command, installRoot);
+
+  // --site <id> (multisite): run against that site's own root. Done after the
+  // re-exec, which belongs to the install root's deno.json.
+  let root: string;
+  try {
+    root = await resolveSiteRoot(
+      installRoot,
+      command,
+      options.site as string | undefined,
+    );
+  } catch (err) {
+    if (err instanceof SiteResolutionError) {
+      console.error(`  ✗ ${err.message}`);
+      Deno.exit(1);
+    }
+    throw err;
+  }
 
   try {
     switch (command) {

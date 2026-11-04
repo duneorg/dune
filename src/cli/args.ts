@@ -37,6 +37,8 @@ export function parseCliOptions(args: string[]): ParsedCliArgs {
       options.port = args[++i];
     } else if (args[i] === "--root" && args[i + 1]) {
       options.root = args[++i];
+    } else if (args[i] === "--site" && args[i + 1]) {
+      options.site = args[++i];
     } else if (args[i] === "--debug") {
       options.debug = true;
     } else if (args[i] === "--static") {

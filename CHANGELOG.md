@@ -11,6 +11,27 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **`--site <id>` for multisite installs.** In a multisite install every site has
+  its own config, `data_dir`, users and sessions, but the CLI only knew one
+  `--root`. `dune users:passwd alice --site blog` now resolves `blog` from
+  `config/sites.yaml` (relative roots resolve against `config/`, as the server
+  does) and runs against that site. Any command accepts it. At a multisite
+  install root, the per-site commands (`users:create`, `users:passwd`,
+  `users:grant-role`, `users:revoke-role`, `authz:sign`, `migrate:users`,
+  `migrate:auth-to-db`, `migrate:roles-to-tuples`) now refuse to run without
+  `--site` and list the site ids, instead of treating the install directory as
+  a site and finding nothing. `loadMultisiteConfig` moved to
+  `src/multisite/config.ts` (still exported from `@dune/core/multisite`).
+
+### Changed
+
+- **`dune new` tells you to create the first admin.** Dune creates no default
+  admin account, so the next-steps list now includes
+  `dune users:create you@example.com --role admin --password-prompt` before
+  `deno task dev`, and the admin panel line says so.
+
 ### Fixed
 
 - **A form's validation-failure redirect works behind a TLS proxy (#89).**
@@ -21,13 +42,6 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   public origin from `Host` + `X-Forwarded-Proto`, as `POST /api/contact`
   already did, through one shared helper. Only the path is ever returned, so a
   forged Host cannot redirect off-site.
-
-### Changed
-
-- **`dune new` tells you to create the first admin.** Dune creates no default
-  admin account, so the next-steps list now includes
-  `dune users:create you@example.com --role admin --password-prompt` before
-  `deno task dev`, and the admin panel line says so.
 
 ## [0.35.3] — 2026-11-03
 
