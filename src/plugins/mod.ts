@@ -106,6 +106,8 @@ export type {
   AdminBarActionContext,
   /** A custom admin page contributed by a plugin through the `admin.pages` contribution point. */
   AdminPageRegistration,
+  /** A guarded admin route (any method) contributed through the `admin.routes` contribution point. */
+  AdminRouteRegistration,
   /** A Dune plugin — a plain object (or factory return value) registering hook handlers and optional admin pages, schemas, and static assets. */
   DunePlugin,
   /** Context passed to each hook handler */

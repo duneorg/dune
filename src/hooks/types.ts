@@ -336,6 +336,44 @@ export interface AdminPageRegistration<S = any> {
 }
 
 /**
+ * A guarded admin route contributed by a plugin: the way to add a `POST`, `PUT`,
+ * `PATCH` or `DELETE` endpoint (or a `GET` API route that is not a sidebar page)
+ * under the admin prefix.
+ *
+ * Plugins contribute these to the `admin.routes` point:
+ * `api.capabilities.contribute("admin.routes", { method, path, permission, handler })`.
+ * Whichever admin package provides the admin UI reads the list
+ * (`capabilities.list("admin.routes")`) and mounts each route behind its own
+ * authentication, with the CSRF check applied to every non-safe method and the
+ * declared `permission` enforced, so the handler only runs for a request that
+ * passed all three. A site without an admin package mounts nothing.
+ *
+ * A route registered directly in a plugin's `mount()` is *not* behind the
+ * admin's middleware (mount order is registration order, and the admin mounts
+ * last), so it cannot use the admin's guards: contribute it here instead.
+ *
+ * @since 0.36.0
+ */
+// deno-lint-ignore no-explicit-any
+export interface AdminRouteRegistration<S = any> {
+  /** HTTP method. Anything other than `GET` is subject to the CSRF check. */
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  /**
+   * URL path relative to the admin prefix (must start with `/`).
+   * Example: `/my-plugin/save` registers at `/admin/my-plugin/save`.
+   */
+  path: string;
+  /**
+   * Admin permission required. The request must be an authenticated admin
+   * regardless; this narrows it to a permission (including ones the plugin
+   * declares through `authzActions`).
+   */
+  permission?: string;
+  /** Fresh handler; runs only after authentication, CSRF and permission checks pass. */
+  handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
+}
+
+/**
  * Plugin definition interface.
  *
  * A Dune plugin is a plain object (or the return value of a factory function)
@@ -497,8 +535,8 @@ export interface DunePlugin {
    * @example
    * ```ts
    * // Gate a plugin-specific admin capability behind its own permission,
-   * // reachable from any mount()-registered route via withGuards():
-   * //   withGuards({ permission: "billing.manage" }, handler)
+   * // reachable from an `admin.routes` contribution:
+   * //   api.capabilities.contribute("admin.routes", { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
    * export default {
    *   name: "my-billing-plugin",
    *   version: "1.0.0",

@@ -29,6 +29,7 @@ import type {
   AdminBarAction,
   AdminBarActionContext,
   AdminPageRegistration,
+  AdminRouteRegistration,
   ContentEditorPlugin,
   HookRegistry,
 } from "../hooks/types.ts";
@@ -79,6 +80,8 @@ export interface Capabilities {
 export interface Contributions {
   /** An extra admin page. Consumer: the admin. */
   "admin.pages": AdminPageRegistration;
+  /** A guarded admin route (any method) under the admin prefix. Consumer: the admin, which applies authentication, CSRF and permission checks. */
+  "admin.routes": AdminRouteRegistration;
   /** Buttons for the admin bar. Consumer: the bar renderer, via core's response transforms. */
   "bar.actions": (ctx: AdminBarActionContext) => AdminBarAction[];
 }

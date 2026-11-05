@@ -95,6 +95,23 @@ Deno.test("capabilities: contributions append in registration order and name the
   assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["admin.pages:x", "admin.pages:y"]);
 });
 
+Deno.test("capabilities: admin.routes contributions keep their method and order", () => {
+  const reg = createCapabilityRegistry();
+  const route = (method: "GET" | "POST" | "DELETE", path: string) => ({
+    method,
+    path,
+    permission: "config.update",
+    handler: () => new Response(""),
+  });
+  reg.registrar("a").contribute("admin.routes", route("POST", "/api/a/save"));
+  reg.registrar("b").contribute("admin.routes", route("DELETE", "/api/b/item"));
+  assertEquals(reg.reader.list("admin.routes").map((r) => `${r.method} ${r.path}`), [
+    "POST /api/a/save",
+    "DELETE /api/b/item",
+  ]);
+  assertEquals(reg.reader.providers().map((p) => p.provider), ["a", "b"]);
+});
+
 Deno.test("capabilities: the hook registry attributes a plugin's declarations to its name", async () => {
   const capabilities = createCapabilityRegistry();
   const config = structuredClone(DEFAULT_CONFIG) as unknown as DuneConfig;

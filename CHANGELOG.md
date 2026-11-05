@@ -67,7 +67,11 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
     `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
     -> provide the `inline-edit` or `editor.content` slot in `setup()`.
-  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`.
+  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. A guarded
+    `POST`/`PUT`/`PATCH`/`DELETE` admin route (previously a `mount()` route wrapped in
+    `withGuards()`, which stops working once the admin no longer mounts first) is
+    `capabilities.contribute("admin.routes", { method, path, permission, handler })`: the
+    admin mounts it behind its authentication, CSRF check and permission check.
   - `DunePlugin.adminBarActions` -> `capabilities.contribute("bar.actions", fn)`;
     `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
   - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).
@@ -129,7 +133,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
   `ctx.adminContext` bag. First-party keys: slots `auth.session`,
   `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
-  `admin.pages`, `bar.actions`. Core resolves the slot factories once, after every
+  `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
   one with a warning, a throwing factory is logged and leaves its slot empty. The
   old fields it replaces are removed (see "Removed — BREAKING").
