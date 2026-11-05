@@ -424,22 +424,18 @@ export async function createDuneApp(
   // still registers the same paths, core's handlers match first (same behaviour).
   registerFormRoutes(app, ctx);
 
-  // 5. Admin panel + plugin routes — each plugin's mount() hook runs here.
-  // Must run before plugin public routes below: @dune/plugin-admin's own
-  // mount() (invoked from here) adds the `fc.state.adminContext = ...`
-  // middleware that publicRoutes handlers rely on for manual auth (the
-  // documented pattern — see e.g. any plugin route that does
-  // `fc.state?.adminContext?.auth.authenticate(fc.req)`). Registering a
-  // plugin's route via `app.get()`/`app.post()` before that middleware
-  // exists means the middleware chain built for that route never includes
-  // it, so `fc.state.adminContext` reads as undefined at request time no
-  // matter how the request is authenticated — confirmed via a live 401
-  // repro before this fix (eda-worksheets' pdf-export plugin).
+  // 5. Plugin routes — each plugin's mount() hook runs here, after the
+  // capability slots are resolved. Must run before the plugin public routes
+  // below: when an admin package is present, its mount() finalizes them
+  // itself, correctly ordered after its own middleware (see the next step).
+  // A route that needs to know who the admin is calls the `auth.session`
+  // capability (`capabilities.get("auth.session")?.authenticate(req)`); there
+  // is no shared per-request state to rely on.
   await mountPlugins(app, ctx);
 
-  // 4b. Plugin public routes (DunePlugin.publicRoutes) — core-owned, unlike
-  // adminPages, so this works in every createDuneApp() context regardless of
-  // whether @dune/plugin-admin (or any admin package) is present. Calling
+  // 4b. Plugin public routes (DunePlugin.publicRoutes) — core-owned, unlike the
+  // `admin.pages` contributions, so this works in every createDuneApp() context
+  // regardless of whether @dune/plugin-admin (or any admin package) is present. Calling
   // this after mountPlugins() (rather than before, as originally written)
   // is what makes the ordering above work: when admin is enabled,
   // @dune/plugin-admin's own mountDuneAdmin() (invoked via mountPlugins())
@@ -470,7 +466,7 @@ export async function createDuneApp(
   //    through authz.check() when configured — the sole authority every
   //    other permission check follows (dec-identity-unification Phase 5c/7).
   app.get("/api/inline-edit/ws", async (fc) => {
-    const inlineEdit = ctx.adminServices?.inlineEdit;
+    const inlineEdit = ctx.capabilities.get("inline-edit");
     if (!inlineEdit) {
       return new Response("Inline editing not enabled", { status: 501 });
     }

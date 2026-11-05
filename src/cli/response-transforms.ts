@@ -199,12 +199,10 @@ export async function runPluginResponseTransforms(
         }
         : null,
       adminPrefix,
+      // A plugin can contribute to `bar.actions` without declaring
+      // transformResponse itself, so the list comes from the contribution
+      // point, not from the plugins selected to run a transform.
       barActions,
-      // Full list (not transformPlugins) — a plugin can contribute
-      // adminBarActions without declaring transformResponse itself, so the
-      // bar-owning plugin needs every plugin, not just the ones already
-      // selected to run their own transform.
-      plugins: plugins.map((p) => ({ name: p.name, adminBarActions: p.adminBarActions })),
     });
   }
 

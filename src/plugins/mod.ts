@@ -16,10 +16,6 @@
  *
  * ## Changes in v0.17
  *
- * - `DunePlugin.adminServices` — plugins can contribute admin-context services
- *   (e.g. inline editing manager). Factory called during bootstrap with storage,
- *   history, and path context. See `AdminServicesContext` / `AdminServices`.
- * - `collectAdminServices` — collects and merges admin services from all plugins.
  * - `DunePlugin.transformResponse` — plugins can transform HTTP responses before
  *   they are sent to the client. Auth and the matched content page are pre-resolved
  *   by core. See `ResponseTransformContext` and `applyResponseTransforms`.
@@ -31,11 +27,13 @@
  *   get `ctx.render()`, islands, and middleware — no manual URL matching needed.
  *   See `PublicRouteRegistration` for the full type.
  *
- * ## Changes in v0.7
+ * ## Changes in v0.36
  *
- * - `DunePlugin.adminPages` — plugins can now register custom admin panel pages.
- *   Each entry adds a programmatic route under the admin prefix and an optional
- *   sidebar link. See `AdminPageRegistration` for the full type.
+ * - `PluginApi.capabilities` / `MountApi.capabilities` — what plugins provide to
+ *   core and to each other (`auth.session`, `scheduler.executor`, `inline-edit`,
+ *   `editor.content`, and the `admin.pages` / `bar.actions` contribution points).
+ *   Replaces `DunePlugin.adminServices`, `adminPages`, `adminBarActions` and
+ *   `mountEarly`, and the untyped `ctx.adminContext`. See `@dune/core/plugin-api`.
  *
  * ## Trust model — read carefully
  *
@@ -99,19 +97,15 @@ export const CORE_VERSION: string = denoJson.version;
  */
 export const CORE_INSTANCE: Readonly<Record<never, never>> = Object.freeze({});
 
-export { loadPlugins, loadPluginAdminConfigs, collectAdminServices, applyResponseTransforms, mountPlugins } from "./loader.ts";
+export { loadPlugins, loadPluginAdminConfigs, applyResponseTransforms, mountPlugins } from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
-  /** A button contributed to the shared admin bar UI via `DunePlugin.adminBarActions`. */
+  /** A button contributed to the shared admin bar UI through the `bar.actions` contribution point. */
   AdminBarAction,
-  /** Context passed to {@link DunePlugin.adminBarActions}. */
+  /** Context passed to a `bar.actions` contribution. */
   AdminBarActionContext,
-  /** A custom admin page contributed by a plugin. Registered via `DunePlugin.adminPages`. */
+  /** A custom admin page contributed by a plugin through the `admin.pages` contribution point. */
   AdminPageRegistration,
-  /** Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}. */
-  AdminServices,
-  /** Context passed to {@link DunePlugin.adminServices} factories. */
-  AdminServicesContext,
   /** A Dune plugin — a plain object (or factory return value) registering hook handlers and optional admin pages, schemas, and static assets. */
   DunePlugin,
   /** Context passed to each hook handler */
@@ -128,7 +122,7 @@ export type {
   ResponseTransformContext,
 } from "../hooks/types.ts";
 export type {
-  /** Plugin-provided replacement for the built-in block editor. Register via {@link AdminServices.contentEditor}. */
+  /** Plugin-provided replacement for the built-in block editor. Provide it as the `editor.content` capability. */
   ContentEditorPlugin,
   /** Passed to {@link DunePlugin.mount} — provides everything a plugin needs to register Fresh routes and wire up runtime services. */
   MountApi,
