@@ -52,6 +52,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `data/theme-config.json`. This is the theme contract that `@dune/theme-api`
   will freeze. `ContentPageProps.config` (TSX content pages) and the format
   handler context are not narrowed.
+- **Core no longer reads the admin plugin's `ctx.adminContext` bag (#97).** The
+  staged-preview route uses core's own staging engine
+  (`pluginServices.engines.staging`). Who the admin is on a request (the admin bar's
+  response transform, the inline-edit WebSocket's admin fallback) comes from the
+  `auth.session` capability. `dune serve` starts the workflow scheduler's polling loop
+  only when a plugin provides `scheduler.executor`, and hands the job scheduler to
+  plugins as `BootstrapResult.jobScheduler`. `ResponseTransformContext.barActions`
+  carries the `bar.actions` contributions. A plugin-admin that still only fills the
+  bag no longer gets a bar, admin WebSocket auth, scheduled actions or the jobs view:
+  plugin-admin 4.0.0 provides the capabilities.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
   are renamed, with no aliases, in `site.yaml`, `system.yaml` and the `admin:`
   block: `auth.userStore` → `user_store`, `authzStore` → `authz_store`,

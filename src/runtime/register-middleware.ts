@@ -92,8 +92,9 @@ export function registerContentCatchAll(
     routes,
   } = opts;
   const { engine, imageHandler, hooks, config, metrics, authz, authzSchema } = ctx;
-  // deno-lint-ignore no-explicit-any
-  const getAdminAuth = () => (ctx.adminContext as any)?.auth ?? null;
+  // Who the admin is on this request comes from whichever plugin provides the
+  // `auth.session` capability; with none, every visitor is anonymous here.
+  const getAdminAuth = () => ctx.capabilities.get("auth.session") ?? null;
 
   // Plugin response transforms (admin bar and friends) for a content response.
   // A bare response (template `output` mode) is not an HTML document, so only
@@ -108,6 +109,7 @@ export function registerContentCatchAll(
       response,
       plugins: hooks.plugins(),
       auth: getAdminAuth(),
+      barActions: ctx.capabilities.list("bar.actions"),
       authz,
       actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
       resolve: engine.router.resolve,

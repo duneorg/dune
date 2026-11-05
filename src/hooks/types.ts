@@ -854,6 +854,13 @@ export interface ResponseTransformContext {
    * @since 1.2.0
    */
   plugins: readonly Pick<DunePlugin, "name" | "adminBarActions">[];
+  /**
+   * Bar buttons contributed through the `bar.actions` capability point
+   * (`PluginApi.capabilities.contribute("bar.actions", fn)`), in plugin
+   * registration order. Call each with the bar action context. Prefer this
+   * over `plugins[].adminBarActions`, which goes away with that field.
+   */
+  barActions: readonly ((ctx: AdminBarActionContext) => AdminBarAction[])[];
 }
 
 /**

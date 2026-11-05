@@ -503,3 +503,26 @@ export function injectLiveReload(response: Response): Response {
     },
   );
 }
+
+// === Scheduled actions ===
+
+/**
+ * Start the workflow scheduler's polling loop when a plugin provides the
+ * `scheduler.executor` capability. Core owns the scheduler; the provider
+ * supplies the code that runs a due action. Returns whether the loop started
+ * (false: no provider, so scheduled actions stay queued).
+ *
+ * Only a long-running process (`dune serve`) calls this: `mount()` also runs
+ * during one-shot commands (build, SSG) where a polling interval is wrong.
+ */
+export function startScheduledActions(
+  ctx: {
+    capabilities: import("../plugin-api/capabilities.ts").CapabilityReader;
+    pluginServices: Pick<import("../plugin-api/services.ts").PluginServices, "engines">;
+  },
+): boolean {
+  const executor = ctx.capabilities.get("scheduler.executor");
+  if (!executor) return false;
+  ctx.pluginServices.engines.scheduler.start((action) => executor.execute(action));
+  return true;
+}

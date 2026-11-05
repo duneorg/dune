@@ -95,6 +95,12 @@ export interface BootstrapResult {
   pluginServices: PluginServices;
   /** What plugins provide (auth session, inline editing, ...); resolved before `mount()`. */
   capabilities: CapabilityReader;
+  /**
+   * The job scheduler, set by `dune serve` once it exists (it is created per
+   * serving process, not at bootstrap). Plugins that show job status read it
+   * lazily from here; this is the future `PluginRuntime.jobs`.
+   */
+  jobScheduler?: import("../jobs/mod.ts").JobScheduler;
   /** Core-only: declares and resolves capabilities. Plugins see `capabilities` instead. */
   capabilityRegistry: CapabilityRegistry;
   imageHandler: ImageHandler;

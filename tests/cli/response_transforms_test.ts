@@ -635,3 +635,52 @@ Deno.test("runPluginResponseTransforms: resolve() mapping '/' to the home page r
   await result.text();
   assertEquals(seen[0].page?.sourcePath, "content/01.home/default.md");
 });
+
+Deno.test("runPluginResponseTransforms: ctx.barActions carries the bar.actions contributions in order", async () => {
+  const auth = makeAuth({
+    result: { authenticated: true, user: makeUser("admin") },
+  });
+  const barOwner: DunePlugin = {
+    name: "bar-owner",
+    version: "1.0.0",
+    hooks: {},
+    async transformResponse(ctx) {
+      const body = await ctx.response.text();
+      const actions = ctx.barActions.flatMap((fn) => fn({ page: ctx.page, adminPrefix: ctx.adminPrefix }));
+      return new Response(`${body}${actions.map((a) => `[${a.id}]`).join("")}`, {
+        status: ctx.response.status,
+        headers: ctx.response.headers,
+      });
+    },
+  };
+
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/about", SESSION_COOKIE),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [barOwner],
+    barActions: [
+      () => [{ id: "a:one", label: "One", href: "/1" }],
+      ({ page }) => (page?.template === "post" ? [{ id: "b:two", label: "Two", href: "/2" }] : []),
+    ],
+    auth,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+
+  assertEquals(await result.text(), `<p>p</p>[a:one][b:two]`);
+});
+
+Deno.test("runPluginResponseTransforms: barActions defaults to empty", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen[0].barActions, []);
+});
