@@ -27,6 +27,8 @@ import type {
   SearchRecordsCollectContext,
 } from "../search/engine.ts";
 import { createSearchManager } from "../search/manager.ts";
+import { searchOptionsFromConfig } from "../search/config.ts";
+import { initFlags } from "../flags/mod.ts";
 import { resolveSearchAnalytics } from "../search/analytics.ts";
 import type { SearchAnalytics } from "../search/analytics.ts";
 import type { SearchManager } from "../search/manager.ts";
@@ -455,6 +457,9 @@ export async function bootstrap(
     engine.setPluginTemplateDirs(pluginTemplateDirs);
   }
 
+  // Feature flags come from system.yaml `flags:`; resolved once, read anywhere with flag().
+  initFlags(config.system.flags);
+
   await hooks.fire("onConfigLoaded", config);
   await hooks.fire("onStorageReady", storage);
   await hooks.fire("onContentIndexReady", engine.pages);
@@ -495,6 +500,7 @@ export async function bootstrap(
     contentDir: searchContentDir,
     formats,
     injectedRecords,
+    ...searchOptionsFromConfig(config.system.search),
   });
   const search = createSearchManager(builtInEngine, {
     failOnStartup: config.system.search?.fail_on_startup === true,

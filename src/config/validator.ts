@@ -54,6 +54,17 @@ function validateAdmin(
   errors: ValidationError[],
 ): void {
   if (!admin) return;
+  if (admin.auth_provider !== undefined) {
+    const type = (admin.auth_provider as { type?: unknown }).type;
+    if (type !== "local") {
+      errors.push({
+        path: "admin.auth_provider.type",
+        message: "only \"local\" is supported; LDAP and SAML were never implemented. " +
+          "Omit auth_provider for the built-in password auth, or inject a custom provider through the admin plugin's `authProvider` option",
+        got: type,
+      });
+    }
+  }
   if (admin.path !== undefined) {
     if (typeof admin.path !== "string") {
       errors.push({
@@ -167,47 +178,6 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
         });
       }
     }
-
-    if (system.content.markdown) {
-      for (const key of ["extra", "auto_links", "auto_url_links"] as const) {
-        if (typeof system.content.markdown[key] !== "boolean") {
-          errors.push({
-            path: `system.content.markdown.${key}`,
-            message: "must be a boolean",
-            got: system.content.markdown[key],
-          });
-        }
-      }
-    }
-  }
-
-  // cache
-  if (system.cache) {
-    const validDrivers = ["memory", "filesystem", "kv"];
-    if (!validDrivers.includes(system.cache.driver)) {
-      errors.push({
-        path: "system.cache.driver",
-        message: `must be one of: ${validDrivers.join(", ")}`,
-        got: system.cache.driver,
-      });
-    }
-
-    if (typeof system.cache.lifetime !== "number" || system.cache.lifetime < 0) {
-      errors.push({
-        path: "system.cache.lifetime",
-        message: "must be a non-negative number (seconds)",
-        got: system.cache.lifetime,
-      });
-    }
-
-    const validChecks = ["file", "hash", "none"];
-    if (!validChecks.includes(system.cache.check)) {
-      errors.push({
-        path: "system.cache.check",
-        message: `must be one of: ${validChecks.join(", ")}`,
-        got: system.cache.check,
-      });
-    }
   }
 
   // images
@@ -278,14 +248,6 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
       path: "system.debug",
       message: "must be a boolean",
       got: system.debug,
-    });
-  }
-
-  if (typeof system.timezone !== "string") {
-    errors.push({
-      path: "system.timezone",
-      message: "must be a string (e.g., 'UTC', 'America/New_York')",
-      got: system.timezone,
     });
   }
 }

@@ -16,11 +16,6 @@ export interface SystemConfig {
      * site's own storage boundary is never widened.
      */
     src?: string;
-    markdown: {
-      extra: boolean;
-      auto_links: boolean;
-      auto_url_links: boolean;
-    };
     /**
      * Roles permitted to create or save pages with `format: tsx`.
      * TSX pages execute arbitrary Deno code during SSR and must be treated
@@ -28,12 +23,6 @@ export interface SystemConfig {
      * Set to `[]` to disable TSX content entirely.
      */
     allow_tsx_format?: string[];
-  };
-  cache: {
-    enabled: boolean;
-    driver: "memory" | "filesystem" | "kv";
-    lifetime: number;
-    check: "file" | "hash" | "none";
   };
   images: {
     default_quality: number;
@@ -143,12 +132,6 @@ export interface SystemConfig {
       body?: { weight: number };
       [field: string]: { weight: number } | undefined;
     };
-    /**
-     * Flex Object type names to include in the search index.
-     * Records from these types are indexed alongside content pages.
-     * @example ["posts", "events"]
-     */
-    include_flex?: string[];
     /** Facet definitions for filtering search results. */
     facets?: Array<{
       /** Dot-path into frontmatter, e.g. "taxonomy.category" or "template" */
@@ -242,7 +225,6 @@ export interface SystemConfig {
     level?: "debug" | "info" | "warn" | "error";
   };
   debug: boolean;
-  timezone: string;
   /**
    * Trust the X-Forwarded-For / X-Real-IP request headers when extracting
    * the client IP for rate limiting, account lockout, and audit logging.

@@ -20,11 +20,6 @@ taxonomies:
 
 const SYSTEM_YAML = `content:
   dir: content
-cache:
-  enabled: true
-  driver: memory
-  lifetime: 3600
-  check: file
 debug: false
 `;
 

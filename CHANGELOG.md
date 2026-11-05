@@ -39,6 +39,27 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 - **`StatusTransition` and `TRANSITIONS`** (use `WorkflowTransition` /
   `WorkflowConfig.transitions`), and the unused `AdminNotificationsConfig` and
   `SmtpNotificationConfig` types.
+- **Config keys that were declared, documented and never read (#97, inert-key
+  audit).** A site that still sets one refuses to load and is told so (the same
+  treatment as the other removed keys; `dune migrate:config` reports them). None
+  of them did anything, so removing the line loses nothing:
+  - **`uploads:` (site.yaml) and the public upload endpoint.** `POST /api/upload`
+    and `GET /uploads/*` were never mounted by `createDuneApp()`, `@dune/core/upload`
+    was not an export, so its unit tests only ever exercised the handler in
+    isolation; mounting it as written would also have served form attachments
+    publicly. The module is deleted. Accept files
+    from visitors with a `file` field in a form (`forms/*.yaml`): stored privately
+    per submission, extension-checked and rate-limited.
+  - **`cache:` (system.yaml)** (`enabled`, `driver`, `lifetime`, `check`): the
+    rendered-page cache is `page_cache`.
+  - **`timezone:`**, **`content.markdown`** (`extra`, `auto_links`, `auto_url_links`)
+    and **`search.include_flex`**.
+- **`admin.auth_provider` for LDAP and SAML (#97).** Both providers were stubs
+  whose `authenticate()` threw, and the admin refused `type: ldap | saml` at
+  startup anyway. `AuthProviderConfig` is now just `{ type: "local" }`, the
+  config validator rejects any other type, and the LDAP/SAML keys (`base_dn`,
+  `bind_dn`, `entity_id`, ...) are gone from the schema. To use another identity
+  source, inject a provider through the admin plugin's `authProvider` option.
 
 ### Changed — BREAKING
 
@@ -158,6 +179,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `deno task dev`, and the admin panel line says so.
 
 ### Fixed
+
+- **`search.custom_fields`, `search.fields`, `search.highlight` and
+  `search.excerpt_length` now do what the docs say (#97).** They were validated
+  and documented, but bootstrap never passed them to the search engine, so setting
+  them changed nothing. They now reach the built-in engine (also under
+  `dune mcp:serve`).
+- **`flags:` now works (#97).** `flag()` returned false for every flag unless a
+  site called `initFlags()` itself; `bootstrap()` now resolves `system.flags`.
+  Declare them in **system.yaml** (the docs said site.yaml, where the key was
+  ignored).
 
 - **A form's validation-failure redirect works behind a TLS proxy (#89).**
   `POST /api/forms/:name` only sent the visitor back to the page (with

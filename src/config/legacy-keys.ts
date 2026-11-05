@@ -33,24 +33,6 @@ const RULES: Rule[] = [
   },
   { file: "system", parent: ["admin", "audit"], renames: { logFile: "log_file" } },
   {
-    file: "system",
-    parent: ["admin", "auth_provider"],
-    renames: {
-      baseDn: "base_dn",
-      usernameAttr: "username_attr",
-      bindDn: "bind_dn",
-      bindPassword: "bind_password",
-      emailAttr: "email_attr",
-      nameAttr: "name_attr",
-      roleMap: "role_map",
-      defaultRole: "default_role",
-      entityId: "entity_id",
-      acsUrl: "acs_url",
-      idpMetadata: "idp_metadata",
-      roleAttr: "role_attr",
-    },
-  },
-  {
     file: "site",
     parent: ["auth"],
     renames: { sessionLifetime: "session_lifetime", userStore: "user_store", authzStore: "authz_store" },
@@ -72,11 +54,6 @@ const RULES: Rule[] = [
     },
   },
   { file: "site", parent: ["auth", "webhook"], renames: { signatureHeader: "signature_header" } },
-  {
-    file: "site",
-    parent: ["uploads"],
-    renames: { maxSizeMb: "max_size_mb", allowedTypes: "allowed_types", requireAuth: "require_auth" },
-  },
 ];
 
 /**
@@ -107,6 +84,32 @@ const MOVED: MovedRule[] = [
     file: "site",
     parent: ["forms", "notifications", "email"],
     keys: { smtp: "site.email (one provider for every email the site sends)" },
+  },
+  // Declared and documented, but nothing ever read them. Removed rather than kept as promises.
+  {
+    file: "site",
+    parent: [],
+    keys: {
+      uploads: "removed: Dune has no public upload endpoint; use a `file` field in a form (forms/*.yaml)",
+    },
+  },
+  {
+    file: "system",
+    parent: [],
+    keys: {
+      cache: "removed: it never did anything; the rendered-page cache is `page_cache`",
+      timezone: "removed: it never did anything",
+    },
+  },
+  {
+    file: "system",
+    parent: ["content"],
+    keys: { markdown: "removed: the markdown renderer never read these settings" },
+  },
+  {
+    file: "system",
+    parent: ["search"],
+    keys: { include_flex: "removed: it never did anything" },
   },
 ];
 

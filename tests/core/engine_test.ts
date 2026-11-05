@@ -192,7 +192,6 @@ function makeConfig(overrides: Partial<DuneConfig> = {}): DuneConfig {
     system: {
       content: {
         dir: "content",
-        markdown: { extra: false, auto_links: false, auto_url_links: false },
       },
       languages: {
         supported: ["en"],
@@ -200,10 +199,8 @@ function makeConfig(overrides: Partial<DuneConfig> = {}): DuneConfig {
         include_default_in_url: false,
       },
       debug: false,
-      cache: { enabled: false, driver: "memory", lifetime: 0, check: "none" },
       images: { default_quality: 80, cache_dir: "", allowed_sizes: [] },
       typography: { orphan_protection: false },
-      timezone: "UTC",
     },
     theme: { name: "default", custom: {} },
     plugins: {},
