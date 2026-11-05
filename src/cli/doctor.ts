@@ -30,11 +30,15 @@
 
 import { join } from "@std/path";
 import { checkLockfileStaleness } from "./lockfile.ts";
+import { DOCTOR_REPORT_ENV, type DoctorReport } from "../plugin-api/doctor-report.ts";
+import { createStorage } from "../storage/mod.ts";
+import { loadConfig } from "../config/mod.ts";
 import { formatNpmCacheMismatchError, isNpmCacheMismatchError } from "./npm-cache-error.ts";
 
 export interface DoctorFinding {
-  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot";
-  severity: "error" | "warning";
+  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot" | "capabilities";
+  /** `info` is context for the reader and never fails the run. */
+  severity: "error" | "warning" | "info";
   message: string;
 }
 
@@ -137,6 +141,60 @@ export function searchDegradedFindings(healthStatus: unknown, bootOutput: string
   }];
 }
 
+/**
+ * What the booted site's capability report means: who provides what, and
+ * whether the setup is sound. Pure so it is testable without booting a site.
+ *
+ * - An enabled admin with no active `auth.session` is an error: the site
+ *   boots, but there is no way to sign in and no admin bar, silently.
+ * - A provider whose factory threw is an error: its slot is empty and the only
+ *   other trace is a log line.
+ * - Scheduled actions with no `scheduler.executor` are a warning: they are
+ *   queued and nothing will ever run them.
+ */
+export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: boolean }): DoctorFinding[] {
+  const findings: DoctorFinding[] = [];
+  const slot = (name: string) => report.providers.find((p) => p.kind === "slot" && p.name === name);
+
+  if (report.providers.length > 0) {
+    const lines = report.providers.map((p) => {
+      const state = p.kind === "slot" && p.status !== "active" ? `  (${p.status})` : "";
+      return `    ${p.name.padEnd(20)} ${p.provider}${state}`;
+    });
+    findings.push({ category: "capabilities", severity: "info", message: `What plugins provide:\n${lines.join("\n")}` });
+  }
+
+  for (const p of report.providers) {
+    if (p.kind === "slot" && p.status === "failed") {
+      findings.push({
+        category: "capabilities",
+        severity: "error",
+        message: `${p.provider} provides "${p.name}" but its factory threw, so the slot is empty. ` +
+          `See the "capabilities.provider_failed" line in the site's log for the error.`,
+      });
+    }
+  }
+
+  if (opts.adminEnabled && slot("auth.session")?.status !== "active") {
+    findings.push({
+      category: "capabilities",
+      severity: "error",
+      message: `The admin is enabled but no plugin provides "auth.session", so nobody can sign in ` +
+        `and no editing bar is shown. Install the admin plugin, or set \`admin.enabled: false\`.`,
+    });
+  }
+
+  if (report.scheduledActions > 0 && slot("scheduler.executor")?.status !== "active") {
+    findings.push({
+      category: "capabilities",
+      severity: "warning",
+      message: `${report.scheduledActions} scheduled action(s) are queued, but no plugin provides ` +
+        `"scheduler.executor", so none of them will ever run.`,
+    });
+  }
+  return findings;
+}
+
 const BOOT_TIMEOUT_MS = 20_000;
 const BOOT_POLL_INTERVAL_MS = 250;
 
@@ -160,9 +218,12 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
   }
 
   const port = await findFreePort();
+  const reportDir = await Deno.makeTempDir({ prefix: "dune_doctor_" });
+  const reportPath = join(reportDir, "report.json");
   const cmd = new Deno.Command(Deno.execPath(), {
     args: ["run", "-A", "main.ts", "dev", "--port", String(port)],
     cwd: root,
+    env: { [DOCTOR_REPORT_ENV]: reportPath },
     stdout: "piped",
     stderr: "piped",
   });
@@ -210,6 +271,12 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
     await stderrDone.catch(() => {});
   }
 
+  let report: DoctorReport | null = null;
+  try {
+    report = JSON.parse(await Deno.readTextFile(reportPath)) as DoctorReport;
+  } catch { /* reported below */ }
+  await Deno.remove(reportDir, { recursive: true }).catch(() => {});
+
   if (!ok) {
     return [{
       category: "boot",
@@ -217,7 +284,22 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
       message: `Site did not boot and serve a response within ${BOOT_TIMEOUT_MS}ms.\n${output.trim()}`,
     }];
   }
-  return searchDegradedFindings(healthStatus, output);
+  const findings = searchDegradedFindings(healthStatus, output);
+  if (!report) {
+    findings.push({
+      category: "capabilities",
+      severity: "warning",
+      message: "The site booted but did not report which plugins provide what (a site on an older @dune/core, " +
+        "or a plugin load that never completed).",
+    });
+    return findings;
+  }
+  let adminEnabled = true;
+  try {
+    const config = await loadConfig({ storage: createStorage({ rootDir: root }), rootDir: root, skipConfigTs: true });
+    adminEnabled = config.admin?.enabled !== false;
+  } catch { /* assume enabled: the safer reading */ }
+  return [...findings, ...capabilityFindings(report, { adminEnabled })];
 }
 
 /** Run doctor's checks and return the findings, without printing or exiting. */
@@ -235,13 +317,12 @@ export async function runDoctorChecks(root: string, opts: DoctorRunOptions = {})
 
 /** Print findings in the same human-readable shape `doctorCommand` and `dune new` both use. */
 export function printDoctorFindings(findings: DoctorFinding[], opts: { boot?: boolean } = {}): void {
-  if (findings.length === 0) {
-    console.log("  ✅ Everything looks healthy.");
-  } else {
-    for (const f of findings) {
-      const icon = f.severity === "error" ? "✗" : "⚠";
-      console.log(`  ${icon} [${f.category}] ${f.message}\n`);
-    }
+  if (!findings.some((f) => f.severity !== "info")) {
+    console.log("  ✅ Everything looks healthy.\n");
+  }
+  for (const f of findings) {
+    const icon = f.severity === "error" ? "✗" : f.severity === "warning" ? "⚠" : "ℹ";
+    console.log(`  ${icon} [${f.category}] ${f.message}\n`);
   }
   if (!opts.boot) {
     console.log(`  (Run "dune doctor --boot" to also verify the site actually boots and serves a request.)`);

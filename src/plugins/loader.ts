@@ -38,6 +38,7 @@ import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
+import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -437,6 +438,16 @@ export async function mountPlugins(
     // case (multisite demo fixtures) has no admin.
     contentDir: ctx.config.system.content.dir,
   });
+
+  logger.info("capabilities.resolved", {
+    providers: ctx.capabilityRegistry.reader.providers()
+      .map((p) => `${p.name}=${p.provider}${p.status === "active" || p.kind === "contribution" ? "" : ` (${p.status})`}`)
+      .join(", ") || "none",
+  });
+  await writeDoctorReport(async () => ({
+    providers: ctx.capabilityRegistry.reader.providers(),
+    scheduledActions: (await ctx.pluginServices.engines.scheduler.list()).length,
+  }));
 
   // mount(), registration order (admin last): a plugin's own
   // route-finalizing work (e.g. admin's internal registerPluginPublicRoutes()
