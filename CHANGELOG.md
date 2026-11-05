@@ -97,6 +97,18 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Added
 
+- **A capability registry for what plugins provide (#97).** `PluginApi.capabilities`
+  (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for
+  contribution points) and `MountApi.capabilities` / `BootstrapResult.capabilities`
+  (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
+  `ctx.adminContext` bag. First-party keys: slots `auth.session`,
+  `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
+  `admin.pages`, `bar.actions`. Core resolves the slot factories once, after every
+  `setup()` has settled and before `mount()`; a later provider replaces an earlier
+  one with a warning, a throwing factory is logged and leaves its slot empty. This
+  release only adds the registry; the old fields (`adminContext`, `adminServices`,
+  `adminPages`, `adminBarActions`, `mountEarly`) still work and are removed, and the
+  core consumers switched over, in follow-ups before 0.36.
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one
   `--root`. `dune users:passwd alice --site blog` now resolves `blog` from

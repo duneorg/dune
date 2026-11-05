@@ -8,6 +8,7 @@
  */
 
 import { createPluginServices } from "../plugin-api/create-services.ts";
+import { type CapabilityRegistry, createCapabilityRegistry } from "../plugin-api/capabilities.ts";
 import type { PluginServices } from "../plugin-api/services.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -27,6 +28,8 @@ export interface HookRegistryOptions {
   storage: StorageAdapter;
   /** Services handed to plugins; built from config + storage when omitted. */
   services?: PluginServices;
+  /** Where plugins declare capabilities; a fresh registry when omitted. */
+  capabilities?: CapabilityRegistry;
 }
 
 /**
@@ -35,6 +38,7 @@ export interface HookRegistryOptions {
 export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
   const { config, storage } = options;
   const services = options.services ?? createPluginServices({ config, storage });
+  const capabilities = options.capabilities ?? createCapabilityRegistry();
 
   // Map of event → ordered list of handlers
   const handlers = new Map<HookEvent, HookHandler[]>();
@@ -70,7 +74,13 @@ export function createHookRegistry(options: HookRegistryOptions): HookRegistry {
       // Call the plugin's setup function if defined, giving it access to the
       // registry, config, and storage — but NOT the full engine (not yet ready).
       if (plugin.setup) {
-        const api: PluginApi = { hooks: self, config, storage, services };
+        const api: PluginApi = {
+          hooks: self,
+          config,
+          storage,
+          services,
+          capabilities: capabilities.registrar(plugin.name),
+        };
         // setup() may return a Promise — fire-and-forget is intentional here;
         // async setup tasks should subscribe to onContentIndexReady instead.
         const maybePromise = plugin.setup(api);

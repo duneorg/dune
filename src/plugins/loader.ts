@@ -459,6 +459,20 @@ export async function mountPlugins(
   const adminFirstOrder = orderPluginsAdminFirst(registeredOrder);
 
   const adminCfg = ctx.config.admin;
+
+  // Capability slots: every plugin has declared by now, and the infrastructure
+  // a factory may need (history, hooks, storage) exists. A throwing factory is
+  // logged and leaves its slot empty; it never stops the mount.
+  await ctx.capabilityRegistry.resolve({
+    storage: ctx.storage,
+    config: ctx.config,
+    history: ctx.history,
+    hooks: ctx.hooks,
+    services: ctx.pluginServices,
+    dataDir: adminCfg?.runtime_dir ?? ".dune/admin",
+    contentDir: ctx.config.system.content.dir,
+  });
+
   const adminServices = await collectAdminServices(adminFirstOrder, {
     storage: ctx.storage,
     history: ctx.history,
@@ -484,7 +498,13 @@ export async function mountPlugins(
   for (const plugin of adminFirstOrder) {
     if (!plugin.mountEarly) continue;
     try {
-      await plugin.mountEarly({ app, bootstrap: ctx, adminServices, services: ctx.pluginServices });
+      await plugin.mountEarly({
+        app,
+        bootstrap: ctx,
+        adminServices,
+        services: ctx.pluginServices,
+        capabilities: ctx.capabilities,
+      });
     } catch (err) {
       const detail = Deno.env.get("DUNE_DEV") && err instanceof Error
         ? (err.stack ?? err.message)
@@ -500,7 +520,13 @@ export async function mountPlugins(
   for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;
     try {
-      await plugin.mount({ app, bootstrap: ctx, adminServices, services: ctx.pluginServices });
+      await plugin.mount({
+        app,
+        bootstrap: ctx,
+        adminServices,
+        services: ctx.pluginServices,
+        capabilities: ctx.capabilities,
+      });
     } catch (err) {
       // Full stack in dev (DUNE_DEV) — matches the pattern already used for
       // MDX render errors (see content/formats/mdx.ts's sanitizeMdxError):
