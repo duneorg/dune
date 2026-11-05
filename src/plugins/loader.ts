@@ -39,6 +39,7 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
 import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
+import { createPluginRuntime } from "../plugin-api/runtime.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -453,12 +454,13 @@ export async function mountPlugins(
   // route-finalizing work (e.g. admin's internal registerPluginPublicRoutes()
   // call) must run after every other plugin's mount()-time middleware and
   // routes already exist — see this function's doc comment.
+  const runtime = createPluginRuntime(ctx);
   for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;
     try {
       await plugin.mount({
         app,
-        bootstrap: ctx,
+        runtime,
         services: ctx.pluginServices,
         capabilities: ctx.capabilities,
       });

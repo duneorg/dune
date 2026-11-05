@@ -568,8 +568,8 @@ export interface DunePlugin {
    * ```ts
    * import { registerAdminRoutes } from "./routes.ts";
    *
-   * mount({ app, bootstrap, capabilities }) {
-   *   registerAdminRoutes(app, bootstrap.config, capabilities);
+   * mount({ app, runtime, capabilities }) {
+   *   registerAdminRoutes(app, runtime.config, capabilities);
    * }
    * ```
    */
@@ -741,11 +741,11 @@ export interface MountApi {
   // deno-lint-ignore no-explicit-any
   app: import("fresh").App<any>;
   /**
-   * The fully bootstrapped engine context — engine, storage, config, hooks,
-   * image pipeline, auth system, etc.
-   * Typed via import() to avoid a circular type dependency with bootstrap.ts.
+   * The booted site: engine, config, storage, search, hooks, history, flex,
+   * image cache, metrics, submissions, sections, authz and the job scheduler.
+   * A curated slice, not core's whole bootstrap result.
    */
-  bootstrap: import("../runtime/bootstrap.ts").BootstrapResult;
+  runtime: import("../plugin-api/runtime.ts").PluginRuntime;
   /** The same services object `setup()` received (`PluginApi.services`). */
   services: import("../plugin-api/services.ts").PluginServices;
   /**
