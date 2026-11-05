@@ -42,6 +42,17 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
+  switch (#97).** The `auth.session` provider declares the cookies that carry its session
+  (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
+  `authenticate()` on a public page and whether to keep the response out of the shared page
+  cache (an editor's response must never be cached for anonymous visitors). Undeclared, any
+  request with a `Cookie` header counts as possibly signed in. Before, both decisions were
+  hard-wired to the cookie `dune_session`, so a replacement admin using another cookie name
+  got no admin bar and could have its editor-rendered pages cached for everyone. The authz
+  system is now also created when a plugin provides `auth.session`, even with
+  `admin.enabled: false`; before, a replacement admin had no authz and every `pages.update`
+  check failed closed.
 - **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
   (`@dune/core/config`). It carries what the theme docs promise: `site`, `theme`
   (including `theme.custom`) and `system.languages`. The runtime value is still
@@ -62,6 +73,30 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   carries the `bar.actions` contributions. A plugin-admin that still only fills the
   bag no longer gets a bar, admin WebSocket auth, scheduled actions or the jobs view:
   plugin-admin 4.0.0 provides the capabilities.
+- **The admin-extension fields of `DunePlugin` and their types (#97).** Replaced by
+  the capability registry (`PluginApi.capabilities` / `MountApi.capabilities`):
+  - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
+    `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
+    -> provide the `inline-edit` or `editor.content` slot in `setup()`.
+  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. `permission`
+    is now required on every `admin.pages` and `admin.routes` contribution (it used to be
+    optional on pages, meaning any authenticated admin), so nothing is exposed to every
+    admin by omission. A guarded
+    `POST`/`PUT`/`PATCH`/`DELETE` admin route (previously a `mount()` route wrapped in
+    `withGuards()`, which stops working once the admin no longer mounts first) is
+    `capabilities.contribute("admin.routes", { method, path, permission, handler })`: the
+    admin mounts it behind its authentication, CSRF check and permission check.
+    `permission` is required, so a route cannot be mounted open to every admin by omission.
+  - `DunePlugin.adminBarActions` -> `capabilities.contribute("bar.actions", fn)`;
+    `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
+  - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).
+    A plugin route that needs to know who the admin is calls
+    `capabilities.get("auth.session")?.authenticate(req)`; there is no shared
+    per-request state to rely on, so nothing needs admin middleware to be mounted first.
+  - `BootstrapResult.adminContext`, the untyped bag core used to read from the admin.
+  `/api/inline-edit/ws` now takes its manager from the `inline-edit` capability.
+  `plugin-admin` 4.0.0 and `plugin-inline-edit` provide and consume these; a site-local
+  plugin that used the removed fields fails type-checking until it moves to the registry.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
   are renamed, with no aliases, in `site.yaml`, `system.yaml` and the `admin:`
   block: `auth.userStore` → `user_store`, `authzStore` → `authz_store`,
@@ -113,12 +148,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
   `ctx.adminContext` bag. First-party keys: slots `auth.session`,
   `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
-  `admin.pages`, `bar.actions`. Core resolves the slot factories once, after every
+  `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
-  one with a warning, a throwing factory is logged and leaves its slot empty. This
-  release only adds the registry; the old fields (`adminContext`, `adminServices`,
-  `adminPages`, `adminBarActions`, `mountEarly`) still work and are removed, and the
-  core consumers switched over, in follow-ups before 0.36.
+  one with a warning, a throwing factory is logged and leaves its slot empty. The
+  old fields it replaces are removed (see "Removed — BREAKING").
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one
   `--root`. `dune users:passwd alice --site blog` now resolves `blog` from

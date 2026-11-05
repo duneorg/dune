@@ -108,8 +108,8 @@ export interface BootstrapResult {
   imageCache: ImageCache;
   /**
    * Revision history engine — stays in core because it is part of the
-   * `AdminServicesContext` passed to plugins' `adminServices()` factories, and
-   * because `@dune/plugin-inline-edit` may need it independently of the admin plugin.
+   * `CapabilityContext` passed to plugins' capability factories, and because
+   * `@dune/plugin-inline-edit` may need it independently of the admin plugin.
    */
   history: HistoryEngine;
   /**
@@ -125,12 +125,6 @@ export interface BootstrapResult {
   metrics: MetricsCollector;
   /** Public-facing routes registered by plugins */
   pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[];
-  /**
-   * The per-site AdminContext object — null until `@dune/plugin-admin`'s `mount()` runs.
-   * In multisite, each site gets its own BootstrapResult with its own AdminContext.
-   */
-  /** Populated by `@dune/plugin-admin`'s `mount()` hook; `null` until then. */
-  adminContext: Record<string, unknown> | null;
   /**
    * Store for public form submissions (`<data_dir>/submissions/<form>/`).
    * Core writes to it from the public form routes; an admin plugin reads it
@@ -179,13 +173,6 @@ export interface BootstrapResult {
    * is absent. Passed to mountDuneAuth() so the env var is read exactly once.
    */
   hmacKey?: CryptoKey | null;
-  /**
-   * Merged output of all plugins' `adminServices()` factories.
-   * Null until `mountPlugins()` runs (i.e. after `createDuneApp()`).
-   * Exposed here so core can register routes (e.g. `/api/inline-edit/ws`)
-   * that depend on plugin-contributed services without coupling to plugin-admin.
-   */
-  adminServices: import("../hooks/types.ts").AdminServices | null;
 }
 
 /** Options accepted by `bootstrap()`. All fields are optional. */
@@ -541,7 +528,7 @@ export async function bootstrap(
     cache: imageCache,
   });
 
-  // 10. History engine — stays in core so AdminServicesContext and @dune/plugin-inline-edit
+  // 10. History engine — stays in core so CapabilityContext and @dune/plugin-inline-edit
   // can both access it without depending on the admin plugin.
   const adminConfig = config.admin ?? {
     path: "/admin",
@@ -581,7 +568,13 @@ export async function bootstrap(
     return null;
   });
 
-  if (adminConfig.enabled !== false && adminAuthzStoreCfg === "local") {
+  // The authz system exists for the built-in admin (when enabled) and for any
+  // other admin: a plugin that provides the `auth.session` capability has
+  // declared itself the admin (plugins register, and so declare, before this
+  // point). Without it a replacement admin could never have its sessions
+  // authorised (`pages.update` fails closed when authz is missing).
+  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "auth.session");
+  if ((adminConfig.enabled !== false || hasSessionProvider) && adminAuthzStoreCfg === "local") {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",
@@ -639,7 +632,7 @@ export async function bootstrap(
   }
 
   // 12. Register the built-in admin plugin before user plugins so user plugins
-  // can override its services via adminServices(). The plugin's setup() runs
+  // can override its services through the capability registry. The plugin's setup() runs
   // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
   // Non-literal dynamic import breaks the circular publish-time dependency between
   // @dune/core and @dune/plugin-admin (each would otherwise need the other to be
@@ -743,10 +736,6 @@ export async function bootstrap(
       storage,
       submissionsDir: `${resolveFormsConfig(config).dataDir}/submissions`,
     }),
-    // adminContext is null until @dune/plugin-admin's mount() runs inside mountPlugins()
-    adminContext: null,
-    // adminServices is null until mountPlugins() runs inside createDuneApp()
-    adminServices: null,
     authz: bootstrappedAuthz,
     authzAdapter: bootstrappedAuthzAdapter,
     authzSchema,

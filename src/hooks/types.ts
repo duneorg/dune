@@ -8,8 +8,6 @@ import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
 import type { FreshContext } from "fresh";
-import type { InlineEditManager } from "../inline-edit/types.ts";
-import type { HistoryEngine } from "../history/engine.ts";
 import type { ContentApi } from "../content/api.ts";
 import type { AuthzRelation } from "../auth/authz-schema.ts";
 
@@ -252,7 +250,7 @@ export interface PublicRouteRegistration {
 }
 
 /**
- * Context passed to {@link DunePlugin.adminBarActions}.
+ * Context passed to a `bar.actions` contribution.
  *
  * Deliberately the same narrowed shape {@link ResponseTransformContext}
  * passes as `page`/`adminPrefix` (plus `template`, which actions need to
@@ -271,8 +269,8 @@ export interface AdminBarActionContext {
 }
 
 /**
- * A button contributed to the shared admin bar UI via
- * {@link DunePlugin.adminBarActions}. Rendered by whichever plugin owns the
+ * A button contributed to the shared admin bar UI through the `bar.actions`
+ * contribution point. Rendered by whichever plugin owns the
  * bar (e.g. `@dune/plugin-inline-edit`) — the contributing plugin controls
  * only the button's appearance and behavior, not its position or styling.
  *
@@ -306,17 +304,14 @@ export interface AdminBarAction {
 /**
  * A custom admin page contributed by a plugin.
  *
- * Plugins register these via `DunePlugin.adminPages`. Unlike `publicRoutes`,
- * this is **not** wired by `@dune/core` itself — `@dune/core`'s own
- * `bootstrap()` doesn't even collect it. It's an opt-in contract that
- * `@dune/plugin-admin`'s `mountDuneAdmin()` reads directly from
- * `hooks.plugins()` and wires as programmatic Fresh routes (after the core
- * admin file-system routes), enforcing each page's declared `permission` via
- * the admin panel's own auth system along the way. A site running without
- * `@dune/plugin-admin` (or any equivalent admin package calling this same
- * contract) gets no `adminPages` registration at all — there is no core
- * fallback. Deliberate: enforcing `permission` needs an admin-panel-specific
- * auth/permission system that `@dune/core` has no reason to depend on.
+ * Plugins contribute these to the `admin.pages` point:
+ * `api.capabilities.contribute("admin.pages", { path, label, permission, handler })`.
+ * Unlike `publicRoutes`, this is **not** wired by `@dune/core` itself: whichever
+ * admin package provides the admin UI reads the list (`capabilities.list("admin.pages")`)
+ * and mounts each page as a programmatic route, enforcing its declared
+ * `permission`. A site without an admin package gets no admin pages; there is
+ * no core fallback, because enforcing `permission` needs an admin-specific
+ * auth system that `@dune/core` has no reason to depend on.
  *
  * @since 0.7.0
  */
@@ -332,11 +327,52 @@ export interface AdminPageRegistration<S = any> {
   /** Optional icon — emoji or inline SVG */
   icon?: string;
   /**
-   * Admin permission required to view this page.
-   * If omitted, any authenticated admin user can access the page.
+   * Admin permission required to view this page. Required, like
+   * {@link AdminRouteRegistration.permission}: every admin contribution says
+   * who may use it, so a page cannot be exposed to every authenticated admin
+   * by leaving a field out.
    */
-  permission?: string;
+  permission: string;
   /** Fresh GET handler for the page. */
+  handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
+}
+
+/**
+ * A guarded admin route contributed by a plugin: the way to add a `POST`, `PUT`,
+ * `PATCH` or `DELETE` endpoint (or a `GET` API route that is not a sidebar page)
+ * under the admin prefix.
+ *
+ * Plugins contribute these to the `admin.routes` point:
+ * `api.capabilities.contribute("admin.routes", { method, path, permission, handler })`.
+ * Whichever admin package provides the admin UI reads the list
+ * (`capabilities.list("admin.routes")`) and mounts each route behind its own
+ * authentication, with the CSRF check applied to every non-safe method and the
+ * declared `permission` enforced, so the handler only runs for a request that
+ * passed all three. A site without an admin package mounts nothing.
+ *
+ * A route registered directly in a plugin's `mount()` is *not* behind the
+ * admin's middleware (mount order is registration order, and the admin mounts
+ * last), so it cannot use the admin's guards: contribute it here instead.
+ *
+ * @since 0.36.0
+ */
+// deno-lint-ignore no-explicit-any
+export interface AdminRouteRegistration<S = any> {
+  /** HTTP method. Anything other than `GET` is subject to the CSRF check. */
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  /**
+   * URL path relative to the admin prefix (must start with `/`).
+   * Example: `/my-plugin/save` registers at `/admin/my-plugin/save`.
+   */
+  path: string;
+  /**
+   * Admin permission required (including ones the plugin declares through
+   * `authzActions`). Required, not optional: a mutation endpoint must say who
+   * may call it, so it cannot be mounted open to every authenticated admin by
+   * leaving a field out.
+   */
+  permission: string;
+  /** Fresh handler; runs only after authentication, CSRF and permission checks pass. */
   handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
 }
 
@@ -440,30 +476,6 @@ export interface DunePlugin {
    */
   dependencies?: string[];
   /**
-   * Custom pages to add to the admin panel.
-   *
-   * Each entry registers a programmatic route under the admin prefix and
-   * adds an optional sidebar link. The handler receives a Fresh context
-   * with `AdminState` set by the admin middleware.
-   *
-   * Use this instead of file-system routes — core admin uses fsRoutes();
-   * plugins extend it programmatically via these registrations.
-   *
-   * @since 0.7.0
-   *
-   * @example
-   * ```ts
-   * adminPages: [{
-   *   path: "/my-plugin",
-   *   label: "My Plugin",
-   *   icon: "🧩",
-   *   permission: "config.read",
-   *   handler: (ctx) => ctx.render(<MyPluginPage />),
-   * }],
-   * ```
-   */
-  adminPages?: AdminPageRegistration[];
-  /**
    * Public-facing Fresh routes contributed by this plugin.
    *
    * Registered before Dune's content catch-all so they take priority.
@@ -486,43 +498,6 @@ export interface DunePlugin {
    * ```
    */
   publicRoutes?: PublicRouteRegistration[];
-  /**
-   * Contribute buttons to the shared admin bar UI — the small floating
-   * toolbar an editor plugin (e.g. `@dune/plugin-inline-edit`) injects into
-   * every content-page response for an authenticated admin, via its own
-   * `transformResponse`. This field lets *other* plugins add buttons to
-   * that bar without the bar-owning plugin knowing anything about them —
-   * `plugin-inline-edit` renders whatever's registered here with zero
-   * knowledge of what a "PDF export" or "edit source" button does.
-   *
-   * A function, not a static list, because actions are usually per-page
-   * (a download link needs the current page's sourcePath baked into its
-   * `href`) — called once per response by whichever plugin owns the bar,
-   * with the same narrowed page/adminPrefix context `transformResponse`
-   * itself receives. Return `[]` when this plugin has nothing to show for
-   * the given page (e.g. a PDF-export action that only makes sense on
-   * `template: "worksheet"` pages).
-   *
-   * Only plugins whose `transformResponse` also renders a bar need to call
-   * this — most plugins declaring `adminBarActions` do not need
-   * `transformResponse` of their own.
-   *
-   * @since 1.2.0
-   *
-   * @example
-   * ```ts
-   * adminBarActions: ({ page, adminPrefix }) => {
-   *   if (page?.template !== "worksheet") return [];
-   *   return [{
-   *     id: "pdf-export:download",
-   *     label: "PDF",
-   *     icon: "⬇",
-   *     href: `/pdf/download?scope=page&path=${encodeURIComponent(page.sourcePath)}`,
-   *   }];
-   * },
-   * ```
-   */
-  adminBarActions?: (ctx: AdminBarActionContext) => AdminBarAction[];
   /**
    * Preact island file specifiers contributed by this plugin.
    *
@@ -563,8 +538,8 @@ export interface DunePlugin {
    * @example
    * ```ts
    * // Gate a plugin-specific admin capability behind its own permission,
-   * // reachable from any mount()-registered route via withGuards():
-   * //   withGuards({ permission: "billing.manage" }, handler)
+   * // reachable from an `admin.routes` contribution:
+   * //   api.capabilities.contribute("admin.routes", { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
    * export default {
    *   name: "my-billing-plugin",
    *   version: "1.0.0",
@@ -577,56 +552,6 @@ export interface DunePlugin {
    */
   authzActions?: Record<string, readonly AuthzRelation[]>;
   /**
-   * Factory for admin-context services contributed by this plugin.
-   *
-   * Called during bootstrap after core infrastructure (storage, history) is
-   * initialised but before the admin panel routes are mounted. Returning an
-   * `inlineEdit` manager here is how plugins replace (or add to) the built-in
-   * inline editing service.
-   *
-   * @since 0.17.0
-   *
-   * @example
-   * ```ts
-   * adminServices({ storage, history, dataDir, contentDir }) {
-   *   return { inlineEdit: createMyEditManager({ storage, history, dataDir, contentDir }) };
-   * }
-   * ```
-   */
-  adminServices?: (
-    ctx: AdminServicesContext,
-  ) => Promise<AdminServices> | AdminServices;
-  /**
-   * Register app-wide middleware that every other plugin's routes must be
-   * able to see, before any plugin's regular `mount()` runs.
-   *
-   * `mountPlugins()` compiles each `app.get()`/`app.post()`/etc. route's
-   * middleware chain at the moment that route is registered (this is a Fresh
-   * 2 constraint, not a Dune one — see `@fresh/core`'s `applyCommandsInner`/
-   * `segmentToMiddlewares`): a route registered before some `app.use()`
-   * middleware never sees it, even when both are unscoped, because the
-   * chain is snapshotted at registration time, not per-request. `mount()`
-   * hooks run in plugin registration order, which for the built-in admin
-   * plugin is *after* every site-configured plugin (see `bootstrap.ts`) — so
-   * a plugin's own `mount()`-registered route could never see
-   * `@dune/plugin-admin`'s `ctx.state.adminContext`, which its own `mount()`
-   * sets up via exactly this kind of unscoped `app.use()`.
-   *
-   * `mountEarly()` exists to break that dependency: `mountPlugins()` calls
-   * every plugin's `mountEarly()` (admin's first, if present) before calling
-   * *any* plugin's `mount()`. Only middleware belongs here — anything that
-   * registers a route (including a plugin's own `publicRoutes`) still
-   * belongs in `mount()`, which keeps its original ordering guarantees (see
-   * that hook's own doc comment).
-   *
-   * Most plugins never need this — it exists for the admin plugin's
-   * `ctx.state.adminContext` middleware specifically, and for any future
-   * plugin whose middleware other plugins' routes need to depend on.
-   *
-   * @since 0.34.4
-   */
-  mountEarly?: (api: MountApi) => Promise<void> | void;
-  /**
    * Mount Fresh routes onto the app.
    *
    * Called by {@link mountPlugins} after `bootstrap()` completes and the Fresh
@@ -634,18 +559,13 @@ export interface DunePlugin {
    * Use this to register routes, middleware, and layouts that require a `FreshContext`
    * (e.g. an admin panel sub-app, a dashboard, a set of auth routes).
    *
-   * `adminServices` is the merged output of all plugins' `adminServices()` factories,
-   * collected at mount time. Plugins that contribute an `inlineEdit` manager or
-   * `contentEditor` implementation will see their contributions reflected here.
+   * Capability slots (`auth.session`, `inline-edit`, ...) are resolved before
+   * `mount()` runs and are read through `api.capabilities`, lazily (at request
+   * time): do not assume a provider exists.
    *
-   * Runs in plugin registration order (unlike `mountEarly()`, which always
-   * runs admin first) — a route registered here can rely on every other
-   * plugin registered *before* this one having already registered its own
-   * `mount()`-time middleware and routes. If your route needs to see
-   * middleware from a plugin that mounts *after* yours (most commonly the
-   * built-in admin plugin's `ctx.state.adminContext`), that dependency has
-   * to be a `mountEarly()` middleware instead, not something `mount()`'s own
-   * ordering can give you.
+   * Runs in plugin registration order, so a route registered here can rely on
+   * every plugin registered *before* this one already having registered its
+   * own `mount()`-time middleware and routes.
    *
    * @since 0.24.0
    *
@@ -653,8 +573,8 @@ export interface DunePlugin {
    * ```ts
    * import { registerAdminRoutes } from "./routes.ts";
    *
-   * mount({ app, bootstrap, adminServices }) {
-   *   registerAdminRoutes(app, bootstrap.config, adminServices);
+   * mount({ app, bootstrap, capabilities }) {
+   *   registerAdminRoutes(app, bootstrap.config, capabilities);
    * }
    * ```
    */
@@ -712,38 +632,9 @@ export interface DunePlugin {
 }
 
 /**
- * Context passed to {@link DunePlugin.adminServices} factories.
- *
- * Provides the infrastructure services a plugin needs to construct
- * admin-panel service objects (e.g. inline editing managers).
- *
- * @since 0.17.0
- */
-export interface AdminServicesContext {
-  /** Storage adapter for the site (reads/writes content and data files). */
-  storage: StorageAdapter;
-  /** Merged site configuration. */
-  config: DuneConfig;
-  /** Absolute data directory path (e.g. ".dune/data"). */
-  dataDir: string;
-  /** Content directory path relative to site root (e.g. "content"). */
-  contentDir: string;
-  /** History engine for recording content revisions. */
-  history: HistoryEngine;
-  /**
-   * The engine's hook registry. Admin-service factories that write content
-   * outside the standard admin CRUD routes (e.g. a real-time editing
-   * session) should fire the matching `onPageCreate`/`onPageUpdate`/
-   * `onPageDelete` event themselves after a successful write — those routes
-   * fire it inline, but a service instantiated here has no other way to.
-   */
-  hooks: HookRegistry;
-}
-
-/**
  * Plugin-provided replacement for the built-in block editor.
  *
- * Register via {@link AdminServices.contentEditor} in a plugin's `adminServices()`.
+ * Provide it as the `editor.content` capability: `api.capabilities.provide("editor.content", () => impl)`.
  * The edit route delegates to `pageEditorHandler` instead of the default block editor.
  *
  * Defined in core (not in `@dune/plugin-admin`) so that alternative editor plugins can
@@ -775,21 +666,6 @@ export interface ContentEditorPlugin {
     req: Request,
     user: { id: string; name: string },
   ) => Response;
-}
-
-/**
- * Admin-panel services contributed by a plugin via {@link DunePlugin.adminServices}.
- *
- * @since 0.17.0
- */
-export interface AdminServices {
-  /** Inline editing manager — the service behind the inline-edit admin endpoints (v0.16+). */
-  inlineEdit?: InlineEditManager;
-  /**
-   * Custom page editor — replaces the built-in block editor when set.
-   * @since 0.24.0
-   */
-  contentEditor?: ContentEditorPlugin;
 }
 
 /**
@@ -839,26 +715,19 @@ export interface ResponseTransformContext {
   /**
    * Content page matching the current URL, or null for non-content routes
    * (admin paths, API paths, plugin routes, theme static assets, etc.).
-   * `template` was added in 1.2.0 alongside `adminBarActions` — existing
+   * `template` was added in 1.2.0 alongside the bar actions — existing
    * consumers destructuring the other four fields are unaffected.
    */
   page: { sourcePath: string; route: string; title: string | null; template: string } | null;
   /** Admin panel URL prefix (e.g. `"/admin"`). */
   adminPrefix: string;
   /**
-   * Every registered plugin, narrowed to just `name` and `adminBarActions`
-   * — enough for a bar-owning plugin (e.g. `plugin-inline-edit`) to collect
-   * other plugins' contributed bar actions, without exposing full plugin
-   * internals (hooks, adminPages, etc.) to every `transformResponse`.
-   *
-   * @since 1.2.0
-   */
-  plugins: readonly Pick<DunePlugin, "name" | "adminBarActions">[];
-  /**
    * Bar buttons contributed through the `bar.actions` capability point
    * (`PluginApi.capabilities.contribute("bar.actions", fn)`), in plugin
-   * registration order. Call each with the bar action context. Prefer this
-   * over `plugins[].adminBarActions`, which goes away with that field.
+   * registration order. Call each with the bar action context. A bar-owning
+   * plugin (e.g. `@dune/plugin-inline-edit`) collects other plugins' buttons here.
+   *
+   * @since 0.36.0
    */
   barActions: readonly ((ctx: AdminBarActionContext) => AdminBarAction[])[];
 }
@@ -890,12 +759,6 @@ export interface MountApi {
    * time) rather than assuming a provider exists.
    */
   capabilities: import("../plugin-api/capabilities.ts").CapabilityReader;
-  /**
-   * Merged output of all plugins' `adminServices()` factories, collected just
-   * before `mount()` is called. Plugins that contribute an `inlineEdit` manager
-   * or a `contentEditor` implementation will be visible here.
-   */
-  adminServices: AdminServices;
 }
 
 /** Hook registry interface */

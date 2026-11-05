@@ -17,7 +17,7 @@ import {
 } from "../cli/serve-utils.ts";
 import { scrubMarkersFromResponse } from "../cli/marker-scrub.ts";
 import { isBareResponse } from "../routing/bare-response.ts";
-import { hasAdminSessionCookie } from "../cli/admin-bar-inject.ts";
+import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
 import {
   buildCacheControl,
@@ -109,6 +109,7 @@ export function registerContentCatchAll(
       response,
       plugins: hooks.plugins(),
       auth: getAdminAuth(),
+      sessionCookies: getAdminAuth()?.sessionCookies,
       barActions: ctx.capabilities.list("bar.actions"),
       authz,
       actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
@@ -200,7 +201,8 @@ export function registerContentCatchAll(
 
         // Admin-session requests bypass the shared page cache (their response
         // includes the injected admin bar and must never be stored anonymously).
-        const bypassPageCache = hasAdminSessionCookie(req);
+        const adminAuth = getAdminAuth();
+        const bypassPageCache = adminAuth ? hasSessionCookie(req, adminAuth.sessionCookies) : false;
 
         // Role-gated pages must never enter the shared page cache. The cache is
         // keyed by pathname only and is not partitioned by authorization, so a

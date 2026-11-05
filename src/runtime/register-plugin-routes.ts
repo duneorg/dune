@@ -8,8 +8,8 @@
  * `BootstrapResult.pluginPublicRoutes`; this is the piece that was missing —
  * turning that collected list into actual `app.get()`/`app.post()`/etc. calls.
  *
- * `adminPages` is not handled here and stays `@dune/plugin-admin`-owned: its
- * registration enforces `page.permission` via the admin panel's own auth/
+ * The `admin.pages` contributions are not handled here and stay with the admin
+ * package: mounting them enforces `page.permission` via the admin panel's own auth/
  * permission system, which core has no reason to depend on.
  *
  * @module
