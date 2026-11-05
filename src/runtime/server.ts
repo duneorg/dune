@@ -509,7 +509,7 @@ export async function createDuneApp(
         return new Response("Unauthorized", { status: 401 });
       }
       userId = authResult.user.id;
-      username = authResult.user.username;
+      username = authResult.user.username ?? authResult.user.name ?? authResult.user.email ?? authResult.user.id;
       permitted = await checkInlineEditPermission(
         ctx.authz,
         authResult,
