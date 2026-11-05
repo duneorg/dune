@@ -39,6 +39,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 - **`StatusTransition` and `TRANSITIONS`** (use `WorkflowTransition` /
   `WorkflowConfig.transitions`), and the unused `AdminNotificationsConfig` and
   `SmtpNotificationConfig` types.
+- **Four hook events that were declared and never fired.** `onRouteResolved`,
+  `onPageLoaded`, `onAfterRender` and `onResponse` are gone from `HookEvent`. A
+  handler registered for one never ran, with no error; now it is a type error
+  (and `dune validate` flags it in skills code). Firing them as documented would
+  have meant splitting `engine.resolve()` in two, or buffering every response
+  body (which kills streaming), so they are removed instead of faked. Use
+  `onBeforeRender` for the assembled template props, `transformResponse` for the
+  rendered response, or do the work in your theme. Re-adding an event later is
+  additive; removing one after 1.0 would not be.
 
 ### Changed — BREAKING
 
@@ -149,6 +158,13 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   said so. The mutation-event wording is corrected too: the events are fired by
   whoever writes the page (not "via the admin panel"), and edits made outside
   Dune surface only as `onRebuild`.
+- **`dune doctor --boot` says who provides what, and checks the admin (#97).**
+  The booted site reports its capability slots and contribution points (and
+  writes one `capabilities.resolved` log line at startup). Doctor lists them and
+  errors when the admin is enabled but no plugin provides `auth.session` (the
+  site boots, but nobody can sign in and there is no editing bar) or when a
+  provider's factory threw, and warns when scheduled actions are queued with no
+  `scheduler.executor`. Findings gain an `info` severity, which never fails a run.
 
 - **A capability registry for what plugins provide (#97).** `PluginApi.capabilities`
   (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for

@@ -26,29 +26,8 @@ export type HookEvent =
   | "onContentIndexReady"
   // Request lifecycle
   | "onRequest"
-  // onRouteResolved and onPageLoaded are declared but intentionally never
-  // fired (as of 0.31.7). Firing both as documented — {req, page: PageIndex}
-  // then {req, page: Page} — would need engine.resolve() split into two
-  // real phases; today it resolves the full Page in one step, so there's
-  // no natural place to fire two distinct events with two distinct
-  // payload shapes without fabricating one from data we already have.
-  // Deferred pending a decision on whether that split is worth making.
-  // See later-roadmap's "13 of 24 declared hook events" entry.
-  | "onRouteResolved"
-  | "onPageLoaded"
   | "onCollectionResolved"
   | "onBeforeRender"
-  // onAfterRender and onResponse are declared but intentionally never
-  // fired (as of 0.31.7). Firing them as documented needs the actual
-  // rendered HTML string, but Fresh's render() returns a Response
-  // directly — core never sees the HTML itself. The only way to get it
-  // would be to intercept every response and buffer its full body into
-  // memory via response.text(), which kills streaming and adds real
-  // per-request overhead whether or not any plugin is listening. Deferred
-  // pending a decision on whether that tradeoff is worth it.
-  // See later-roadmap's "13 of 24 declared hook events" entry.
-  | "onAfterRender"
-  | "onResponse"
   // Content processing
   | "onMarkdownProcess"
   | "onMarkdownProcessed"
