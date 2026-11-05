@@ -500,8 +500,7 @@ export async function createDuneApp(
         siteUser,
       );
     } else {
-      // deno-lint-ignore no-explicit-any
-      const adminAuth = (ctx.adminContext as any)?.auth;
+      const adminAuth = ctx.capabilities.get("auth.session");
       if (!adminAuth) return new Response("Unauthorized", { status: 401 });
       const authResult = await adminAuth.authenticate(fc.req).catch(() =>
         null
@@ -510,7 +509,7 @@ export async function createDuneApp(
         return new Response("Unauthorized", { status: 401 });
       }
       userId = authResult.user.id;
-      username = authResult.user.username;
+      username = authResult.user.username ?? authResult.user.name ?? authResult.user.email ?? authResult.user.id;
       permitted = await checkInlineEditPermission(
         ctx.authz,
         authResult,

@@ -35,8 +35,9 @@ export async function registerFeeds(
   const { engine, config } = ctx;
   const feedEnabled = config.site.feed?.enabled !== false;
   const siteName = engine.site.title;
-  // deno-lint-ignore no-explicit-any
-  const getStaging = () => (ctx.adminContext as any)?.staging;
+  // Core owns the staging engine (services.engines.staging); staged drafts are
+  // written by whichever plugin provides the editing UI.
+  const getStaging = () => ctx.pluginServices.engines.staging;
 
   async function buildFeedItems(): Promise<FeedItem[]> {
     const feedConfig = config.site.feed;

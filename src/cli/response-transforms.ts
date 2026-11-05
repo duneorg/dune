@@ -38,7 +38,7 @@ interface AdminAuthMiddleware {
   authenticate(req: Request): Promise<unknown>;
 }
 import type { DuneConfig } from "../config/types.ts";
-import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
+import type { AdminBarAction, AdminBarActionContext, DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
 import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
@@ -70,6 +70,11 @@ export interface RunResponseTransformsOptions {
    * When null, all sessions are treated as anonymous (transformAuth stays null).
    */
   auth: AdminAuthMiddleware | null;
+  /**
+   * Bar buttons contributed to the `bar.actions` point, in plugin registration
+   * order. Handed to transform plugins as `ResponseTransformContext.barActions`.
+   */
+  barActions?: readonly ((ctx: AdminBarActionContext) => AdminBarAction[])[];
   /**
    * Polizy authz system — the sole authority for the `pages.update` check
    * below (dec-identity-unification Phase 5c/7). Undefined only when authz
@@ -126,6 +131,7 @@ export async function runPluginResponseTransforms(
     config,
     adminPrefix,
     actionToRelations,
+    barActions = [],
   } = opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
@@ -193,6 +199,7 @@ export async function runPluginResponseTransforms(
         }
         : null,
       adminPrefix,
+      barActions,
       // Full list (not transformPlugins) — a plugin can contribute
       // adminBarActions without declaring transformResponse itself, so the
       // bar-owning plugin needs every plugin, not just the ones already
