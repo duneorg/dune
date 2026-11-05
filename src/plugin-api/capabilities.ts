@@ -42,7 +42,12 @@ import { logger } from "../core/logger.ts";
 /** The result of authenticating a request as an admin-tier session. */
 export interface AuthenticateResult {
   authenticated: boolean;
-  user?: { id: string; username: string; roles?: string[] };
+  /**
+   * The signed-in admin. Only `id` is guaranteed: `username` is absent for
+   * OAuth/magic-link accounts, so a consumer that needs a display name falls
+   * back to `name`, then `email`, then `id`.
+   */
+  user?: { id: string; username?: string; email?: string; name?: string; roles?: string[] };
 }
 
 /** Tells core whether a request carries an authenticated admin session. */
