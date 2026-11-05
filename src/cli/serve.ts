@@ -392,7 +392,6 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     setShuttingDown(true);
     jobScheduler.stop();
     adminCtxForScheduler?.scheduler?.stop();
-    void ctx.searchAnalytics?.flush();
     console.log(`\n[dune] received ${signal}, draining connections...`);
     ac.abort();
   };
@@ -424,6 +423,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // The AuditLogger writes each entry directly to disk via Deno.writeTextFile
   // (append: true) — there is no in-memory write buffer to flush.  No explicit
   // flush step is required here.
+
+  // Search analytics counts live in memory and are saved on a timer; write any
+  // unsaved ones now that the last in-flight request has been counted.
+  await ctx.searchAnalytics?.flush();
 
   cleanup();
   instance?.unregister();
