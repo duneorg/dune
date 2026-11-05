@@ -11,6 +11,7 @@ function makeStorage(): StorageAdapter & { writes: string[] } {
   const writes: string[] = [];
   return {
     writes,
+    exists: () => Promise.resolve(false),
     read: () => Promise.resolve(new TextEncoder().encode("title: Test\n")),
     write: (_path: string, data: Uint8Array) => {
       writes.push(new TextDecoder().decode(data));
@@ -182,4 +183,93 @@ Deno.test("update_frontmatter: malformed existing frontmatter errors instead of 
   assertEquals(text.includes("malformed frontmatter"), true);
   // Must not write anything back — no duplicated/corrupted frontmatter.
   assertEquals(storage.writes, []);
+});
+
+// ── Page events: whoever writes a page announces it ──────────────────────────
+
+type Fired = Array<{ event: string; payload: unknown }>;
+
+function makeFiringDeps(existing: Set<string>) {
+  const fired: Fired = [];
+  const storage = {
+    exists: (p: string) => Promise.resolve(existing.has(p)),
+    read: () => Promise.resolve(new TextEncoder().encode("---\ntitle: Old\n---\nbody\n")),
+    write: (p: string) => {
+      existing.add(p);
+      return Promise.resolve();
+    },
+    delete: (p: string) => {
+      existing.delete(p);
+      return Promise.resolve();
+    },
+  } as unknown as StorageAdapter;
+  const tools = buildWriteTools({
+    engine: { pages: [{ route: "/blog/old", sourcePath: "blog/old/default.md" }] } as unknown as DuneEngine,
+    storage,
+    root: "/tmp",
+    contentDir: "content",
+    hooks: () =>
+      Promise.resolve({
+        fire: (event: string, payload: unknown) => {
+          fired.push({ event, payload });
+          return Promise.resolve(undefined);
+        },
+      } as never),
+  });
+  const tool = (name: string) => tools.find((t) => t.meta.name === name)!.handler;
+  return { fired, tool };
+}
+
+Deno.test("write_page: a new file fires onPageCreate with content-relative path and title", async () => {
+  const { fired, tool } = makeFiringDeps(new Set());
+  const r = await tool("write_page")({ path: "blog/new/default.md", content: "---\ntitle: Fresh\n---\nhi\n" });
+  assertEquals(r.isError, undefined);
+  assertEquals(fired, [{ event: "onPageCreate", payload: { sourcePath: "blog/new/default.md", title: "Fresh" } }]);
+});
+
+Deno.test("write_page: overwriting an existing file fires onPageUpdate", async () => {
+  const { fired, tool } = makeFiringDeps(new Set(["content/blog/old/default.md"]));
+  await tool("write_page")({ path: "blog/old/default.md", content: "---\ntitle: X\n---\n" });
+  assertEquals(fired, [{ event: "onPageUpdate", payload: { sourcePath: "blog/old/default.md" } }]);
+});
+
+Deno.test("update_frontmatter fires onPageUpdate; delete_page fires onPageDelete", async () => {
+  const { fired, tool } = makeFiringDeps(new Set(["content/blog/old/default.md"]));
+  await tool("update_frontmatter")({ route: "/blog/old", updates: { title: "New" } });
+  await tool("delete_page")({ route: "/blog/old" });
+  assertEquals(fired.map((f) => f.event), ["onPageUpdate", "onPageDelete"]);
+  assertEquals(fired[1].payload, { sourcePath: "blog/old/default.md" });
+});
+
+Deno.test("a failing hook is logged, not surfaced: the write still succeeds", async () => {
+  const storage = { exists: () => Promise.resolve(false), write: () => Promise.resolve() } as unknown as StorageAdapter;
+  const tools = buildWriteTools({
+    engine: { pages: [] } as unknown as DuneEngine,
+    storage,
+    root: "/tmp",
+    contentDir: "content",
+    hooks: () => Promise.reject(new Error("plugin load failed")),
+  });
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const r = await tools.find((t) => t.meta.name === "write_page")!.handler({ path: "a/default.md", content: "x" });
+    assertEquals(r.isError, undefined);
+  } finally {
+    console.error = orig;
+  }
+});
+
+Deno.test("without a hooks resolver, page writes fire nothing and still work", async () => {
+  const written: string[] = [];
+  const storage = {
+    exists: () => Promise.resolve(false),
+    write: (p: string) => {
+      written.push(p);
+      return Promise.resolve();
+    },
+  } as unknown as StorageAdapter;
+  const tools = buildWriteTools({ engine: { pages: [] } as unknown as DuneEngine, storage, root: "/tmp", contentDir: "content" });
+  await tools.find((t) => t.meta.name === "write_page")!.handler({ path: "a/default.md", content: "x" });
+  assertEquals(written, ["content/a/default.md"]);
 });
