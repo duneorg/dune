@@ -120,6 +120,15 @@ export interface SystemConfig {
      */
     fail_on_startup?: boolean;
     /**
+     * Record every `GET /api/search` query (the query text and its result
+     * count, no IP or user data) to `{admin.runtime_dir}/search-analytics.jsonl`
+     * so editors can see top queries and zero-result queries. The file holds
+     * what visitors typed, so it is off unless you turn it on, and it is never
+     * pruned.
+     * Default: false.
+     */
+    analytics?: boolean;
+    /**
      * Additional frontmatter field names to include in the full-text index.
      * By default only title, body, and taxonomy values are indexed.
      * Add field names here to make custom frontmatter searchable.

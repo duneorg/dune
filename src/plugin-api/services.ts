@@ -25,6 +25,7 @@ import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
 import type { BlueprintMap, BlueprintValidationError, ResolvedBlueprint } from "../blueprints/types.ts";
 import type { PageFrontmatter } from "../content/types.ts";
+import type { SearchAnalytics, SearchAnalyticsSummary } from "../search/analytics.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { StagingEngine } from "../staging/engine.ts";
@@ -121,6 +122,16 @@ export interface BlueprintService {
   validate(frontmatter: PageFrontmatter, template: string): BlueprintValidationError[];
 }
 
+/** Search-related services. */
+export interface SearchServices {
+  analytics: {
+    /** True when `system.search.analytics` is on and queries are being recorded. */
+    readonly enabled: boolean;
+    /** Aggregate the recorded queries; an empty summary when analytics is off or nothing is recorded yet. */
+    summarize(limit?: number): Promise<SearchAnalyticsSummary>;
+  };
+}
+
 /** Where a site keeps its data. Site-relative, as storage paths. */
 export interface PathServices {
   /** The persistent data directory: `system.data_dir`, default `data`. */
@@ -140,6 +151,7 @@ export interface PluginServices {
   engines: EngineServices;
   authz: AuthzService;
   blueprints: BlueprintService;
+  search: SearchServices;
   paths: PathServices;
 }
 
@@ -149,6 +161,8 @@ export interface PluginServicesOptions {
   storage: StorageAdapter;
   /** Site root. Needed for the audit trail's file path; without it `engines.audit` is null. */
   root?: string;
+  /** The query recorder, when `system.search.analytics` is on. */
+  searchAnalytics?: SearchAnalytics | null;
   /** The blueprints currently loaded by the content engine (read at call time; they reload). */
   getBlueprints?: () => BlueprintMap;
   /** Resolves the site's authz system once bootstrap has created it. */

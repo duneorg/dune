@@ -14,7 +14,8 @@
  *   - No external dependencies: uses only Deno built-ins.
  */
 
-import { dirname } from "@std/path";
+import { dirname, join } from "@std/path";
+import type { DuneConfig } from "../config/types.ts";
 
 // === Types ===
 
@@ -63,6 +64,16 @@ export interface SearchAnalytics {
 }
 
 // === Implementation ===
+
+/**
+ * The recorder for a site, or null when `system.search.analytics` is off.
+ * The log lives under `admin.runtime_dir` (default `.dune/admin`) in the site root.
+ */
+export function resolveSearchAnalytics(config: DuneConfig, root: string): SearchAnalytics | null {
+  if (config.system?.search?.analytics !== true) return null;
+  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
+  return createSearchAnalytics(join(root, runtimeDir, "search-analytics.jsonl"));
+}
 
 /**
  * Create a search analytics instance backed by a JSONL file.

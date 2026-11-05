@@ -22,6 +22,7 @@ import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
 import type { SearchEngine } from "../search/engine.ts";
 import { SearchUnavailableError } from "../search/manager.ts";
+import type { SearchAnalytics } from "../search/analytics.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
@@ -87,13 +88,15 @@ export interface ApiHandlerOptions {
   flex?: FlexEngine;
   /** Optional hook registry — fires onApiRequest/onApiResponse when present. */
   hooks?: HookRegistry;
+  /** When present (`system.search.analytics`), each /api/search query is recorded. */
+  analytics?: SearchAnalytics | null;
 }
 
 /**
  * Create the full API request handler.
  */
 export function createApiHandler(options: ApiHandlerOptions): (req: Request) => Promise<Response | null> {
-  const { engine, collections, taxonomy, search, flex, hooks } = options;
+  const { engine, collections, taxonomy, search, flex, hooks, analytics } = options;
 
   const handleApiRequestInner = async function handleApiRequest(req: Request): Promise<Response | null> {
     const url = new URL(req.url);
@@ -185,7 +188,7 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
     }
 
     try {
-      const result = await routeApiRequest(path, url, req, engine, collections, taxonomy, search, flex);
+      const result = await routeApiRequest(path, url, req, engine, collections, taxonomy, search, flex, analytics);
       if (!result) {
         return jsonResponse({ error: "Not found" }, 404, corsHeaders);
       }
@@ -242,6 +245,7 @@ async function routeApiRequest(
   taxonomy: TaxonomyEngine,
   search: SearchEngine,
   flex?: FlexEngine,
+  analytics?: SearchAnalytics | null,
 ): Promise<unknown> {
   // GET /api/nav — navigation tree
   if (path === "/api/nav") {
@@ -301,6 +305,11 @@ async function routeApiRequest(
     }
     const hasMore = visible.length > offset + limit;
     const results = visible.slice(offset, offset + limit);
+    // Fire-and-forget: a failed write never slows or breaks a search. Only the
+    // first page counts, so paging through results is not recorded as new searches.
+    if (analytics && offset === 0 && q.trim()) {
+      analytics.record({ query: q.trim(), resultCount: visible.length, timestamp: Date.now() }).catch(() => {});
+    }
     const facets = search.facetCounts ? await search.facetCounts(q, "subtype") : {};
     return {
       items: results.map((r) => ({

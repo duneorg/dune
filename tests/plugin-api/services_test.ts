@@ -4,6 +4,7 @@ import type { DuneConfig } from "../../src/config/types.ts";
 import { MemoryStorageAdapter } from "../../src/storage/memory.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";
 import { createPluginServices, isDuneError } from "../../src/plugin-api/mod.ts";
+import { resolveSearchAnalytics } from "../../src/search/analytics.ts";
 import { BodyTooLargeError } from "../../src/security/body-limit.ts";
 import { SsrfBlockedError } from "../../src/security/ssrf.ts";
 import { DuplicateEmailError } from "../../src/auth/user-store.ts";
@@ -160,4 +161,30 @@ Deno.test("paths service: data dir and runtime dir default, and follow config", 
     dataDir: "var/data",
     runtimeDir: ".state",
   });
+});
+
+Deno.test("search analytics: off by default, on with system.search.analytics, and summarised through services", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    assertEquals(resolveSearchAnalytics(config(), root), null);
+    const off = createPluginServices({ config: config(), storage: new MemoryStorageAdapter() });
+    assertEquals(off.search.analytics.enabled, false);
+    assertEquals((await off.search.analytics.summarize()).totalSearches, 0);
+
+    const cfg = config();
+    cfg.system = { ...cfg.system, search: { analytics: true } } as never;
+    const analytics = resolveSearchAnalytics(cfg, root)!;
+    assertExists(analytics);
+    await analytics.record({ query: "deno", resultCount: 2, timestamp: 1 });
+    await analytics.record({ query: "stripe", resultCount: 0, timestamp: 2 });
+    const on = createPluginServices({ config: cfg, storage: new MemoryStorageAdapter(), searchAnalytics: analytics });
+    assertEquals(on.search.analytics.enabled, true);
+    const summary = await on.search.analytics.summarize();
+    assertEquals(summary.totalSearches, 2);
+    assertEquals(summary.zeroResultQueries, [{ query: "stripe", count: 1 }]);
+    // the file lives under admin.runtime_dir in the site root
+    assertEquals((await Deno.stat(`${root}/.dune/admin/search-analytics.jsonl`)).isFile, true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
