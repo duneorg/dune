@@ -5,6 +5,8 @@
  * @module
  */
 export type {
+  AuthzService,
+  EngineServices,
   PasswordService,
   PluginServices,
   PluginServicesOptions,

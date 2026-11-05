@@ -20,6 +20,14 @@ import type { ClientIpOptions, RateLimiter } from "../security/rate-limit.ts";
 import type { RateLimitStore } from "../security/rate-limit-store.ts";
 import type { SessionManager } from "../session/mod.ts";
 import type { UserStore } from "../auth/user-store.ts";
+import type { DuneAuthSystem } from "../auth/authz.ts";
+import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
+import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
+import type { WorkflowEngine } from "../workflow/engine.ts";
+import type { Scheduler } from "../workflow/scheduler.ts";
+import type { StagingEngine } from "../staging/engine.ts";
+import type { MachineTranslator } from "../mt/types.ts";
+import type { AuditLogger } from "../audit/logger.ts";
 
 /** Stateless security policy. */
 export interface SecurityService {
@@ -73,6 +81,34 @@ export interface PasswordService {
   readonly dummyHash: string;
 }
 
+/** Admin-tier access tuples (the authz system itself is created by bootstrap). */
+export interface AuthzService {
+  /**
+   * Make sure every given user holds the tuple for their admin-tier role.
+   * Idempotent. A no-op when the site has no authz system (admin disabled, or
+   * `admin.authz_store` is not local).
+   */
+  seedAdminTuples(users: Array<{ id: string; role: string }>): Promise<void>;
+}
+
+/**
+ * Long-lived engines core constructs once per site. The plugin uses them; it
+ * does not build them, so state and on-disk layout stay under core's control.
+ * They live under `admin.runtime_dir` (default `.dune/admin`).
+ */
+export interface EngineServices {
+  /** Content status transitions, from `site.workflow`. */
+  workflow: WorkflowEngine;
+  /** Scheduled publish/unpublish store. CRUD only; the process that serves requests starts the polling loop. */
+  scheduler: Scheduler;
+  /** Staged drafts of published pages. */
+  staging: StagingEngine;
+  /** The configured machine translator, or null when none is configured. */
+  mt: MachineTranslator | null;
+  /** The audit trail, or null when `admin.audit.enabled` is false. */
+  audit: AuditLogger | null;
+}
+
 /** Everything core hands a plugin. */
 export interface PluginServices {
   security: SecurityService;
@@ -81,10 +117,16 @@ export interface PluginServices {
   users: UserService;
   passwords: PasswordService;
   logger: Logger;
+  engines: EngineServices;
+  authz: AuthzService;
 }
 
 /** Inputs core needs to build the services. */
 export interface PluginServicesOptions {
   config: import("../config/types.ts").DuneConfig;
   storage: StorageAdapter;
+  /** Site root. Needed for the audit trail's file path; without it `engines.audit` is null. */
+  root?: string;
+  /** Resolves the site's authz system once bootstrap has created it. */
+  getAuthz?: () => { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
 }
