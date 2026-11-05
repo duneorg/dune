@@ -305,7 +305,7 @@ export interface AdminBarAction {
  * A custom admin page contributed by a plugin.
  *
  * Plugins contribute these to the `admin.pages` point:
- * `api.capabilities.contribute("admin.pages", { path, label, handler })`.
+ * `api.capabilities.contribute("admin.pages", { path, label, permission, handler })`.
  * Unlike `publicRoutes`, this is **not** wired by `@dune/core` itself: whichever
  * admin package provides the admin UI reads the list (`capabilities.list("admin.pages")`)
  * and mounts each page as a programmatic route, enforcing its declared
@@ -327,10 +327,12 @@ export interface AdminPageRegistration<S = any> {
   /** Optional icon — emoji or inline SVG */
   icon?: string;
   /**
-   * Admin permission required to view this page.
-   * If omitted, any authenticated admin user can access the page.
+   * Admin permission required to view this page. Required, like
+   * {@link AdminRouteRegistration.permission}: every admin contribution says
+   * who may use it, so a page cannot be exposed to every authenticated admin
+   * by leaving a field out.
    */
-  permission?: string;
+  permission: string;
   /** Fresh GET handler for the page. */
   handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
 }
@@ -364,11 +366,12 @@ export interface AdminRouteRegistration<S = any> {
    */
   path: string;
   /**
-   * Admin permission required. The request must be an authenticated admin
-   * regardless; this narrows it to a permission (including ones the plugin
-   * declares through `authzActions`).
+   * Admin permission required (including ones the plugin declares through
+   * `authzActions`). Required, not optional: a mutation endpoint must say who
+   * may call it, so it cannot be mounted open to every authenticated admin by
+   * leaving a field out.
    */
-  permission?: string;
+  permission: string;
   /** Fresh handler; runs only after authentication, CSRF and permission checks pass. */
   handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
 }

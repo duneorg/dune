@@ -230,7 +230,7 @@ There are two supported ways to add admin routes, both through `api.capabilities
 
 ### `admin.pages` — authenticated GET pages with a sidebar entry (the normal case)
 
-Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the optional `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
+Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
 
 ```ts
 // plugins/my-plugin/mod.ts
@@ -245,7 +245,7 @@ export default {
       path: "/my-plugin",              // relative to the admin prefix → /admin/my-plugin
       label: "My Plugin",
       icon: "🧩",
-      permission: "pages.read",        // optional — omit to allow any authenticated admin
+      permission: "pages.read",        // required — who may view this page
       handler: async (ctx) => {
         return ctx.render(
           <div>
@@ -276,7 +276,7 @@ export default {
     api.capabilities.contribute("admin.routes", {
       method: "POST",
       path: "/api/my-plugin/action",   // relative to the admin prefix → /admin/api/my-plugin/action
-      permission: "config.update",     // optional — omit to allow any authenticated admin
+      permission: "config.update",     // required — who may call this route
       handler: async (_fc) => {
         // The request is already an authenticated admin, passed the CSRF
         // check (every non-GET method) and holds `permission`.
@@ -287,7 +287,7 @@ export default {
 } satisfies DunePlugin;
 ```
 
-An authenticated admin is required whether or not you set `permission`; `permission` only narrows it (any string works; it maps to an action in the authz schema, including ones your plugin declares with `authzActions`). There is no way to turn the CSRF check off, on purpose.
+`permission` is required: the route is only reachable by an authenticated admin who holds it (any string works; it maps to an action in the authz schema, including ones your plugin declares with `authzActions`). There is no "any authenticated admin" default, so a mutation endpoint cannot be left open by omission. There is no way to turn the CSRF check off, on purpose.
 
 ### Routes registered directly in `mount()` are not behind the admin
 

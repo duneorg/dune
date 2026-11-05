@@ -67,11 +67,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
     `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
     -> provide the `inline-edit` or `editor.content` slot in `setup()`.
-  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. A guarded
+  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. `permission`
+    is now required on every `admin.pages` and `admin.routes` contribution (it used to be
+    optional on pages, meaning any authenticated admin), so nothing is exposed to every
+    admin by omission. A guarded
     `POST`/`PUT`/`PATCH`/`DELETE` admin route (previously a `mount()` route wrapped in
     `withGuards()`, which stops working once the admin no longer mounts first) is
     `capabilities.contribute("admin.routes", { method, path, permission, handler })`: the
     admin mounts it behind its authentication, CSRF check and permission check.
+    `permission` is required, so a route cannot be mounted open to every admin by omission.
   - `DunePlugin.adminBarActions` -> `capabilities.contribute("bar.actions", fn)`;
     `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
   - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).

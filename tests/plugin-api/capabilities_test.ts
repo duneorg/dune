@@ -88,7 +88,7 @@ Deno.test("capabilities: a factory returning undefined declines the slot", async
 
 Deno.test("capabilities: contributions append in registration order and name their provider", () => {
   const reg = createCapabilityRegistry();
-  const page = (path: string) => ({ path, label: path, handler: () => new Response("") });
+  const page = (path: string) => ({ path, label: path, permission: "pages.read", handler: () => new Response("") });
   reg.registrar("x").contribute("admin.pages", page("/x"));
   reg.registrar("y").contribute("admin.pages", page("/y"));
   assertEquals(reg.reader.list("admin.pages").map((p) => p.path), ["/x", "/y"]);
@@ -110,6 +110,20 @@ Deno.test("capabilities: admin.routes contributions keep their method and order"
     "DELETE /api/b/item",
   ]);
   assertEquals(reg.reader.providers().map((p) => p.provider), ["a", "b"]);
+});
+
+Deno.test("capabilities: an admin.pages contribution must name a permission (compile-time)", () => {
+  const reg = createCapabilityRegistry();
+  // @ts-expect-error `permission` is required on admin.pages
+  reg.registrar("a").contribute("admin.pages", { path: "/x", label: "X", handler: () => new Response("") });
+  assertEquals(reg.reader.list("admin.pages").length, 1);
+});
+
+Deno.test("capabilities: an admin.routes contribution must name a permission (compile-time)", () => {
+  const reg = createCapabilityRegistry();
+  // @ts-expect-error `permission` is required on admin.routes
+  reg.registrar("a").contribute("admin.routes", { method: "POST", path: "/x", handler: () => new Response("") });
+  assertEquals(reg.reader.list("admin.routes").length, 1);
 });
 
 Deno.test("capabilities: the hook registry attributes a plugin's declarations to its name", async () => {
@@ -148,7 +162,7 @@ Deno.test(
             factoryRanBeforeMount = true;
             return auth("provided");
           });
-          api.capabilities.contribute("admin.pages", { path: "/p", label: "P", handler: () => new Response("") });
+          api.capabilities.contribute("admin.pages", { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
         },
       };
       const consumer: DunePlugin = {
