@@ -568,7 +568,13 @@ export async function bootstrap(
     return null;
   });
 
-  if (adminConfig.enabled !== false && adminAuthzStoreCfg === "local") {
+  // The authz system exists for the built-in admin (when enabled) and for any
+  // other admin: a plugin that provides the `auth.session` capability has
+  // declared itself the admin (plugins register, and so declare, before this
+  // point). Without it a replacement admin could never have its sessions
+  // authorised (`pages.update` fails closed when authz is missing).
+  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "auth.session");
+  if ((adminConfig.enabled !== false || hasSessionProvider) && adminAuthzStoreCfg === "local") {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",

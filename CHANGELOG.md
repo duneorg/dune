@@ -42,6 +42,17 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
+  switch (#97).** The `auth.session` provider declares the cookies that carry its session
+  (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
+  `authenticate()` on a public page and whether to keep the response out of the shared page
+  cache (an editor's response must never be cached for anonymous visitors). Undeclared, any
+  request with a `Cookie` header counts as possibly signed in. Before, both decisions were
+  hard-wired to the cookie `dune_session`, so a replacement admin using another cookie name
+  got no admin bar and could have its editor-rendered pages cached for everyone. The authz
+  system is now also created when a plugin provides `auth.session`, even with
+  `admin.enabled: false`; before, a replacement admin had no authz and every `pages.update`
+  check failed closed.
 - **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
   (`@dune/core/config`). It carries what the theme docs promise: `site`, `theme`
   (including `theme.custom`) and `system.languages`. The runtime value is still

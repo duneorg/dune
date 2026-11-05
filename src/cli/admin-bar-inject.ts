@@ -13,8 +13,18 @@
 
 /**
  * Cheap check for the presence of an admin session cookie — no validation.
+ *
+ * `names` are the cookies the `auth.session` provider declared
+ * (`RequestAuthenticator.sessionCookies`). When the provider did not declare
+ * any, every request that carries a `Cookie` header counts as possibly signed
+ * in: core cannot know which cookie another admin uses, and a missed session
+ * would put an editor's response into the shared page cache.
  */
-export function hasAdminSessionCookie(req: Request): boolean {
-  const cookie = req.headers.get("cookie") ?? "";
-  return /(?:^|;\s*)dune_session=[^;]+/.test(cookie);
+export function hasSessionCookie(req: Request, names?: readonly string[]): boolean {
+  const cookie = req.headers.get("cookie");
+  if (!cookie) return false;
+  if (!names) return true;
+  return names.some((name) =>
+    new RegExp(`(?:^|;\\s*)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=[^;]+`).test(cookie)
+  );
 }

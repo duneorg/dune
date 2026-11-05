@@ -43,7 +43,7 @@ import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
 import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
-import { hasAdminSessionCookie } from "./admin-bar-inject.ts";
+import { hasSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
 import { scrubMarkersFromResponse } from "./marker-scrub.ts";
 
@@ -70,6 +70,8 @@ export interface RunResponseTransformsOptions {
    * When null, all sessions are treated as anonymous (transformAuth stays null).
    */
   auth: AdminAuthMiddleware | null;
+  /** Cookies that carry the `auth.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
+  sessionCookies?: readonly string[];
   /**
    * Bar buttons contributed to the `bar.actions` point, in plugin registration
    * order. Handed to transform plugins as `ResponseTransformContext.barActions`.
@@ -132,6 +134,7 @@ export async function runPluginResponseTransforms(
     adminPrefix,
     actionToRelations,
     barActions = [],
+    sessionCookies,
   } = opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
@@ -140,7 +143,7 @@ export async function runPluginResponseTransforms(
   if (isAdminPath(url.pathname, adminPrefix)) return response;
 
   let transformAuth: ResponseTransformContext["auth"] = null;
-  if (auth && hasAdminSessionCookie(req)) {
+  if (auth && hasSessionCookie(req, sessionCookies)) {
     try {
       const result = await auth.authenticate(req);
       // Contract (ResponseTransformContext.auth): non-null only when the

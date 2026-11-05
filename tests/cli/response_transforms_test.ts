@@ -575,3 +575,52 @@ Deno.test("runPluginResponseTransforms: barActions defaults to empty", async () 
   });
   assertEquals(seen[0].barActions, []);
 });
+
+Deno.test("runPluginResponseTransforms: a provider that declares its cookie name is consulted for that cookie only", async () => {
+  const mk = () => makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  const run = (auth: ReturnType<typeof mk>, cookie: string | undefined) =>
+    runPluginResponseTransforms({
+      req: makeReq("/about", cookie),
+      response: htmlResponse(`<p>p</p>`),
+      plugins: [],
+      auth,
+      sessionCookies: ["stub_sid"],
+      resolve,
+      config,
+      adminPrefix: "/admin",
+    });
+
+  const own = mk();
+  await run(own, "stub_sid=abc123");
+  assertEquals(own.calls.authenticate, 1, "its own cookie triggers the lookup");
+
+  const dune = mk();
+  await run(dune, "dune_session=abc123");
+  assertEquals(dune.calls.authenticate, 0, "another admin's cookie name does not");
+});
+
+Deno.test("runPluginResponseTransforms: without declared cookie names any cookie triggers the lookup", async () => {
+  const withCookie = makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  await runPluginResponseTransforms({
+    req: makeReq("/about", "whatever=1"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [],
+    auth: withCookie,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(withCookie.calls.authenticate, 1);
+
+  const noCookie = makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [],
+    auth: noCookie,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(noCookie.calls.authenticate, 0);
+});
