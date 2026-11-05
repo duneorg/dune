@@ -244,7 +244,11 @@ export async function contentCreateCommand(
     try {
       const hooks = createHookRegistry({ config, storage });
       await loadPlugins({ config, hooks, storage, root });
-      await hooks.fire("onPageCreate", { sourcePath: relPath, title });
+      await hooks.fire("onPageCreate", {
+        // Relative to the content directory, like the engine and the admin report it.
+        sourcePath: filePath.slice(contentRoot.length + 1),
+        title,
+      });
     } catch (err) {
       console.error(
         `  ⚠  onPageCreate hook failed: ${
