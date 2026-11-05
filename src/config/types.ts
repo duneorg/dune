@@ -51,4 +51,6 @@ export type {
   ThemePackageEntry,
   /** Top-level Dune configuration (result of merging all config sources) */
   DuneConfig,
+  /** The slice of the configuration a theme template may rely on. */
+  TemplateConfig,
 } from "./dune-config.ts";
