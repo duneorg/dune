@@ -351,9 +351,9 @@ Deno.test("createApiHandler GET /api/search: records the query and result count 
   const analytics = {
     record: (e: SearchAnalyticsEntry) => {
       recorded.push(e);
-      return Promise.resolve();
     },
-    summarize: () => Promise.resolve({ totalSearches: 0, topQueries: [], zeroResultQueries: [] }),
+    summarize: () => Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
+    flush: () => Promise.resolve(),
   } as SearchAnalytics;
   const handler = makeHandlerWithSearch(makeFakeSearchEngine(3), analytics);
   await handler(new Request("http://localhost/api/search?q=%20deno%20"));
@@ -363,15 +363,11 @@ Deno.test("createApiHandler GET /api/search: records the query and result count 
   assertEquals(recorded[0].resultCount, 3);
 });
 
-Deno.test("createApiHandler GET /api/search: a failing recorder never breaks the search", async () => {
-  const analytics = {
-    record: () => Promise.reject(new Error("disk full")),
-    summarize: () => Promise.resolve({ totalSearches: 0, topQueries: [], zeroResultQueries: [] }),
-  } as SearchAnalytics;
-  const res = await makeHandlerWithSearch(makeFakeSearchEngine(2), analytics)(
-    new Request("http://localhost/api/search?q=deno"),
-  );
-  assertEquals(res?.status, 200);
+Deno.test("createApiHandler GET /api/search: a blank query is not recorded", async () => {
+  const recorded: SearchAnalyticsEntry[] = [];
+  const analytics = { record: (e: SearchAnalyticsEntry) => void recorded.push(e) } as unknown as SearchAnalytics;
+  await makeHandlerWithSearch(makeFakeSearchEngine(2), analytics)(new Request("http://localhost/api/search?q=%20%20"));
+  assertEquals(recorded.length, 0);
 });
 
 Deno.test("createApiHandler GET /api/search: no engine available is a 503 with Retry-After, not a 500", async () => {

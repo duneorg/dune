@@ -392,6 +392,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     setShuttingDown(true);
     jobScheduler.stop();
     adminCtxForScheduler?.scheduler?.stop();
+    void ctx.searchAnalytics?.flush();
     console.log(`\n[dune] received ${signal}, draining connections...`);
     ac.abort();
   };

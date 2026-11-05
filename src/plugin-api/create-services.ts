@@ -90,7 +90,7 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
         enabled: !!opts.searchAnalytics,
         summarize: (limit) =>
           opts.searchAnalytics?.summarize(limit) ??
-            Promise.resolve({ totalSearches: 0, topQueries: [], zeroResultQueries: [] }),
+            Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
       },
     },
     paths: { dataDir: resolveDataDir(config), runtimeDir },

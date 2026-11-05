@@ -120,11 +120,12 @@ export interface SystemConfig {
      */
     fail_on_startup?: boolean;
     /**
-     * Record every `GET /api/search` query (the query text and its result
-     * count, no IP or user data) to `{admin.runtime_dir}/search-analytics.jsonl`
-     * so editors can see top queries and zero-result queries. The file holds
-     * what visitors typed, so it is off unless you turn it on, and it is never
-     * pruned.
+     * Count `GET /api/search` queries (the query text and its result count,
+     * no IP or user data) in `{admin.runtime_dir}/search-analytics.json` so
+     * editors can see top queries and zero-result queries. It keeps counters
+     * for at most 2000 distinct queries, not a request log, so it stays small
+     * whatever the traffic. The file holds what visitors typed, so it is off
+     * unless you turn it on.
      * Default: false.
      */
     analytics?: boolean;

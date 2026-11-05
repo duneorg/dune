@@ -1,17 +1,21 @@
 /**
- * Search query analytics — lightweight JSONL-based recording and summarisation.
+ * Search query analytics — bounded, aggregated, persisted as a small snapshot.
  *
- * Each search query is appended as a single JSON line to a `.jsonl` file inside
- * the admin runtime directory.  Summaries are computed on-demand by reading
- * and aggregating that file, so there is no separate aggregation job to run.
+ * `GET /api/search` is public, so recording must not grow with traffic. Instead
+ * of logging every request, one counter per normalised query is kept in memory
+ * (`count` and `totalResults`), capped at {@link MAX_DISTINCT_QUERIES}. When the
+ * cap is reached the lowest-count entry is evicted, so a flood of one-off
+ * queries cannot displace the frequent ones. Memory and disk therefore stay
+ * bounded (a few hundred KB) whatever the traffic.
  *
- * Design constraints:
- *   - Append-only writes: safe under concurrent requests (each write is atomic
- *     at the OS level for small payloads).
- *   - On-demand reads: `summarize()` reads the whole file; suitable for
- *     low-to-medium traffic sites.  For high-traffic deployments, trim the
- *     file periodically or replace with a KV-backed implementation.
- *   - No external dependencies: uses only Deno built-ins.
+ * The counters are written to a JSON snapshot, atomically (temp file + rename),
+ * at most once per {@link FLUSH_INTERVAL_MS} and only when something changed, and
+ * loaded again at startup. A crash loses at most one interval of counts.
+ * `summarize()` reads memory only. Delete the snapshot to reset the counts.
+ *
+ * Counts become approximate only once more than {@link MAX_DISTINCT_QUERIES}
+ * distinct queries have been seen: an evicted query starts again from zero if
+ * it comes back. The top of the list stays accurate.
  */
 
 import { dirname, join } from "@std/path";
@@ -19,9 +23,9 @@ import type { DuneConfig } from "../config/types.ts";
 
 // === Types ===
 
-/** One recorded search event */
+/** One search event, as recorded */
 export interface SearchAnalyticsEntry {
-  /** Normalised query string */
+  /** The query as typed */
   query: string;
   /** Number of results the search returned */
   resultCount: number;
@@ -31,8 +35,10 @@ export interface SearchAnalyticsEntry {
 
 /** Aggregated summary of recorded search events */
 export interface SearchAnalyticsSummary {
-  /** Total number of search events recorded */
+  /** Total number of search events recorded since `since` */
   totalSearches: number;
+  /** Unix epoch milliseconds of the first recorded search; null when none */
+  since: number | null;
   /**
    * Most-searched queries, sorted by count descending.
    * Each entry also carries the average result count for that query.
@@ -54,109 +60,184 @@ export interface SearchAnalyticsSummary {
 
 /** Public interface for the search analytics recorder */
 export interface SearchAnalytics {
-  /** Append one search event to the log */
-  record(entry: SearchAnalyticsEntry): Promise<void>;
+  /** Count one search. Synchronous and cheap; persistence happens in the background. */
+  record(entry: SearchAnalyticsEntry): void;
   /**
-   * Aggregate and return a summary of recorded events.
+   * Summarise the counters.
    * @param limit - Maximum entries in each list (default: 20)
    */
   summarize(limit?: number): Promise<SearchAnalyticsSummary>;
+  /** Write any unsaved counts now (call on shutdown). */
+  flush(): Promise<void>;
+}
+
+// === Limits ===
+
+/** Distinct normalised queries kept; the lowest-count one is evicted beyond this. */
+export const MAX_DISTINCT_QUERIES = 2000;
+/** Longest query kept; longer ones are truncated. */
+export const MAX_QUERY_LENGTH = 100;
+/** How often unsaved counts are written. */
+export const FLUSH_INTERVAL_MS = 30_000;
+
+interface Counter {
+  count: number;
+  totalResults: number;
+}
+
+interface Snapshot {
+  version: 1;
+  since: number | null;
+  totalSearches: number;
+  queries: Record<string, Counter>;
+}
+
+function normalise(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, " ").slice(0, MAX_QUERY_LENGTH).trim();
 }
 
 // === Implementation ===
 
 /**
  * The recorder for a site, or null when `system.search.analytics` is off.
- * The log lives under `admin.runtime_dir` (default `.dune/admin`) in the site root.
+ * The snapshot lives under `admin.runtime_dir` (default `.dune/admin`) in the site root.
  */
 export function resolveSearchAnalytics(config: DuneConfig, root: string): SearchAnalytics | null {
   if (config.system?.search?.analytics !== true) return null;
   const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
-  return createSearchAnalytics(join(root, runtimeDir, "search-analytics.jsonl"));
+  return createSearchAnalytics(join(root, runtimeDir, "search-analytics.json"));
 }
 
 /**
- * Create a search analytics instance backed by a JSONL file.
+ * Create a recorder persisted to `snapshotPath` (loaded lazily on first use).
  *
- * @param jsonlPath - Absolute path to the `.jsonl` log file.
- *                   The file and its parent directory are created on first write.
+ * @param snapshotPath - Absolute path of the JSON snapshot. Its directory is created on first write.
+ * @param opts.flushIntervalMs - Override {@link FLUSH_INTERVAL_MS} (tests).
+ * @param opts.maxQueries - Override {@link MAX_DISTINCT_QUERIES} (tests).
  */
-export function createSearchAnalytics(jsonlPath: string): SearchAnalytics {
-  return {
-    async record(entry: SearchAnalyticsEntry): Promise<void> {
+export function createSearchAnalytics(
+  snapshotPath: string,
+  opts: { flushIntervalMs?: number; maxQueries?: number } = {},
+): SearchAnalytics {
+  const flushIntervalMs = opts.flushIntervalMs ?? FLUSH_INTERVAL_MS;
+  const maxQueries = opts.maxQueries ?? MAX_DISTINCT_QUERIES;
+
+  const counters = new Map<string, Counter>();
+  let totalSearches = 0;
+  let since: number | null = null;
+  let dirty = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let writing: Promise<void> = Promise.resolve();
+
+  // Counts saved by an earlier run are merged in before the first record or summary.
+  const loaded: Promise<void> = (async () => {
+    try {
+      const snap = JSON.parse(await Deno.readTextFile(snapshotPath)) as Snapshot;
+      if (snap?.version !== 1) return;
+      since = snap.since;
+      totalSearches = snap.totalSearches;
+      for (const [q, c] of Object.entries(snap.queries ?? {})) counters.set(q, { ...c });
+    } catch {
+      // No snapshot yet, or unreadable: start empty.
+    }
+  })();
+  let ready = false;
+  loaded.then(() => ready = true);
+
+  function evictLowest(): void {
+    let lowest: string | undefined;
+    let lowestCount = Infinity;
+    for (const [q, c] of counters) {
+      if (c.count < lowestCount) {
+        lowest = q;
+        lowestCount = c.count;
+      }
+    }
+    if (lowest !== undefined) counters.delete(lowest);
+  }
+
+  function apply(entry: SearchAnalyticsEntry): void {
+    const q = normalise(entry.query);
+    if (!q) return;
+    totalSearches++;
+    since ??= entry.timestamp;
+    const existing = counters.get(q);
+    if (existing) {
+      existing.count++;
+      existing.totalResults += entry.resultCount;
+    } else {
+      if (counters.size >= maxQueries) evictLowest();
+      counters.set(q, { count: 1, totalResults: entry.resultCount });
+    }
+    dirty = true;
+  }
+
+  function schedule(): void {
+    if (timer !== undefined) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void flush();
+    }, flushIntervalMs);
+    // A pending flush must not keep the process alive.
+    Deno.unrefTimer(timer as unknown as number);
+  }
+
+  function flush(): Promise<void> {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    writing = writing.then(async () => {
+      await loaded;
+      if (!dirty) return;
+      dirty = false;
+      const snap: Snapshot = { version: 1, since, totalSearches, queries: Object.fromEntries(counters) };
+      const tmp = `${snapshotPath}.${crypto.randomUUID().slice(0, 8)}.tmp`;
       try {
-        await Deno.mkdir(dirname(jsonlPath), { recursive: true });
-        await Deno.writeTextFile(
-          jsonlPath,
-          JSON.stringify(entry) + "\n",
-          { append: true },
-        );
+        await Deno.mkdir(dirname(snapshotPath), { recursive: true });
+        await Deno.writeTextFile(tmp, JSON.stringify(snap));
+        await Deno.rename(tmp, snapshotPath);
       } catch (err) {
-        // Analytics failures must never surface to the end user
-        console.warn(`[dune] search analytics: failed to record entry: ${err}`);
+        dirty = true; // try again next time
+        console.warn(`[dune] search analytics: failed to save snapshot: ${err}`);
+        await Deno.remove(tmp).catch(() => {});
+      }
+    });
+    return writing;
+  }
+
+  return {
+    record(entry: SearchAnalyticsEntry): void {
+      if (ready) {
+        apply(entry);
+        schedule();
+      } else {
+        // First records race the snapshot load; apply them once it is in.
+        void loaded.then(() => {
+          apply(entry);
+          schedule();
+        });
       }
     },
 
     async summarize(limit = 20): Promise<SearchAnalyticsSummary> {
-      let raw: string;
-      try {
-        raw = await Deno.readTextFile(jsonlPath);
-      } catch {
-        // File doesn't exist yet — return empty summary
-        return { totalSearches: 0, topQueries: [], zeroResultQueries: [] };
-      }
-
-      // Parse lines, skipping blank or malformed entries
-      const entries: SearchAnalyticsEntry[] = [];
-      for (const line of raw.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          entries.push(JSON.parse(trimmed) as SearchAnalyticsEntry);
-        } catch {
-          // Skip malformed lines
-        }
-      }
-
-      if (entries.length === 0) {
-        return { totalSearches: 0, topQueries: [], zeroResultQueries: [] };
-      }
-
-      // Aggregate: query → { count, totalResults }
-      const agg = new Map<string, { count: number; totalResults: number }>();
-      for (const e of entries) {
-        const q = e.query.trim().toLowerCase();
-        if (!q) continue;
-        const existing = agg.get(q);
-        if (existing) {
-          existing.count++;
-          existing.totalResults += e.resultCount;
-        } else {
-          agg.set(q, { count: 1, totalResults: e.resultCount });
-        }
-      }
-
-      // Build sorted lists
-      const sorted = [...agg.entries()].sort(
-        ([, a], [, b]) => b.count - a.count,
-      );
-
-      const topQueries = sorted.slice(0, limit).map(([query, { count, totalResults }]) => ({
-        query,
-        count,
-        avgResults: Math.round(totalResults / count),
-      }));
-
-      const zeroResultQueries = sorted
-        .filter(([, { totalResults, count }]) => totalResults / count < 0.5)
-        .slice(0, limit)
-        .map(([query, { count }]) => ({ query, count }));
-
+      await loaded;
+      const sorted = [...counters.entries()].sort(([, a], [, b]) => b.count - a.count);
       return {
-        totalSearches: entries.length,
-        topQueries,
-        zeroResultQueries,
+        totalSearches,
+        since,
+        topQueries: sorted.slice(0, limit).map(([query, { count, totalResults }]) => ({
+          query,
+          count,
+          avgResults: Math.round(totalResults / count),
+        })),
+        zeroResultQueries: sorted
+          .filter(([, { count, totalResults }]) => totalResults / count < 0.5)
+          .slice(0, limit)
+          .map(([query, { count }]) => ({ query, count })),
       };
     },
+
+    flush,
   };
 }

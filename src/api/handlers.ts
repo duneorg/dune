@@ -305,10 +305,10 @@ async function routeApiRequest(
     }
     const hasMore = visible.length > offset + limit;
     const results = visible.slice(offset, offset + limit);
-    // Fire-and-forget: a failed write never slows or breaks a search. Only the
+    // In-memory count; saving happens in the background and never touches the response. Only the
     // first page counts, so paging through results is not recorded as new searches.
     if (analytics && offset === 0 && q.trim()) {
-      analytics.record({ query: q.trim(), resultCount: visible.length, timestamp: Date.now() }).catch(() => {});
+      analytics.record({ query: q.trim(), resultCount: visible.length, timestamp: Date.now() });
     }
     const facets = search.facetCounts ? await search.facetCounts(q, "subtype") : {};
     return {

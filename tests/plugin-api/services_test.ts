@@ -175,15 +175,16 @@ Deno.test("search analytics: off by default, on with system.search.analytics, an
     cfg.system = { ...cfg.system, search: { analytics: true } } as never;
     const analytics = resolveSearchAnalytics(cfg, root)!;
     assertExists(analytics);
-    await analytics.record({ query: "deno", resultCount: 2, timestamp: 1 });
-    await analytics.record({ query: "stripe", resultCount: 0, timestamp: 2 });
+    analytics.record({ query: "deno", resultCount: 2, timestamp: 1 });
+    analytics.record({ query: "stripe", resultCount: 0, timestamp: 2 });
+    await analytics.flush();
     const on = createPluginServices({ config: cfg, storage: new MemoryStorageAdapter(), searchAnalytics: analytics });
     assertEquals(on.search.analytics.enabled, true);
     const summary = await on.search.analytics.summarize();
     assertEquals(summary.totalSearches, 2);
     assertEquals(summary.zeroResultQueries, [{ query: "stripe", count: 1 }]);
     // the file lives under admin.runtime_dir in the site root
-    assertEquals((await Deno.stat(`${root}/.dune/admin/search-analytics.jsonl`)).isFile, true);
+    assertEquals((await Deno.stat(`${root}/.dune/admin/search-analytics.json`)).isFile, true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

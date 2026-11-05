@@ -329,7 +329,7 @@ export const CONFIG_SCHEMA = {
               type: "boolean",
               default: false,
               description:
-                "Record GET /api/search queries (text and result count) to admin.runtime_dir/search-analytics.jsonl for top-query and zero-result reports. Off by default: the file contains what visitors typed.",
+                "Record GET /api/search queries (text and result count) to admin.runtime_dir/search-analytics.json (bounded counters, not a request log) for top-query and zero-result reports. Off by default: it contains what visitors typed.",
             },
             custom_fields: {
               type: "array",
