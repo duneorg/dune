@@ -6,8 +6,10 @@
  */
 export type {
   AuthzService,
+  BlueprintService,
   EngineServices,
   PasswordService,
+  PathServices,
   PluginServices,
   PluginServicesOptions,
   RateLimitService,

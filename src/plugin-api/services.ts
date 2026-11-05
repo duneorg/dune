@@ -23,6 +23,8 @@ import type { UserStore } from "../auth/user-store.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
+import type { BlueprintMap, BlueprintValidationError, ResolvedBlueprint } from "../blueprints/types.ts";
+import type { PageFrontmatter } from "../content/types.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { StagingEngine } from "../staging/engine.ts";
@@ -109,6 +111,24 @@ export interface EngineServices {
   audit: AuditLogger | null;
 }
 
+/** The site's frontmatter schemas (blueprints), as currently loaded. */
+export interface BlueprintService {
+  /** True if the template has a blueprint. */
+  has(template: string): boolean;
+  /** The template's blueprint with its `extends` chain flattened, or null if it has none. */
+  resolve(template: string): ResolvedBlueprint | null;
+  /** Validate frontmatter against the template's blueprint. Empty means valid, or no blueprint. */
+  validate(frontmatter: PageFrontmatter, template: string): BlueprintValidationError[];
+}
+
+/** Where a site keeps its data. Site-relative, as storage paths. */
+export interface PathServices {
+  /** The persistent data directory: `system.data_dir`, default `data`. */
+  readonly dataDir: string;
+  /** Plugin runtime state: `admin.runtime_dir`, default `.dune/admin`. */
+  readonly runtimeDir: string;
+}
+
 /** Everything core hands a plugin. */
 export interface PluginServices {
   security: SecurityService;
@@ -119,6 +139,8 @@ export interface PluginServices {
   logger: Logger;
   engines: EngineServices;
   authz: AuthzService;
+  blueprints: BlueprintService;
+  paths: PathServices;
 }
 
 /** Inputs core needs to build the services. */
@@ -127,6 +149,8 @@ export interface PluginServicesOptions {
   storage: StorageAdapter;
   /** Site root. Needed for the audit trail's file path; without it `engines.audit` is null. */
   root?: string;
+  /** The blueprints currently loaded by the content engine (read at call time; they reload). */
+  getBlueprints?: () => BlueprintMap;
   /** Resolves the site's authz system once bootstrap has created it. */
   getAuthz?: () => { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
 }
