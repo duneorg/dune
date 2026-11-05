@@ -161,6 +161,20 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   from a plugin; `services` and `capabilities` are unchanged. Migrate
   `mount({ bootstrap })` to `mount({ runtime })` and read the field you need from
   it. The `PluginRuntime` type is exported from `@dune/core/plugin-api`.
+- **The plugin contract names no Fresh type (#97).** `MountApi.app` is a
+  `PluginApp` (`use`, `get`, `post`, `put`, `patch`, `delete`, `all`) and route
+  handlers (`PublicRouteRegistration`, `AdminPageRegistration`,
+  `AdminRouteRegistration`, `ContentEditorPlugin.pageEditorHandler`) receive a
+  `PluginRouteContext` (`req`, `url`, `params`, `state`, `next()`), both exported
+  from `@dune/core/plugin-api`. Fresh's `App` and `FreshContext` satisfy them, so
+  nothing changes at runtime and a handler that only reads the request keeps
+  working; the point is that the frozen contract no longer pins a Fresh version.
+  A plugin that needs Fresh-only features (`ctx.render()`, islands,
+  `app.fsRoutes()`, `app.layout()`, `app.route()`) depends on Fresh itself: the
+  handler properties are declared as methods, so a handler taking a full
+  `FreshContext` is still accepted, and `app` is cast to Fresh's `App`.
+  Breaking only for a plugin that called a Fresh-only method on `app` without a
+  cast (a type error, fixed with `app as unknown as App<any>`).
 
 ### Added
 

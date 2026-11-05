@@ -33,5 +33,6 @@ export type {
 } from "./capabilities.ts";
 export { createCapabilityRegistry } from "./capabilities.ts";
 export type { CapabilityRegistry } from "./capabilities.ts";
+export type { PluginApp, PluginRouteContext, PluginRouteHandler } from "./app.ts";
 export type { PluginRuntime } from "./runtime.ts";
 export { type DuneErrorCode, isDuneError } from "./errors.ts";
