@@ -75,6 +75,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   and runs. Refresh a stale `deno.lock` with `dune lockfile:sync`.
 - Programmatic config in `dune.config.ts` is not checked for the old names: an old key
   there is ignored, so rename it by hand.
+- **`PluginApi` and `MountApi` have a required `services` field.** Plugins receive it,
+  so nothing changes for them; code that builds these objects itself (test harnesses,
+  mocks) must supply it, and `createPluginServices()` from `@dune/core/plugin-api`
+  builds the real one.
+- **`createSearchAnalytics` changed (see Added).** It takes a snapshot path instead of a
+  JSONL path, `record()` returns `void` instead of a promise, there is a new `flush()`,
+  and the summary gains `since`. The old `search-analytics.jsonl` is not read.
+- **A bad `admin.audit.log_file` now fails core's bootstrap**, not the admin plugin's
+  `setup()`. The message is unchanged apart from the snake_case key name.
 
 ### Added
 
@@ -89,6 +98,25 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `--site` and list the site ids, instead of treating the install directory as
   a site and finding nothing. `loadMultisiteConfig` moved to
   `src/multisite/config.ts` (still exported from `@dune/core/multisite`).
+- **`@dune/core/plugin-api` (#64).** Core now builds what plugins used to import or
+  construct themselves, and hands it over as `api.services` (and `mount.services`):
+  `security`, `rateLimit`, `sessions` (scoped by `system.session_store`, multisite
+  prefix included), `users`, `passwords` and `logger`; `engines` (workflow, scheduler,
+  staging, machine translation and the audit trail, all under `admin.runtime_dir` so
+  existing data stays where it is); `authz.seedAdminTuples()`; `blueprints`
+  (`has` / `resolve` / `validate`, read at call time so reloads are picked up);
+  `paths` (`dataDir`, `runtimeDir`); and `search.analytics`. Four errors carry a stable
+  `code` (`body_too_large`, `ssrf_blocked`, `duplicate_email`, `weak_password`); test for
+  them with `isDuneError()`. Plugins written for 0.35 keep working: the internal
+  imports they use still resolve.
+- **Search query analytics, opt-in.** `system.search.analytics: true` makes core count
+  `GET /api/search` queries (first page only; normalised text of at most 100
+  characters and the result count, no IP or user data). The documented feature lost
+  its recording half when the admin panel was extracted; it works again, owned by core.
+  It keeps bounded counters, not a log: at most 2000 distinct queries (the lowest count
+  is evicted first), saved to `{admin.runtime_dir}/search-analytics.json` at most every
+  30 s and flushed on `dune serve` shutdown. One process per site. Delete the file to
+  reset it.
 
 ### Changed
 
