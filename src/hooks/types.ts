@@ -177,6 +177,13 @@ export interface PluginApi {
    * policy. See `@dune/core/plugin-api`.
    */
   services: import("../plugin-api/services.ts").PluginServices;
+  /**
+   * Declare what this plugin provides to core and to other plugins: slots
+   * (`provide`) and contributions (`contribute`). Declaring only records it;
+   * core resolves the slot factories after every `setup()` has settled.
+   * See `@dune/core/plugin-api`.
+   */
+  capabilities: import("../plugin-api/capabilities.ts").CapabilityRegistrar;
 }
 
 /**
@@ -870,6 +877,12 @@ export interface MountApi {
   bootstrap: import("../runtime/bootstrap.ts").BootstrapResult;
   /** The same services object `setup()` received (`PluginApi.services`). */
   services: import("../plugin-api/services.ts").PluginServices;
+  /**
+   * What plugins provide: `capabilities.get("auth.session")`, `.list("admin.pages")`.
+   * Slots are resolved before `mount()` runs; read them lazily (at request
+   * time) rather than assuming a provider exists.
+   */
+  capabilities: import("../plugin-api/capabilities.ts").CapabilityReader;
   /**
    * Merged output of all plugins' `adminServices()` factories, collected just
    * before `mount()` is called. Plugins that contribute an `inlineEdit` manager

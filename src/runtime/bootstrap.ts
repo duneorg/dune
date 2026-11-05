@@ -6,6 +6,7 @@
  */
 
 import { createPluginServices } from "../plugin-api/create-services.ts";
+import { type CapabilityReader, type CapabilityRegistry, createCapabilityRegistry } from "../plugin-api/capabilities.ts";
 import type { PluginServices } from "../plugin-api/services.ts";
 import { resolveDataDir } from "../forms/config.ts";
 import { startupStep } from "./startup-step.ts";
@@ -92,6 +93,10 @@ export interface BootstrapResult {
   hooks: HookRegistry;
   /** Services handed to plugins (`PluginApi.services` / `MountApi.services`). */
   pluginServices: PluginServices;
+  /** What plugins provide (auth session, inline editing, ...); resolved before `mount()`. */
+  capabilities: CapabilityReader;
+  /** Core-only: declares and resolves capabilities. Plugins see `capabilities` instead. */
+  capabilityRegistry: CapabilityRegistry;
   imageHandler: ImageHandler;
   imageProcessor: ImageProcessor;
   imageCache: ImageCache;
@@ -381,7 +386,8 @@ export async function bootstrap(
     searchAnalytics,
     getAuthz: () => authzForServices,
   });
-  const hooks = createHookRegistry({ config, storage, services: pluginServices });
+  const capabilityRegistry = createCapabilityRegistry();
+  const hooks = createHookRegistry({ config, storage, services: pluginServices, capabilities: capabilityRegistry });
 
   // 5a. Pre-registered plugins (e.g. from @dune/testing harness) — registered
   // before loadPlugins() so their hooks participate in the full lifecycle.
@@ -713,6 +719,8 @@ export async function bootstrap(
     search,
     hooks,
     pluginServices,
+    capabilities: capabilityRegistry.reader,
+    capabilityRegistry,
     imageHandler,
     imageProcessor,
     imageCache,

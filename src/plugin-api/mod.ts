@@ -19,4 +19,18 @@ export type {
   UserService,
 } from "./services.ts";
 export { createPluginServices } from "./create-services.ts";
+export type {
+  AuthenticateResult,
+  CapabilityContext,
+  CapabilityFactory,
+  CapabilityProvider,
+  CapabilityReader,
+  CapabilityRegistrar,
+  Capabilities,
+  Contributions,
+  RequestAuthenticator,
+  ScheduledActionExecutor,
+} from "./capabilities.ts";
+export { createCapabilityRegistry } from "./capabilities.ts";
+export type { CapabilityRegistry } from "./capabilities.ts";
 export { type DuneErrorCode, isDuneError } from "./errors.ts";
