@@ -13,6 +13,7 @@ export type {
   PluginServices,
   PluginServicesOptions,
   RateLimitService,
+  SearchServices,
   SecurityService,
   SessionService,
   UserService,

@@ -32,5 +32,5 @@ export type {
 export { createSearchManager, isSearchConfigError, SearchConfigError, SearchUnavailableError } from "./manager.ts";
 export type { SearchEngineStatus, SearchManager, SearchManagerOptions } from "./manager.ts";
 
-export { createSearchAnalytics } from "./analytics.ts";
+export { createSearchAnalytics, resolveSearchAnalytics } from "./analytics.ts";
 export type { SearchAnalytics, SearchAnalyticsEntry, SearchAnalyticsSummary } from "./analytics.ts";

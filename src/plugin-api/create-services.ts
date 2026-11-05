@@ -85,6 +85,14 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       },
       validate: (frontmatter, template) => validateFrontmatter(frontmatter, template, opts.getBlueprints?.() ?? {}),
     },
+    search: {
+      analytics: {
+        enabled: !!opts.searchAnalytics,
+        summarize: (limit) =>
+          opts.searchAnalytics?.summarize(limit) ??
+            Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
+      },
+    },
     paths: { dataDir: resolveDataDir(config), runtimeDir },
     authz: {
       async seedAdminTuples(users) {

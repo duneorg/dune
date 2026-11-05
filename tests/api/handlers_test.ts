@@ -13,6 +13,7 @@ import { createCollectionEngine } from "../../src/collections/engine.ts";
 import type { DuneEngine, ResolveResult } from "../../src/core/engine.ts";
 import type { SearchEngine } from "../../src/search/engine.ts";
 import { SearchUnavailableError } from "../../src/search/manager.ts";
+import type { SearchAnalytics, SearchAnalyticsEntry } from "../../src/search/analytics.ts";
 import type { Page, PageIndex } from "../../src/content/types.ts";
 import type { DuneConfig, SiteConfig } from "../../src/config/types.ts";
 import type { TaxonomyMap } from "../../src/content/index-builder.ts";
@@ -335,12 +336,39 @@ function makeFakeSearchEngine(totalResults: number): SearchEngine {
   } as unknown as SearchEngine;
 }
 
-function makeHandlerWithSearch(search: SearchEngine): (req: Request) => Promise<Response | null> {
+function makeHandlerWithSearch(
+  search: SearchEngine,
+  analytics?: SearchAnalytics | null,
+): (req: Request) => Promise<Response | null> {
   const engine = makeEngine([]);
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
   const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
-  return createApiHandler({ engine, collections, taxonomy, search });
+  return createApiHandler({ engine, collections, taxonomy, search, analytics });
 }
+
+Deno.test("createApiHandler GET /api/search: records the query and result count when analytics is on", async () => {
+  const recorded: SearchAnalyticsEntry[] = [];
+  const analytics = {
+    record: (e: SearchAnalyticsEntry) => {
+      recorded.push(e);
+    },
+    summarize: () => Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
+    flush: () => Promise.resolve(),
+  } as SearchAnalytics;
+  const handler = makeHandlerWithSearch(makeFakeSearchEngine(3), analytics);
+  await handler(new Request("http://localhost/api/search?q=%20deno%20"));
+  await handler(new Request("http://localhost/api/search?q=deno&offset=1"));
+  assertEquals(recorded.length, 1, "paging is not a new search");
+  assertEquals(recorded[0].query, "deno");
+  assertEquals(recorded[0].resultCount, 3);
+});
+
+Deno.test("createApiHandler GET /api/search: a blank query is not recorded", async () => {
+  const recorded: SearchAnalyticsEntry[] = [];
+  const analytics = { record: (e: SearchAnalyticsEntry) => void recorded.push(e) } as unknown as SearchAnalytics;
+  await makeHandlerWithSearch(makeFakeSearchEngine(2), analytics)(new Request("http://localhost/api/search?q=%20%20"));
+  assertEquals(recorded.length, 0);
+});
 
 Deno.test("createApiHandler GET /api/search: no engine available is a 503 with Retry-After, not a 500", async () => {
   const handler = makeHandlerWithSearch({

@@ -277,6 +277,7 @@ export async function createDuneApp(
     search,
     flex: flexEngine,
     hooks,
+    analytics: ctx.searchAnalytics,
   });
 
   // HTTP caching config

@@ -325,6 +325,12 @@ export const CONFIG_SCHEMA = {
               description:
                 "Stop startup when a search engine fails to build. Default: log it, retry in the background, and fall back to the built-in engine.",
             },
+            analytics: {
+              type: "boolean",
+              default: false,
+              description:
+                "Record GET /api/search queries (text and result count) to admin.runtime_dir/search-analytics.json (bounded counters, not a request log) for top-query and zero-result reports. Off by default: it contains what visitors typed.",
+            },
             custom_fields: {
               type: "array",
               items: { type: "string" },

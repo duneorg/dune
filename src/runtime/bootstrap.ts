@@ -26,6 +26,8 @@ import type {
   SearchRecordsCollectContext,
 } from "../search/engine.ts";
 import { createSearchManager } from "../search/manager.ts";
+import { resolveSearchAnalytics } from "../search/analytics.ts";
+import type { SearchAnalytics } from "../search/analytics.ts";
 import type { SearchManager } from "../search/manager.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
 import { createImageProcessor } from "../images/processor.ts";
@@ -141,6 +143,8 @@ export interface BootstrapResult {
    * @since v0.26
    */
   contentApi: ContentApi;
+  /** Query recorder for `/api/search`; null unless `system.search.analytics` is on. */
+  searchAnalytics: SearchAnalytics | null;
   /**
    * Pre-created authz system. Present when auth.mode is "dune" and authzStore is "local".
    * Shared between `@dune/plugin-admin` (admin-user tuples) and `mountDuneAuth()`
@@ -367,12 +371,14 @@ export async function bootstrap(
   // 5. Hooks
   // The authz system is created further down; plugins reach it only through
   // services.authz, so the getter resolves it at call time.
+  const searchAnalytics = resolveSearchAnalytics(config, root);
   let authzForServices: { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
   const pluginServices = createPluginServices({
     config,
     storage,
     root,
     getBlueprints: () => engine.blueprints,
+    searchAnalytics,
     getAuthz: () => authzForServices,
   });
   const hooks = createHookRegistry({ config, storage, services: pluginServices });
@@ -718,6 +724,7 @@ export async function bootstrap(
     pluginPublicRoutes,
     sections: sectionRegistry,
     contentApi,
+    searchAnalytics,
     submissions: createSubmissionManager({
       storage,
       submissionsDir: `${resolveFormsConfig(config).dataDir}/submissions`,

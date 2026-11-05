@@ -424,6 +424,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // (append: true) — there is no in-memory write buffer to flush.  No explicit
   // flush step is required here.
 
+  // Search analytics counts live in memory and are saved on a timer; write any
+  // unsaved ones now that the last in-flight request has been counted.
+  await ctx.searchAnalytics?.flush();
+
   cleanup();
   instance?.unregister();
   watchdog.stop();
