@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { DuneConfig, SiteConfig } from "../config/types.ts";
+import type { DuneConfig, SiteConfig, TemplateConfig } from "../config/types.ts";
 import type { ContentApi } from "./api.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { User } from "../auth/types.ts";
@@ -429,7 +429,13 @@ export interface TemplateProps {
   /** Pre-formatted page title: "Title - Descriptor | Site Name" */
   pageTitle: string;
   site: SiteConfig;
-  config: DuneConfig;
+  /**
+   * The configuration a template may rely on: `site`, `theme` (incl.
+   * `theme.custom`) and `system.languages`. The runtime value is the full
+   * configuration, but only this slice is typed, so it is the part that stays
+   * stable. Read anything else through a plugin or `data/theme-config.json`.
+   */
+  config: TemplateConfig;
   /** Top-level navigation pages */
   nav: PageIndex[];
   /**

@@ -65,6 +65,20 @@ export interface PluginEntry {
   config?: Record<string, unknown>;
 }
 
+/**
+ * The slice of the configuration a theme template may rely on
+ * (`TemplateProps.config`). It is what the theme docs promise: the site
+ * settings, the active theme's settings (`theme.custom`), and the language
+ * setup. Everything else in {@link DuneConfig} is not part of the theme
+ * contract, so a template that reads it fails type-checking even though the
+ * runtime value is the full configuration.
+ */
+export interface TemplateConfig {
+  site: SiteConfig;
+  theme: ThemeConfig;
+  system: Pick<SystemConfig, "languages">;
+}
+
 /** Top-level Dune configuration (result of merging all config sources) */
 export interface DuneConfig {
   site: SiteConfig;

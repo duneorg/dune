@@ -42,6 +42,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
+  (`@dune/core/config`). It carries what the theme docs promise: `site`, `theme`
+  (including `theme.custom`) and `system.languages`. The runtime value is still
+  the full configuration, so nothing changes at runtime, but a template that
+  reads other keys (`config.system.content`, `config.admin`, `config.plugins`, ...)
+  now fails type-checking. All 61 first-party themes read only `config.theme.name`
+  and `site.*` and type-check unchanged. Read anything else through a plugin or
+  `data/theme-config.json`. This is the theme contract that `@dune/theme-api`
+  will freeze. `ContentPageProps.config` (TSX content pages) and the format
+  handler context are not narrowed.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
   are renamed, with no aliases, in `site.yaml`, `system.yaml` and the `admin:`
   block: `auth.userStore` → `user_store`, `authzStore` → `authz_store`,
