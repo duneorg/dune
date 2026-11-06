@@ -217,11 +217,14 @@ Deno.test(
   "runDoctorChecks: --boot reads the booted site's capability report",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
-    const root = await bootFixture(JSON.stringify({ providers: [], scheduledActions: 0 }));
+    // This "site" reports a plugin that provides admin.prefix but no auth.session.
+    const root = await bootFixture(JSON.stringify({
+      providers: [{ name: "admin.prefix", kind: "slot", provider: "half-admin", status: "active" }],
+      scheduledActions: 0,
+    }));
     try {
-      // admin.enabled defaults to true, and this "site" provides no auth.session.
       const findings = await runDoctorChecks(root, { boot: true });
-      const caps = findings.filter((f) => f.category === "capabilities");
+      const caps = findings.filter((f) => f.category === "capabilities" && f.severity !== "info");
       assertEquals(caps.map((f) => f.severity), ["error"]);
       assertStringIncludes(caps[0].message, "auth.session");
     } finally {

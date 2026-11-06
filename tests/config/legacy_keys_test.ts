@@ -133,7 +133,7 @@ Deno.test("findMovedKeys: the removed forms aliases, admin.data_dir and the smtp
   );
   assertEquals(
     system.map((k) => k.path).sort(),
-    ["admin.dataDir", "admin.data_dir", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
+    ["admin.dataDir", "admin.data_dir", "admin.enabled", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
   );
   const site = findMovedKeys(
     "site",
@@ -152,6 +152,19 @@ Deno.test("loadConfig refuses a moved key and says where it went", async () => {
   }
   assertStringIncludes(message, "admin.data_dir → data_dir at the top level of system.yaml");
   assertStringIncludes(message, "Move the moved or removed keys by hand");
+});
+
+Deno.test("admin.enabled and admin.authz_store are removed with a message that says what to do", async () => {
+  const moved = findMovedKeys("system", parseYaml("admin:\n  enabled: true\n  authz_store: local\n  authzStore: local\n"));
+  assertEquals(moved.map((k) => k.path).sort(), ["admin.authzStore", "admin.authz_store", "admin.enabled"]);
+  let message = "";
+  try {
+    await load({ "config/system.yaml": "admin:\n  enabled: false\n" });
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  assertStringIncludes(message, "admin.enabled");
+  assertStringIncludes(message, "listed under plugins:");
 });
 
 Deno.test("admin.runtime_dir and admin.max_revisions moved to the top level of system.yaml", async () => {

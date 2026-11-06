@@ -34,6 +34,24 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `resolveRuntimeDir()` and `resolveMaxRevisions()` (`@dune/core/forms`) are the
   one place that resolves them. A plugin reads the directory from
   `services.paths.runtimeDir`. `@dune/plugin-admin` 4.0.0 does the same.
+- **Core no longer loads the admin: it is a plugin you list (#123, step 4).** `bootstrap()`
+  used to import `jsr:@dune/plugin-admin@*` itself unless `admin.enabled` was false; now the
+  admin runs only when `config/site.yaml` lists it under `plugins:`
+  (`- src: jsr:@dune/plugin-admin@^4`, which `dune new` writes and `dune migrate:config` adds).
+  A site that lists nothing has no admin, no `auth.session`, no authz system (unless a plugin
+  declares `authzActions`), and says so once at boot (`bootstrap.no_admin`). Gone with it:
+  `admin.enabled` and `admin.authz_store` (both refused with a message; the authz store was
+  always local), the `authProvider` bootstrap option (build the admin plugin yourself and pass
+  it in `plugins`), `AdminAuthProvider`, `ADMIN_PLUGIN_SPECIFIER` / `ADMIN_MOUNT_SPECIFIER` /
+  `MIN_ADMIN_MAJOR` and the admin version guard, and the admin special case in
+  `lockfile-resolve-helper` (a listed admin is found like any plugin). The authz system is
+  created when some plugin provides `auth.session` or declares `authzActions`. A plugin factory
+  (a default export that is a function) now receives `(config, { root, dev })`. The two-core-copies
+  check now runs for every plugin that exports `resolvedCoreSentinel`. `dune doctor` calls a
+  plugin that provides `admin.prefix` without a working `auth.session` half installed. Multisite
+  builds one island snapshot from the island specifiers of every site's loaded plugins, instead
+  of importing the admin's. `dune migrate:config` deletes `admin.enabled` and adds the admin
+  entry (run it once: it adds the admin to a site that has none listed).
 - **Core no longer assumes the admin lives at `/admin` (#123, step 2).** Where the admin
   is mounted is the new `admin.prefix` capability slot (`{ prefix: "/admin" }`), provided by
   the admin plugin. Core reads it lazily for the things it must keep apart from content:

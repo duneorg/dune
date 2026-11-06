@@ -11,6 +11,12 @@
  * `smtp:` block of form notifications) are reported for a manual move and make
  * the command exit 1.
  *
+ * `admin.enabled` is removed (the admin now loads only when `plugins:` lists
+ * it): `enabled: false` is deleted and the site stays without an admin;
+ * otherwise the key is deleted and the admin plugin is added to the
+ * `plugins:` list of config/site.yaml. Run it once: a second run on a site that
+ * deliberately has no admin would add it.
+ *
  * Keys it cannot reach (flow style `{a: 1}`, quoted keys, mappings inside list
  * items) are reported and the file is left untouched so you can edit it by
  * hand.
@@ -29,9 +35,11 @@ import {
   findIgnoredKeys,
   findLegacyKeys,
   findMovedKeys,
+  removeAdminEnabledInText,
   removeIgnoredKeysInText,
   renameLegacyKeysInText,
 } from "../config/legacy-keys.ts";
+import { ADMIN_PLUGIN_ENTRY_SRC, addAdminPluginToText } from "./add-admin-plugin.ts";
 
 export interface MigrateConfigOptions {
   dryRun?: boolean;
@@ -63,6 +71,9 @@ export async function migrateConfigCommand(
   let changed = 0;
   let unresolvedFiles = 0;
   let movedFiles = 0;
+  // `admin.enabled`: false means the site ran without the admin and keeps doing
+  // so; anything else (true, or the key absent) means it had one.
+  let adminWasDisabled = false;
   for (const { path, kind } of await candidateFiles(root)) {
     let text: string;
     try {
@@ -71,8 +82,25 @@ export async function migrateConfigCommand(
       continue; // file does not exist
     }
     const rel = path.slice(root.length + 1);
-    const parsedBefore = parseYaml(text);
-    const moved = findMovedKeys(kind, parsedBefore);
+    let parsedBefore = parseYaml(text);
+    if (kind === "system") {
+      const admin = (parsedBefore as { admin?: { enabled?: unknown } } | null)?.admin;
+      if (admin && typeof admin === "object" && "enabled" in admin) {
+        if (admin.enabled === false && path === join(root, "config", "system.yaml")) adminWasDisabled = true;
+        const stripped = removeAdminEnabledInText(text);
+        if (stripped.removed) {
+          text = stripped.text;
+          parsedBefore = parseYaml(text);
+          changed++;
+          console.log(`  ✓ ${rel}: removed admin.enabled`);
+          if (!opts.dryRun) await Deno.writeTextFile(path, text);
+        } else {
+          console.error(`  ✗ ${rel}: could not remove admin.enabled (flow style or quoted key); delete it by hand.`);
+          unresolvedFiles++;
+        }
+      }
+    }
+    const moved = findMovedKeys(kind, parsedBefore).filter((k) => !(opts.dryRun && k.path === "admin.enabled"));
     if (moved.length > 0) {
       movedFiles++;
       console.error(
@@ -111,6 +139,27 @@ export async function migrateConfigCommand(
     ].filter(Boolean).join("; ");
     console.log(`  ✓ ${rel}: ${done}`);
     if (!opts.dryRun) await Deno.writeTextFile(path, result.text);
+  }
+
+  const sitePath = join(root, "config", "site.yaml");
+  let siteText: string | null = null;
+  try {
+    siteText = await Deno.readTextFile(sitePath);
+  } catch { /* no site.yaml */ }
+  if (siteText !== null && !adminWasDisabled) {
+    const added = addAdminPluginToText(siteText);
+    if (added.outcome === "added") {
+      changed++;
+      console.log(`  ✓ config/site.yaml: added ${ADMIN_PLUGIN_ENTRY_SRC} to plugins: (core no longer loads the admin by itself)`);
+      if (!opts.dryRun) await Deno.writeTextFile(sitePath, added.text);
+    } else if (added.outcome === "manual") {
+      unresolvedFiles++;
+      console.error(
+        `  ✗ config/site.yaml: add the admin by hand under plugins:\n        - src: ${ADMIN_PLUGIN_ENTRY_SRC}`,
+      );
+    }
+  } else if (adminWasDisabled) {
+    console.log("  • admin.enabled was false: the admin plugin is not added. (Running this command again would add it.)");
   }
 
   if (changed === 0 && unresolvedFiles === 0 && movedFiles === 0) {
