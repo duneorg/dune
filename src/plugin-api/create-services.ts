@@ -16,7 +16,7 @@ import { createMachineTranslator } from "../mt/factory.ts";
 import { AuditLogger } from "../audit/logger.ts";
 import { bootstrapAdminTuples } from "../auth/authz.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
-import { resolveDataDir } from "../forms/config.ts";
+import { resolveDataDir, resolveRuntimeDir } from "../forms/config.ts";
 import { join } from "@std/path";
 import { logger } from "../core/logger.ts";
 
@@ -26,8 +26,7 @@ import { logger } from "../core/logger.ts";
  */
 export function createPluginServices(opts: PluginServicesOptions): PluginServices {
   const { config, storage } = opts;
-  const adminCfg = config.admin;
-  const runtimeDir = adminCfg?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   return {
     security: {
       sanitizeHtml,

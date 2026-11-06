@@ -14,7 +14,7 @@
 
 // deno-lint-ignore no-explicit-any
 import { createEmailProvider } from "../email/providers/mod.ts";
-import { resolveDataDir } from "../forms/config.ts";
+import { resolveDataDir, resolveRuntimeDir } from "../forms/config.ts";
 import type { App } from "fresh";
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalUserStore } from "./user-store.ts";
@@ -77,10 +77,8 @@ export async function mountDuneAuth(
   const { config, storage } = ctx;
   const authConfig: SiteConfig["auth"] = config.site.auth;
 
-  const adminCfg = config.admin ??
-    { runtime_dir: ".dune/admin" };
   const dataDir = resolveDataDir(config);
-  const runtimeDir = adminCfg.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
 
   const mode = authConfig?.mode ?? "dune";
   if (mode === "external-jwt") {

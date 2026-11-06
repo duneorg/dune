@@ -40,6 +40,7 @@ import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
 import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
 import { createPluginRuntime } from "../plugin-api/runtime.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -420,8 +421,6 @@ export async function mountPlugins(
 
   const registeredOrder = ctx.hooks.plugins();
 
-  const adminCfg = ctx.config.admin;
-
   // Capability slots: every plugin has declared by now, and the infrastructure
   // a factory may need (history, hooks, storage) exists. A throwing factory is
   // logged and leaves its slot empty; it never stops the mount.
@@ -431,7 +430,7 @@ export async function mountPlugins(
     history: ctx.history,
     hooks: ctx.hooks,
     services: ctx.pluginServices,
-    dataDir: adminCfg?.runtime_dir ?? ".dune/admin",
+    dataDir: resolveRuntimeDir(ctx.config),
     // NOTE: intentionally still the raw config value, not engine.contentDir.
     // `storage` is dual-purpose (content AND data files), so this pair only
     // stays correct when content.src is unset. Supporting content.src here

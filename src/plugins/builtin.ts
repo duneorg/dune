@@ -43,7 +43,7 @@ export const MIN_ADMIN_MAJOR = 4;
  * An admin plugin older than {@link MIN_ADMIN_MAJOR} still reads the camelCase
  * properties, which are now `undefined`, so it falls back to its own defaults.
  * That is harmless for a site on all defaults but silently drops any value the
- * site set (`runtime_dir`, `authz_store: db`, ...).
+ * site set (`session_lifetime`, `max_upload_mb`, ...).
  */
 export function adminSettingsAtRisk(config: DuneConfig): string[] {
   const out: string[] = [];
@@ -52,7 +52,6 @@ export function adminSettingsAtRisk(config: DuneConfig): string[] {
   for (
     const key of [
       "session_lifetime",
-      "runtime_dir",
       "max_upload_mb",
       "authz_store",
     ]

@@ -82,19 +82,8 @@ export interface AdminConfig {
   path: string;
   /** Session lifetime in seconds (default: 86400 = 24h) */
   session_lifetime: number;
-  /**
-   * Runtime directory — ephemeral, machine-local, gitignored.
-   * Stores: sessions, scheduled actions, revision history, workflow state.
-   * (default: ".dune/admin")
-   */
-  runtime_dir: string;
   /** Whether admin panel is enabled (default: true) */
   enabled: boolean;
-  /**
-   * Maximum number of revisions to retain per page (default: 50).
-   * When the limit is reached, the oldest revision is pruned on each save.
-   */
-  max_revisions?: number;
   /**
    * Maximum upload body size (in MB) for admin-side multipart uploads
    * (media library, content attachments). Rejected with 413 before the body

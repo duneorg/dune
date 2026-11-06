@@ -9,6 +9,7 @@ import { join } from "@std/path";
 import type { McpResource, McpResourceContent, ResourceHandler } from "./server.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { StorageAdapter } from "../storage/types.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
 
 // ── Resource: site config ────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ function makeConfigHandler(engine: DuneEngine): ResourceHandler {
       data_dir: config.system?.data_dir,
       admin: {
         path: config.admin?.path,
-        runtime_dir: config.admin?.runtime_dir,
+        runtime_dir: resolveRuntimeDir(config),
         audit: config.admin?.audit,
         // Omit auth_provider details (may contain connection strings)
       },
