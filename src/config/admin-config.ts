@@ -12,35 +12,13 @@
 export type Role = "admin" | "editor" | "author";
 
 /**
- * Auth provider configuration union — covers all supported provider backends.
- * Defined here (in core) to avoid a config ↔ plugin-admin circular dependency.
+ * Auth provider configuration. Only the built-in local password auth is
+ * configurable here. LDAP and SAML were declared for a long time but never
+ * implemented (their providers threw), so they are gone; to use another
+ * identity source, inject your own provider through the admin plugin's
+ * `authProvider` option.
  */
-export type AuthProviderConfig =
-  | { type: "local" }
-  | {
-    type: "ldap";
-    url: string;
-    base_dn: string;
-    username_attr?: string;
-    bind_dn?: string;
-    bind_password?: string;
-    email_attr?: string;
-    name_attr?: string;
-    role_map?: Array<{ group: string; role: Role }>;
-    default_role?: Role;
-  }
-  | {
-    type: "saml";
-    entity_id: string;
-    acs_url: string;
-    idp_metadata: string;
-    username_attr?: string;
-    email_attr?: string;
-    name_attr?: string;
-    role_map?: Array<{ value: string; role: Role }>;
-    role_attr?: string;
-    default_role?: Role;
-  };
+export type AuthProviderConfig = { type: "local" };
 
 /** HTTP webhook notification. */
 export interface WebhookNotificationConfig {
@@ -138,29 +116,9 @@ export interface AdminConfig {
    */
   webhooks?: WebhookEndpointConfig[];
   /**
-   * External authentication provider configuration.
-   * When omitted, the built-in local password auth is used.
-   *
-   * @example LDAP
-   * ```yaml
-   * admin:
-   *   auth_provider:
-   *     type: "ldap"
-   *     url: "ldaps://ldap.example.com"
-   *     base_dn: "ou=users,dc=example,dc=com"
-   *     bind_dn: "cn=service,dc=example,dc=com"
-   *     bind_password: "$LDAP_BIND_PASSWORD"
-   * ```
-   *
-   * @example SAML
-   * ```yaml
-   * admin:
-   *   auth_provider:
-   *     type: "saml"
-   *     entity_id: "https://example.com/admin"
-   *     acs_url: "https://example.com/admin/saml/acs"
-   *     idp_metadata: "https://idp.example.com/metadata.xml"
-   * ```
+   * Authentication provider configuration. Omit it (or set `type: local`)
+   * for the built-in local password auth. LDAP and SAML are not supported;
+   * inject a custom provider through the admin plugin's `authProvider` option.
    */
   auth_provider?: AuthProviderConfig;
   /**

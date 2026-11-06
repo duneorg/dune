@@ -1,11 +1,12 @@
 /**
  * Feature flags — runtime toggles without code changes.
  *
- * Flags are declared in site.yaml under `flags:` and resolved once at startup.
+ * Flags are declared in system.yaml under `flags:` and resolved once at startup
+ * (`bootstrap()` calls `initFlags(config.system.flags)`).
  * Values can be static booleans or `"env:VAR_NAME"` strings that delegate to
  * an environment variable.
  *
- * @example site.yaml
+ * @example system.yaml
  * ```yaml
  * flags:
  *   comments: true
@@ -68,7 +69,7 @@ export function initFlags(flags: Record<string, boolean | string> = {}): void {
 /**
  * Check whether a named feature flag is enabled.
  *
- * Returns `false` for any flag not declared in `site.yaml` — unknown flags
+ * Returns `false` for any flag not declared in `system.yaml` — unknown flags
  * are off by default so new features can be introduced safely.
  */
 export function flag(name: string): boolean {

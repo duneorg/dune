@@ -6,7 +6,7 @@ import type { StorageAdapter } from "../../src/storage/types.ts";
 // Minimal config and storage stubs
 const stubConfig = {
   site: { title: "Test", description: "", url: "http://localhost", author: { name: "" }, metadata: {}, taxonomies: [], routes: {}, redirects: {} },
-  system: { content: { dir: "content", markdown: { extra: true, auto_links: true, auto_url_links: true } }, cache: { enabled: false, driver: "memory", lifetime: 0, check: "none" }, images: { default_quality: 80, cache_dir: "", allowed_sizes: [] }, languages: { supported: ["en"], default: "en", include_default_in_url: false }, debug: false, timezone: "UTC" },
+  system: { content: { dir: "content" }, images: { default_quality: 80, cache_dir: "", allowed_sizes: [] }, languages: { supported: ["en"], default: "en", include_default_in_url: false }, debug: false },
   theme: { name: "default", custom: {} },
   plugins: {},
   pluginList: [],

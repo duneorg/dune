@@ -2,7 +2,9 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
 import {
   findLegacyKeys,
+  findIgnoredKeys,
   findMovedKeys,
+  removeIgnoredKeysInText,
   renameLegacyKeysInText,
 } from "../../src/config/legacy-keys.ts";
 import { loadConfig } from "../../src/config/loader.ts";
@@ -26,10 +28,6 @@ auth:
   webhook:
     provider: clerk
     signatureHeader: x-sig
-uploads:
-  maxSizeMb: 5
-  allowedTypes: ["image/png"]
-  requireAuth: true
 plugins:
   - src: x
 plugin_configs:
@@ -49,10 +47,6 @@ admin:
   runtimeDir: .dune/admin
   audit:
     logFile: data/audit.log
-  auth_provider:
-    type: ldap
-    baseDn: dc=example
-    roleMap: []
 `;
 
 Deno.test("findLegacyKeys: finds every renamed key and nothing else", () => {
@@ -68,13 +62,10 @@ Deno.test("findLegacyKeys: finds every renamed key and nothing else", () => {
       "auth.sessionLifetime",
       "auth.userStore",
       "auth.webhook.signatureHeader",
-      "uploads.allowedTypes",
-      "uploads.maxSizeMb",
-      "uploads.requireAuth",
     ],
   );
   const system = findLegacyKeys("system", parseYaml(SYSTEM));
-  assertEquals(system.length, 8);
+  assertEquals(system.length, 6);
 });
 
 Deno.test("findLegacyKeys: a key with the same name under another parent is left alone", () => {
@@ -84,7 +75,7 @@ Deno.test("findLegacyKeys: a key with the same name under another parent is left
 
 Deno.test("renameLegacyKeysInText: renames keys, keeps comments, order and values", () => {
   const { text, renamed } = renameLegacyKeysInText("site", SITE);
-  assertEquals(renamed.length, 11);
+  assertEquals(renamed.length, 8);
   assertStringIncludes(text, "  user_store: session   # keep sessions");
   assertStringIncludes(text, '      client_id: "$GH_ID"');
   assertStringIncludes(text, "    magic_link:");
@@ -173,4 +164,68 @@ Deno.test("loadConfig rejects a config file whose top level is not a mapping", a
     }
     assertStringIncludes(message, `Expected an object but got ${kind}`);
   }
+});
+
+Deno.test("findIgnoredKeys: keys that were declared but never read are found", () => {
+  const site = findIgnoredKeys("site", parseYaml("title: T\nuploads:\n  max_size_mb: 5\n"));
+  assertEquals(site.map((k) => k.path), ["uploads"]);
+  assertStringIncludes(site[0].to, "form");
+
+  const system = findIgnoredKeys(
+    "system",
+    parseYaml("cache:\n  enabled: true\ntimezone: UTC\ncontent:\n  markdown:\n    extra: true\nsearch:\n  include_flex: [a]\n"),
+  );
+  assertEquals(system.map((k) => k.path).sort(), ["cache", "content.markdown", "search.include_flex", "timezone"]);
+});
+
+Deno.test("findIgnoredKeys: the same names elsewhere are left alone", () => {
+  // `cache` and `uploads` are only ignored where they were config keys.
+  assertEquals(findIgnoredKeys("site", { cache: { x: 1 }, plugin_configs: { thing: { uploads: 1 } } }), []);
+  assertEquals(findIgnoredKeys("system", { admin: { cache: 1, timezone: "x" }, search: { page_size: 5 } }), []);
+});
+
+Deno.test("removeIgnoredKeysInText: deletes the key and its block, keeps everything else", () => {
+  const text = [
+    "# system",
+    "title: keep",
+    "cache:",
+    "  enabled: true",
+    "",
+    "  ttl: 60",
+    "timezone: UTC",
+    "content:",
+    "  markdown:",
+    "    extra: true",
+    "  allow_tsx_format: true",
+    "search:",
+    "  page_size: 5",
+    "",
+  ].join("\n");
+  const r = removeIgnoredKeysInText("system", text);
+  assertEquals(r.removed.map((k) => k.path), ["cache", "timezone", "content.markdown"]);
+  assertEquals(
+    r.text,
+    ["# system", "title: keep", "", "content:", "  allow_tsx_format: true", "search:", "  page_size: 5", ""].join("\n"),
+  );
+  assertEquals(findIgnoredKeys("system", parseYaml(r.text)), []);
+});
+
+Deno.test("removeIgnoredKeysInText: leaves flow style alone so the caller can report it", () => {
+  const r = removeIgnoredKeysInText("system", "cache: {enabled: true}\n");
+  assertEquals(r.removed.map((k) => k.path), ["cache"]); // block-style line with an inline value is removable
+  assertEquals(findIgnoredKeys("system", parseYaml("content: {markdown: {x: 1}}\n")).length, 1);
+  assertEquals(removeIgnoredKeysInText("system", "content: {markdown: {x: 1}}\n").removed, []);
+});
+
+Deno.test("loadConfig: a site.yaml that still sets uploads loads and ignores it", async () => {
+  const storage = new MemoryStorageAdapter();
+  await storage.write("config/site.yaml", new TextEncoder().encode("title: Kept\nuploads:\n  max_size_mb: 5\n"));
+  const config = await loadConfig({ storage, rootDir: "/x" });
+  assertEquals(config.site.title, "Kept");
+});
+
+Deno.test("loadConfig: system.cache and timezone no longer block a boot", async () => {
+  const storage = new MemoryStorageAdapter();
+  await storage.write("config/system.yaml", new TextEncoder().encode("cache:\n  enabled: true\ntimezone: UTC\n"));
+  await loadConfig({ storage, rootDir: "/x" });
 });

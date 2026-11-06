@@ -236,36 +236,6 @@ export const CONFIG_SCHEMA = {
               default: "content",
               description: "Content directory path",
             },
-            markdown: {
-              type: "object",
-              properties: {
-                extra: { type: "boolean", default: true },
-                auto_links: { type: "boolean", default: true },
-                auto_url_links: { type: "boolean", default: false },
-              },
-            },
-          },
-        },
-        cache: {
-          type: "object",
-          properties: {
-            enabled: { type: "boolean", default: true },
-            driver: {
-              type: "string",
-              enum: ["memory", "filesystem", "kv"],
-              default: "memory",
-            },
-            lifetime: {
-              type: "integer",
-              minimum: 0,
-              default: 300,
-              description: "Cache TTL in seconds",
-            },
-            check: {
-              type: "string",
-              enum: ["file", "hash", "none"],
-              default: "file",
-            },
           },
         },
         page_cache: {
@@ -336,6 +306,26 @@ export const CONFIG_SCHEMA = {
               items: { type: "string" },
               description: "Additional frontmatter fields to include in search index",
             },
+            fields: {
+              type: "object",
+              description: "Per-field relevance weights (title, summary, body, or a custom field). Default weight: 1.",
+              additionalProperties: {
+                type: "object",
+                properties: { weight: { type: "number" } },
+                required: ["weight"],
+              },
+            },
+            highlight: {
+              type: "boolean",
+              default: true,
+              description: "Return excerpts with matched terms wrapped in <mark>.",
+            },
+            excerpt_length: {
+              type: "integer",
+              minimum: 1,
+              default: 160,
+              description: "Character length of returned excerpts.",
+            },
             page_size: {
               type: "integer",
               minimum: 1,
@@ -358,11 +348,6 @@ export const CONFIG_SCHEMA = {
           },
         },
         debug: { type: "boolean", default: false },
-        timezone: {
-          type: "string",
-          default: "UTC",
-          description: "IANA timezone name (e.g. America/New_York)",
-        },
         data_dir: {
           type: "string",
           default: "data",
@@ -514,12 +499,13 @@ export const CONFIG_SCHEMA = {
         },
         auth_provider: {
           type: "object",
-          description: "External auth provider (LDAP, SAML). Omit for built-in local auth.",
+          description:
+            "Auth provider. Only the built-in local password auth is configurable (omit this, or type: local); LDAP and SAML are not supported. Inject a custom provider through the admin plugin's authProvider option.",
           properties: {
-            type: { type: "string", enum: ["ldap", "saml"] },
+            type: { type: "string", enum: ["local"] },
           },
           required: ["type"],
-          additionalProperties: true,
+          additionalProperties: false,
         },
         webhooks: {
           type: "array",

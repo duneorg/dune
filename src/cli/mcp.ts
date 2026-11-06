@@ -33,6 +33,7 @@ import { TsxHandler } from "../content/formats/tsx.ts";
 import { MdxHandler } from "../content/formats/mdx.ts";
 import { createDuneEngine } from "../core/engine.ts";
 import { createSearchEngine } from "../search/engine.ts";
+import { searchOptionsFromConfig } from "../search/config.ts";
 import { resolve } from "@std/path";
 import { createHookRegistry } from "../hooks/registry.ts";
 import { loadPlugins } from "../plugins/loader.ts";
@@ -90,6 +91,7 @@ async function lightweightBootstrap(root: string, buildSearch: boolean, debug: b
       storage: engine.contentStorage,
       contentDir: engine.contentDir,
       formats,
+      ...searchOptionsFromConfig(config.system.search),
     });
     await se.build();
     search = se;

@@ -26,8 +26,10 @@ import {
   type ConfigFileKind,
   describeLegacyKeys,
   describeMovedKeys,
+  findIgnoredKeys,
   findLegacyKeys,
   findMovedKeys,
+  removeIgnoredKeysInText,
   renameLegacyKeysInText,
 } from "../config/legacy-keys.ts";
 
@@ -78,10 +80,22 @@ export async function migrateConfigCommand(
       );
     }
     const legacy = findLegacyKeys(kind, parsedBefore);
-    if (legacy.length === 0) continue;
+    const ignored = findIgnoredKeys(kind, parsedBefore);
+    if (legacy.length === 0 && ignored.length === 0) continue;
 
-    const result = renameLegacyKeysInText(kind, text);
-    const left = findLegacyKeys(kind, parseYaml(result.text));
+    const renamedText = renameLegacyKeysInText(kind, text);
+    const result = { ...renamedText, ...removeIgnoredKeysInText(kind, renamedText.text) };
+    const afterParsed = parseYaml(result.text);
+    const left = findLegacyKeys(kind, afterParsed);
+    const ignoredLeft = findIgnoredKeys(kind, afterParsed);
+    if (ignoredLeft.length > 0) {
+      unresolvedFiles++;
+      console.error(
+        `  ✗ ${rel}: could not remove ${ignoredLeft.map((k) => k.path).join(", ")} ` +
+          `(flow style, quoted key or list item); delete these by hand. File left unchanged.`,
+      );
+      continue;
+    }
     if (left.length > 0) {
       unresolvedFiles++;
       console.error(
@@ -91,7 +105,11 @@ export async function migrateConfigCommand(
       continue;
     }
     changed++;
-    console.log(`  ✓ ${rel}: ${describeLegacyKeys(result.renamed)}`);
+    const done = [
+      result.renamed.length > 0 ? describeLegacyKeys(result.renamed) : "",
+      result.removed.length > 0 ? `removed ${result.removed.map((k) => k.path).join(", ")} (had no effect)` : "",
+    ].filter(Boolean).join("; ");
+    console.log(`  ✓ ${rel}: ${done}`);
     if (!opts.dryRun) await Deno.writeTextFile(path, result.text);
   }
 
