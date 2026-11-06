@@ -22,7 +22,6 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { ContentApi } from "../content/api.ts";
 import type { HistoryEngine } from "../history/engine.ts";
 import type { FlexEngine } from "../flex/engine.ts";
-import type { ImageCache } from "../images/cache.ts";
 import type { MetricsCollector } from "../metrics/mod.ts";
 import type { SubmissionManager } from "../forms/submissions.ts";
 import type { SectionRegistry } from "../sections/registry.ts";
@@ -48,8 +47,6 @@ export interface PluginRuntime {
   readonly history: HistoryEngine;
   /** Flex Objects. */
   readonly flexEngine: FlexEngine;
-  /** The processed-image cache. */
-  readonly imageCache: ImageCache;
   /** In-process performance metrics. */
   readonly metrics: MetricsCollector;
   /** Public form submissions (core writes them, an admin manages them). */
@@ -58,13 +55,25 @@ export interface PluginRuntime {
   readonly sections: SectionRegistry;
   /** The authorisation system; absent when authz is not enabled. */
   readonly authz?: DuneAuthSystem;
-  /** The job scheduler of the serving process; `undefined` until `dune serve` starts it. */
+  /**
+   * The job scheduler of the serving process; `undefined` until `dune serve`
+   * starts it, which happens after `mount()`. This is a getter: read
+   * `runtime.jobs` when you need it, not in `mount()` itself. Destructuring it
+   * (`const { jobs } = runtime`) captures `undefined` for good.
+   */
   readonly jobs?: JobScheduler;
 }
 
-/** Build the runtime a plugin sees from core's full bootstrap result. */
+/**
+ * Build the runtime a plugin sees from core's full bootstrap result.
+ *
+ * Core-internal: not exported from `@dune/core/plugin-api`, so the frozen
+ * contract is the `PluginRuntime` type and not how core builds one. The object
+ * is frozen (one instance is shared by every plugin); the `jobs` accessor
+ * stays live.
+ */
 export function createPluginRuntime(boot: BootstrapResult): PluginRuntime {
-  return {
+  return Object.freeze({
     engine: boot.engine,
     config: boot.config,
     storage: boot.storage,
@@ -73,7 +82,6 @@ export function createPluginRuntime(boot: BootstrapResult): PluginRuntime {
     contentApi: boot.contentApi,
     history: boot.history,
     flexEngine: boot.flexEngine,
-    imageCache: boot.imageCache,
     metrics: boot.metrics,
     submissions: boot.submissions,
     sections: boot.sections,
@@ -81,5 +89,5 @@ export function createPluginRuntime(boot: BootstrapResult): PluginRuntime {
     get jobs() {
       return boot.jobScheduler;
     },
-  };
+  });
 }

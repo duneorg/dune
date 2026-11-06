@@ -153,13 +153,14 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   of them core's own wiring: the format registry, the image handler, the HMAC key,
   the capability registry), so freezing the type would have frozen all of it.
   `runtime` is a curated `PluginRuntime`: `engine`, `config`, `storage`, `search`,
-  `hooks`, `contentApi`, `history`, `flexEngine`, `imageCache`, `metrics`,
+  `hooks`, `contentApi`, `history`, `flexEngine`, `metrics`,
   `submissions`, `sections`, `authz`, and `jobs` (a getter: the scheduler appears
-  after `mount()`). No alias. `authzAdapter` and `hmacKey` are no longer reachable
+  after `mount()`, so read it lazily and do not destructure it). The object is
+  frozen. The image cache is not on it: nothing in a plugin used it. No alias.
+  `authzAdapter` and `hmacKey` are no longer reachable
   from a plugin; `services` and `capabilities` are unchanged. Migrate
   `mount({ bootstrap })` to `mount({ runtime })` and read the field you need from
-  it. `PluginRuntime` and `createPluginRuntime()` are exported from
-  `@dune/core/plugin-api`.
+  it. The `PluginRuntime` type is exported from `@dune/core/plugin-api`.
 
 ### Added
 

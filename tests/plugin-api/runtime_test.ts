@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
@@ -35,7 +35,7 @@ Deno.test(
       assertEquals(
         Object.keys(runtime).sort(),
         [
-          "authz", "config", "contentApi", "engine", "flexEngine", "history", "hooks", "imageCache",
+          "authz", "config", "contentApi", "engine", "flexEngine", "history", "hooks",
           "jobs", "metrics", "search", "sections", "storage", "submissions",
         ].sort(),
       );
@@ -59,6 +59,28 @@ Deno.test(
       assertEquals(runtime.jobs, undefined);
       const scheduler = {} as NonNullable<typeof boot.jobScheduler>;
       boot.jobScheduler = scheduler; // what `dune serve` does once it has one
+      assertStrictEquals(runtime.jobs, scheduler);
+    } finally {
+      await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
+  },
+);
+
+Deno.test(
+  "PluginRuntime is frozen but jobs stays live",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const root = await site();
+    try {
+      const boot = await bootstrap(root);
+      const runtime = createPluginRuntime(boot);
+      assert(Object.isFrozen(runtime));
+      assertThrows(() => {
+        (runtime as { engine: unknown }).engine = null;
+      }, TypeError);
+      assertStrictEquals(runtime.engine, boot.engine);
+      const scheduler = {} as NonNullable<typeof boot.jobScheduler>;
+      boot.jobScheduler = scheduler;
       assertStrictEquals(runtime.jobs, scheduler);
     } finally {
       await Deno.remove(root, { recursive: true }).catch(() => {});
