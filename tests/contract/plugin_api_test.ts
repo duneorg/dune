@@ -122,11 +122,11 @@ takesIn<P.InjectedSearchRecord, InjectedSearchRecord>();
 takesIn<P.InlineEditManager, InlineEditManager>();
 
 // --- identity: a provider supplies its own stores and cores consumes them -
-same<User, P.User>();
-same<UserCreate, P.UserCreate>();
-same<UserStore, P.UserStore>();
-same<Session, P.Session>();
-same<SessionManager, P.SessionManager>();
+handsOut<User, P.User>();
+takesIn<P.UserCreate, UserCreate>();
+handsOut<UserStore, P.UserStore>();
+handsOut<Session, P.Session>();
+handsOut<SessionManager, P.SessionManager>();
 same<ContentRevision, P.ContentRevision>();
 same<ContentDiff, P.ContentDiff>();
 same<RateLimitStore, P.RateLimitStore>();
