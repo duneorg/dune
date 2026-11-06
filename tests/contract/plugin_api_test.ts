@@ -50,6 +50,45 @@ import type { StagingEngine } from "../../src/staging/engine.ts";
 import type { RateLimiter } from "../../src/security/rate-limit.ts";
 import type { RateLimitStore } from "../../src/security/rate-limit-store.ts";
 import type { Logger } from "../../src/core/logger.ts";
+import type { DuneConfig } from "../../src/config/types.ts";
+import type { DuneEngine } from "../../src/core/engine.ts";
+import type { Page } from "../../src/content/types.ts";
+import type { SearchManager } from "../../src/search/manager.ts";
+import type { FlexEngine } from "../../src/flex/engine.ts";
+import type { SubmissionManager } from "../../src/forms/submissions.ts";
+import type { SectionRegistry } from "../../src/sections/registry.ts";
+import type { MetricsCollector } from "../../src/metrics/mod.ts";
+import type { JobScheduler } from "../../src/jobs/mod.ts";
+import type { DuneAuthSystem } from "../../src/auth/authz.ts";
+import type { ThemeLoader } from "../../src/themes/loader.ts";
+import type { RouteResolver } from "../../src/routing/resolver.ts";
+import type { PluginRuntime } from "../../src/plugin-api/runtime.ts";
+import type {
+  AdminBarAction,
+  AdminBarActionContext,
+  AdminPageRegistration,
+  AdminRouteRegistration,
+  ContentEditorPlugin,
+  DunePlugin,
+  FormSubmitPayload,
+  HookContext,
+  HookEvent,
+  HookRegistry,
+  MountApi,
+  PageMovePayload,
+  PluginApi,
+  PublicRouteRegistration,
+  ResponseTransformContext,
+  SystemActionPayload,
+} from "../../src/hooks/types.ts";
+import type {
+  AuthenticateResult,
+  Capabilities,
+  CapabilityContext,
+  CapabilityReader,
+  CapabilityRegistrar,
+  Contributions,
+} from "../../src/plugin-api/capabilities.ts";
 import { isDuneError as coreIsDuneError } from "../../src/plugin-api/errors.ts";
 
 // Both directions: identical on both sides.
@@ -109,6 +148,46 @@ same<SearchOptions, P.SearchOptions>();
 same<FacetCounts, P.FacetCounts>();
 same<PluginApp, P.PluginApp>();
 same<PluginRouteContext, P.PluginRouteContext>();
+
+// --- slice 2b: config, runtime, hooks, plugin object, capabilities ---------
+handsOut<DuneConfig, P.DuneConfig>();
+handsOut<DuneEngine, P.PluginEngine>();
+handsOut<Page, P.Page>();
+handsOut<RouteResolver, P.RouteResolver>();
+handsOut<ThemeLoader, P.ThemeLoader>();
+handsOut<SearchManager, P.PluginSearch>();
+handsOut<FlexEngine, P.FlexEngine>();
+handsOut<SubmissionManager, P.SubmissionManager>();
+handsOut<SectionRegistry, P.SectionRegistry>();
+handsOut<MetricsCollector, P.MetricsCollector>();
+handsOut<JobScheduler, P.JobScheduler>();
+handsOut<DuneAuthSystem, P.PluginAuthz>();
+handsOut<PluginRuntime, P.PluginRuntime>();
+handsOut<MountApi, P.MountApi>();
+handsOut<PluginApi, P.PluginApi>();
+handsOut<HookContext, P.HookContext>();
+handsOut<HookRegistry, P.HookRegistry>();
+handsOut<ResponseTransformContext, P.ResponseTransformContext>();
+handsOut<CapabilityContext, P.CapabilityContext>();
+handsOut<CapabilityReader, P.CapabilityReader>();
+handsOut<CapabilityRegistrar, P.CapabilityRegistrar>();
+
+// What a plugin supplies and core consumes.
+takesIn<P.DunePlugin, DunePlugin>();
+takesIn<P.PublicRouteRegistration, PublicRouteRegistration>();
+takesIn<P.AdminPageRegistration, AdminPageRegistration>();
+takesIn<P.AdminRouteRegistration, AdminRouteRegistration>();
+takesIn<P.ContentEditorPlugin, ContentEditorPlugin>();
+takesIn<P.Capabilities, Capabilities>();
+takesIn<P.Contributions, Contributions>();
+
+same<HookEvent, P.HookEvent>();
+same<PageMovePayload, P.PageMovePayload>();
+same<FormSubmitPayload, P.FormSubmitPayload>();
+same<SystemActionPayload, P.SystemActionPayload>();
+same<AdminBarAction, P.AdminBarAction>();
+same<AdminBarActionContext, P.AdminBarActionContext>();
+same<AuthenticateResult, P.AuthenticateResult>();
 
 Deno.test("isDuneError behaves the same in the package and in core", () => {
   const err = { code: "ssrf_blocked" };
