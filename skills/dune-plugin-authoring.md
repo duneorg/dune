@@ -213,12 +213,7 @@ export default {
 
 `hooks: {}` on the plugin object is still required (`DunePlugin.hooks` isn't optional) even if you register everything dynamically through `setup()` instead.
 
-**4 of 24 declared hook names in the `HookEvent` union are never fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender`, and `onResponse` remain declared but intentionally unimplemented — not overlooked, but genuine design questions with no clean fix:
-
-- `onRouteResolved`/`onPageLoaded` describe a two-phase resolution (route matched to a lightweight `PageIndex`, then the full `Page` loaded) that doesn't exist in the current engine — `engine.resolve()` does both in one step and returns the full `Page` directly. Firing both as documented would mean fabricating a second event from data already in hand, or restructuring `resolve()` into two real phases.
-- `onAfterRender`/`onResponse` need the actual rendered HTML string, but Fresh's `render()` returns a `Response` directly — core never sees the HTML itself. Getting it would mean intercepting and buffering every response body into memory via `response.text()`, killing streaming, as a blanket per-request cost whether or not any plugin is listening.
-
-Both reasons are documented directly on the `HookEvent` type declaration in `src/hooks/types.ts`. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onCacheInvalidate`, `onApiRequest`, `onApiResponse`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
+**Every hook in `HookEvent` is fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender` and `onResponse` used to be declared and never fired; they were removed in 0.36, so registering one is a type error. For the rendered page use `transformResponse` (it sees the finished `Response`); for the template props use `onBeforeRender`. Page-mutation events (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onPageMove`/`onWorkflowChange`) are fired by whoever writes the page, so a plugin that writes pages must fire them itself.
 
 ---
 
