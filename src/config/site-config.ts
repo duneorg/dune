@@ -254,6 +254,14 @@ export interface SiteConfig {
       google?: { client_id: string; client_secret: string };
       discord?: { client_id: string; client_secret: string };
       magic_link?: { enabled: boolean };
+      /**
+       * Password login for `provider: "local"` accounts (`POST /auth/login`
+       * with `identifier`, `password`, optional `next`). Off by default.
+       * Needs persistent user records (`user_store` is not `session`).
+       * Accounts come from `dune users:create` or an admin; there is no
+       * self-service sign-up or password reset through this.
+       */
+      password?: { enabled?: boolean };
     };
     /** JWT verification options — used when mode is "external-jwt". */
     jwt?: {
