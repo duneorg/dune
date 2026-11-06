@@ -151,7 +151,7 @@ Deno.test("loadConfig: returns defaults when no config files exist", async () =>
     skipValidation: true,
   });
   assertEquals(config.site.title, "Dune Site");
-  assertEquals(config.system.cache.driver, "filesystem");
+  assertEquals(config.system.images.default_quality, 80);
   assertEquals(config.theme.name, "default");
 });
 
@@ -173,7 +173,7 @@ Deno.test("loadConfig: merges site.yaml into site config", async () => {
 
 Deno.test("loadConfig: merges system.yaml into system config", async () => {
   const storage = new MemoryStorage({
-    "config/system.yaml": `debug: true\ncache:\n  enabled: false`,
+    "config/system.yaml": `debug: true\nimages:\n  default_quality: 55`,
   });
   const config = await loadConfig({
     storage,
@@ -182,9 +182,9 @@ Deno.test("loadConfig: merges system.yaml into system config", async () => {
     skipValidation: true,
   });
   assertEquals(config.system.debug, true);
-  assertEquals(config.system.cache.enabled, false);
-  // Non-overridden cache values should remain
-  assertEquals(config.system.cache.driver, "filesystem");
+  assertEquals(config.system.images.default_quality, 55);
+  // Non-overridden values in the same section should remain
+  assertEquals(config.system.images.cache_dir, ".dune/cache/images");
 });
 
 Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.system", async () => {

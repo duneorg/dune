@@ -41,21 +41,6 @@ Deno.test("validator: catches non-array taxonomies", () => {
   assertEquals(errors.some((e) => e.includes("Did you mean")), true);
 });
 
-Deno.test("validator: catches invalid cache.driver", () => {
-  const config = cloneConfig();
-  // @ts-ignore: testing invalid input
-  config.system.cache.driver = "redis";
-  const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("system.cache.driver")), true);
-});
-
-Deno.test("validator: catches negative cache.lifetime", () => {
-  const config = cloneConfig();
-  config.system.cache.lifetime = -1;
-  const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("system.cache.lifetime")), true);
-});
-
 Deno.test("validator: catches invalid image quality", () => {
   const config = cloneConfig();
   config.system.images.default_quality = 150;
@@ -133,4 +118,18 @@ Deno.test("validator: valid custom config passes", () => {
   config.system.languages.default = "fr";
   const errors = validateConfig(config);
   assertEquals(errors.length, 0);
+});
+
+Deno.test("validator: admin.auth_provider other than local is refused (LDAP and SAML were never implemented)", () => {
+  for (const type of ["ldap", "saml"]) {
+    const config = cloneConfig();
+    // @ts-ignore: testing invalid input
+    config.admin = { ...(config.admin ?? {}), auth_provider: { type } };
+    const errors = validateConfig(config);
+    assertEquals(errors.some((e) => e.includes("admin.auth_provider.type") && e.includes("never implemented")), true, type);
+  }
+  const ok = cloneConfig();
+  // @ts-ignore: partial admin config is fine for this check
+  ok.admin = { ...(ok.admin ?? {}), auth_provider: { type: "local" } };
+  assertEquals(validateConfig(ok).some((e) => e.includes("auth_provider")), false);
 });
