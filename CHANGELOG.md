@@ -148,6 +148,19 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   and the summary gains `since`. The old `search-analytics.jsonl` is not read.
 - **A bad `admin.audit.log_file` now fails core's bootstrap**, not the admin plugin's
   `setup()`. The message is unchanged apart from the snake_case key name.
+- **`MountApi.bootstrap` is replaced by `MountApi.runtime` (#97).** A plugin's
+  `mount()` used to receive the whole `BootstrapResult` (about thirty fields, most
+  of them core's own wiring: the format registry, the image handler, the HMAC key,
+  the capability registry), so freezing the type would have frozen all of it.
+  `runtime` is a curated `PluginRuntime`: `engine`, `config`, `storage`, `search`,
+  `hooks`, `contentApi`, `history`, `flexEngine`, `metrics`,
+  `submissions`, `sections`, `authz`, and `jobs` (a getter: the scheduler appears
+  after `mount()`, so read it lazily and do not destructure it). The object is
+  frozen. The image cache is not on it: nothing in a plugin used it. No alias.
+  `authzAdapter` and `hmacKey` are no longer reachable
+  from a plugin; `services` and `capabilities` are unchanged. Migrate
+  `mount({ bootstrap })` to `mount({ runtime })` and read the field you need from
+  it. The `PluginRuntime` type is exported from `@dune/core/plugin-api`.
 
 ### Added
 
