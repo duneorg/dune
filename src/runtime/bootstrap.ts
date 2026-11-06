@@ -346,7 +346,6 @@ export async function bootstrap(
   const pluginServices = createPluginServices({
     config,
     storage,
-    root,
     getBlueprints: () => engine.blueprints,
     searchAnalytics,
     getAuthz: () => authzForServices,

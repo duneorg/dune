@@ -17,10 +17,14 @@ import type {
   ResponseTransformContext,
 } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
-import type {
-  AuthResult,
-  User,
-} from "jsr:@dune/plugin-admin/admin/types";
+import type { User } from "../../src/auth/types.ts";
+
+/** What the fake auth middleware resolves to (the admin's result shape, kept local: core tests do not depend on the published admin). */
+interface AuthResult {
+  authenticated: boolean;
+  user?: User;
+  error?: string;
+}
 
 const config = {} as DuneConfig;
 
