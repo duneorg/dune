@@ -87,3 +87,17 @@ Deno.test("writeDoctorReport: writes the report only when a doctor run asked for
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("doctor: an auth.session provided by two plugins is an error that names both", () => {
+  const findings = capabilityFindings(
+    {
+      providers: [slot("auth.session", "login-a")],
+      conflicts: [{ capability: "auth.session", providers: ["login-a", "login-b"] }],
+      scheduledActions: 0,
+    },
+    { adminEnabled: true },
+  );
+  const errors = findings.filter((f) => f.severity === "error");
+  assertEquals(errors.length, 1);
+  assertStringIncludes(errors[0].message, '"login-a", "login-b"');
+});

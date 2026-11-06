@@ -470,7 +470,7 @@ export async function createDuneApp(
   //    through authz.check() when configured — the sole authority every
   //    other permission check follows (dec-identity-unification Phase 5c/7).
   app.get("/api/inline-edit/ws", async (fc) => {
-    const inlineEdit = ctx.capabilities.get("inline-edit");
+    const inlineEdit = ctx.capabilities.get("editor.inline");
     if (!inlineEdit) {
       return new Response("Inline editing not enabled", { status: 501 });
     }

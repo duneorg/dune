@@ -30,7 +30,7 @@
  * ## Changes in v0.36
  *
  * - `PluginApi.capabilities` / `MountApi.capabilities` — what plugins provide to
- *   core and to each other (`auth.session`, `scheduler.executor`, `inline-edit`,
+ *   core and to each other (`auth.session`, `scheduler.executor`, `editor.inline`,
  *   `editor.content`, and the `admin.pages` / `bar.actions` contribution points).
  *   Replaces `DunePlugin.adminServices`, `adminPages`, `adminBarActions` and
  *   `mountEarly`, and the untyped `ctx.adminContext`. See `@dune/core/plugin-api`.

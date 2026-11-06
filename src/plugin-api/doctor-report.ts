@@ -10,7 +10,7 @@
  * @module
  */
 
-import type { CapabilityProvider } from "./capabilities.ts";
+import type { CapabilityConflict, CapabilityProvider } from "./capabilities.ts";
 
 /** Environment variable naming the file `dune doctor --boot` reads the report from. */
 export const DOCTOR_REPORT_ENV = "DUNE_DOCTOR_REPORT";
@@ -19,6 +19,8 @@ export const DOCTOR_REPORT_ENV = "DUNE_DOCTOR_REPORT";
 export interface DoctorReport {
   /** Every capability slot and contribution point with a provider. */
   providers: CapabilityProvider[];
+  /** Exclusive slots (`auth.session`) that more than one plugin provided; the site did not finish booting. */
+  conflicts?: CapabilityConflict[];
   /** Scheduled actions waiting to run (they only run while a `scheduler.executor` is provided). */
   scheduledActions: number;
 }

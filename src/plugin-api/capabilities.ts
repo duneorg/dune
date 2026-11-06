@@ -10,7 +10,11 @@
  * Two shapes:
  *  - a **slot** has at most one active provider (an object implementing the
  *    contract in {@link Capabilities}); a later registration replaces an
- *    earlier one, with a warning;
+ *    earlier one, with a warning. The exception is {@link EXCLUSIVE_SLOTS}
+ *    (`auth.session`): a second plugin providing one is a conflict that stops
+ *    the boot, because the provider decides who is treated as an editor (the
+ *    admin bar, editing markers, the inline-edit WebSocket) and load order
+ *    must not;
  *  - a **contribution point** collects one item from each contributing plugin
  *    ({@link Contributions}).
  *
@@ -98,7 +102,7 @@ export interface Capabilities {
   /** Executes due scheduled actions. Consumer: `dune serve`, which owns the scheduler's polling loop. */
   "scheduler.executor": ScheduledActionExecutor;
   /** Real-time inline editing. Consumers: core's `/api/inline-edit/ws`, the admin. */
-  "inline-edit": InlineEditManager;
+  "editor.inline": InlineEditManager;
   /** A replacement page editor. Consumer: the admin. */
   "editor.content": ContentEditorPlugin;
 }
@@ -158,11 +162,37 @@ export interface CapabilityReader {
   providers(): CapabilityProvider[];
 }
 
+/**
+ * Slots where two different plugins providing the same one is an error, not a
+ * replacement. `auth.session` decides who is treated as an editor on a request
+ * (the admin bar, editing markers, the inline-edit WebSocket, bypassing the
+ * shared page cache); `admin.prefix` decides which paths core keeps out of the
+ * page cache and away from plugin routes. The winner of either must not depend
+ * on plugin load order: one admin per site.
+ */
+export const EXCLUSIVE_SLOTS: ReadonlySet<string> = new Set(["auth.session", "admin.prefix"]);
+
+/** An {@link EXCLUSIVE_SLOTS} slot that more than one plugin tried to provide. */
+export interface CapabilityConflict {
+  capability: string;
+  /** Every plugin that provided it, in registration order. */
+  providers: string[];
+}
+
+/** The message that stops a boot with a {@link CapabilityConflict}. */
+export function describeConflict(c: CapabilityConflict): string {
+  const names = c.providers.map((p) => `"${p}"`).join(", ");
+  return `More than one plugin provides "${c.capability}" (${names}). A site has one, and which ` +
+    `plugin wins must not depend on load order. Remove or disable all but one.`;
+}
+
 /** Core-side registry: the registrar and reader views plus the resolution step. */
 export interface CapabilityRegistry {
   /** A registrar that attributes everything it registers to `provider` (a plugin name). */
   registrar(provider: string): CapabilityRegistrar;
   reader: CapabilityReader;
+  /** Exclusive slots that more than one plugin provided; the boot must not go on while this is not empty. */
+  conflicts(): CapabilityConflict[];
   /** Run the slot factories that have not run yet, in registration order. Never throws. */
   resolve(ctx: CapabilityContext): Promise<void>;
 }
@@ -174,11 +204,29 @@ export interface CapabilityRegistry {
 export function adminPrefixOf(reader: CapabilityReader): string | null {
   const prefix = reader.get("admin.prefix")?.prefix;
   if (typeof prefix !== "string") return null;
-  if (prefix.length < 2 || !prefix.startsWith("/") || prefix.endsWith("/")) {
+  if (!isUsablePrefix(prefix)) {
     logger.warn("capabilities.admin_prefix_invalid", { prefix });
     return null;
   }
   return prefix;
+}
+
+function isUsablePrefix(prefix: string): boolean {
+  return prefix.length >= 2 && prefix.startsWith("/") && !prefix.endsWith("/");
+}
+
+/**
+ * The value an active `admin.prefix` provider returned when it is not a usable
+ * path, else `null`. `resolveCapabilities()` turns this into a boot error:
+ * quietly treating a bad prefix as "no admin" would stop core reserving the
+ * admin's paths (page cache, response transforms, route shadowing) while the
+ * admin still serves them.
+ */
+export function invalidAdminPrefix(reader: CapabilityReader): unknown | null {
+  const slot = reader.get("admin.prefix");
+  if (slot === undefined) return null;
+  const prefix = (slot as { prefix?: unknown }).prefix;
+  return typeof prefix === "string" && isUsablePrefix(prefix) ? null : (prefix ?? "(missing)");
 }
 
 // ── Implementation ───────────────────────────────────────────────────────────
@@ -193,6 +241,7 @@ interface SlotEntry {
 export function createCapabilityRegistry(): CapabilityRegistry {
   const slots = new Map<string, SlotEntry>();
   const contributions = new Map<string, { provider: string; item: unknown }[]>();
+  const conflicts = new Map<string, CapabilityConflict>();
   let resolving = false;
 
   const reader: CapabilityReader = {
@@ -216,10 +265,20 @@ export function createCapabilityRegistry(): CapabilityRegistry {
   return {
     reader,
 
+    conflicts: () => [...conflicts.values()],
+
     registrar(provider) {
       return {
         provide(name, factory) {
           const previous = slots.get(name);
+          if (previous && EXCLUSIVE_SLOTS.has(name) && previous.provider !== provider) {
+            // Keep the first provider; the boot stops on the conflict (see conflicts()).
+            const c = conflicts.get(name) ?? { capability: name, providers: [previous.provider] };
+            if (!c.providers.includes(provider)) c.providers.push(provider);
+            conflicts.set(name, c);
+            logger.error("capabilities.slot_conflict", { capability: name, providers: c.providers.join(", ") });
+            return;
+          }
           if (previous) {
             logger.warn("capabilities.slot_replaced", { capability: name, replaced: previous.provider, by: provider });
             // Delete first so the winning entry takes its place at the end of the order.

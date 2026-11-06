@@ -31,6 +31,7 @@
 import { join } from "@std/path";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { DOCTOR_REPORT_ENV, type DoctorReport } from "../plugin-api/doctor-report.ts";
+import { describeConflict } from "../plugin-api/capabilities.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { formatNpmCacheMismatchError, isNpmCacheMismatchError } from "./npm-cache-error.ts";
@@ -162,6 +163,10 @@ export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: b
       return `    ${p.name.padEnd(20)} ${p.provider}${state}`;
     });
     findings.push({ category: "capabilities", severity: "info", message: `What plugins provide:\n${lines.join("\n")}` });
+  }
+
+  for (const c of report.conflicts ?? []) {
+    findings.push({ category: "capabilities", severity: "error", message: describeConflict(c) });
   }
 
   for (const p of report.providers) {

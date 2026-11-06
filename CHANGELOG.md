@@ -130,7 +130,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   the capability registry (`PluginApi.capabilities` / `MountApi.capabilities`):
   - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
     `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
-    -> provide the `inline-edit` or `editor.content` slot in `setup()`.
+    -> provide the `editor.inline` or `editor.content` slot in `setup()`.
   - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. `permission`
     is now required on every `admin.pages` and `admin.routes` contribution (it used to be
     optional on pages, meaning any authenticated admin), so nothing is exposed to every
@@ -147,7 +147,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
     `capabilities.get("auth.session")?.authenticate(req)`; there is no shared
     per-request state to rely on, so nothing needs admin middleware to be mounted first.
   - `BootstrapResult.adminContext`, the untyped bag core used to read from the admin.
-  `/api/inline-edit/ws` now takes its manager from the `inline-edit` capability.
+  `/api/inline-edit/ws` now takes its manager from the `editor.inline` capability.
   `plugin-admin` 4.0.0 and `plugin-inline-edit` provide and consume these; a site-local
   plugin that used the removed fields fails type-checking until it moves to the registry.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
@@ -246,10 +246,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   contribution points) and `MountApi.capabilities` / `BootstrapResult.capabilities`
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
   `ctx.adminContext` bag. First-party keys: slots `auth.session`,
-  `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
+  `scheduler.executor`, `editor.inline`, `editor.content`; contribution points
   `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
-  one with a warning, a throwing factory is logged and leaves its slot empty. The
+  one with a warning, except `auth.session` and `admin.prefix`: two different plugins providing
+  either stops the boot with an error naming both (the winner must not depend on load
+  order: `auth.session` decides who is treated as an editor, `admin.prefix` which paths
+  core reserves; one admin per site; `dune doctor --boot` reports it too). An
+  `admin.prefix` that is not a usable path (`admin/`, `/`, `/admin/`) also stops the boot
+  rather than meaning "no admin". A
+  throwing factory is logged and leaves its slot empty. The
   old fields it replaces are removed (see "Removed — BREAKING").
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one

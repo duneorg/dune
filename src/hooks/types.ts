@@ -561,7 +561,7 @@ export interface DunePlugin {
    * Use this to register routes and middleware (e.g. a dashboard, a set of
    * auth routes). Handlers receive a {@link PluginRouteContext}.
    *
-   * Capability slots (`auth.session`, `inline-edit`, ...) are resolved before
+   * Capability slots (`auth.session`, `editor.inline`, ...) are resolved before
    * `mount()` runs and are read through `api.capabilities`, lazily (at request
    * time): do not assume a provider exists.
    *
