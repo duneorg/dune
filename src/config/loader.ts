@@ -12,16 +12,21 @@
 import {
   describeLegacyKeys,
   describeMovedKeys,
+  findIgnoredKeys,
   findLegacyKeys,
   findMovedKeys,
 } from "./legacy-keys.ts";
 import { parse as parseYaml } from "@std/yaml";
 import { join, normalize, resolve } from "@std/path";
 import { ConfigError } from "../core/errors.ts";
+import { logger } from "../core/logger.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "./types.ts";
 import { DEFAULT_CONFIG } from "./defaults.ts";
 import { validateConfig } from "./validator.ts";
+
+/** Ignored-key warnings already logged, so a reload (dev watch) does not repeat them. */
+const warnedIgnored = new Set<string>();
 
 /**
  * Deep merge two objects.  Arrays are replaced, not concatenated.
@@ -121,6 +126,17 @@ async function loadYamlFile(
           `Config keys changed: ${parts.join("; ")}. ${hints.join(" ")}`,
           path,
         );
+      }
+      for (const k of findIgnoredKeys(kind, parsed)) {
+        const id = `${path}:${k.path}`;
+        if (warnedIgnored.has(id)) continue;
+        warnedIgnored.add(id);
+        logger.warn("config.key.ignored", {
+          file: path,
+          key: k.path,
+          reason: k.to,
+          hint: "Setting it changes nothing; `dune migrate:config` removes it.",
+        });
       }
     }
     return parsed as Record<string, unknown>;

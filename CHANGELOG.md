@@ -40,9 +40,11 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `WorkflowConfig.transitions`), and the unused `AdminNotificationsConfig` and
   `SmtpNotificationConfig` types.
 - **Config keys that were declared, documented and never read (#97, inert-key
-  audit).** A site that still sets one refuses to load and is told so (the same
-  treatment as the other removed keys; `dune migrate:config` reports them). None
-  of them did anything, so removing the line loses nothing:
+  audit).** None of them did anything, so a site that still sets one **keeps
+  booting**: the loader logs a `config.key.ignored` warning (once per file and
+  key) and ignores it, and `dune migrate:config` deletes the key and its block.
+  (`dune new` used to scaffold `cache:`, so most existing sites have it.)
+  Removing the line loses nothing:
   - **`uploads:` (site.yaml) and the public upload endpoint.** `POST /api/upload`
     and `GET /uploads/*` were never mounted by `createDuneApp()`, `@dune/core/upload`
     was not an export, so its unit tests only ever exercised the handler in

@@ -2,7 +2,9 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
 import {
   findLegacyKeys,
+  findIgnoredKeys,
   findMovedKeys,
+  removeIgnoredKeysInText,
   renameLegacyKeysInText,
 } from "../../src/config/legacy-keys.ts";
 import { loadConfig } from "../../src/config/loader.ts";
@@ -164,33 +166,66 @@ Deno.test("loadConfig rejects a config file whose top level is not a mapping", a
   }
 });
 
-Deno.test("findMovedKeys: keys that were declared but never read are refused with a pointer", () => {
-  const site = findMovedKeys("site", parseYaml("title: T\nuploads:\n  max_size_mb: 5\n"));
+Deno.test("findIgnoredKeys: keys that were declared but never read are found", () => {
+  const site = findIgnoredKeys("site", parseYaml("title: T\nuploads:\n  max_size_mb: 5\n"));
   assertEquals(site.map((k) => k.path), ["uploads"]);
   assertStringIncludes(site[0].to, "form");
 
-  const system = findMovedKeys(
+  const system = findIgnoredKeys(
     "system",
     parseYaml("cache:\n  enabled: true\ntimezone: UTC\ncontent:\n  markdown:\n    extra: true\nsearch:\n  include_flex: [a]\n"),
   );
   assertEquals(system.map((k) => k.path).sort(), ["cache", "content.markdown", "search.include_flex", "timezone"]);
 });
 
-Deno.test("findMovedKeys: the same names elsewhere are left alone", () => {
-  // `cache` and `uploads` are only removed where they were config keys.
-  assertEquals(findMovedKeys("site", { cache: { x: 1 }, plugin_configs: { thing: { uploads: 1 } } }), []);
-  assertEquals(findMovedKeys("system", { admin: { cache: 1, timezone: "x" }, search: { page_size: 5 } }), []);
+Deno.test("findIgnoredKeys: the same names elsewhere are left alone", () => {
+  // `cache` and `uploads` are only ignored where they were config keys.
+  assertEquals(findIgnoredKeys("site", { cache: { x: 1 }, plugin_configs: { thing: { uploads: 1 } } }), []);
+  assertEquals(findIgnoredKeys("system", { admin: { cache: 1, timezone: "x" }, search: { page_size: 5 } }), []);
 });
 
-Deno.test("loadConfig: a site.yaml that still sets uploads refuses to load and says why", async () => {
+Deno.test("removeIgnoredKeysInText: deletes the key and its block, keeps everything else", () => {
+  const text = [
+    "# system",
+    "title: keep",
+    "cache:",
+    "  enabled: true",
+    "",
+    "  ttl: 60",
+    "timezone: UTC",
+    "content:",
+    "  markdown:",
+    "    extra: true",
+    "  allow_tsx_format: true",
+    "search:",
+    "  page_size: 5",
+    "",
+  ].join("\n");
+  const r = removeIgnoredKeysInText("system", text);
+  assertEquals(r.removed.map((k) => k.path), ["cache", "timezone", "content.markdown"]);
+  assertEquals(
+    r.text,
+    ["# system", "title: keep", "", "content:", "  allow_tsx_format: true", "search:", "  page_size: 5", ""].join("\n"),
+  );
+  assertEquals(findIgnoredKeys("system", parseYaml(r.text)), []);
+});
+
+Deno.test("removeIgnoredKeysInText: leaves flow style alone so the caller can report it", () => {
+  const r = removeIgnoredKeysInText("system", "cache: {enabled: true}\n");
+  assertEquals(r.removed.map((k) => k.path), ["cache"]); // block-style line with an inline value is removable
+  assertEquals(findIgnoredKeys("system", parseYaml("content: {markdown: {x: 1}}\n")).length, 1);
+  assertEquals(removeIgnoredKeysInText("system", "content: {markdown: {x: 1}}\n").removed, []);
+});
+
+Deno.test("loadConfig: a site.yaml that still sets uploads loads and ignores it", async () => {
   const storage = new MemoryStorageAdapter();
-  await storage.write("config/site.yaml", new TextEncoder().encode("title: T\nuploads:\n  max_size_mb: 5\n"));
-  let message = "";
-  try {
-    await loadConfig({ storage, rootDir: "/x" });
-  } catch (err) {
-    message = err instanceof Error ? err.message : String(err);
-  }
-  assertStringIncludes(message, "uploads");
-  assertStringIncludes(message, "removed");
+  await storage.write("config/site.yaml", new TextEncoder().encode("title: Kept\nuploads:\n  max_size_mb: 5\n"));
+  const config = await loadConfig({ storage, rootDir: "/x" });
+  assertEquals(config.site.title, "Kept");
+});
+
+Deno.test("loadConfig: system.cache and timezone no longer block a boot", async () => {
+  const storage = new MemoryStorageAdapter();
+  await storage.write("config/system.yaml", new TextEncoder().encode("cache:\n  enabled: true\ntimezone: UTC\n"));
+  await loadConfig({ storage, rootDir: "/x" });
 });

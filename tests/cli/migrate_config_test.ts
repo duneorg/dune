@@ -97,3 +97,18 @@ Deno.test("migrate:config on a site with no legacy keys does nothing", async () 
     assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
   });
 });
+
+Deno.test("migrate:config deletes keys that were declared and never read", async () => {
+  await withSite({
+    "config/system.yaml": "# c\ncache:\n  enabled: true\ntimezone: UTC\nadmin:\n  maxUploadMb: 5\n",
+    "config/site.yaml": "title: T\nuploads:\n  max_size_mb: 5\n",
+  }, async (root) => {
+    const out = await quiet(() => migrateConfigCommand(root));
+    assertStringIncludes(out, "removed cache, timezone");
+    assertEquals(
+      await Deno.readTextFile(join(root, "config/system.yaml")),
+      "# c\nadmin:\n  max_upload_mb: 5\n",
+    );
+    assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
+  });
+});
