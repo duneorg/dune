@@ -103,7 +103,8 @@ export interface RunResponseTransformsOptions {
    */
   resolve: (pathname: string) => ResolvedRoute;
   config: DuneConfig;
-  adminPrefix: string;
+  /** Where the admin is mounted, or null when there is no admin. */
+  adminPrefix: string | null;
 }
 
 /**
@@ -201,7 +202,8 @@ export async function runPluginResponseTransforms(
           template: matchedPage.template,
         }
         : null,
-      adminPrefix,
+      // "" when no admin is installed: plugins that build admin links only do so for a signed-in admin.
+      adminPrefix: adminPrefix ?? "",
       // A plugin can contribute to `bar.actions` without declaring
       // transformResponse itself, so the list comes from the contribution
       // point, not from the plugins selected to run a transform.

@@ -46,7 +46,8 @@ export interface ContentMiddlewareOptions {
   cacheDefaults: { maxAge: number; swr: number };
   feedEnabled: boolean;
   siteName: string;
-  adminPrefix: string;
+  /** Where the admin is mounted, or null when there is no admin. Read per request. */
+  adminPrefix: () => string | null;
   routes: DuneRoutes;
 }
 
@@ -115,7 +116,7 @@ export function registerContentCatchAll(
       actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
       resolve: engine.router.resolve,
       config,
-      adminPrefix,
+      adminPrefix: adminPrefix(),
     });
 
   app.all("/*", async (fc) => {

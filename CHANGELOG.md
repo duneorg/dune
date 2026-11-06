@@ -34,6 +34,18 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `resolveRuntimeDir()` and `resolveMaxRevisions()` (`@dune/core/forms`) are the
   one place that resolves them. A plugin reads the directory from
   `services.paths.runtimeDir`. `@dune/plugin-admin` 4.0.0 does the same.
+- **Core no longer assumes the admin lives at `/admin` (#123, step 2).** Where the admin
+  is mounted is the new `admin.prefix` capability slot (`{ prefix: "/admin" }`), provided by
+  the admin plugin. Core reads it lazily for the things it must keep apart from content:
+  the page cache and response transforms skip admin paths, `onRequest` cannot short-circuit
+  them, plugin `publicRoutes` cannot shadow them, `dune build --hybrid` forwards them to the
+  Worker, and `dune dev` / `dune serve` print the admin URL. With no provider there is no
+  admin: `/admin/...` is an ordinary content path, nothing is reserved, and hybrid output
+  forwards only `/api/*`. `ResponseTransformContext.adminPrefix` and
+  `AdminBarActionContext.adminPrefix` are `""` when no admin is installed. The MCP server
+  (which loads no plugins) no longer reports `admin.path`. New: `resolveCapabilities()`
+  (`@dune/core/plugins`) settles plugin setup and resolves slots, idempotently, for callers
+  that read a slot before `createDuneApp()`. `@dune/plugin-admin` 4.0.0 provides the slot.
 - **The legacy `smtp:` block in form notifications.** Use `site.email`.
   Magic-link login emails also go through `site.email` now (they used to need
   the legacy `admin.notifications.email.smtp`); a site without

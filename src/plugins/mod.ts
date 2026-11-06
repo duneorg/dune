@@ -97,7 +97,13 @@ export const CORE_VERSION: string = denoJson.version;
  */
 export const CORE_INSTANCE: Readonly<Record<never, never>> = Object.freeze({});
 
-export { loadPlugins, loadPluginAdminConfigs, applyResponseTransforms, mountPlugins } from "./loader.ts";
+export {
+  applyResponseTransforms,
+  loadPluginAdminConfigs,
+  loadPlugins,
+  mountPlugins,
+  resolveCapabilities,
+} from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
   /** A button contributed to the shared admin bar UI through the `bar.actions` contribution point. */
