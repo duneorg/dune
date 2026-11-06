@@ -142,6 +142,14 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Added
 
+- **`onPageMove` hook event (#97).** Fired by whoever renames, renumbers or
+  reorders pages, with `PageMovePayload` (`{ moves: [{ from, to }] }`, paths
+  relative to the content directory; every page at or below `from` now lives
+  below `to`). Before, a reorder changed the routes of many pages and no event
+  said so. The mutation-event wording is corrected too: the events are fired by
+  whoever writes the page (not "via the admin panel"), and edits made outside
+  Dune surface only as `onRebuild`.
+
 - **A capability registry for what plugins provide (#97).** `PluginApi.capabilities`
   (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for
   contribution points) and `MountApi.capabilities` / `BootstrapResult.capabilities`
@@ -191,6 +199,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `deno task dev`, and the admin panel line says so.
 
 ### Fixed
+
+- **The MCP write tools announce page writes (#97).** `write_page`,
+  `update_frontmatter` and `delete_page` now fire `onPageCreate` /
+  `onPageUpdate` / `onPageDelete` (plugins load once, on the first write), so
+  search indexes, webhooks and audit plugins no longer miss edits made through
+  MCP. Whoever writes a page fires its event; core never does it for them.
+- **`content:create` reports `sourcePath` relative to the content directory.**
+  `onPageCreate` from the CLI carried `content/blog/x/default.md` (relative to
+  the site root) while the admin and `content:delete` report `blog/x/default.md`.
+  Handlers that compared paths now see one form everywhere.
 
 - **A form's validation-failure redirect works behind a TLS proxy (#89).**
   `POST /api/forms/:name` only sent the visitor back to the page (with

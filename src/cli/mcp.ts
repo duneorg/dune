@@ -34,6 +34,9 @@ import { MdxHandler } from "../content/formats/mdx.ts";
 import { createDuneEngine } from "../core/engine.ts";
 import { createSearchEngine } from "../search/engine.ts";
 import { resolve } from "@std/path";
+import { createHookRegistry } from "../hooks/registry.ts";
+import { loadPlugins } from "../plugins/loader.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 
 export interface McpServeOptions {
   debug?: boolean;
@@ -95,6 +98,21 @@ async function lightweightBootstrap(root: string, buildSearch: boolean, debug: b
   return { engine, search, config, storage };
 }
 
+/** Resolve a hook registry with plugins loaded, on first use only. */
+function lazyHooks(
+  config: Awaited<ReturnType<typeof lightweightBootstrap>>["config"],
+  storage: Awaited<ReturnType<typeof lightweightBootstrap>>["storage"],
+  root: string,
+): () => Promise<HookRegistry> {
+  let pending: Promise<HookRegistry> | null = null;
+  return () =>
+    pending ??= (async () => {
+      const hooks = createHookRegistry({ config, storage });
+      await loadPlugins({ config, hooks, storage, root });
+      return hooks;
+    })();
+}
+
 export async function mcpServeCommand(
   root: string,
   options: McpServeOptions = {},
@@ -133,7 +151,16 @@ export async function mcpServeCommand(
   const contentDir = config.system?.content?.dir ?? "content";
   const writeTools = readonly
     ? []
-    : buildWriteTools({ engine, storage, root, contentDir });
+    : buildWriteTools({
+      engine,
+      storage,
+      root,
+      contentDir,
+      // Plugins load on the first page write, once: a read-only session never
+      // pays for it, and a write announces itself to search indexes, webhooks
+      // and the like like a write through any other front end.
+      hooks: lazyHooks(config, storage, root),
+    });
   const resources = buildResources(engine, storage, root);
 
   for (const { meta, handler } of [...tools, ...writeTools]) {

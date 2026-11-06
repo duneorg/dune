@@ -66,14 +66,30 @@ export type HookEvent =
   // Search
   | "onSearchRecordsCollect" // collect plugin-injected records before indexing
   | "onSearchEngineCreate" // let a plugin provide an alternative search engine
-  // Content mutation (fired by admin CRUD operations)
-  | "onPageCreate" // page file created via admin panel
-  | "onPageUpdate" // page file updated via admin panel
-  | "onPageDelete" // page file deleted via admin panel
-  | "onWorkflowChange" // page workflow status changed
+  // Content mutation: fired by whoever writes the page (an admin, the MCP
+  // server, a CLI command, a plugin), never by core on their behalf. Payloads
+  // carry paths relative to the content directory. Edits made outside Dune
+  // (an editor, git pull) fire nothing per page: they surface as onRebuild.
+  | "onPageCreate" // a page file was created: { sourcePath, title }
+  | "onPageUpdate" // a page file was written: { sourcePath }
+  | "onPageDelete" // a page file was deleted: { sourcePath }
+  | "onPageMove" // pages were renamed or reordered: PageMovePayload
+  | "onWorkflowChange" // page workflow status changed: { sourcePath, from, to }
   // Public features (fired by core, so they work without an admin plugin)
   | "onFormSubmit" // a form submission was accepted and stored
   | "onSystemAction"; // an incoming webhook triggered rebuild / purge-cache
+
+/**
+ * Payload of `onPageMove`: pages were renamed, renumbered or reordered.
+ *
+ * Each entry names what was renamed on disk, a page folder or a single page
+ * file, as paths relative to the content directory. Every page at or below
+ * `from` now lives at the same position below `to`. One event covers one
+ * operation (a reorder renames many folders), so a handler can re-index once.
+ */
+export interface PageMovePayload {
+  moves: Array<{ from: string; to: string }>;
+}
 
 /**
  * Payload of `onFormSubmit`: a public form submission was accepted and stored.
@@ -140,7 +156,7 @@ export interface HookContext<T = unknown> {
    * there's a content index to query yet: `onConfigLoaded`,
    * `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, and
    * `onSearchEngineCreate`. Present for every other live hook
-   * (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`,
+   * (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onPageMove`/`onWorkflowChange`,
    * `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`), all of
    * which fire after bootstrap completes — **except** on the lightweight,
    * standalone `HookRegistry` some CLI commands build without a full

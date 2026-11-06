@@ -49,7 +49,7 @@ const VALID_HOOK_EVENTS = new Set([
   "onCacheHit", "onCacheMiss", "onCacheInvalidate",
   "onApiRequest", "onApiResponse",
   "onRebuild", "onThemeSwitch",
-  "onPageCreate", "onPageUpdate", "onPageDelete", "onWorkflowChange",
+  "onPageCreate", "onPageUpdate", "onPageDelete", "onPageMove", "onWorkflowChange",
 ]);
 
 const VALID_PERMISSIONS = new Set([

@@ -538,6 +538,7 @@ export const CONFIG_SCHEMA = {
                     "onPageCreate",
                     "onPageUpdate",
                     "onPageDelete",
+                    "onPageMove",
                     "onWorkflowChange",
                   ],
                 },
