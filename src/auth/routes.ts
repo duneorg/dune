@@ -6,7 +6,8 @@
  * no Fresh-specific types needed here.
  *
  * Routes:
- *   GET  /auth/login               — login page (provider selection)
+ *   GET  /auth/login               — login page (providers, magic link, password form)
+ *   POST /auth/login               — password login for `provider: "local"` accounts (opt-in)
  *   GET  /auth/logout              — destroy session, redirect to /
  *   GET  /auth/{provider}          — initiate OAuth flow
  *   GET  /auth/{provider}/link     — initiate OAuth to link this provider (authenticated only)
@@ -27,6 +28,9 @@ import type { OAuthProvider } from "./providers/types.ts";
 import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit.ts";
 import { checkSameOriginCsrf } from "../security/csrf.ts";
 import { logger } from "../core/logger.ts";
+import { sanitizeNext } from "./redirect.ts";
+import { createPasswordLogin, type LoginError } from "./password-login.ts";
+import type { RateLimitStore } from "../security/rate-limit-store.ts";
 
 export interface AuthRoutesConfig {
   userStore: UserStore;
@@ -46,10 +50,49 @@ export interface AuthRoutesConfig {
    * Recommended for production deployments.
    */
   magicTokenStore?: MagicTokenStore;
+  /**
+   * Enable `POST /auth/login` (`site.auth.providers.password.enabled`).
+   * Needs persistent user records, so it has no effect with `userStoreType: "session"`.
+   */
+  passwordLoginEnabled?: boolean;
+  /** Counters for the password login's rate limits; required when `passwordLoginEnabled`. */
+  rateLimitStore?: RateLimitStore;
+  /**
+   * Render the login page through the active theme (`templates/login.tsx`).
+   * Resolve `null` when the theme has none; the built-in page is used then.
+   */
+  loginPage?: (
+    req: Request,
+    view: LoginView,
+    renderJsx: RenderJsx,
+    status: number,
+  ) => Promise<Response | null>;
+}
+
+/** Renders a JSX tree to a response with a status; Fresh's `ctx.render` wrapped. */
+export type RenderJsx = (jsx: unknown, status?: number) => Response | Promise<Response>;
+
+/**
+ * What the login page shows. The theme's `templates/login.tsx` receives this
+ * as `page.frontmatter` (like `error.tsx` gets `{ statusCode, message }`).
+ */
+export interface LoginView {
+  /** Configured OAuth providers, in order; each signs in at `/auth/<name>`. */
+  providers: string[];
+  /** Whether magic-link login is on (`POST /auth/magic/send` with `{ email }`). */
+  magicLink: boolean;
+  /** Whether password login is on (`POST /auth/login` with `identifier`, `password`, `next`). */
+  passwordLogin: boolean;
+  /** Set after a failed attempt: `invalid` (bad credentials) or `rate_limited`. */
+  error?: LoginError;
+  /** Where to go after signing in; always a same-site path. */
+  next: string;
 }
 
 export interface AuthRouteHandlers {
-  login: (req: Request, siteUser: User | null) => Response;
+  login: (req: Request, siteUser: User | null, renderJsx?: RenderJsx) => Promise<Response>;
+  /** `POST /auth/login`. 404 unless password login is enabled. */
+  passwordLogin: (req: Request, renderJsx?: RenderJsx) => Promise<Response>;
   logout: (req: Request) => Promise<Response>;
   oauthStart: (req: Request, provider: string) => Response;
   /** Authenticated-only: start linking an additional provider to the current session's account. */
@@ -79,11 +122,20 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     sendEmail,
     trustForwardedFor = false,
     magicTokenStore,
+    passwordLoginEnabled = false,
+    rateLimitStore,
+    loginPage,
   } = config;
+
+  const passwordLoginActive = passwordLoginEnabled && mode === "dune" && userStoreType !== "session" &&
+    rateLimitStore !== undefined;
+  const passwordLoginHandler = passwordLoginActive
+    ? createPasswordLogin({ userStore, middleware, rateLimitStore: rateLimitStore!, trustForwardedFor })
+    : null;
 
   // ── Login page ─────────────────────────────────────────────────────────────
 
-  function login(req: Request, siteUser: User | null): Response {
+  async function login(req: Request, siteUser: User | null, renderJsx?: RenderJsx): Promise<Response> {
     if (siteUser) {
       // Already logged in — honour a sanitised ?next= redirect target.
       const url = new URL(req.url);
@@ -93,15 +145,59 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
     if (mode === "external-jwt") {
       return new Response(
-        loginHtml([], false, "This site uses external authentication. Please use your provider's login."),
+        loginHtml(
+          { providers: [], magicLink: false, passwordLogin: false, next: "/" },
+          "This site uses external authentication. Please use your provider's login.",
+        ),
         { headers: { "Content-Type": "text/html; charset=utf-8" } },
       );
     }
 
-    const providerNames = [...providers.keys()];
-    return new Response(loginHtml(providerNames, magicLinkEnabled), {
+    const url = new URL(req.url);
+    const errorParam = url.searchParams.get("error");
+    const view: LoginView = {
+      providers: [...providers.keys()],
+      magicLink: magicLinkEnabled,
+      passwordLogin: passwordLoginActive,
+      error: errorParam === "invalid" || errorParam === "rate_limited" ? errorParam : undefined,
+      next: sanitizeNext(url.searchParams.get("next")),
+    };
+    return await renderLogin(req, view, renderJsx, 200);
+  }
+
+  /** The themed page when the theme has one, else the built-in HTML. */
+  async function renderLogin(
+    req: Request,
+    view: LoginView,
+    renderJsx: RenderJsx | undefined,
+    status: number,
+  ): Promise<Response> {
+    if (loginPage && renderJsx) {
+      try {
+        const themed = await loginPage(req, view, renderJsx, status);
+        if (themed) return themed;
+      } catch (err) {
+        logger.error("auth.login_page.theme_failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return new Response(loginHtml(view), {
+      status,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
+  }
+
+  // ── Password login ─────────────────────────────────────────────────────────
+
+  async function passwordLogin(req: Request, renderJsx?: RenderJsx): Promise<Response> {
+    if (!passwordLoginHandler) return new Response("Password login not enabled", { status: 404 });
+    return await passwordLoginHandler(req, (view, status) =>
+      renderLogin(req, {
+        providers: [...providers.keys()],
+        magicLink: magicLinkEnabled,
+        passwordLogin: true,
+        error: view.error,
+        next: view.next,
+      }, renderJsx, status));
   }
 
   // ── Logout ─────────────────────────────────────────────────────────────────
@@ -391,9 +487,13 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
           // accounts explicitly through their account settings.
           return new Response(
             loginHtml(
-              [...providers.keys()],
-              magicLinkEnabled,
-              `An account with ${escHtml(profile.email)} already exists. ` +
+              {
+                providers: [...providers.keys()],
+                magicLink: magicLinkEnabled,
+                passwordLogin: passwordLoginActive,
+                next: "/",
+              },
+              `An account with ${profile.email} already exists. ` +
                 `Please log in with your original method to link this ${providerName} account.`,
             ),
             { status: 409, headers: { "Content-Type": "text/html; charset=utf-8" } },
@@ -619,6 +719,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
   return {
     login,
+    passwordLogin,
     logout,
     oauthStart,
     oauthLinkStart,
@@ -632,11 +733,37 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
-function loginHtml(providers: string[], magicEnabled: boolean, message?: string): string {
+function loginHtml(view: LoginView, notice?: string): string {
+  const { providers, next } = view;
+  const magicEnabled = view.magicLink;
+  const passwordEnabled = view.passwordLogin;
+  const message = notice ??
+    (view.error === "invalid"
+      ? "Invalid credentials."
+      : view.error === "rate_limited"
+      ? "Too many attempts. Please try again later."
+      : undefined);
+
   const providerButtons = providers.map((p) => {
     const label = p.charAt(0).toUpperCase() + p.slice(1);
     return `<a href="/auth/${p}" style="display:block;padding:10px 20px;margin:8px 0;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;text-decoration:none;color:#333;text-align:center">Continue with ${label}</a>`;
   }).join("\n");
+
+  const passwordForm = passwordEnabled
+    ? `
+<form method="POST" action="/auth/login" style="margin-bottom:16px">
+  <input type="hidden" name="next" value="${escHtml(next)}">
+  <label for="identifier" style="display:block;margin-bottom:4px">Email or username</label>
+  <input type="text" id="identifier" name="identifier" required autocomplete="username"
+    style="display:block;width:100%;padding:8px;margin-bottom:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box">
+  <label for="password" style="display:block;margin-bottom:4px">Password</label>
+  <input type="password" id="password" name="password" required autocomplete="current-password"
+    style="display:block;width:100%;padding:8px;margin-bottom:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box">
+  <button type="submit" style="display:block;width:100%;padding:10px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer">
+    Log in
+  </button>
+</form>`
+    : "";
 
   const magicForm = magicEnabled
     ? `
@@ -677,6 +804,7 @@ document.getElementById('magic-form').addEventListener('submit', async (e) => {
 <body style="font-family:system-ui,sans-serif;max-width:400px;margin:80px auto;padding:0 16px">
 <h1 style="font-size:1.5rem;margin-bottom:24px">Log in</h1>
 ${messageHtml}
+${passwordForm}
 ${providerButtons}
 ${magicForm}
 </body>
@@ -715,25 +843,6 @@ function loginErrorResponse(message: string): Response {
 
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-/**
- * Sanitize a `?next=` redirect target to prevent open-redirect attacks.
- *
- * Only relative paths that start with `/` and do not start with `//`
- * (scheme-relative URLs) are accepted. Everything else — external URLs,
- * `javascript:` URIs, scheme-relative URLs, data: URIs — falls back to `/`.
- *
- * Matching the admin panel's sanitizeNext pattern.
- */
-function sanitizeNext(next: string | null | undefined): string {
-  if (!next) return "/";
-  const trimmed = next.trim();
-  // Must start with "/" but not "//" (scheme-relative = external redirect).
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return "/";
-  // Reject anything that looks like a protocol after stripping leading slashes.
-  if (/^\/[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(trimmed)) return "/";
-  return trimmed;
 }
 
 function generateState(): string {
