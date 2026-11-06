@@ -37,6 +37,19 @@ import type { BlueprintField } from "../../src/blueprints/types.ts";
 import type { InlineEditManager } from "../../src/inline-edit/types.ts";
 import type { ScheduledAction } from "../../src/workflow/types.ts";
 import type { PluginApp, PluginRouteContext } from "../../src/plugin-api/app.ts";
+import type { PluginServices } from "../../src/plugin-api/services.ts";
+import type { User, UserCreate } from "../../src/auth/types.ts";
+import type { UserStore } from "../../src/auth/user-store.ts";
+import type { Session } from "../../src/session/types.ts";
+import type { SessionManager } from "../../src/session/mod.ts";
+import type { HistoryEngine } from "../../src/history/engine.ts";
+import type { ContentDiff, ContentRevision } from "../../src/workflow/types.ts";
+import type { WorkflowEngine } from "../../src/workflow/engine.ts";
+import type { Scheduler } from "../../src/workflow/scheduler.ts";
+import type { StagingEngine } from "../../src/staging/engine.ts";
+import type { RateLimiter } from "../../src/security/rate-limit.ts";
+import type { RateLimitStore } from "../../src/security/rate-limit-store.ts";
+import type { Logger } from "../../src/core/logger.ts";
 import { isDuneError as coreIsDuneError } from "../../src/plugin-api/errors.ts";
 
 // Both directions: identical on both sides.
@@ -56,10 +69,28 @@ handsOut<PagesOptions, P.PagesOptions>();
 handsOut<SearchEngineCreateContext, P.SearchEngineCreateContext>();
 handsOut<SearchRecordsCollectContext, P.SearchRecordsCollectContext>();
 
+handsOut<PluginServices, P.PluginServices>();
+handsOut<HistoryEngine, P.HistoryEngine>();
+handsOut<WorkflowEngine, P.WorkflowEngine>();
+handsOut<Scheduler, P.Scheduler>();
+handsOut<StagingEngine, P.StagingEngine>();
+handsOut<RateLimiter, P.RateLimiter>();
+handsOut<Logger, P.Logger>();
+
 // --- what a plugin hands in -----------------------------------------------
 takesIn<P.SearchEngine, SearchEngine>();
 takesIn<P.InjectedSearchRecord, InjectedSearchRecord>();
 takesIn<P.InlineEditManager, InlineEditManager>();
+
+// --- identity: a provider supplies its own stores and cores consumes them -
+same<User, P.User>();
+same<UserCreate, P.UserCreate>();
+same<UserStore, P.UserStore>();
+same<Session, P.Session>();
+same<SessionManager, P.SessionManager>();
+same<ContentRevision, P.ContentRevision>();
+same<ContentDiff, P.ContentDiff>();
+same<RateLimitStore, P.RateLimitStore>();
 
 // --- identical both ways ---------------------------------------------------
 same<StorageAdapter, P.StorageAdapter>();
