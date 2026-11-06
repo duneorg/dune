@@ -64,6 +64,16 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (which loads no plugins) no longer reports `admin.path`. New: `resolveCapabilities()`
   (`@dune/core/plugins`) settles plugin setup and resolves slots, idempotently, for callers
   that read a slot before `createDuneApp()`. `@dune/plugin-admin` 4.0.0 provides the slot.
+- **Machine translation and the audit trail are the admin's, not core's (#123, step 3).**
+  `services.engines.mt` and `services.engines.audit` are gone from `PluginServices`
+  (`EngineServices` is `workflow`, `scheduler`, `staging`), `PluginServicesOptions.root`
+  with them, and the `@dune/core/mt` and `@dune/core/audit` entry points are removed:
+  `@dune/plugin-admin` 4.0.0 owns `AuditLogger`, the translators and their types, builds
+  them in its own `setup()`, and sends translator requests through `services.security.safeFetch`.
+  `SiteConfig` no longer declares `machine_translation` (the admin reads it from the site
+  config, as before, until its settings move in step 5); `admin.audit` is unchanged. A
+  published `@dune/plugin-admin` older than 4.0.0 imports the removed entry points and
+  cannot run on this core.
 - **The legacy `smtp:` block in form notifications.** Use `site.email`.
   Magic-link login emails also go through `site.email` now (they used to need
   the legacy `admin.notifications.email.smtp`); a site without

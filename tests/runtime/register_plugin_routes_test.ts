@@ -37,10 +37,8 @@ async function withTestApp(
       "---\ntitle: Home\n---\n\n# Home\n",
     );
 
-    // No @dune/plugin-admin (or any admin package) is passed via `plugins`
-    // below — this is the exact "admin package absent" scenario the fix
-    // targets, since no site.yaml `plugins:` list or admin auto-registration
-    // is involved when constructing the plugin array directly like this.
+    // No admin package at all: none is listed in site.yaml and none is passed
+    // via `plugins` below unless a test supplies its own stand-in.
     const ctx = await bootstrap(root, { plugins });
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     const handler = app.handler();
@@ -348,8 +346,7 @@ Deno.test(
       await Deno.writeTextFile(
         join(root, "content", "01.home", "default.md"),
         "---\ntitle: Home\n---\n\n# Home\n",
-      );
-      const ctx = await bootstrap(root, { plugins: [plugin] });
+      );      const ctx = await bootstrap(root, { plugins: [plugin] });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
       registerPluginPublicRoutes(app, ctx, { adminPrefix: "/admin" });

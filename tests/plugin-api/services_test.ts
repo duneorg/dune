@@ -92,41 +92,12 @@ Deno.test("the hook registry hands plugins the services in setup()", () => {
   assertExists((seen2 as { security?: unknown }).security);
 });
 
-Deno.test("engines: workflow, scheduler and staging are built; no mt unless configured", () => {
+Deno.test("engines: workflow, scheduler and staging are built; machine translation and the audit trail are the admin's, not core's", () => {
   const { engines } = services();
   assertExists(engines.workflow);
   assertExists(engines.scheduler);
   assertExists(engines.staging);
-  assertEquals(engines.mt, null);
-  assertEquals(engines.audit, null, "no site root, no audit trail");
-});
-
-Deno.test("engines: the audit trail logs without an explicit init and honours enabled:false", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const { engines } = createPluginServices({ config: config(), storage: new MemoryStorageAdapter(), root });
-    assertExists(engines.audit);
-    await engines.audit!.log({ event: "page.update", actor: null, ip: null, userAgent: null, target: null, detail: {} } as never);
-    const res = await engines.audit!.query({ event: "page.update" });
-    assertEquals(res.entries.length, 1);
-
-    const off = config();
-    off.admin = { ...off.admin, audit: { enabled: false } } as never;
-    assertEquals(createPluginServices({ config: off, storage: new MemoryStorageAdapter(), root }).engines.audit, null);
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
-});
-
-Deno.test("engines: an audit log_file outside the site root is refused", () => {
-  const cfg = config();
-  cfg.admin = { ...cfg.admin, audit: { log_file: "../elsewhere/audit.log" } } as never;
-  try {
-    createPluginServices({ config: cfg, storage: new MemoryStorageAdapter(), root: "/srv/site" });
-    throw new Error("expected a throw");
-  } catch (err) {
-    assertEquals((err as Error).message.includes("must resolve under the site root"), true);
-  }
+  assertEquals(Object.keys(engines).sort(), ["scheduler", "staging", "workflow"]);
 });
 
 Deno.test("authz service: seedAdminTuples is a no-op without an authz system", async () => {
