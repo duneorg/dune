@@ -307,6 +307,6 @@ Deno.test("content:create: fires onPageCreate for a registered plugin", async ()
 
     const marker = JSON.parse(await readFile(join(root, ".hook-fired.json")));
     assertEquals(marker.title, "Hello");
-    assertStringIncludes(marker.sourcePath, "01.blog/01.hello/default.md");
+    assertEquals(marker.sourcePath, "01.blog/01.hello/default.md");
   });
 });

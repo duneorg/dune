@@ -4,7 +4,7 @@
  * Core defines this interface and consumes it from the admin panel routes
  * (`/api/inline-edit/ws`, the presence endpoint, and the content commit /
  * field-patch endpoints). It does not ship an implementation: a plugin
- * provides one via `DunePlugin.adminServices` (e.g.
+ * provides one as the `inline-edit` capability (e.g.
  * `jsr:@dune/plugin-inline-edit`), and the endpoints respond 501 when
  * no plugin has filled the slot.
  *

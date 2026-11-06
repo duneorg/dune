@@ -29,6 +29,7 @@ import type {
   AdminBarAction,
   AdminBarActionContext,
   AdminPageRegistration,
+  AdminRouteRegistration,
   ContentEditorPlugin,
   HookRegistry,
 } from "../hooks/types.ts";
@@ -52,7 +53,22 @@ export interface AuthenticateResult {
 
 /** Tells core whether a request carries an authenticated admin session. */
 export interface RequestAuthenticator {
+  /**
+   * Resolve the admin session of a request. Core calls this on public pages
+   * (for the admin bar and to decide whether editing markers survive), so it
+   * must answer quickly, without touching a session store, when the request
+   * carries no session of its own.
+   */
   authenticate(req: Request): Promise<AuthenticateResult>;
+  /**
+   * Names of the cookies that carry this provider's session. Core uses them for
+   * two cheap decisions that must not depend on a particular admin: whether to
+   * call {@link authenticate} at all, and whether to keep a response out of the
+   * shared page cache (a response rendered for an editor must never be served
+   * to anonymous visitors). Declare them to keep that precise; when omitted,
+   * core treats any request with a `Cookie` header as possibly signed in.
+   */
+  readonly sessionCookies?: readonly string[];
 }
 
 /** Runs a due scheduled action (publish, unpublish, archive). */
@@ -79,6 +95,8 @@ export interface Capabilities {
 export interface Contributions {
   /** An extra admin page. Consumer: the admin. */
   "admin.pages": AdminPageRegistration;
+  /** A guarded admin route (any method) under the admin prefix. Consumer: the admin, which applies authentication, CSRF and permission checks. */
+  "admin.routes": AdminRouteRegistration;
   /** Buttons for the admin bar. Consumer: the bar renderer, via core's response transforms. */
   "bar.actions": (ctx: AdminBarActionContext) => AdminBarAction[];
 }

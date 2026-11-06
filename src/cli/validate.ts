@@ -43,13 +43,13 @@ export interface ValidateFinding {
 
 const VALID_HOOK_EVENTS = new Set([
   "onConfigLoaded", "onStorageReady", "onContentIndexReady",
-  "onRequest", "onRouteResolved", "onPageLoaded", "onCollectionResolved",
-  "onBeforeRender", "onAfterRender", "onResponse",
+  "onRequest", "onCollectionResolved",
+  "onBeforeRender",
   "onMarkdownProcess", "onMarkdownProcessed", "onMediaDiscovered",
   "onCacheHit", "onCacheMiss", "onCacheInvalidate",
   "onApiRequest", "onApiResponse",
   "onRebuild", "onThemeSwitch",
-  "onPageCreate", "onPageUpdate", "onPageDelete", "onWorkflowChange",
+  "onPageCreate", "onPageUpdate", "onPageDelete", "onPageMove", "onWorkflowChange",
 ]);
 
 const VALID_PERMISSIONS = new Set([

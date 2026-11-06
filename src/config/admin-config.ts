@@ -47,6 +47,7 @@ export type WebhookContentEvent =
   | "onPageCreate"
   | "onPageUpdate"
   | "onPageDelete"
+  | "onPageMove"
   | "onWorkflowChange";
 
 /**

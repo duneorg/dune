@@ -62,9 +62,29 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   config validator rejects any other type, and the LDAP/SAML keys (`base_dn`,
   `bind_dn`, `entity_id`, ...) are gone from the schema. To use another identity
   source, inject a provider through the admin plugin's `authProvider` option.
+- **Four hook events that were declared and never fired.** `onRouteResolved`,
+  `onPageLoaded`, `onAfterRender` and `onResponse` are gone from `HookEvent`. A
+  handler registered for one never ran, with no error; now it is a type error
+  (and `dune validate` flags it in skills code). Firing them as documented would
+  have meant splitting `engine.resolve()` in two, or buffering every response
+  body (which kills streaming), so they are removed instead of faked. Use
+  `onBeforeRender` for the assembled template props, `transformResponse` for the
+  rendered response, or do the work in your theme. Re-adding an event later is
+  additive; removing one after 1.0 would not be.
 
 ### Changed — BREAKING
 
+- **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
+  switch (#97).** The `auth.session` provider declares the cookies that carry its session
+  (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
+  `authenticate()` on a public page and whether to keep the response out of the shared page
+  cache (an editor's response must never be cached for anonymous visitors). Undeclared, any
+  request with a `Cookie` header counts as possibly signed in. Before, both decisions were
+  hard-wired to the cookie `dune_session`, so a replacement admin using another cookie name
+  got no admin bar and could have its editor-rendered pages cached for everyone. The authz
+  system is now also created when a plugin provides `auth.session`, even with
+  `admin.enabled: false`; before, a replacement admin had no authz and every `pages.update`
+  check failed closed.
 - **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
   (`@dune/core/config`). It carries what the theme docs promise: `site`, `theme`
   (including `theme.custom`) and `system.languages`. The runtime value is still
@@ -85,6 +105,30 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   carries the `bar.actions` contributions. A plugin-admin that still only fills the
   bag no longer gets a bar, admin WebSocket auth, scheduled actions or the jobs view:
   plugin-admin 4.0.0 provides the capabilities.
+- **The admin-extension fields of `DunePlugin` and their types (#97).** Replaced by
+  the capability registry (`PluginApi.capabilities` / `MountApi.capabilities`):
+  - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
+    `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
+    -> provide the `inline-edit` or `editor.content` slot in `setup()`.
+  - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. `permission`
+    is now required on every `admin.pages` and `admin.routes` contribution (it used to be
+    optional on pages, meaning any authenticated admin), so nothing is exposed to every
+    admin by omission. A guarded
+    `POST`/`PUT`/`PATCH`/`DELETE` admin route (previously a `mount()` route wrapped in
+    `withGuards()`, which stops working once the admin no longer mounts first) is
+    `capabilities.contribute("admin.routes", { method, path, permission, handler })`: the
+    admin mounts it behind its authentication, CSRF check and permission check.
+    `permission` is required, so a route cannot be mounted open to every admin by omission.
+  - `DunePlugin.adminBarActions` -> `capabilities.contribute("bar.actions", fn)`;
+    `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
+  - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).
+    A plugin route that needs to know who the admin is calls
+    `capabilities.get("auth.session")?.authenticate(req)`; there is no shared
+    per-request state to rely on, so nothing needs admin middleware to be mounted first.
+  - `BootstrapResult.adminContext`, the untyped bag core used to read from the admin.
+  `/api/inline-edit/ws` now takes its manager from the `inline-edit` capability.
+  `plugin-admin` 4.0.0 and `plugin-inline-edit` provide and consume these; a site-local
+  plugin that used the removed fields fails type-checking until it moves to the registry.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
   are renamed, with no aliases, in `site.yaml`, `system.yaml` and the `admin:`
   block: `auth.userStore` → `user_store`, `authzStore` → `authz_store`,
@@ -127,8 +171,54 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   and the summary gains `since`. The old `search-analytics.jsonl` is not read.
 - **A bad `admin.audit.log_file` now fails core's bootstrap**, not the admin plugin's
   `setup()`. The message is unchanged apart from the snake_case key name.
+- **`MountApi.bootstrap` is replaced by `MountApi.runtime` (#97).** A plugin's
+  `mount()` used to receive the whole `BootstrapResult` (about thirty fields, most
+  of them core's own wiring: the format registry, the image handler, the HMAC key,
+  the capability registry), so freezing the type would have frozen all of it.
+  `runtime` is a curated `PluginRuntime`: `engine`, `config`, `storage`, `search`,
+  `hooks`, `contentApi`, `history`, `flexEngine`, `metrics`,
+  `submissions`, `sections`, `authz`, and `jobs` (a getter: the scheduler appears
+  after `mount()`, so read it lazily and do not destructure it). The object is
+  frozen. The image cache is not on it: nothing in a plugin used it. No alias.
+  `authzAdapter` and `hmacKey` are no longer reachable
+  from a plugin; `services` and `capabilities` are unchanged. Migrate
+  `mount({ bootstrap })` to `mount({ runtime })` and read the field you need from
+  it. The `PluginRuntime` type is exported from `@dune/core/plugin-api`.
+- **The plugin contract names no Fresh type (#97).** `MountApi.app` is a
+  `PluginApp` (`use`, `get`, `post`, `put`, `patch`, `delete`, `all`) and route
+  handlers (`PublicRouteRegistration`, `AdminPageRegistration`,
+  `AdminRouteRegistration`, `ContentEditorPlugin.pageEditorHandler`) receive a
+  `PluginRouteContext` (`req`, `url`, `params`, `state`, `next()`), both exported
+  from `@dune/core/plugin-api`. Fresh's `App` and `FreshContext` satisfy them, so
+  nothing changes at runtime and a handler that only reads the request keeps
+  working; the point is that the frozen contract no longer pins a Fresh version.
+  A plugin that needs Fresh-only features (`ctx.render()`, islands,
+  `app.fsRoutes()`, `app.layout()`, `app.route()`) depends on Fresh itself: the
+  handler properties are declared as methods, so a handler taking a full
+  `FreshContext` is still accepted, and `app` is cast to Fresh's `App`.
+  Breaking, as type errors only, for a plugin that (a) called a Fresh-only method
+  on `app` without a cast (fix: `app as unknown as App<any>`), or (b) relied on
+  the inferred type of a handler's `ctx` to call `ctx.render()`, `ctx.redirect()`
+  and the like: an unannotated `ctx` is now a `PluginRouteContext`, so write
+  `handler(ctx: FreshContext)`. Passing a Fresh-annotated middleware to
+  `app.use()` needs the same cast on `app`.
 
 ### Added
+
+- **`onPageMove` hook event (#97).** Fired by whoever renames, renumbers or
+  reorders pages, with `PageMovePayload` (`{ moves: [{ from, to }] }`, paths
+  relative to the content directory; every page at or below `from` now lives
+  below `to`). Before, a reorder changed the routes of many pages and no event
+  said so. The mutation-event wording is corrected too: the events are fired by
+  whoever writes the page (not "via the admin panel"), and edits made outside
+  Dune surface only as `onRebuild`.
+- **`dune doctor --boot` says who provides what, and checks the admin (#97).**
+  The booted site reports its capability slots and contribution points (and
+  writes one `capabilities.resolved` log line at startup). Doctor lists them and
+  errors when the admin is enabled but no plugin provides `auth.session` (the
+  site boots, but nobody can sign in and there is no editing bar) or when a
+  provider's factory threw, and warns when scheduled actions are queued with no
+  `scheduler.executor`. Findings gain an `info` severity, which never fails a run.
 
 - **A capability registry for what plugins provide (#97).** `PluginApi.capabilities`
   (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for
@@ -136,12 +226,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
   `ctx.adminContext` bag. First-party keys: slots `auth.session`,
   `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
-  `admin.pages`, `bar.actions`. Core resolves the slot factories once, after every
+  `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
-  one with a warning, a throwing factory is logged and leaves its slot empty. This
-  release only adds the registry; the old fields (`adminContext`, `adminServices`,
-  `adminPages`, `adminBarActions`, `mountEarly`) still work and are removed, and the
-  core consumers switched over, in follow-ups before 0.36.
+  one with a warning, a throwing factory is logged and leaves its slot empty. The
+  old fields it replaces are removed (see "Removed — BREAKING").
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one
   `--root`. `dune users:passwd alice --site blog` now resolves `blog` from
@@ -191,6 +279,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   site called `initFlags()` itself; `bootstrap()` now resolves `system.flags`.
   Declare them in **system.yaml** (the docs said site.yaml, where the key was
   ignored).
+- **The MCP write tools announce page writes (#97).** `write_page`,
+  `update_frontmatter` and `delete_page` now fire `onPageCreate` /
+  `onPageUpdate` / `onPageDelete` (plugins load once, on the first write), so
+  search indexes, webhooks and audit plugins no longer miss edits made through
+  MCP. Whoever writes a page fires its event; core never does it for them.
+- **`content:create` reports `sourcePath` relative to the content directory.**
+  `onPageCreate` from the CLI carried `content/blog/x/default.md` (relative to
+  the site root) while the admin and `content:delete` report `blog/x/default.md`.
+  Handlers that compared paths now see one form everywhere.
 
 - **A form's validation-failure redirect works behind a TLS proxy (#89).**
   `POST /api/forms/:name` only sent the visitor back to the page (with

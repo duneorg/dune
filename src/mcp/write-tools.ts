@@ -27,6 +27,7 @@ import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { McpTool, McpToolResult, ToolHandler } from "./server.ts";
 import type { ToolRegistration } from "./tools.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import {
   generatePlugin,
   generateRoute,
@@ -46,6 +47,38 @@ export interface WriteToolDeps {
   root: string;
   /** Content directory, relative to root (default: "content"). */
   contentDir: string;
+  /**
+   * Resolves the hook registry (plugins loaded) used to announce page writes.
+   * Lazy so a session that never writes a page never loads plugins. Omit, or
+   * resolve `null`, and page writes fire nothing.
+   */
+  hooks?: () => Promise<Pick<HookRegistry, "fire"> | null>;
+}
+
+/**
+ * Announce a page write to plugins (`onPageCreate` / `onPageUpdate` /
+ * `onPageDelete`). Whoever writes a page fires its event: nothing in core does
+ * it for the writer. A failing handler is logged to stderr (stdout carries the
+ * JSON-RPC stream) and never fails the tool, the file is already written.
+ */
+async function firePageEvent(
+  deps: WriteToolDeps,
+  event: "onPageCreate" | "onPageUpdate" | "onPageDelete",
+  storagePath: string,
+  title?: string,
+): Promise<void> {
+  if (!deps.hooks) return;
+  // Events carry the path relative to the content directory, as the engine and
+  // the admin routes report it.
+  const prefix = `${deps.contentDir}/`;
+  const sourcePath = storagePath.startsWith(prefix) ? storagePath.slice(prefix.length) : storagePath;
+  try {
+    const hooks = await deps.hooks();
+    if (!hooks) return;
+    await hooks.fire(event, event === "onPageCreate" ? { sourcePath, title: title ?? "" } : { sourcePath });
+  } catch (e) {
+    console.error(`[mcp] ${event} hook failed for ${sourcePath}: ${e}`);
+  }
 }
 
 // ── Path safety ──────────────────────────────────────────────────────────────
@@ -83,6 +116,12 @@ function safePath(baseDir: string, userPath: string): string | null {
  * back, or they'll silently prepend a new frontmatter block on top of the
  * still-broken one instead of fixing or flagging it).
  */
+/** Frontmatter `title` of a file's content, or "" when absent or unparsable. */
+function titleOf(src: string): string {
+  const { fm } = parseFrontmatter(src);
+  return typeof fm.title === "string" ? fm.title : "";
+}
+
 function parseFrontmatter(
   src: string,
 ): { fm: Record<string, unknown>; body: string; malformed: boolean } {
@@ -170,7 +209,9 @@ function makeWritePageHandler(deps: WriteToolDeps): ToolHandler {
     if (!storagePath) return err("path must stay within the content directory");
 
     try {
+      const existed = await deps.storage.exists(storagePath);
       await deps.storage.write(storagePath, new TextEncoder().encode(content));
+      await firePageEvent(deps, existed ? "onPageUpdate" : "onPageCreate", storagePath, titleOf(content));
       const warning = checkFrontmatterSyntax(content);
       return ok(
         warning
@@ -217,6 +258,7 @@ function makeDeletePageHandler(deps: WriteToolDeps): ToolHandler {
 
     try {
       await deps.storage.delete(storagePath);
+      await firePageEvent(deps, "onPageDelete", storagePath);
       return ok(`Deleted: ${storagePath}`);
     } catch (e) {
       return err(`Failed to delete: ${e}`);
@@ -288,6 +330,7 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
 
       const updated = renderFrontmatter(fm, body);
       await deps.storage.write(storagePath, new TextEncoder().encode(updated));
+      await firePageEvent(deps, "onPageUpdate", storagePath);
       return ok(`Updated frontmatter for ${args.route ?? args.path}`);
     } catch (e) {
       return err(`Failed to update frontmatter: ${e}`);

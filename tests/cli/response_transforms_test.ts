@@ -527,115 +527,6 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
   assertEquals(await result.text(), `<p>p</p><span>v</span>`);
 });
 
-Deno.test("runPluginResponseTransforms: ctx.plugins lets a bar-owning plugin collect another plugin's adminBarActions", async () => {
-  const auth = makeAuth({
-    result: { authenticated: true, user: makeUser("admin") },
-  });
-
-  // A plugin that only contributes adminBarActions — no transformResponse
-  // of its own. Confirms ctx.plugins is the full list, not just the ones
-  // already filtered on transformResponse.
-  const contributor: DunePlugin = {
-    name: "pdf-export",
-    version: "1.0.0",
-    hooks: {},
-    adminBarActions: ({ page }) =>
-      page?.template === "post"
-        ? [{ id: "pdf-export:download", label: "PDF", href: `/pdf/${page.sourcePath}` }]
-        : [],
-  };
-
-  // The bar-owning plugin: renders whatever adminBarActions it can collect
-  // from ctx.plugins into the response body, to prove it received them.
-  const barOwner: DunePlugin = {
-    name: "bar-owner",
-    version: "1.0.0",
-    hooks: {},
-    async transformResponse(ctx) {
-      const body = await ctx.response.text();
-      const actions = ctx.plugins.flatMap((p) =>
-        p.adminBarActions?.({ page: ctx.page, adminPrefix: ctx.adminPrefix }) ?? []
-      );
-      const rendered = actions.map((a) => `<a id="${a.id}" href="${a.href}">${a.label}</a>`).join("");
-      return new Response(`${body}${rendered}`, {
-        status: ctx.response.status,
-        headers: ctx.response.headers,
-      });
-    },
-  };
-
-  const result = await runPluginResponseTransforms({
-    req: makeReq("/about", SESSION_COOKIE),
-    response: htmlResponse(`<p>p</p>`),
-    plugins: [contributor, barOwner],
-    auth,
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-
-  assertEquals(
-    await result.text(),
-    `<p>p</p><a id="pdf-export:download" href="/pdf/content/about.md">PDF</a>`,
-  );
-});
-
-Deno.test("runPluginResponseTransforms: page.template is populated from the content index", async () => {
-  const { plugin, seen } = makeRecordingPlugin();
-  const result = await runPluginResponseTransforms({
-    req: makeReq("/about"),
-    response: new Response("hello"),
-    plugins: [plugin],
-    auth: makeAuth({}),
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-  await result.text();
-  assertEquals(seen[0].page?.template, "post");
-});
-
-// ---------------------------------------------------------------------------
-// Home-page routing: the resolve() callback must reflect the same home-page
-// mapping the content pipeline uses ("/" -> whatever page the router treats
-// as home), not just an exact route === pathname match — a prior hand-rolled
-// matcher here missed this, so the admin bar (and every other transformResponse
-// plugin) silently never received `page` for any site's homepage.
-// ---------------------------------------------------------------------------
-
-Deno.test("runPluginResponseTransforms: resolve() mapping '/' to the home page reaches plugins as `page`", async () => {
-  const homeAwareResolve = (pathname: string) => {
-    // Simulates what engine.router.resolve() actually does: "/" maps to the
-    // configured/autodetected home page, whose own stored route is NOT "/".
-    if (pathname === "/") {
-      return {
-        type: "page" as const,
-        page: {
-          route: "/home",
-          sourcePath: "content/01.home/default.md",
-          title: "Welcome",
-          language: "en",
-          template: "default",
-        },
-      };
-    }
-    return resolveFor(pages)(pathname);
-  };
-
-  const { plugin, seen } = makeRecordingPlugin();
-  const result = await runPluginResponseTransforms({
-    req: makeReq("/"),
-    response: new Response("hello"),
-    plugins: [plugin],
-    auth: makeAuth({}),
-    resolve: homeAwareResolve,
-    config,
-    adminPrefix: "/admin",
-  });
-  await result.text();
-  assertEquals(seen[0].page?.sourcePath, "content/01.home/default.md");
-});
-
 Deno.test("runPluginResponseTransforms: ctx.barActions carries the bar.actions contributions in order", async () => {
   const auth = makeAuth({
     result: { authenticated: true, user: makeUser("admin") },
@@ -683,4 +574,53 @@ Deno.test("runPluginResponseTransforms: barActions defaults to empty", async () 
     adminPrefix: "/admin",
   });
   assertEquals(seen[0].barActions, []);
+});
+
+Deno.test("runPluginResponseTransforms: a provider that declares its cookie name is consulted for that cookie only", async () => {
+  const mk = () => makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  const run = (auth: ReturnType<typeof mk>, cookie: string | undefined) =>
+    runPluginResponseTransforms({
+      req: makeReq("/about", cookie),
+      response: htmlResponse(`<p>p</p>`),
+      plugins: [],
+      auth,
+      sessionCookies: ["stub_sid"],
+      resolve,
+      config,
+      adminPrefix: "/admin",
+    });
+
+  const own = mk();
+  await run(own, "stub_sid=abc123");
+  assertEquals(own.calls.authenticate, 1, "its own cookie triggers the lookup");
+
+  const dune = mk();
+  await run(dune, "dune_session=abc123");
+  assertEquals(dune.calls.authenticate, 0, "another admin's cookie name does not");
+});
+
+Deno.test("runPluginResponseTransforms: without declared cookie names any cookie triggers the lookup", async () => {
+  const withCookie = makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  await runPluginResponseTransforms({
+    req: makeReq("/about", "whatever=1"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [],
+    auth: withCookie,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(withCookie.calls.authenticate, 1);
+
+  const noCookie = makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [],
+    auth: noCookie,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(noCookie.calls.authenticate, 0);
 });

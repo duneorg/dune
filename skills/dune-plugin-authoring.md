@@ -213,24 +213,19 @@ export default {
 
 `hooks: {}` on the plugin object is still required (`DunePlugin.hooks` isn't optional) even if you register everything dynamically through `setup()` instead.
 
-**4 of 24 declared hook names in the `HookEvent` union are never fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender`, and `onResponse` remain declared but intentionally unimplemented — not overlooked, but genuine design questions with no clean fix:
-
-- `onRouteResolved`/`onPageLoaded` describe a two-phase resolution (route matched to a lightweight `PageIndex`, then the full `Page` loaded) that doesn't exist in the current engine — `engine.resolve()` does both in one step and returns the full `Page` directly. Firing both as documented would mean fabricating a second event from data already in hand, or restructuring `resolve()` into two real phases.
-- `onAfterRender`/`onResponse` need the actual rendered HTML string, but Fresh's `render()` returns a `Response` directly — core never sees the HTML itself. Getting it would mean intercepting and buffering every response body into memory via `response.text()`, killing streaming, as a blanket per-request cost whether or not any plugin is listening.
-
-Both reasons are documented directly on the `HookEvent` type declaration in `src/hooks/types.ts`. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onCacheInvalidate`, `onApiRequest`, `onApiResponse`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
+**Every hook in `HookEvent` is fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender` and `onResponse` used to be declared and never fired; they were removed in 0.36, so registering one is a type error. For the rendered page use `transformResponse` (it sees the finished `Response`); for the template props use `onBeforeRender`. Page-mutation events (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onPageMove`/`onWorkflowChange`) are fired by whoever writes the page, so a plugin that writes pages must fire them itself.
 
 ---
 
 ## Admin routes
 
-There is no `onAdminRoutes` hook, and `@dune/core` itself does not export `requirePermission`/`csrfCheck` — plugin authors sometimes assume these exist because plugin-admin's own internal admin routes use functions with those names. Attempting `import { requirePermission } from "@dune/core"` fails — the specifier doesn't resolve. They do exist as a public, importable API — from `@dune/plugin-admin/admin/guards`, not `@dune/core` — see the `mount()` section below.
+There is no `onAdminRoutes` hook, and `@dune/core` itself does not export `requirePermission`/`csrfCheck`. You do not need them: a plugin **contributes** its admin routes in `setup()`, and the admin package mounts them behind its own authentication, CSRF check and permission check. Your handler only runs for a request that passed all three. (Contributions are read by whichever admin package is installed; with none, nothing is mounted.)
 
-There are two real, supported ways for a plugin to add admin routes:
+There are two supported ways to add admin routes, both through `api.capabilities.contribute`:
 
-### `adminPages` — authenticated GET pages (the normal case)
+### `admin.pages` — authenticated GET pages with a sidebar entry (the normal case)
 
-Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the optional `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
+Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
 
 ```ts
 // plugins/my-plugin/mod.ts
@@ -240,12 +235,12 @@ export default {
   name: "my-plugin",
   version: "1.0.0",
   hooks: {},
-  adminPages: [
-    {
+  setup(api) {
+    api.capabilities.contribute("admin.pages", {
       path: "/my-plugin",              // relative to the admin prefix → /admin/my-plugin
       label: "My Plugin",
       icon: "🧩",
-      permission: "pages.read",        // optional — omit to allow any authenticated admin
+      permission: "pages.read",        // required — who may view this page
       handler: async (ctx) => {
         return ctx.render(
           <div>
@@ -253,42 +248,45 @@ export default {
           </div>,
         );
       },
-    },
-  ],
+    });
+  },
 } satisfies DunePlugin;
 ```
 
-`path` is relative to the admin prefix (mount code does `adminPrefix + page.path`) — do not include `/admin` yourself, or you'll register `/admin/admin/my-plugin`. GET only; there's no declarative way to register a mutation route this way.
+`path` is relative to the admin prefix — do not include `/admin` yourself, or you'll register `/admin/admin/my-plugin`. GET only; for anything else use `admin.routes`.
 
-### `mount()` — anything else (mutation routes, custom middleware)
+### `admin.routes` — guarded API routes (`POST`/`PUT`/`PATCH`/`DELETE`, or a GET API)
 
-For a `POST`/`PUT`/`DELETE` route, or anything `adminPages` doesn't cover, register directly on the real Fresh `app` via `mount()`:
+For a mutation endpoint, or a GET route that is not a sidebar page:
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin, MountApi } from "@dune/core/plugins";
-import { withGuards } from "@dune/plugin-admin/admin/guards";
+import type { DunePlugin } from "@dune/core";
 
 export default {
   name: "my-plugin",
   version: "1.0.0",
   hooks: {},
-  async mount({ app }: MountApi) {
-    app.post(
-      "/admin/api/my-plugin/action",
-      withGuards({ permission: "config.update" }, async (fc) => {
-        // csrfCheck() and requirePermission() have already run and passed —
-        // withGuards() rejects the request before your handler is called
-        // otherwise. Add `validatePath: "someParam"` too if the route takes
-        // a path-shaped URL param.
+  setup(api) {
+    api.capabilities.contribute("admin.routes", {
+      method: "POST",
+      path: "/api/my-plugin/action",   // relative to the admin prefix → /admin/api/my-plugin/action
+      permission: "config.update",     // required — who may call this route
+      handler: async (_fc) => {
+        // The request is already an authenticated admin, passed the CSRF
+        // check (every non-GET method) and holds `permission`.
         return Response.json({ ok: true });
-      }),
-    );
+      },
+    });
   },
 } satisfies DunePlugin;
 ```
 
-A route registered via `mount()` is **not** automatically authenticated the way `adminPages` is — you must wrap it in `withGuards()` (or call `csrfCheck()`/`requirePermission()` from the same module directly) yourself. Reimplementing the guard sequence by hand instead of using `withGuards()` is exactly what caused three real security regressions in Dune's own admin routes (the module's own doc comment names them) — the CSRF check's Origin/Sec-Fetch-Site/Referer fallback chain in particular is not trivial to get right, and `requirePermission()` consults `authz.check()` only (missing `authz` denies; there is no role-table fallback). `AdminContext.auth.hasPermission()` was removed in `@dune/plugin-admin` 3.0.0 — do not reimplement it. If your plugin only needs to *display* data or trigger something a human clicks through in the admin UI, prefer `adminPages` anyway — you get all of this for free, no `withGuards()` needed.
+`permission` is required: the route is only reachable by an authenticated admin who holds it (any string works; it maps to an action in the authz schema, including ones your plugin declares with `authzActions`). There is no "any authenticated admin" default, so a mutation endpoint cannot be left open by omission. There is no way to turn the CSRF check off, on purpose.
+
+### Routes registered directly in `mount()` are not behind the admin
+
+A route you register with `app.get()`/`app.post()` in your own `mount()` runs outside the admin's middleware (mounts run in registration order and the admin mounts last), so it has **no** admin authentication, CSRF check or permission check, and the admin's `withGuards()` helper cannot work there (it needs the admin's per-request state). Never put an admin-only operation there; contribute it as `admin.routes`. If your route needs to know who the admin is, ask the `auth.session` capability: keep `api.capabilities` from `setup(api)` and call `capabilities.get("auth.session")?.authenticate(req)` at request time (it returns `{ authenticated, user? }`; with no admin installed it is `undefined`). Headless-mode developers who call `mountDuneAdmin(app, ctx)` themselves and register routes *after* it may wrap those with `withGuards()` from `@dune/plugin-admin/admin/guards`.
 
 ### `publicRoutes` — declarative public-facing routes
 
@@ -315,13 +313,13 @@ export default {
 
 Registered before Dune's content catch-all, so a `publicRoutes` entry takes priority over a content page at the same path. Handlers get a full Fresh context (`ctx.render()`, islands, middleware) — unlike `mount()`, you don't need the raw `app` reference. These routes are **not** admin-guarded (no permission check, no auth) — that's the tradeoff for being public in the first place; add your own check inside the handler if the route needs one.
 
-**`publicRoutes` and `adminPages` are wired up differently — `publicRoutes` is `@dune/core`-owned, `adminPages` is `@dune/plugin-admin`-owned.** `bootstrap()` collects every plugin's `publicRoutes` onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` itself registers them as live Fresh routes (`registerPluginPublicRoutes()`, `src/runtime/register-plugin-routes.ts`) — this works in every `createDuneApp()` context: `admin.enabled: false`, no `@dune/plugin-admin` installed at all, `dune mcp:serve`'s lightweight bootstrap, all of it. `adminPages` is different: core's `bootstrap()` doesn't even collect it, only `@dune/plugin-admin`'s `mountDuneAdmin()` reads it directly from `hooks.plugins()`, because registering it means enforcing each page's declared `permission` via the admin panel's own auth system — something `@dune/core` has no reason to depend on. So `adminPages` still needs `admin.enabled !== false` (the default) in the normal `dune serve`/`dune dev` path, or an explicit `mountDuneAdmin(app, ctx)` call in headless mode — skip both and `adminPages` entries go dark with no error, while `publicRoutes` keeps working regardless.
+**`publicRoutes` and the `admin.*` contributions are wired up differently — `publicRoutes` is `@dune/core`-owned, `admin.pages` and `admin.routes` are read by the admin package.** `bootstrap()` collects every plugin's `publicRoutes` onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` itself registers them as live Fresh routes (`registerPluginPublicRoutes()`, `src/runtime/register-plugin-routes.ts`) — this works in every `createDuneApp()` context: `admin.enabled: false`, no `@dune/plugin-admin` installed at all, `dune mcp:serve`'s lightweight bootstrap, all of it. The admin contributions are different: only the admin package reads them (`capabilities.list("admin.pages")` / `("admin.routes")`), because mounting them means enforcing each route's authentication, CSRF and declared `permission` through the admin's own auth system — something `@dune/core` has no reason to depend on. So they need `admin.enabled !== false` (the default) in the normal `dune serve`/`dune dev` path, or an explicit `mountDuneAdmin(app, ctx)` call in headless mode — skip both and they go dark with no error, while `publicRoutes` keeps working regardless.
 
 Headless-mode developers who call `mountDuneAdmin(app, ctx)` directly (never going through `createDuneApp()`) still get `publicRoutes` too — `mountDuneAdmin()` delegates to the same core `registerPluginPublicRoutes()` function rather than re-implementing it, and calling it twice for the same bootstrap (once from `createDuneApp()`, once from `mountDuneAdmin()` when both happen to run in the same process) is a safe no-op, not a double-registration.
 
 ### Permission reference
 
-Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `adminPages[].permission` accepts any string but only these map to actions in `@dune/core`'s canonical `actionToRelations` schema (`authz.check()` is the sole authority; unknown names deny):
+Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) — `permission` on `admin.pages` / `admin.routes` accepts any string but only these map to actions in `@dune/core`'s canonical `actionToRelations` schema (`authz.check()` is the sole authority; unknown names deny):
 
 | Permission string | Grants |
 |--------------------|--------|
@@ -373,9 +371,9 @@ Deno.test("my plugin", async () => {
 
 **Wrong file location.** Plugin files must be in `plugins/`. Placing them in `src/`, `routes/`, or the project root means they won't be found by `dune validate` and the plugin spec won't resolve correctly.
 
-**A `mount()`-registered mutation route is unauthenticated by default — wrap it in `withGuards()`.** `import { withGuards } from "@dune/plugin-admin/admin/guards"` (also exports `csrfCheck`/`requirePermission`/`validatePagePath` individually). Skipping this isn't a missing-import problem anymore, just an easy-to-forget step — `adminPages` (GET-only) still gets you auth/permission enforcement with zero extra code, if that's enough for your route.
+**A route you register in `mount()` is not behind the admin — contribute admin-only routes as `admin.routes`.** `app.post("/admin/...")` in `mount()` has no authentication, CSRF check or permission check, and `withGuards()` cannot work there. `admin.pages` (GET) and `admin.routes` (any method) get all three from the admin, with no extra code.
 
-**`adminPages` paths are relative to the admin prefix.** `path: "/my-plugin"` → `/admin/my-plugin`. Writing `path: "/admin/my-plugin"` double-prefixes to `/admin/admin/my-plugin`.
+**`admin.pages` / `admin.routes` paths are relative to the admin prefix.** `path: "/my-plugin"` → `/admin/my-plugin`. Writing `path: "/admin/my-plugin"` double-prefixes to `/admin/admin/my-plugin`.
 
 **There is no `ctx.db` on any hook, ever.** `HookContext` only has `event`, `data`, `config`, `storage`, `stopPropagation`, `setData`, and an optional `jobs`. If your plugin needs the data layer, import `@dune/core/db` directly — it's never injected, regardless of config.
 
