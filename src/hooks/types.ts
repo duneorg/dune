@@ -217,8 +217,10 @@ export interface PluginApi {
  * this happens in `@dune/core` itself (`registerPluginPublicRoutes()`), so it
  * works in every `createDuneApp()` context (headless, `admin.enabled: false`,
  * etc.), not only when an admin package's `mount()` happens to run. Unlike
- * `onRequest`, these are proper Fresh routes with access to `ctx.render()`,
- * islands, and middleware.
+ * `onRequest`, these are proper Fresh routes: core passes a real Fresh context,
+ * so a handler whose `ctx` is annotated `FreshContext` can call `ctx.render()`
+ * and use islands. An unannotated `ctx` is a {@link PluginRouteContext}, which
+ * has no `render()`.
  *
  * @since 1.1.0
  */
@@ -477,8 +479,10 @@ export interface DunePlugin {
    * Public-facing Fresh routes contributed by this plugin.
    *
    * Registered before Dune's content catch-all so they take priority.
-   * Handlers receive a full Fresh context with `ctx.render()`, islands,
-   * and middleware — no manual URL matching needed.
+   * Core passes a full Fresh context. Annotate a handler's `ctx` as
+   * `FreshContext` to use `ctx.render()` and islands; unannotated, it is a
+   * {@link PluginRouteContext} (`req`, `url`, `params`, `state`, `next()`).
+   * No manual URL matching is needed.
    *
    * @since 1.1.0
    *
@@ -644,8 +648,9 @@ export interface ContentEditorPlugin {
   /**
    * Handle `GET /admin/pages/edit?path=...`.
    *
-   * Receives the full Fresh context — call `ctx.render(component)` to render
-   * within the admin layout, or return any `Response` directly.
+   * Core passes the full Fresh context: annotate `ctx` as `FreshContext` and call
+   * `ctx.render(component)` to render within the admin layout, or return any
+   * `Response` directly. An unannotated `ctx` is a {@link PluginRouteContext}.
    * Access `ctx.state.adminContext` for engine, config, and other admin services.
    * The context state type is `AdminState` from `@dune/plugin-admin`; typed as
    * `any` here so core does not depend on admin-internal types.

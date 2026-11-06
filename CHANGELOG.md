@@ -173,8 +173,12 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `app.fsRoutes()`, `app.layout()`, `app.route()`) depends on Fresh itself: the
   handler properties are declared as methods, so a handler taking a full
   `FreshContext` is still accepted, and `app` is cast to Fresh's `App`.
-  Breaking only for a plugin that called a Fresh-only method on `app` without a
-  cast (a type error, fixed with `app as unknown as App<any>`).
+  Breaking, as type errors only, for a plugin that (a) called a Fresh-only method
+  on `app` without a cast (fix: `app as unknown as App<any>`), or (b) relied on
+  the inferred type of a handler's `ctx` to call `ctx.render()`, `ctx.redirect()`
+  and the like: an unannotated `ctx` is now a `PluginRouteContext`, so write
+  `handler(ctx: FreshContext)`. Passing a Fresh-annotated middleware to
+  `app.use()` needs the same cast on `app`.
 
 ### Added
 
