@@ -26,6 +26,7 @@ import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
+import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { startScheduledActions } from "./serve-utils.ts";
 import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
@@ -219,7 +220,6 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   instance = await registerInstance({
     mode: "serve", root, title: config.site.title ?? null, port, version: CORE_VERSION,
   });
-  const adminPrefix = config.admin?.path ?? "/admin";
 
   // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
   // directory aligns with the admin preview route regardless of runtimeDir customisation.
@@ -367,7 +367,9 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🗺️  Sitemap generated`);
   if (feedEnabled) console.log(`  📡 RSS + Atom feeds generated`);
-  if (config.admin?.enabled !== false) {
+  // createDuneApp() resolved the slots (mountPlugins), so the prefix is known here.
+  const adminPrefix = adminPrefixOf(ctx.capabilities);
+  if (adminPrefix) {
     console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
   }
   console.log(`  🌐 http://localhost:${port}\n`);

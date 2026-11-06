@@ -624,3 +624,36 @@ Deno.test("runPluginResponseTransforms: without declared cookie names any cookie
   });
   assertEquals(noCookie.calls.authenticate, 0);
 });
+
+Deno.test("runPluginResponseTransforms: no admin prefix — /admin is an ordinary path and plugins get an empty adminPrefix", async () => {
+  const auth = makeAuth({});
+  const { plugin, seen } = makeRecordingPlugin();
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/admin/news"),
+    response: htmlResponse("<p>news</p>"),
+    plugins: [plugin],
+    auth,
+    resolve,
+    config,
+    adminPrefix: null,
+  });
+  assertEquals(seen.length, 1, "the transform ran: with no admin, /admin/news is content");
+  assertEquals(seen[0].adminPrefix, "");
+  assertEquals((await result.text()).includes("news"), true);
+});
+
+Deno.test("runPluginResponseTransforms: an admin prefix still keeps its own paths out of the pipeline", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  const original = htmlResponse("<p>panel</p>");
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/admin/pages"),
+    response: original,
+    plugins: [plugin],
+    auth: makeAuth({}),
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen.length, 0);
+  assertStrictEquals(result, original);
+});

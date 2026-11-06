@@ -34,7 +34,6 @@ function makeConfigHandler(engine: DuneEngine): ResourceHandler {
       theme: config.theme,
       data_dir: config.system?.data_dir,
       admin: {
-        path: config.admin?.path,
         runtime_dir: resolveRuntimeDir(config),
         audit: config.admin?.audit,
         // Omit auth_provider details (may contain connection strings)
