@@ -7,7 +7,7 @@
 import type { DuneConfig } from "../config/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { BlueprintField } from "../blueprints/types.ts";
-import type { FreshContext } from "fresh";
+import type { PluginApp, PluginRouteContext } from "../plugin-api/app.ts";
 import type { ContentApi } from "../content/api.ts";
 import type { AuthzRelation } from "../auth/authz-schema.ts";
 
@@ -217,8 +217,10 @@ export interface PluginApi {
  * this happens in `@dune/core` itself (`registerPluginPublicRoutes()`), so it
  * works in every `createDuneApp()` context (headless, `admin.enabled: false`,
  * etc.), not only when an admin package's `mount()` happens to run. Unlike
- * `onRequest`, these are proper Fresh routes with access to `ctx.render()`,
- * islands, and middleware.
+ * `onRequest`, these are proper Fresh routes: core passes a real Fresh context,
+ * so a handler whose `ctx` is annotated `FreshContext` can call `ctx.render()`
+ * and use islands. An unannotated `ctx` is a {@link PluginRouteContext}, which
+ * has no `render()`.
  *
  * @since 1.1.0
  */
@@ -233,9 +235,12 @@ export interface PublicRouteRegistration {
    * Example: `/newsletter/confirm`
    */
   path: string;
-  /** Fresh handler for this route. */
-  // deno-lint-ignore no-explicit-any
-  handler: (ctx: FreshContext<any>) => Response | Promise<Response>;
+  /**
+   * Handler for this route. Declared as a method so a handler that takes a
+   * full Fresh context (`ctx.render()`, islands) is accepted; core always
+   * passes one.
+   */
+  handler(ctx: PluginRouteContext): Response | Promise<Response>;
   /**
    * Absolute path to an island module used by this route.
    * Included in the Builder's island scan so it's compiled into the bundle.
@@ -328,8 +333,8 @@ export interface AdminPageRegistration<S = any> {
    * by leaving a field out.
    */
   permission: string;
-  /** Fresh GET handler for the page. */
-  handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
+  /** GET handler for the page (a method, so a full Fresh context is accepted: see {@link PluginRouteContext}). */
+  handler(ctx: PluginRouteContext<S>): Promise<Response> | Response;
 }
 
 /**
@@ -367,8 +372,8 @@ export interface AdminRouteRegistration<S = any> {
    * leaving a field out.
    */
   permission: string;
-  /** Fresh handler; runs only after authentication, CSRF and permission checks pass. */
-  handler: (ctx: FreshContext<S>) => Promise<Response> | Response;
+  /** Handler; runs only after authentication, CSRF and permission checks pass (a method, so a full Fresh context is accepted). */
+  handler(ctx: PluginRouteContext<S>): Promise<Response> | Response;
 }
 
 /**
@@ -474,8 +479,10 @@ export interface DunePlugin {
    * Public-facing Fresh routes contributed by this plugin.
    *
    * Registered before Dune's content catch-all so they take priority.
-   * Handlers receive a full Fresh context with `ctx.render()`, islands,
-   * and middleware — no manual URL matching needed.
+   * Core passes a full Fresh context. Annotate a handler's `ctx` as
+   * `FreshContext` to use `ctx.render()` and islands; unannotated, it is a
+   * {@link PluginRouteContext} (`req`, `url`, `params`, `state`, `next()`).
+   * No manual URL matching is needed.
    *
    * @since 1.1.0
    *
@@ -547,12 +554,12 @@ export interface DunePlugin {
    */
   authzActions?: Record<string, readonly AuthzRelation[]>;
   /**
-   * Mount Fresh routes onto the app.
+   * Mount routes onto the app.
    *
    * Called by {@link mountPlugins} after `bootstrap()` completes and the Fresh
    * `App` instance is available, but before the app starts handling requests.
-   * Use this to register routes, middleware, and layouts that require a `FreshContext`
-   * (e.g. an admin panel sub-app, a dashboard, a set of auth routes).
+   * Use this to register routes and middleware (e.g. a dashboard, a set of
+   * auth routes). Handlers receive a {@link PluginRouteContext}.
    *
    * Capability slots (`auth.session`, `inline-edit`, ...) are resolved before
    * `mount()` runs and are read through `api.capabilities`, lazily (at request
@@ -641,14 +648,14 @@ export interface ContentEditorPlugin {
   /**
    * Handle `GET /admin/pages/edit?path=...`.
    *
-   * Receives the full Fresh context — call `ctx.render(component)` to render
-   * within the admin layout, or return any `Response` directly.
+   * Core passes the full Fresh context: annotate `ctx` as `FreshContext` and call
+   * `ctx.render(component)` to render within the admin layout, or return any
+   * `Response` directly. An unannotated `ctx` is a {@link PluginRouteContext}.
    * Access `ctx.state.adminContext` for engine, config, and other admin services.
    * The context state type is `AdminState` from `@dune/plugin-admin`; typed as
    * `any` here so core does not depend on admin-internal types.
    */
-  // deno-lint-ignore no-explicit-any
-  pageEditorHandler(ctx: FreshContext<any>): Response | Promise<Response>;
+  pageEditorHandler(ctx: PluginRouteContext): Response | Promise<Response>;
 
   /**
    * Optional WebSocket upgrade handler for real-time collaboration.
@@ -735,11 +742,13 @@ export interface ResponseTransformContext {
  */
 export interface MountApi {
   /**
-   * The Fresh `App` instance. Register routes, middleware, and layouts via
-   * `app.get()`, `app.use()`, `app.route()`, etc.
+   * Where routes and middleware are registered: `app.use()`, `app.get()`,
+   * `app.post()`, ... Core passes the Fresh `App`, but the contract promises
+   * only {@link PluginApp}. A plugin that needs Fresh-only features
+   * (`fsRoutes()`, `layout()`, `route()`) depends on Fresh and casts it, and
+   * then follows Fresh's versions itself.
    */
-  // deno-lint-ignore no-explicit-any
-  app: import("fresh").App<any>;
+  app: PluginApp;
   /**
    * The booted site: engine, config, storage, search, hooks, history, flex,
    * image cache, metrics, submissions, sections, authz and the job scheduler.

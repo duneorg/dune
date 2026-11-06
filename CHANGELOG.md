@@ -161,6 +161,24 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   from a plugin; `services` and `capabilities` are unchanged. Migrate
   `mount({ bootstrap })` to `mount({ runtime })` and read the field you need from
   it. The `PluginRuntime` type is exported from `@dune/core/plugin-api`.
+- **The plugin contract names no Fresh type (#97).** `MountApi.app` is a
+  `PluginApp` (`use`, `get`, `post`, `put`, `patch`, `delete`, `all`) and route
+  handlers (`PublicRouteRegistration`, `AdminPageRegistration`,
+  `AdminRouteRegistration`, `ContentEditorPlugin.pageEditorHandler`) receive a
+  `PluginRouteContext` (`req`, `url`, `params`, `state`, `next()`), both exported
+  from `@dune/core/plugin-api`. Fresh's `App` and `FreshContext` satisfy them, so
+  nothing changes at runtime and a handler that only reads the request keeps
+  working; the point is that the frozen contract no longer pins a Fresh version.
+  A plugin that needs Fresh-only features (`ctx.render()`, islands,
+  `app.fsRoutes()`, `app.layout()`, `app.route()`) depends on Fresh itself: the
+  handler properties are declared as methods, so a handler taking a full
+  `FreshContext` is still accepted, and `app` is cast to Fresh's `App`.
+  Breaking, as type errors only, for a plugin that (a) called a Fresh-only method
+  on `app` without a cast (fix: `app as unknown as App<any>`), or (b) relied on
+  the inferred type of a handler's `ctx` to call `ctx.render()`, `ctx.redirect()`
+  and the like: an unannotated `ctx` is now a `PluginRouteContext`, so write
+  `handler(ctx: FreshContext)`. Passing a Fresh-annotated middleware to
+  `app.use()` needs the same cast on `app`.
 
 ### Added
 
