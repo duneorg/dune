@@ -16,6 +16,11 @@ theme:
 taxonomies:
   - category
   - tag
+
+# Plugins. The admin panel is a plugin like any other: core loads only what is
+# listed here. Remove this entry to run without an admin.
+plugins:
+  - src: jsr:@dune/plugin-admin@^4
 `;
 
 const SYSTEM_YAML = `content:
@@ -342,6 +347,11 @@ author:
 taxonomies:
   - tag
   - category
+
+# Plugins. The admin panel is a plugin like any other: core loads only what is
+# listed here. Remove this entry to run without an admin.
+plugins:
+  - src: jsr:@dune/plugin-admin@^4
 `;
 
 const HEADLESS_SYSTEM_YAML = `content:

@@ -82,8 +82,6 @@ export interface AdminConfig {
   path: string;
   /** Session lifetime in seconds (default: 86400 = 24h) */
   session_lifetime: number;
-  /** Whether admin panel is enabled (default: true) */
-  enabled: boolean;
   /**
    * Maximum upload body size (in MB) for admin-side multipart uploads
    * (media library, content attachments). Rejected with 413 before the body
@@ -110,26 +108,6 @@ export interface AdminConfig {
    * inject a custom provider through the admin plugin's `authProvider` option.
    */
   auth_provider?: AuthProviderConfig;
-  /**
-   * Polizy authz tuple store for the admin panel's own permission checks
-   * (`pages.update`, `users.update`, etc.) — independent of
-   * `site.auth.authz_store`, which is a *public*-auth setting for site
-   * visitors. Default: `"local"`, created automatically whenever the admin
-   * panel is enabled, regardless of what (if anything) `site.auth` is
-   * configured to. Deliberately decoupled: an admin's tuples
-   * (`bootstrapAdminTuples()`) are a different identity concern from
-   * site-user tuples, and previously creation of this authz instance was
-   * accidentally gated on the public-auth config instead of its own
-   * setting — a site running `site.auth.mode: external-jwt` (or
-   * `authz_store: "db"`) would silently lose the admin-panel authz instance.
-   * That path now fails closed (deny) when `authz` is missing; there is no
-   * role-table fallback.
-   *
-   * Only `"local"` is implemented today — a `"db"` tier (mirroring
-   * `site.auth.authz_store`'s db-backed option) isn't wired up for the
-   * admin side yet.
-   */
-  authz_store?: "local";
   /**
    * Audit log configuration.
    * Records admin panel actions with actor, timestamp, IP, and outcome.

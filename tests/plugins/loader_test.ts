@@ -58,3 +58,37 @@ Deno.test("loadPlugins: accepts a ^-range jsr: specifier past version validation
   // the specifier made it past the version-anchoring check.
   await loadPlugins({ config, hooks, storage, root: "/tmp" });
 });
+
+Deno.test("loadPlugins: a plugin factory gets its config and the site root and dev flag", async () => {
+  const root = await Deno.makeTempDir({ prefix: "dune_test_factory_ctx_" });
+  try {
+    await Deno.mkdir(`${root}/plugins`, { recursive: true });
+    await Deno.writeTextFile(
+      `${root}/plugins/factory.ts`,
+      `export default function (cfg: unknown, ctx: unknown) {
+         (globalThis as any).__factoryArgs = { cfg, ctx };
+         return { name: "factory-plugin", version: "1.0.0", hooks: {} };
+       }`,
+    );
+    const config = {
+      pluginList: [{ src: "./plugins/factory.ts", config: { a: 1 } }],
+      autoDiscoverPlugins: false,
+      plugins: {},
+    } as unknown as DuneConfig;
+    const storage = { exists: () => Promise.resolve(false) } as unknown as StorageAdapter;
+
+    for (const dev of [undefined, true]) {
+      const hooks = createHookRegistry({ config, storage });
+      await loadPlugins({ config, hooks, storage, root, dev });
+      // deno-lint-ignore no-explicit-any
+      const seen = (globalThis as any).__factoryArgs;
+      assertEquals(seen.cfg, { a: 1 });
+      assertEquals(seen.ctx, { root, dev: dev ?? false });
+      assertEquals(hooks.plugins().map((p) => p.name), ["factory-plugin"]);
+    }
+  } finally {
+    // deno-lint-ignore no-explicit-any
+    delete (globalThis as any).__factoryArgs;
+    await Deno.remove(root, { recursive: true });
+  }
+});

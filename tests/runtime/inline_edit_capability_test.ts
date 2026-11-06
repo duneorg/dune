@@ -23,7 +23,7 @@ async function withApp(
     const ctx = await bootstrap(root, {
       plugins,
       // deno-lint-ignore no-explicit-any
-      configOverrides: { admin: { enabled: false } as any },
+      
     });
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     await fn(app.handler());

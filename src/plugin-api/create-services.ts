@@ -105,7 +105,7 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
 
 function createAuditTrail(opts: PluginServicesOptions, runtimeDir: string): AuditLogger | null {
   const audit = opts.config.admin?.audit;
-  if (opts.config.admin?.enabled === false || audit?.enabled === false || !opts.root) return null;
+  if (audit?.enabled === false || !opts.root) return null;
   const root = opts.root;
   const logFile = audit?.log_file ? join(root, audit.log_file) : join(root, runtimeDir, "audit.log");
   const containmentRoot = root.endsWith("/") || root.endsWith("\\") ? root : root + "/";

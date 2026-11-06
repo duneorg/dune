@@ -16,10 +16,22 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
+import type { DunePlugin } from "../../src/hooks/types.ts";
+
+/** A stand-in admin: all core looks at is that something provides `auth.session`. */
+const admin: DunePlugin = {
+  name: "test-admin",
+  version: "1.0.0",
+  hooks: {},
+  setup(api) {
+    api.capabilities.provide("auth.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
+  },
+};
 
 async function withBootstrappedSite(
   siteYaml: string,
   fn: (ctx: Awaited<ReturnType<typeof bootstrap>>) => Promise<void>,
+  plugins: DunePlugin[] = [admin],
 ): Promise<void> {
   const root = await Deno.makeTempDir({
     prefix: "dune_test_bootstrap_admin_authz_",
@@ -33,7 +45,7 @@ async function withBootstrappedSite(
     await Deno.mkdir(join(root, "config"), { recursive: true });
     await Deno.writeTextFile(join(root, "config", "site.yaml"), siteYaml);
 
-    const ctx = await bootstrap(root, {});
+    const ctx = await bootstrap(root, { plugins });
     await fn(ctx);
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
@@ -64,6 +76,35 @@ Deno.test(
       async (ctx) => {
         assertEquals(typeof ctx.authz?.check, "function");
       },
+    );
+  },
+);
+
+Deno.test(
+  "bootstrap(): with no admin and no plugin that needs authz, no authz system is created",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withBootstrappedSite(
+      "title: Test Site\nurl: http://localhost:3000\n",
+      async (ctx) => {
+        assertEquals(ctx.authz, undefined);
+      },
+      [],
+    );
+  },
+);
+
+Deno.test(
+  "bootstrap(): a plugin that declares authzActions gets the authz system without an admin",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const needsAuthz: DunePlugin = { name: "needs-authz", version: "1.0.0", hooks: {}, authzActions: { "reports.read": ["admin"] } };
+    await withBootstrappedSite(
+      "title: Test Site\nurl: http://localhost:3000\n",
+      async (ctx) => {
+        assertEquals(typeof ctx.authz?.check, "function");
+      },
+      [needsAuthz],
     );
   },
 );

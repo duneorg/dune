@@ -41,6 +41,7 @@ import { logger } from "../core/logger.ts";
 import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
 import { createPluginRuntime } from "../plugin-api/runtime.ts";
 import { resolveRuntimeDir } from "../forms/config.ts";
+import { pluginCoreMismatch } from "./core-handshake.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -49,6 +50,20 @@ export interface PluginLoaderOptions {
   storage: StorageAdapter;
   /** Absolute path to the site root directory */
   root: string;
+  /** True under `dune dev`. Passed to plugin factories (default false). */
+  dev?: boolean;
+}
+
+/**
+ * What a plugin factory (a default export that is a function) is given besides
+ * its merged config: facts that exist before plugins load and that a plugin
+ * cannot get from `PluginApi`.
+ */
+export interface PluginFactoryContext {
+  /** Absolute path to the site root directory. */
+  root: string;
+  /** True under `dune dev`. */
+  dev: boolean;
 }
 
 /**
@@ -102,7 +117,7 @@ async function discoverLocalPlugins(
  *  6. Call hooks.registerPlugin(plugin)
  */
 export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
-  const { config, hooks, root, storage } = options;
+  const { config, hooks, root, storage, dev = false } = options;
 
   const configured = config.pluginList ?? [];
   // Auto-discovery is opt-in — loading an arbitrary `.ts` file out of
@@ -128,6 +143,8 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
         ? await materializeHttpsPlugin(entry.src, entry.integrity!, root)
         : resolvePluginUrl(entry.src, root);
       const mod = await import(importUrl); // lockfile-safe: discovery (plugin specifier from site config, handled by plugin discovery subprocess)
+      const mismatch = pluginCoreMismatch(mod, entry.src);
+      if (mismatch) logger.warn("plugins.loader.core_instance_mismatch", { detail: mismatch });
 
       const exported = mod.default;
       if (!exported) {
@@ -143,7 +160,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
           ...(config.plugins[exported.pluginName ?? ""] ?? {}),
           ...(entry.config ?? {}),
         };
-        plugin = await exported(pluginCfg);
+        plugin = await exported(pluginCfg, { root, dev } satisfies PluginFactoryContext);
       } else if (typeof exported === "object") {
         plugin = exported as DunePlugin;
       } else {

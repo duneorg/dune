@@ -215,7 +215,7 @@ export interface PluginApi {
  * them onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` wires
  * them as programmatic Fresh routes before the content catch-all handler —
  * this happens in `@dune/core` itself (`registerPluginPublicRoutes()`), so it
- * works in every `createDuneApp()` context (headless, `admin.enabled: false`,
+ * works in every `createDuneApp()` context (headless, no admin plugin listed,
  * etc.), not only when an admin package's `mount()` happens to run. Unlike
  * `onRequest`, these are proper Fresh routes: core passes a real Fresh context,
  * so a handler whose `ctx` is annotated `FreshContext` can call `ctx.render()`

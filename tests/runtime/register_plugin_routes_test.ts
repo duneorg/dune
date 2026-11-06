@@ -5,8 +5,8 @@
  *
  * This is the real gap the fix closes: previously the only code that turned
  * a plugin's `publicRoutes` into a live Fresh route lived in
- * @dune/plugin-admin's mountDuneAdmin(), so a site with `admin.enabled:
- * false`, headless mode without an explicit mountDuneAdmin() call, or any
+ * @dune/plugin-admin's mountDuneAdmin(), so a site with no admin plugin listed,
+ * headless mode without an explicit mountDuneAdmin() call, or any
  * bootstrap()-only tool never got publicRoutes wired at all — silently, no
  * error. bootstrap.ts always collected BootstrapResult.pluginPublicRoutes;
  * nothing turned that into an app.get() call unless plugin-admin's mount()
