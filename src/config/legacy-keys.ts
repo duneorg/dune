@@ -66,6 +66,14 @@ interface MovedRule {
 
 const MOVED: MovedRule[] = [
   {
+    file: "site",
+    parent: [],
+    keys: {
+      machine_translation:
+        "the admin plugin's config (`config:` of its entry in plugins:), with api_key and base_url in snake_case; `dune migrate:config` moves it",
+    },
+  },
+  {
     file: "system",
     parent: [],
     keys: {
@@ -173,11 +181,13 @@ export function removeAdminEnabledInText(text: string): { text: string; removed:
   return { text: r.text, removed: r.removed.length > 0 };
 }
 
-const ADMIN_BLOCK: MovedRule[] = [{ file: "system", parent: [], keys: { admin: "" } }];
-
-/** Delete the top-level `admin:` block (key and children) from a system.yaml text. */
-export function removeAdminBlockInText(text: string): { text: string; removed: boolean } {
-  const r = removeKeysInText(ADMIN_BLOCK, "system", text);
+/** Delete a top-level key and its children from a config file's text (comments elsewhere are kept). */
+export function removeTopLevelKeyInText(
+  file: ConfigFileKind,
+  text: string,
+  key: string,
+): { text: string; removed: boolean } {
+  const r = removeKeysInText([{ file, parent: [], keys: { [key]: "" } }], file, text);
   return { text: r.text, removed: r.removed.length > 0 };
 }
 

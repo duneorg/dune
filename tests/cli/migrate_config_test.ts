@@ -150,7 +150,7 @@ Deno.test("migrate:config removes admin.enabled: false and leaves the site witho
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "removed admin.enabled");
     assertStringIncludes(out, "admin plugin is not added");
-    assertStringIncludes(out, "removed the admin: block");
+    assertStringIncludes(out, "removed the admin: block and machine_translation");
     assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\n");
     assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
   });
@@ -174,7 +174,7 @@ Deno.test("migrate:config moves the whole admin: block: settings into the plugin
       "debug: true\nadmin:\n  path: /cms\n  runtime_dir: var/rt\n  maxRevisions: 20\n  authz_store: local\n  audit:\n    log_file: audit/a.log\n  webhooks:\n    - url: https://hooks.example.test/x\n      events: [onPageUpdate]\n",
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
-    assertStringIncludes(out, "moved the admin: block");
+    assertStringIncludes(out, "moved the admin's settings into the admin plugin's config");
     assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\nruntime_dir: var/rt\nmax_revisions: 20\n");
     const site = parseYamlText(await Deno.readTextFile(join(root, "config/site.yaml"))) as {
       plugins: { src: string; config: Record<string, unknown> }[];
@@ -212,5 +212,23 @@ Deno.test("migrate:config leaves an admin: block holding keys that belong elsewh
     assertEquals(code, 1);
     assertStringIncludes(out, "admin.honeypot");
     assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
+  });
+});
+
+Deno.test("migrate:config moves site.machine_translation into the admin plugin's config with snake_case keys", async () => {
+  await withSite({
+    "config/site.yaml": "title: T\nmachine_translation:\n  provider: deepl\n  apiKey: $DEEPL_KEY\n  baseUrl: https://mt.example\nforms: {}\n",
+  }, async (root) => {
+    const out = await quiet(() => migrateConfigCommand(root));
+    assertStringIncludes(out, "machine_translation");
+    const site = parseYamlText(await Deno.readTextFile(join(root, "config/site.yaml"))) as {
+      machine_translation?: unknown;
+      plugins: { config: Record<string, unknown> }[];
+    };
+    assertEquals(site.machine_translation, undefined);
+    assertEquals(site.plugins[0].config, {
+      machine_translation: { provider: "deepl", api_key: "$DEEPL_KEY", base_url: "https://mt.example" },
+    });
+    assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
   });
 });

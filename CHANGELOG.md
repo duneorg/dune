@@ -46,6 +46,9 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `admin:` block in an environment overlay, or one that still holds `honeypot`, `notifications`
   or `incoming_webhooks`, is left for you). The MCP server no longer reports `admin` settings
   and loses its `dune://site/audit` resource: core cannot know where the admin writes its log.
+  `site.machine_translation` is the admin's too: it moves into the same `config:` as
+  `machine_translation:` with `api_key` and `base_url` (they were `apiKey` and `baseUrl`), a
+  `site.yaml` that still has it is refused, and `migrate:config` moves and renames it.
   `Role` is now `config/role.ts`; `WebhookNotificationConfig` lives with the forms config.
 - **Core no longer loads the admin: it is a plugin you list (#123, step 4).** `bootstrap()`
   used to import `jsr:@dune/plugin-admin@*` itself unless `admin.enabled` was false; now the

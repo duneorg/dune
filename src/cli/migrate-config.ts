@@ -35,9 +35,9 @@ import {
   findIgnoredKeys,
   findLegacyKeys,
   findMovedKeys,
-  removeAdminBlockInText,
   removeAdminEnabledInText,
   removeIgnoredKeysInText,
+  removeTopLevelKeyInText,
   renameLegacyKeysInText,
 } from "../config/legacy-keys.ts";
 import { ADMIN_PLUGIN_ENTRY_SRC, addAdminPluginToText, setAdminPluginConfigInText } from "./add-admin-plugin.ts";
@@ -83,8 +83,16 @@ export interface AdminMovePlan {
   blocked: string[];
 }
 
-export function planAdminMove(block: unknown): AdminMovePlan {
+/** `machine_translation:` keys that were camelCase and are snake_case in the plugin's config. */
+const MT_RENAMES: Record<string, string> = { apiKey: "api_key", baseUrl: "base_url" };
+
+export function planAdminMove(block: unknown, machineTranslation?: unknown): AdminMovePlan {
   const plan: AdminMovePlan = { settings: {}, lifted: {}, blocked: [] };
+  if (machineTranslation && typeof machineTranslation === "object" && !Array.isArray(machineTranslation)) {
+    plan.settings.machine_translation = Object.fromEntries(
+      Object.entries(machineTranslation as Record<string, unknown>).map(([k, v]) => [MT_RENAMES[k] ?? k, v]),
+    );
+  }
   if (!block || typeof block !== "object" || Array.isArray(block)) return plan;
   for (const [key, value] of Object.entries(block as Record<string, unknown>)) {
     if (key in LIFTED) plan.lifted[LIFTED[key]] = value;
@@ -138,6 +146,8 @@ export async function migrateConfigCommand(
     // keys (and the ones we lift or drop) are not reported as "move by hand".
     const handledBelow = path === join(root, "config", "system.yaml")
       ? (k: { path: string }) => k.path === "admin" || (k.path.startsWith("admin.") && !ELSEWHERE.some((e) => k.path === `admin.${e}`))
+      : path === join(root, "config", "site.yaml")
+      ? (k: { path: string }) => k.path === "machine_translation"
       : (k: { path: string }) => opts.dryRun === true && k.path === "admin.enabled";
     const moved = findMovedKeys(kind, parsedBefore).filter((k) => !handledBelow(k));
     if (moved.length > 0) {
@@ -180,9 +190,10 @@ export async function migrateConfigCommand(
     if (!opts.dryRun) await Deno.writeTextFile(path, result.text);
   }
 
-  // The admin: block of system.yaml. Its settings are the admin plugin's config
-  // now (`config:` under its entry in site.yaml); runtime_dir, max_revisions and
-  // data_dir go to the top level of system.yaml; the block is deleted.
+  // The admin's settings: the `admin:` block of system.yaml and `machine_translation:` of
+  // site.yaml. They are the admin plugin's config now (`config:` under its entry in
+  // site.yaml); runtime_dir, max_revisions and data_dir go to the top level of
+  // system.yaml; the old blocks are deleted.
   const systemPath = join(root, "config", "system.yaml");
   const sitePath = join(root, "config", "site.yaml");
   let systemText: string | null = null;
@@ -196,60 +207,70 @@ export async function migrateConfigCommand(
 
   // Same renames the loop above applied (it did not write them on a dry run).
   if (systemText !== null) systemText = renameLegacyKeysInText("system", systemText).text;
-  const adminBlock = systemText === null
+  const adminBlock = systemText === null ? undefined : (parseYaml(systemText) as { admin?: unknown } | null)?.admin;
+  const mtBlock = siteText === null
     ? undefined
-    : (parseYaml(systemText) as { admin?: unknown } | null)?.admin;
-  const hasBlock = adminBlock !== undefined;
+    : (parseYaml(siteText) as { machine_translation?: unknown } | null)?.machine_translation;
+  const hasAdminSettings = adminBlock !== undefined || mtBlock !== undefined;
 
-  if (hasBlock && systemText !== null) {
+  const write = async (path: string, text: string) => {
+    if (!opts.dryRun) await Deno.writeTextFile(path, text);
+  };
+
+  if (hasAdminSettings) {
     if (adminWasDisabled) {
-      const removed = removeAdminBlockInText(systemText);
-      if (removed.removed) {
-        changed++;
-        console.log("  ✓ config/system.yaml: removed the admin: block (the admin is not loaded)");
-        if (!opts.dryRun) await Deno.writeTextFile(systemPath, removed.text);
-      }
+      // The admin is not loaded, so its settings have nowhere to go: drop them.
+      let nextSystem = systemText;
+      let nextSite = siteText;
+      if (adminBlock !== undefined && nextSystem !== null) nextSystem = removeTopLevelKeyInText("system", nextSystem, "admin").text;
+      if (mtBlock !== undefined && nextSite !== null) nextSite = removeTopLevelKeyInText("site", nextSite, "machine_translation").text;
+      changed++;
+      console.log("  ✓ removed the admin: block and machine_translation (the admin is not loaded)");
+      if (nextSystem !== null && adminBlock !== undefined) await write(systemPath, nextSystem);
+      if (nextSite !== null && mtBlock !== undefined) await write(sitePath, nextSite);
     } else {
-      const plan = planAdminMove(adminBlock);
+      const plan = planAdminMove(adminBlock, mtBlock);
       if (plan.blocked.length > 0 || siteText === null) {
         unresolvedFiles++;
         console.error(
-          `  ✗ config/system.yaml: move the admin: block by hand — ` +
+          `  ✗ move the admin's settings by hand — ` +
             (siteText === null
               ? "there is no config/site.yaml to hold the admin plugin's config"
               : `${plan.blocked.join(", ")} belong${plan.blocked.length === 1 ? "s" : ""} elsewhere (see the messages above)`),
         );
       } else {
-        // 1. the admin entry in plugins:, 2. the settings under its config:
+        // 1. the admin entry in plugins:, 2. the settings under its config:, 3. delete the old blocks
         const added = addAdminPluginToText(siteText);
         const withConfig = added.outcome === "manual"
           ? { text: siteText, outcome: "manual" as const }
           : setAdminPluginConfigInText(added.text, plan.settings);
-        const removed = removeAdminBlockInText(systemText);
-        if (added.outcome === "manual" || withConfig.outcome === "manual" || !removed.removed) {
+        const nextSite = mtBlock !== undefined
+          ? removeTopLevelKeyInText("site", withConfig.text, "machine_translation")
+          : { text: withConfig.text, removed: true };
+        const nextSystemRemoved = adminBlock !== undefined && systemText !== null
+          ? removeTopLevelKeyInText("system", systemText, "admin")
+          : { text: systemText ?? "", removed: true };
+        if (added.outcome === "manual" || withConfig.outcome === "manual" || !nextSite.removed || !nextSystemRemoved.removed) {
           unresolvedFiles++;
           console.error(
-            `  ✗ config/system.yaml: move the admin: block by hand into the admin plugin's config: in site.yaml ` +
+            `  ✗ move the admin's settings by hand into the admin plugin's config: in site.yaml ` +
               `(plugins: is written in a way this command cannot extend, or the entry already has a config:)`,
           );
         } else {
-          let nextSystem = removed.text;
+          let nextSystem = nextSystemRemoved.text;
           if (Object.keys(plan.lifted).length > 0) {
             nextSystem = nextSystem.replace(/\n*$/, "\n") + stringifyYaml(plan.lifted);
           }
           changed++;
           const moved = Object.keys(plan.settings);
           console.log(
-            `  ✓ config/system.yaml: moved the admin: block into the admin plugin's config:` +
+            `  ✓ moved the admin's settings into the admin plugin's config:` +
               (moved.length > 0 ? ` (${moved.join(", ")})` : "") +
-              (Object.keys(plan.lifted).length > 0 ? `; ${Object.keys(plan.lifted).join(", ")} now at the top level` : ""),
+              (Object.keys(plan.lifted).length > 0 ? `; ${Object.keys(plan.lifted).join(", ")} now at the top level of system.yaml` : ""),
           );
           if (added.outcome === "added") console.log(`  ✓ config/site.yaml: added ${ADMIN_PLUGIN_ENTRY_SRC} to plugins:`);
-          if (!opts.dryRun) {
-            await Deno.writeTextFile(systemPath, nextSystem);
-            await Deno.writeTextFile(sitePath, withConfig.text);
-          }
-          siteText = null; // handled
+          if (adminBlock !== undefined) await write(systemPath, nextSystem);
+          await write(sitePath, nextSite.text);
         }
       }
     }
@@ -258,7 +279,7 @@ export async function migrateConfigCommand(
     if (added.outcome === "added") {
       changed++;
       console.log(`  ✓ config/site.yaml: added ${ADMIN_PLUGIN_ENTRY_SRC} to plugins: (core no longer loads the admin by itself)`);
-      if (!opts.dryRun) await Deno.writeTextFile(sitePath, added.text);
+      await write(sitePath, added.text);
     } else if (added.outcome === "manual") {
       unresolvedFiles++;
       console.error(
