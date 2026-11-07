@@ -26,6 +26,7 @@ import { type User, USER_HEADER } from "./types.ts";
 import { copySocketAddr } from "../security/rate-limit.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { bootstrapRoleGrants, bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
+import { withRoleSync } from "./sync-roles.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
@@ -115,6 +116,17 @@ export async function mountDuneAuth(
     userStore = await createDbUserStore({ adapter: dbAdapter });
   } else {
     userStore = createLocalUserStore({ storage, usersDir });
+  }
+  // Roles granted or revoked while the app runs (payments, an admin, a
+  // signup flow) reach the authz store at once. The target is read per write:
+  // the authz system below is created after the store. external-jwt reconciles
+  // per request instead, and its user store is read-only.
+  if (mode === "dune") {
+    const plain = userStore;
+    userStore = withRoleSync(
+      plain,
+      () => mountAuthz && mountAdapter ? { authz: mountAuthz, adapter: mountAdapter } : undefined,
+    );
   }
 
   // ── Session manager ─────────────────────────────────────────────────────────

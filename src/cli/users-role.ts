@@ -40,6 +40,7 @@ import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
 import { SITE_RESOURCE } from "../auth/authz-schema.ts";
+import { syncUserRoles } from "../auth/sync-roles.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
@@ -89,16 +90,20 @@ async function syncAdminTuple(
   userId: string,
   previousRole: string | undefined,
   newRole: string | undefined,
+  roles: string[],
 ): Promise<void> {
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
     console.error("  ⚠️  Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
     return null;
   });
-  const { authz } = createDuneAuthSystem({
+  const { authz, adapter } = createDuneAuthSystem({
     authzStore: "local",
     dataDir: ctx.dataDir,
     hmacKey,
   }, ctx.storage);
+
+  // Group membership, which page gating and the site-wide role grants read.
+  await syncUserRoles({ authz, adapter }, { id: userId, roles });
 
   if (previousRole && previousRole !== newRole) {
     await authz.disallowAllMatching({
@@ -188,7 +193,7 @@ async function changeRole(
     }
 
     await ctx.userStore.update(user.id, { roles: newRoles });
-    await syncAdminTuple(ctx, user.id, previousRole, newRole);
+    await syncAdminTuple(ctx, user.id, previousRole, newRole, newRoles);
 
     console.log(
       grant

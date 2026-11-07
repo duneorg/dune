@@ -351,6 +351,14 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   is only a content tag (`member`, `subscriber`, ...) still grants nothing. Also applies to an
   `external-jwt` site: a role claim of `admin`, `editor` or `author` in the identity provider's
   token now carries that permission.
+- **A role granted or revoked while the app runs now takes effect without a restart.** Group
+  membership (`member of group:<role>`), which page gating and the grants above read, was only
+  seeded at startup, so a `roles[]` change made by an admin, a plugin or the CLI waited for the
+  next restart. User stores created by core (`services.users.createLocalStore()`, and the site
+  auth store) are now wrapped with `withRoleSync`: every `create`, `update` of `roles`, and
+  `delete` makes membership match the record. `dune users:create`, `users:grant-role` and
+  `users:revoke-role` do the same. The payments webhook no longer writes the membership twice on
+  such a store.
 - **`search.custom_fields`, `search.fields`, `search.highlight` and
   `search.excerpt_length` now do what the docs say (#97).** They were validated
   and documented, but bootstrap never passed them to the search engine, so setting

@@ -322,6 +322,12 @@ export {
   bootstrapRoleGrants,
 } from "./auth/authz.ts";
 export {
+  /** Make a user's `member of group:<role>` tuples match their `roles[]`. @since 0.36.0 */
+  syncUserRoles,
+  /** Wrap a user store so create/update/delete keep group membership in step. @since 0.36.0 */
+  withRoleSync,
+} from "./auth/sync-roles.ts";
+export {
   /** The object site-wide permissions are checked on: `app:site`. @since 0.36.0 */
   SITE_RESOURCE,
 } from "./auth/authz-schema.ts";

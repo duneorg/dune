@@ -52,6 +52,7 @@ async function withSite(
   fn: (
     ws: (cookie?: string) => Promise<Response>,
     cookieFor: (role: string) => Promise<string>,
+    plugin: { services: Awaited<ReturnType<typeof bootstrap>>["pluginServices"]; ids: Map<string, string> },
   ) => Promise<void>,
 ) {
   const root = await Deno.makeTempDir({ prefix: "dune_test_site_user_editing_" });
@@ -96,7 +97,7 @@ async function withSite(
           },
         }),
       );
-    await fn(ws, cookieFor);
+    await fn(ws, cookieFor, { services: ctx.pluginServices, ids });
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
@@ -125,5 +126,20 @@ Deno.test("every admin-tier role may edit pages, content tags may not", opts, as
       assertEquals((await ws(await cookieFor(role))).status, 204, role);
     }
     assertEquals((await ws(await cookieFor("subscriber"))).status, 403);
+  });
+});
+
+Deno.test("a role granted through a plugin's user store while the app runs applies at once", opts, async () => {
+  await withSite([], async (ws, cookieFor, { services, ids }) => {
+    const cookie = await cookieFor("subscriber");
+    assertEquals((await ws(cookie)).status, 403);
+
+    // What an admin plugin does: write the role through services.users.
+    const users = services.users.createLocalStore({ usersDir: "data/users" });
+    await users.update(ids.get("subscriber")!, { roles: ["editor"] });
+    assertEquals((await ws(cookie)).status, 204);
+
+    await users.update(ids.get("subscriber")!, { roles: ["subscriber"] });
+    assertEquals((await ws(cookie)).status, 403);
   });
 });

@@ -53,6 +53,7 @@ import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
 import { SITE_RESOURCE } from "../auth/authz-schema.ts";
+import { syncUserRoles } from "../auth/sync-roles.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
@@ -113,18 +114,21 @@ async function syncAdminTuple(
   ctx: Context,
   userId: string,
   role: string | undefined,
+  roles: string[],
 ): Promise<void> {
-  if (!role) return;
+  if (roles.length === 0) return;
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
     console.error("  ⚠️  Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
     return null;
   });
-  const { authz } = createDuneAuthSystem({
+  const { authz, adapter } = createDuneAuthSystem({
     authzStore: "local",
     dataDir: ctx.dataDir,
     hmacKey,
   }, ctx.storage);
 
+  await syncUserRoles({ authz, adapter }, { id: userId, roles });
+  if (!role) return;
   await authz.allow({
     who: { type: "user", id: userId },
     toBe: role as "admin" | "editor" | "author",
@@ -237,7 +241,7 @@ export async function usersCreateCommand(
       throw err;
     }
 
-    await syncAdminTuple(ctx, user.id, adminTierRole);
+    await syncAdminTuple(ctx, user.id, adminTierRole, user.roles);
 
     console.log(
       `  ✓ Created ${normalizedEmail}${
