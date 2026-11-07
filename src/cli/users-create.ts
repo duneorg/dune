@@ -24,7 +24,7 @@
  * or an OAuth provider name.
  *
  * Reuses the same UserStore primitive users-role.ts's grant/revoke-role
- * commands do, and syncs the app:admin authz tuple the same way when an
+ * commands do, and syncs the app:site authz tuple the same way when an
  * admin-tier role (admin/editor/author) is included, so a pre-granted
  * admin-tier role is immediately effective — not just present in roles[]
  * but inert until the user's first login re-syncs it.
@@ -52,6 +52,7 @@ import {
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
+import { SITE_RESOURCE } from "../auth/authz-schema.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
@@ -107,7 +108,7 @@ async function openContext(root: string): Promise<Context> {
   return { storage, dataDir, userStore, closeDb: () => Promise.resolve() };
 }
 
-/** Grant the app:admin authz tuple for an admin-tier role, if one was requested. */
+/** Grant the app:site authz tuple for an admin-tier role, if one was requested. */
 async function syncAdminTuple(
   ctx: Context,
   userId: string,
@@ -127,7 +128,7 @@ async function syncAdminTuple(
   await authz.allow({
     who: { type: "user", id: userId },
     toBe: role as "admin" | "editor" | "author",
-    onWhat: { type: "app", id: "admin" },
+    onWhat: SITE_RESOURCE,
   });
 }
 
@@ -207,7 +208,7 @@ export async function usersCreateCommand(
         })`,
       );
       if (adminTierRole) {
-        console.log(`  ~ Would sync app:admin tuple (none → ${adminTierRole})`);
+        console.log(`  ~ Would sync app:site tuple (none → ${adminTierRole})`);
       }
       return;
     }

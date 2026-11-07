@@ -318,7 +318,13 @@ export {
   bootstrapRoleTuples,
   /** Bootstrap permission tuples for existing admin User records (@dune/plugin-admin). @since 1.0.0 */
   bootstrapAdminTuples,
+  /** Grant the admin-tier roles their relation on SITE_RESOURCE at group level. @since 0.36.0 */
+  bootstrapRoleGrants,
 } from "./auth/authz.ts";
+export {
+  /** The object site-wide permissions are checked on: `app:site`. @since 0.36.0 */
+  SITE_RESOURCE,
+} from "./auth/authz-schema.ts";
 export type {
   /** The Dune-configured AuthSystem type. @since 1.0.0 */
   DuneAuthSystem,

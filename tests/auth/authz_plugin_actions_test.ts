@@ -74,14 +74,14 @@ Deno.test(
       await authz.allow({
         who: { type: "user", id: "alice" },
         toBe: "admin",
-        onWhat: { type: "app", id: "admin" },
+        onWhat: { type: "app", id: "site" },
       });
 
       const allowed = await authz.check({
         who: { type: "user", id: "alice" },
         // deno-lint-ignore no-explicit-any
         canThey: "billing.manage" as any,
-        onWhat: { type: "app", id: "admin" },
+        onWhat: { type: "app", id: "site" },
       });
       assertEquals(allowed, true);
 
@@ -89,7 +89,7 @@ Deno.test(
         who: { type: "user", id: "bob" },
         // deno-lint-ignore no-explicit-any
         canThey: "billing.manage" as any,
-        onWhat: { type: "app", id: "admin" },
+        onWhat: { type: "app", id: "site" },
       });
       assertEquals(deniedForBob, false);
     } finally {

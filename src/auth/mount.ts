@@ -25,7 +25,7 @@ import { createProviders } from "./providers/mod.ts";
 import { type User, USER_HEADER } from "./types.ts";
 import { copySocketAddr } from "../security/rate-limit.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
-import { bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
+import { bootstrapRoleGrants, bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
@@ -192,6 +192,7 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter).catch(() => {});
   } else if (authzStoreCfg === "local") {
     const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
     const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
@@ -212,6 +213,9 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
+    // Idempotent; bootstrap() already did this for its own bundle, a headless
+    // caller's fresh one has not been seeded yet.
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter).catch(() => {});
 
     if (mode === "dune" && userStoreType !== "session") {
       // Bulk-bootstrap from existing site users' roles[] — idempotent.

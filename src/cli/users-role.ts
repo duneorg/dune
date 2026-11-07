@@ -7,7 +7,7 @@
  * dec-identity-unification Phase 6's role-granting mechanism. The admin
  * panel's `PUT /admin/api/users/:id` route already does this over HTTP; these
  * commands do the same two things it does — update the user's `roles[]` and
- * sync the `app:admin` authz tuple `authz.check()` actually reads — for
+ * sync the `app:site` authz tuple `authz.check()` actually reads — for
  * operators without (or before) web access: first-admin bootstrap on a
  * headless install, scripted/CI-driven site provisioning, or granting access
  * to an existing OAuth/magic-link account that has never had an admin-tier
@@ -39,6 +39,7 @@ import { createLocalUserStore } from "../auth/user-store.ts";
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
+import { SITE_RESOURCE } from "../auth/authz-schema.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
@@ -82,7 +83,7 @@ async function openContext(root: string): Promise<Context> {
   return { storage, dataDir, userStore, closeDb: () => Promise.resolve() };
 }
 
-/** Sync the app:admin authz tuple to match `newRole` (undefined = no admin-tier role). */
+/** Sync the app:site authz tuple to match `newRole` (undefined = no admin-tier role). */
 async function syncAdminTuple(
   ctx: Context,
   userId: string,
@@ -103,7 +104,7 @@ async function syncAdminTuple(
     await authz.disallowAllMatching({
       who: { type: "user", id: userId },
       was: previousRole as "admin" | "editor" | "author",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: SITE_RESOURCE,
     }).catch((err) => {
       console.warn(`  ⚠️  Failed to revoke old "${previousRole}" tuple:`, err);
     });
@@ -112,7 +113,7 @@ async function syncAdminTuple(
     await authz.allow({
       who: { type: "user", id: userId },
       toBe: newRole as "admin" | "editor" | "author",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: SITE_RESOURCE,
     });
   }
 }
@@ -179,7 +180,7 @@ async function changeRole(
         } — would update`,
       );
       console.log(
-        `  ~ ${email}: would sync app:admin tuple (${
+        `  ~ ${email}: would sync app:site tuple (${
           previousRole ?? "none"
         } → ${newRole ?? "none"})`,
       );

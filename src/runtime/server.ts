@@ -15,6 +15,7 @@ import { App, staticFiles } from "fresh";
 import { captureHandlerSocketAddr, copySocketAddr } from "../security/rate-limit.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
+import { SITE_RESOURCE } from "../auth/authz-schema.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
 import { getUser, USER_HEADER } from "../auth/types.ts";
@@ -216,7 +217,7 @@ function checkPagesUpdateViaAuthz(
     who: { type: "user", id: userId },
     // deno-lint-ignore no-explicit-any
     canThey: "pages.update" as any,
-    onWhat: { type: "app", id: "admin" },
+    onWhat: SITE_RESOURCE,
   });
 }
 
@@ -456,8 +457,9 @@ export async function createDuneApp(
   // no /auth/* routes, no per-request middleware). mountDuneAuth() must run
   // after mountPlugins() so it can reuse the authz bundle bootstrap()/the
   // admin plugin already built (see mount.ts's own comment on this).
+  let publicAuthz: DuneAuthSystem | null = null;
   if (mountAuth && config.site.auth) {
-    await mountDuneAuth(app, ctx);
+    publicAuthz = (await mountDuneAuth(app, ctx)).authz;
   }
 
   // 6. Inline-edit WebSocket — in core so it works without @dune/plugin-admin.
@@ -495,8 +497,10 @@ export async function createDuneApp(
     if (siteUser) {
       userId = siteUser.id;
       username = siteUser.username ?? siteUser.name ?? siteUser.email;
+      // The public-auth system is the one holding site users' tuples; when
+      // `site.auth.authz_store` is "db" that is not bootstrap()'s local one.
       permitted = await checkInlineEditPermissionForSiteUser(
-        ctx.authz,
+        publicAuthz ?? ctx.authz,
         siteUser,
       );
     } else {
