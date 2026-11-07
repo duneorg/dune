@@ -25,12 +25,12 @@ const ctx = {} as CapabilityContext;
 
 Deno.test("capabilities: a slot is empty until resolved, then active", async () => {
   const reg = createCapabilityRegistry();
-  reg.registrar("admin").provide("auth.session", () => auth("a"));
-  assertEquals(reg.reader.get("auth.session"), undefined, "not resolved yet");
+  reg.registrar("admin").provide("editor.session", () => auth("a"));
+  assertEquals(reg.reader.get("editor.session"), undefined, "not resolved yet");
   assertEquals(reg.reader.providers()[0].status, "unresolved");
   await reg.resolve(ctx);
-  assertExists(reg.reader.get("auth.session"));
-  assertEquals(reg.reader.providers(), [{ name: "auth.session", kind: "slot", provider: "admin", status: "active" }]);
+  assertExists(reg.reader.get("editor.session"));
+  assertEquals(reg.reader.providers(), [{ name: "editor.session", kind: "slot", provider: "admin", status: "active" }]);
 });
 
 Deno.test("capabilities: an unprovided slot is simply absent", async () => {
@@ -51,15 +51,15 @@ Deno.test("capabilities: a later provider replaces an earlier one (any slot but 
   assertEquals(reg.conflicts(), []);
 });
 
-Deno.test("capabilities: two plugins providing auth.session is a conflict, not a replacement", async () => {
+Deno.test("capabilities: two plugins providing editor.session is a conflict, not a replacement", async () => {
   const reg = createCapabilityRegistry();
-  reg.registrar("first").provide("auth.session", () => auth("first"));
-  reg.registrar("second").provide("auth.session", () => auth("second"));
-  reg.registrar("third").provide("auth.session", () => auth("third"));
-  assertEquals(reg.conflicts(), [{ capability: "auth.session", providers: ["first", "second", "third"] }]);
+  reg.registrar("first").provide("editor.session", () => auth("first"));
+  reg.registrar("second").provide("editor.session", () => auth("second"));
+  reg.registrar("third").provide("editor.session", () => auth("third"));
+  assertEquals(reg.conflicts(), [{ capability: "editor.session", providers: ["first", "second", "third"] }]);
   assertEquals(reg.reader.providers().map((p) => p.provider), ["first"], "the first provider is kept");
   await reg.resolve(ctx);
-  const who = await reg.reader.get("auth.session")!.authenticate(new Request("http://x/"));
+  const who = await reg.reader.get("editor.session")!.authenticate(new Request("http://x/"));
   assertEquals(who.user?.id, "first");
   assertStringIncludes(
     describeConflict(reg.conflicts()[0]),
@@ -67,18 +67,18 @@ Deno.test("capabilities: two plugins providing auth.session is a conflict, not a
   );
 });
 
-Deno.test("capabilities: one plugin providing auth.session twice replaces itself with a warning", () => {
+Deno.test("capabilities: one plugin providing editor.session twice replaces itself with a warning", () => {
   const reg = createCapabilityRegistry();
   const r = reg.registrar("only");
-  r.provide("auth.session", () => auth("a"));
-  r.provide("auth.session", () => auth("b"));
+  r.provide("editor.session", () => auth("a"));
+  r.provide("editor.session", () => auth("b"));
   assertEquals(reg.conflicts(), []);
 });
 
 Deno.test("capabilities: factories run once each, in registration order, and may be async", async () => {
   const reg = createCapabilityRegistry();
   const order: string[] = [];
-  reg.registrar("a").provide("auth.session", async () => {
+  reg.registrar("a").provide("editor.session", async () => {
     await new Promise((r) => setTimeout(r, 5));
     order.push("auth");
     return auth("a");
@@ -94,15 +94,15 @@ Deno.test("capabilities: factories run once each, in registration order, and may
 
 Deno.test("capabilities: a throwing factory leaves its slot empty and does not stop the others", async () => {
   const reg = createCapabilityRegistry();
-  reg.registrar("broken").provide("auth.session", () => {
+  reg.registrar("broken").provide("editor.session", () => {
     throw new Error("boom");
   });
   reg.registrar("fine").provide("scheduler.executor", () => ({ execute: () => Promise.resolve() }));
   await reg.resolve(ctx);
-  assertEquals(reg.reader.get("auth.session"), undefined);
+  assertEquals(reg.reader.get("editor.session"), undefined);
   assertExists(reg.reader.get("scheduler.executor"));
   const status = Object.fromEntries(reg.reader.providers().map((p) => [p.name, p.status]));
-  assertEquals(status, { "auth.session": "failed", "scheduler.executor": "active" });
+  assertEquals(status, { "editor.session": "failed", "scheduler.executor": "active" });
 });
 
 Deno.test("capabilities: a factory returning undefined declines the slot", async () => {
@@ -162,7 +162,7 @@ Deno.test("capabilities: the hook registry attributes a plugin's declarations to
     version: "1.0.0",
     hooks: {},
     setup: (api) => {
-      api.capabilities.provide("auth.session", () => auth("mine"));
+      api.capabilities.provide("editor.session", () => auth("mine"));
     },
   });
   await hooks.whenSetupComplete();
@@ -185,7 +185,7 @@ Deno.test(
         version: "1.0.0",
         hooks: {},
         setup: (api) => {
-          api.capabilities.provide("auth.session", () => {
+          api.capabilities.provide("editor.session", () => {
             factoryRanBeforeMount = true;
             return auth("provided");
           });
@@ -197,7 +197,7 @@ Deno.test(
         version: "1.0.0",
         hooks: {},
         async mount({ capabilities }) {
-          const a = capabilities.get("auth.session");
+          const a = capabilities.get("editor.session");
           seen = a ? (await a.authenticate(new Request("http://x/"))).user?.id : undefined;
           if (capabilities.list("admin.pages").length !== 1) seen = "contribution-missing";
         },
@@ -270,7 +270,7 @@ Deno.test(
 );
 
 Deno.test(
-  "mountPlugins: two plugins providing auth.session stop the boot, naming both",
+  "mountPlugins: two plugins providing editor.session stop the boot, naming both",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     const root = await Deno.makeTempDir({ prefix: "dune_test_capabilities_conflict_" });
@@ -282,7 +282,7 @@ Deno.test(
         name,
         version: "1.0.0",
         hooks: {},
-        setup: (api) => api.capabilities.provide("auth.session", () => auth(name)),
+        setup: (api) => api.capabilities.provide("editor.session", () => auth(name)),
         mount: () => {
           mounted = true;
         },
@@ -292,7 +292,7 @@ Deno.test(
         // deno-lint-ignore no-explicit-any
         () => mountPlugins(new App<any>(), ctx),
         Error,
-        "auth.session",
+        "editor.session",
       );
       assertStringIncludes(err.message, '"login-a", "login-b"');
       assertEquals(mounted, false, "no plugin is mounted once the boot is refused");

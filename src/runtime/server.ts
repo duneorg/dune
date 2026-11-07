@@ -432,8 +432,8 @@ export async function createDuneApp(
   // capability slots are resolved. Must run before the plugin public routes
   // below: when an admin package is present, its mount() finalizes them
   // itself, correctly ordered after its own middleware (see the next step).
-  // A route that needs to know who the admin is calls the `auth.session`
-  // capability (`capabilities.get("auth.session")?.authenticate(req)`); there
+  // A route that needs to know who the admin is calls the `editor.session`
+  // capability (`capabilities.get("editor.session")?.authenticate(req)`); there
   // is no shared per-request state to rely on.
   await mountPlugins(app, ctx);
 
@@ -500,7 +500,7 @@ export async function createDuneApp(
         siteUser,
       );
     } else {
-      const adminAuth = ctx.capabilities.get("auth.session");
+      const adminAuth = ctx.capabilities.get("editor.session");
       if (!adminAuth) return new Response("Unauthorized", { status: 401 });
       const authResult = await adminAuth.authenticate(fc.req).catch(() =>
         null

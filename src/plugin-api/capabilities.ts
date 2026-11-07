@@ -11,7 +11,7 @@
  *  - a **slot** has at most one active provider (an object implementing the
  *    contract in {@link Capabilities}); a later registration replaces an
  *    earlier one, with a warning. The exception is {@link EXCLUSIVE_SLOTS}
- *    (`auth.session`): a second plugin providing one is a conflict that stops
+ *    (`editor.session`): a second plugin providing one is a conflict that stops
  *    the boot, because the provider decides who is treated as an editor (the
  *    admin bar, editing markers, the inline-edit WebSocket) and load order
  *    must not;
@@ -97,8 +97,8 @@ export interface AdminPrefix {
 export interface Capabilities {
   /** Where the admin is mounted. Consumers: core's request handling, static build and plugin-route registration. */
   "admin.prefix": AdminPrefix;
-  /** Who is the admin on this request. Consumers: the admin bar's response transform, the inline-edit WebSocket. */
-  "auth.session": RequestAuthenticator;
+  /** Who is treated as an editor on this request. Consumers: the admin bar's response transform, the inline-edit WebSocket. */
+  "editor.session": RequestAuthenticator;
   /** Executes due scheduled actions. Consumer: `dune serve`, which owns the scheduler's polling loop. */
   "scheduler.executor": ScheduledActionExecutor;
   /** Real-time inline editing. Consumers: core's `/api/inline-edit/ws`, the admin. */
@@ -164,13 +164,13 @@ export interface CapabilityReader {
 
 /**
  * Slots where two different plugins providing the same one is an error, not a
- * replacement. `auth.session` decides who is treated as an editor on a request
+ * replacement. `editor.session` decides who is treated as an editor on a request
  * (the admin bar, editing markers, the inline-edit WebSocket, bypassing the
  * shared page cache); `admin.prefix` decides which paths core keeps out of the
  * page cache and away from plugin routes. The winner of either must not depend
  * on plugin load order: one admin per site.
  */
-export const EXCLUSIVE_SLOTS: ReadonlySet<string> = new Set(["auth.session", "admin.prefix"]);
+export const EXCLUSIVE_SLOTS: ReadonlySet<string> = new Set(["editor.session", "admin.prefix"]);
 
 /** An {@link EXCLUSIVE_SLOTS} slot that more than one plugin tried to provide. */
 export interface CapabilityConflict {

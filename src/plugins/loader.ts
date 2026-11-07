@@ -388,7 +388,7 @@ export async function applyResponseTransforms(
  * Idempotent: slots that have resolved are not run again, so the app builder,
  * `dune build` and any other caller that needs to read a slot can call it.
  * A throwing factory is logged and leaves its slot empty, but two setups the
- * site cannot sensibly run with stop the boot: an exclusive slot (`auth.session`,
+ * site cannot sensibly run with stop the boot: an exclusive slot (`editor.session`,
  * `admin.prefix`) provided by two different plugins, and an `admin.prefix` that
  * is not a usable path. Both would otherwise change which requests core treats
  * as the admin's, so a bad value must not quietly mean "no admin".

@@ -19,7 +19,7 @@ export const DOCTOR_REPORT_ENV = "DUNE_DOCTOR_REPORT";
 export interface DoctorReport {
   /** Every capability slot and contribution point with a provider. */
   providers: CapabilityProvider[];
-  /** Exclusive slots (`auth.session`) that more than one plugin provided; the site did not finish booting. */
+  /** Exclusive slots (`editor.session`) that more than one plugin provided; the site did not finish booting. */
   conflicts?: CapabilityConflict[];
   /** Scheduled actions waiting to run (they only run while a `scheduler.executor` is provided). */
   scheduledActions: number;

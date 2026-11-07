@@ -96,14 +96,14 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 ### Changed — BREAKING
 
 - **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
-  switch (#97).** The `auth.session` provider declares the cookies that carry its session
+  switch (#97).** The `editor.session` provider declares the cookies that carry its session
   (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
   `authenticate()` on a public page and whether to keep the response out of the shared page
   cache (an editor's response must never be cached for anonymous visitors). Undeclared, any
   request with a `Cookie` header counts as possibly signed in. Before, both decisions were
   hard-wired to the cookie `dune_session`, so a replacement admin using another cookie name
   got no admin bar and could have its editor-rendered pages cached for everyone. The authz
-  system is now also created when a plugin provides `auth.session`, even with
+  system is now also created when a plugin provides `editor.session`, even with
   `admin.enabled: false`; before, a replacement admin had no authz and every `pages.update`
   check failed closed.
 - **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
@@ -120,7 +120,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   staged-preview route uses core's own staging engine
   (`pluginServices.engines.staging`). Who the admin is on a request (the admin bar's
   response transform, the inline-edit WebSocket's admin fallback) comes from the
-  `auth.session` capability. `dune serve` starts the workflow scheduler's polling loop
+  `editor.session` capability. `dune serve` starts the workflow scheduler's polling loop
   only when a plugin provides `scheduler.executor`, and hands the job scheduler to
   plugins as `BootstrapResult.jobScheduler`. `ResponseTransformContext.barActions`
   carries the `bar.actions` contributions. A plugin-admin that still only fills the
@@ -144,7 +144,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
     `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
   - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).
     A plugin route that needs to know who the admin is calls
-    `capabilities.get("auth.session")?.authenticate(req)`; there is no shared
+    `capabilities.get("editor.session")?.authenticate(req)`; there is no shared
     per-request state to rely on, so nothing needs admin middleware to be mounted first.
   - `BootstrapResult.adminContext`, the untyped bag core used to read from the admin.
   `/api/inline-edit/ws` now takes its manager from the `editor.inline` capability.
@@ -236,7 +236,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 - **`dune doctor --boot` says who provides what, and checks the admin (#97).**
   The booted site reports its capability slots and contribution points (and
   writes one `capabilities.resolved` log line at startup). Doctor lists them and
-  errors when the admin is enabled but no plugin provides `auth.session` (the
+  errors when the admin is enabled but no plugin provides `editor.session` (the
   site boots, but nobody can sign in and there is no editing bar) or when a
   provider's factory threw, and warns when scheduled actions are queued with no
   `scheduler.executor`. Findings gain an `info` severity, which never fails a run.
@@ -245,13 +245,13 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for
   contribution points) and `MountApi.capabilities` / `BootstrapResult.capabilities`
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
-  `ctx.adminContext` bag. First-party keys: slots `auth.session`,
+  `ctx.adminContext` bag. First-party keys: slots `editor.session`,
   `scheduler.executor`, `editor.inline`, `editor.content`; contribution points
   `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
-  one with a warning, except `auth.session` and `admin.prefix`: two different plugins providing
+  one with a warning, except `editor.session` and `admin.prefix`: two different plugins providing
   either stops the boot with an error naming both (the winner must not depend on load
-  order: `auth.session` decides who is treated as an editor, `admin.prefix` which paths
+  order: `editor.session` decides who is treated as an editor, `admin.prefix` which paths
   core reserves; one admin per site; `dune doctor --boot` reports it too). An
   `admin.prefix` that is not a usable path (`admin/`, `/`, `/admin/`) also stops the boot
   rather than meaning "no admin". A
