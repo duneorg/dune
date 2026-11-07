@@ -139,6 +139,21 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Core gates `/api/inline-edit/*`; the `editor.inline` provider serves it (#127).** Core resolves who
+  is editing (a site user, else the `editor.session` provider's user, both holding `pages.update` by
+  `authz.check()`), checks that writes are same-origin, and hands the request to the provider's new
+  `InlineEditManager.handleRequest(req, { editor, path, pageFrontmatter })`. The inline-edit
+  WebSocket and the bar use the same resolver (`createEditorResolver()`), so a signed-in site user who
+  may edit now gets the bar too, and any signed-in request bypasses the shared page cache. The
+  `source` / `commit` / `fields` routes that lived in the admin move to the provider
+  (`/api/inline-edit/content/<path>/...`). `InlineEditManager` loses `commit` and `patchFields` (core
+  never called them) and gains `handleRequest`; exports `EditorIdentity` and
+  `InlineEditRequestContext` (`@dune/core/inline-edit`). `runPluginResponseTransforms()` takes
+  `resolveEditor` instead of `auth`, `authz` and `sessionCookies`. `checkInlineEditPermission()` and
+  `checkInlineEditPermissionForSiteUser()` are gone.
+- **Page events carry an optional `actor`.** `onPageCreate`, `onPageUpdate`, `onPageDelete` and
+  `onPageMove` payloads may include `actor?: string`, the user's name when a person did the write.
+
 - **The contract keeps only what core consumes; each plugin declares its own extension points
   (#127).** `AdminPageRegistration`, `AdminRouteRegistration`, `ContentEditorPlugin`,
   `AdminBarAction` and `AdminBarActionContext` leave `@dune/core/plugins` and
