@@ -5,7 +5,7 @@
   "author": "zumbrunn (https://zumbrunn.com)",
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@dune/plugin-admin", "jsr:@dune/core"]
+    "exclude": ["jsr:@dune/plugin-admin", "jsr:@dune/core", "jsr:@dune/plugin-api"]
   },
   "exports": {
     ".": "./src/mod.ts",
@@ -60,6 +60,7 @@
     "./watchdog": "./src/runtime/watchdog.ts"
   },
   "imports": {
+    "@dune/plugin-api": "jsr:@dune/plugin-api@^1",
     "@dune/plugin-admin": "jsr:@dune/plugin-admin@*",
     "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@*/admin/mount",
     "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@*/admin/context",
