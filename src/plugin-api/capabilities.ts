@@ -77,10 +77,22 @@ export interface ScheduledActionExecutor {
 }
 
 /**
+ * Where the admin lives. Core never assumes an admin exists or where it is
+ * mounted: it reads this slot to keep admin routes out of the page cache, the
+ * static build and the plugin-route namespace. No provider means no admin.
+ */
+export interface AdminPrefix {
+  /** URL path prefix the admin is mounted at: starts with `/`, no trailing slash (e.g. `/admin`). */
+  readonly prefix: string;
+}
+
+/**
  * Slots. An `interface` so a later release can open it to declaration merging;
  * 1.0 ships first-party keys only and third-party keys are unsupported.
  */
 export interface Capabilities {
+  /** Where the admin is mounted. Consumers: core's request handling, static build and plugin-route registration. */
+  "admin.prefix": AdminPrefix;
   /** Who is the admin on this request. Consumers: the admin bar's response transform, the inline-edit WebSocket. */
   "auth.session": RequestAuthenticator;
   /** Executes due scheduled actions. Consumer: `dune serve`, which owns the scheduler's polling loop. */
@@ -153,6 +165,20 @@ export interface CapabilityRegistry {
   reader: CapabilityReader;
   /** Run the slot factories that have not run yet, in registration order. Never throws. */
   resolve(ctx: CapabilityContext): Promise<void>;
+}
+
+/**
+ * The admin URL prefix, or `null` when no plugin provides one (or the provided
+ * value is not a usable prefix). Read it lazily: slots resolve after `setup()`.
+ */
+export function adminPrefixOf(reader: CapabilityReader): string | null {
+  const prefix = reader.get("admin.prefix")?.prefix;
+  if (typeof prefix !== "string") return null;
+  if (prefix.length < 2 || !prefix.startsWith("/") || prefix.endsWith("/")) {
+    logger.warn("capabilities.admin_prefix_invalid", { prefix });
+    return null;
+  }
+  return prefix;
 }
 
 // ── Implementation ───────────────────────────────────────────────────────────

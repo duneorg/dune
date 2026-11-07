@@ -2,13 +2,14 @@ import { assertEquals, assertExists } from "@std/assert";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
-import { mountPlugins } from "../../src/plugins/loader.ts";
+import { mountPlugins, resolveCapabilities } from "../../src/plugins/loader.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 import { MemoryStorageAdapter } from "../../src/storage/memory.ts";
 import {
+  adminPrefixOf,
   type CapabilityContext,
   createCapabilityRegistry,
   type RequestAuthenticator,
@@ -183,6 +184,59 @@ Deno.test(
       assertEquals(factoryRanBeforeMount, true);
       assertEquals(seen, "provided");
       assertEquals(ctx.capabilities.providers().some((p) => p.provider === "test-provider"), true);
+    } finally {
+      await removeWithRetry(root);
+    }
+  },
+);
+
+Deno.test("adminPrefixOf: the provided prefix, or null when there is none", async () => {
+  const reg = createCapabilityRegistry();
+  assertEquals(adminPrefixOf(reg.reader), null, "nothing provided");
+  reg.registrar("admin").provide("admin.prefix", () => ({ prefix: "/cms" }));
+  assertEquals(adminPrefixOf(reg.reader), null, "not resolved yet");
+  await reg.resolve(ctx);
+  assertEquals(adminPrefixOf(reg.reader), "/cms");
+});
+
+Deno.test("adminPrefixOf: refuses a prefix that is not a usable path prefix", async () => {
+  for (const bad of ["", "/", "admin", "/admin/"]) {
+    const reg = createCapabilityRegistry();
+    reg.registrar("admin").provide("admin.prefix", () => ({ prefix: bad }));
+    await reg.resolve(ctx);
+    assertEquals(adminPrefixOf(reg.reader), null, `"${bad}" must not become the admin prefix`);
+  }
+});
+
+Deno.test(
+  "resolveCapabilities: resolves slots once, before mount, and can be called again",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const root = await Deno.makeTempDir({ prefix: "dune_test_resolve_caps_" });
+    try {
+      await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n");
+      await Deno.mkdir(join(root, "config"), { recursive: true });
+      await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
+      let runs = 0;
+      const plugin: DunePlugin = {
+        name: "test-admin",
+        version: "1.0.0",
+        hooks: {},
+        setup(api) {
+          api.capabilities.provide("admin.prefix", () => {
+            runs++;
+            return { prefix: "/cms" };
+          });
+        },
+      };
+      const boot = await bootstrap(root, { plugins: [plugin] });
+      await resolveCapabilities(boot);
+      assertEquals(adminPrefixOf(boot.capabilities), "/cms");
+      await resolveCapabilities(boot);
+      // deno-lint-ignore no-explicit-any
+      await mountPlugins(new App<any>(), boot);
+      assertEquals(runs, 1, "the factory runs once however many times slots are resolved");
     } finally {
       await removeWithRetry(root);
     }

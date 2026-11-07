@@ -19,6 +19,7 @@ import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
 import { getUser, USER_HEADER } from "../auth/types.ts";
 import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
+import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { trackRequest } from "./watchdog.ts";
 import { duneRoutes } from "../routing/routes.ts";
 import { buildPluginClientBundles } from "../cli/client-bundles.ts";
@@ -126,7 +127,7 @@ export function stripUserHeader(req: Request): Request {
 function stripSetCookieOnAdmin(
   res: Response,
   pathname: string,
-  prefix: string,
+  prefix: string | null,
 ): Response {
   if (!isAdminPath(pathname, prefix)) return res;
   if (!res.headers.has("set-cookie")) return res;
@@ -260,7 +261,10 @@ export async function createDuneApp(
   const startTime = Date.now();
   const feedEnabled = config.site.feed?.enabled !== false;
   const siteName = engine.site.title;
-  const adminPrefix = config.admin?.path ?? "/admin";
+  // Where the admin is mounted comes from whichever plugin provides the
+  // `admin.prefix` slot; none means there is no admin. Slots resolve in
+  // mountPlugins(), after this function starts, so read it per use.
+  const getAdminPrefix = () => adminPrefixOf(ctx.capabilities);
 
   const routes = duneRoutes(
     engine,
@@ -385,7 +389,7 @@ export async function createDuneApp(
       sanitizedReq,
     );
     if (hookResult instanceof Response) {
-      if (isAdminPath(fc.url.pathname, adminPrefix)) {
+      if (isAdminPath(fc.url.pathname, getAdminPrefix())) {
         console.warn(
           `[dune] plugin onRequest tried to short-circuit admin path ${fc.url.pathname}; ignoring response.`,
         );
@@ -395,7 +399,7 @@ export async function createDuneApp(
       const finalResponse = stripSetCookieOnAdmin(
         hookResult,
         fc.url.pathname,
-        adminPrefix,
+        getAdminPrefix(),
       );
       metrics?.recordRequest(
         fc.url.pathname,
@@ -445,7 +449,7 @@ export async function createDuneApp(
   // admin is disabled (headless mode), nothing calls it during
   // mountPlugins(), so this call is what actually registers the routes —
   // unchanged from the behavior commit 77bf31f introduced this call to fix.
-  registerPluginPublicRoutes(app, ctx, { adminPrefix });
+  registerPluginPublicRoutes(app, ctx, { adminPrefix: getAdminPrefix() });
 
   // 5b. Public auth — only when the site has an `auth:` block at all, so
   // sites that never opted in get zero behavior change (no new directories,
@@ -536,7 +540,7 @@ export async function createDuneApp(
     cacheDefaults,
     feedEnabled,
     siteName,
-    adminPrefix,
+    adminPrefix: getAdminPrefix,
     routes,
   });
 

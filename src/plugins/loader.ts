@@ -382,6 +382,43 @@ export async function applyResponseTransforms(
 }
 
 /**
+ * Settle every plugin's `setup()` and resolve the capability slots.
+ *
+ * Idempotent: slots that have resolved are not run again, so the app builder,
+ * `dune build` and any other caller that needs to read a slot can call it.
+ * Never throws (a throwing factory is logged and leaves its slot empty).
+ */
+export async function resolveCapabilities(
+  ctx: import("../runtime/bootstrap.ts").BootstrapResult,
+): Promise<void> {
+  // Plugin setup() is fire-and-forget at registration time (see
+  // registry.ts's registerPlugin()), so a plugin's async setup() work
+  // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
+  // here. Capability factories and mount() both read state setup()
+  // initializes, so wait for every plugin's setup() to settle before any of
+  // them run.
+  await ctx.hooks.whenSetupComplete();
+
+  // Capability slots: every plugin has declared by now, and the infrastructure
+  // a factory may need (history, hooks, storage) exists. A throwing factory is
+  // logged and leaves its slot empty; it never stops the mount.
+  await ctx.capabilityRegistry.resolve({
+    storage: ctx.storage,
+    config: ctx.config,
+    history: ctx.history,
+    hooks: ctx.hooks,
+    services: ctx.pluginServices,
+    dataDir: resolveRuntimeDir(ctx.config),
+    // NOTE: intentionally still the raw config value, not engine.contentDir.
+    // `storage` is dual-purpose (content AND data files), so this pair only
+    // stays correct when content.src is unset. Supporting content.src here
+    // needs separate content/data storage fields; content.src's driving use
+    // case (multisite demo fixtures) has no admin.
+    contentDir: ctx.config.system.content.dir,
+  });
+}
+
+/**
  * Resolve the plugins' capability slots, then call every plugin's `mount()`
  * hook in registration order.
  *
@@ -411,33 +448,10 @@ export async function mountPlugins(
   app: import("fresh").App<any>,
   ctx: import("../runtime/bootstrap.ts").BootstrapResult,
 ): Promise<void> {
-  // Plugin setup() is fire-and-forget at registration time (see
-  // registry.ts's registerPlugin()), so a plugin's async setup() work
-  // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
-  // here. Capability factories and mount() both read state setup()
-  // initializes, so wait for every plugin's setup() to settle before any of
-  // them run.
-  await ctx.hooks.whenSetupComplete();
+  await resolveCapabilities(ctx);
 
   const registeredOrder = ctx.hooks.plugins();
 
-  // Capability slots: every plugin has declared by now, and the infrastructure
-  // a factory may need (history, hooks, storage) exists. A throwing factory is
-  // logged and leaves its slot empty; it never stops the mount.
-  await ctx.capabilityRegistry.resolve({
-    storage: ctx.storage,
-    config: ctx.config,
-    history: ctx.history,
-    hooks: ctx.hooks,
-    services: ctx.pluginServices,
-    dataDir: resolveRuntimeDir(ctx.config),
-    // NOTE: intentionally still the raw config value, not engine.contentDir.
-    // `storage` is dual-purpose (content AND data files), so this pair only
-    // stays correct when content.src is unset. Supporting content.src here
-    // needs separate content/data storage fields; content.src's driving use
-    // case (multisite demo fixtures) has no admin.
-    contentDir: ctx.config.system.content.dir,
-  });
 
   logger.info("capabilities.resolved", {
     providers: ctx.capabilityRegistry.reader.providers()

@@ -20,6 +20,7 @@ export type {
 } from "./services.ts";
 export { createPluginServices } from "./create-services.ts";
 export type {
+  AdminPrefix,
   AuthenticateResult,
   CapabilityContext,
   CapabilityFactory,
@@ -31,7 +32,7 @@ export type {
   RequestAuthenticator,
   ScheduledActionExecutor,
 } from "./capabilities.ts";
-export { createCapabilityRegistry } from "./capabilities.ts";
+export { adminPrefixOf, createCapabilityRegistry } from "./capabilities.ts";
 export type { CapabilityRegistry } from "./capabilities.ts";
 export type { PluginApp, PluginRouteContext, PluginRouteHandler } from "./app.ts";
 export type { PluginRuntime } from "./runtime.ts";

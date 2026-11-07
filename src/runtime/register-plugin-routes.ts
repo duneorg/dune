@@ -20,8 +20,8 @@ import type { BootstrapResult } from "./bootstrap.ts";
 
 /** Options for {@link registerPluginPublicRoutes}. */
 export interface RegisterPluginPublicRoutesOptions {
-  /** The site's admin path prefix (e.g. "/admin"), so plugin routes can't shadow it. */
-  adminPrefix: string;
+  /** The site's admin path prefix (e.g. "/admin"), so plugin routes can't shadow it; null when there is no admin. */
+  adminPrefix: string | null;
 }
 
 /**
@@ -62,7 +62,7 @@ export function registerPluginPublicRoutes(
   if (registeredFor.has(ctx)) return;
   registeredFor.add(ctx);
   const reservedPrefixes = [
-    options.adminPrefix,
+    ...(options.adminPrefix ? [options.adminPrefix] : []),
     "/api/forms",
     "/api/webhook",
     "/api/inline-edit",

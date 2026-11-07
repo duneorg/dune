@@ -119,3 +119,50 @@ Deno.test(
     });
   },
 );
+
+async function hybridSite(root: string): Promise<void> {
+  await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
+  await Deno.writeTextFile(
+    join(root, "content", "01.home", "default.md"),
+    "---\ntitle: Home\n---\n\n# Home\n",
+  );
+  // No built-in admin: these tests supply (or withhold) the admin.prefix slot themselves.
+  await Deno.mkdir(join(root, "config"), { recursive: true });
+  await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
+}
+
+Deno.test(
+  "buildStatic hybrid: the admin routes come from the admin.prefix slot",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await hybridSite(root);
+      const ctx = await bootstrap(root, {});
+      ctx.capabilityRegistry.registrar("test-admin").provide("admin.prefix", () => ({ prefix: "/cms" }));
+      await buildStatic(root, ctx, { ...ssgOpts, hybrid: true });
+
+      const routes = JSON.parse(await Deno.readTextFile(join(root, "dist", "_routes.json")));
+      assertEquals(routes.include, ["/cms/*", "/api/*"]);
+      const redirects = await Deno.readTextFile(join(root, "dist", "_redirects"));
+      assertEquals(redirects.includes("/cms/*  /.netlify/functions/dune  200"), true);
+      assertEquals(redirects.includes("/admin/"), false);
+    });
+  },
+);
+
+Deno.test(
+  "buildStatic hybrid: with no admin installed only the API is forwarded",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    await withTempSite(async (root) => {
+      await hybridSite(root);
+      const ctx = await bootstrap(root, {});
+      await buildStatic(root, ctx, { ...ssgOpts, hybrid: true });
+
+      const routes = JSON.parse(await Deno.readTextFile(join(root, "dist", "_routes.json")));
+      assertEquals(routes.include, ["/api/*"]);
+      const redirects = await Deno.readTextFile(join(root, "dist", "_redirects"));
+      assertEquals(redirects, "/api/*  /.netlify/functions/dune  200\n");
+    });
+  },
+);
