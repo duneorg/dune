@@ -31,6 +31,7 @@
 import { join } from "@std/path";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { DOCTOR_REPORT_ENV, type DoctorReport } from "../plugin-api/doctor-report.ts";
+import { describeConflict } from "../plugin-api/capabilities.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { formatNpmCacheMismatchError, isNpmCacheMismatchError } from "./npm-cache-error.ts";
@@ -145,7 +146,7 @@ export function searchDegradedFindings(healthStatus: unknown, bootOutput: string
  * What the booted site's capability report means: who provides what, and
  * whether the setup is sound. Pure so it is testable without booting a site.
  *
- * - An enabled admin with no active `auth.session` is an error: the site
+ * - An enabled admin with no active `editor.session` is an error: the site
  *   boots, but there is no way to sign in and no admin bar, silently.
  * - A provider whose factory threw is an error: its slot is empty and the only
  *   other trace is a log line.
@@ -164,6 +165,10 @@ export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: b
     findings.push({ category: "capabilities", severity: "info", message: `What plugins provide:\n${lines.join("\n")}` });
   }
 
+  for (const c of report.conflicts ?? []) {
+    findings.push({ category: "capabilities", severity: "error", message: describeConflict(c) });
+  }
+
   for (const p of report.providers) {
     if (p.kind === "slot" && p.status === "failed") {
       findings.push({
@@ -175,11 +180,11 @@ export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: b
     }
   }
 
-  if (opts.adminEnabled && slot("auth.session")?.status !== "active") {
+  if (opts.adminEnabled && slot("editor.session")?.status !== "active") {
     findings.push({
       category: "capabilities",
       severity: "error",
-      message: `The admin is enabled but no plugin provides "auth.session", so nobody can sign in ` +
+      message: `The admin is enabled but no plugin provides "editor.session", so nobody can sign in ` +
         `and no editing bar is shown. Install the admin plugin, or set \`admin.enabled: false\`.`,
     });
   }

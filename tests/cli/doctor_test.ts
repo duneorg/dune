@@ -219,11 +219,11 @@ Deno.test(
   async () => {
     const root = await bootFixture(JSON.stringify({ providers: [], scheduledActions: 0 }));
     try {
-      // admin.enabled defaults to true, and this "site" provides no auth.session.
+      // admin.enabled defaults to true, and this "site" provides no editor.session.
       const findings = await runDoctorChecks(root, { boot: true });
       const caps = findings.filter((f) => f.category === "capabilities");
       assertEquals(caps.map((f) => f.severity), ["error"]);
-      assertStringIncludes(caps[0].message, "auth.session");
+      assertStringIncludes(caps[0].message, "editor.session");
     } finally {
       await Deno.remove(root, { recursive: true }).catch(() => {});
     }
