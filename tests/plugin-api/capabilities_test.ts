@@ -17,6 +17,16 @@ import {
   type RequestAuthenticator,
 } from "../../src/plugin-api/capabilities.ts";
 
+// The contract names no extension point of a plugin's own. A plugin declares
+// its keys next to its types by declaration merging, prefixed with its name;
+// these two stand in for `admin.pages` / `admin.routes` of the admin plugin.
+declare module "../../src/plugin-api/capabilities.ts" {
+  interface Contributions {
+    "test.pages": { path: string; label: string; permission: string; handler: () => Response };
+    "test.routes": { method: "GET" | "POST" | "DELETE"; path: string; permission: string; handler: () => Response };
+  }
+}
+
 const auth = (name: string): RequestAuthenticator => ({
   authenticate: () => Promise.resolve({ authenticated: true, user: { id: name, username: name } }),
 });
@@ -37,7 +47,7 @@ Deno.test("capabilities: an unprovided slot is simply absent", async () => {
   const reg = createCapabilityRegistry();
   await reg.resolve(ctx);
   assertEquals(reg.reader.get("editor.inline"), undefined);
-  assertEquals(reg.reader.list("bar.actions"), []);
+  assertEquals(reg.reader.list("test.pages"), []);
   assertEquals(reg.reader.providers(), []);
 });
 
@@ -116,13 +126,13 @@ Deno.test("capabilities: a factory returning undefined declines the slot", async
 Deno.test("capabilities: contributions append in registration order and name their provider", () => {
   const reg = createCapabilityRegistry();
   const page = (path: string) => ({ path, label: path, permission: "pages.read", handler: () => new Response("") });
-  reg.registrar("x").contribute("admin.pages", page("/x"));
-  reg.registrar("y").contribute("admin.pages", page("/y"));
-  assertEquals(reg.reader.list("admin.pages").map((p) => p.path), ["/x", "/y"]);
-  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["admin.pages:x", "admin.pages:y"]);
+  reg.registrar("x").contribute("test.pages", page("/x"));
+  reg.registrar("y").contribute("test.pages", page("/y"));
+  assertEquals(reg.reader.list("test.pages").map((p) => p.path), ["/x", "/y"]);
+  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["test.pages:x", "test.pages:y"]);
 });
 
-Deno.test("capabilities: admin.routes contributions keep their method and order", () => {
+Deno.test("capabilities: test.routes contributions keep their method and order", () => {
   const reg = createCapabilityRegistry();
   const route = (method: "GET" | "POST" | "DELETE", path: string) => ({
     method,
@@ -130,27 +140,13 @@ Deno.test("capabilities: admin.routes contributions keep their method and order"
     permission: "config.update",
     handler: () => new Response(""),
   });
-  reg.registrar("a").contribute("admin.routes", route("POST", "/api/a/save"));
-  reg.registrar("b").contribute("admin.routes", route("DELETE", "/api/b/item"));
-  assertEquals(reg.reader.list("admin.routes").map((r) => `${r.method} ${r.path}`), [
+  reg.registrar("a").contribute("test.routes", route("POST", "/api/a/save"));
+  reg.registrar("b").contribute("test.routes", route("DELETE", "/api/b/item"));
+  assertEquals(reg.reader.list("test.routes").map((r) => `${r.method} ${r.path}`), [
     "POST /api/a/save",
     "DELETE /api/b/item",
   ]);
   assertEquals(reg.reader.providers().map((p) => p.provider), ["a", "b"]);
-});
-
-Deno.test("capabilities: an admin.pages contribution must name a permission (compile-time)", () => {
-  const reg = createCapabilityRegistry();
-  // @ts-expect-error `permission` is required on admin.pages
-  reg.registrar("a").contribute("admin.pages", { path: "/x", label: "X", handler: () => new Response("") });
-  assertEquals(reg.reader.list("admin.pages").length, 1);
-});
-
-Deno.test("capabilities: an admin.routes contribution must name a permission (compile-time)", () => {
-  const reg = createCapabilityRegistry();
-  // @ts-expect-error `permission` is required on admin.routes
-  reg.registrar("a").contribute("admin.routes", { method: "POST", path: "/x", handler: () => new Response("") });
-  assertEquals(reg.reader.list("admin.routes").length, 1);
 });
 
 Deno.test("capabilities: the hook registry attributes a plugin's declarations to its name", async () => {
@@ -189,7 +185,7 @@ Deno.test(
             factoryRanBeforeMount = true;
             return auth("provided");
           });
-          api.capabilities.contribute("admin.pages", { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
+          api.capabilities.contribute("test.pages", { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
         },
       };
       const consumer: DunePlugin = {
@@ -199,7 +195,7 @@ Deno.test(
         async mount({ capabilities }) {
           const a = capabilities.get("editor.session");
           seen = a ? (await a.authenticate(new Request("http://x/"))).user?.id : undefined;
-          if (capabilities.list("admin.pages").length !== 1) seen = "contribution-missing";
+          if (capabilities.list("test.pages").length !== 1) seen = "contribution-missing";
         },
       };
 

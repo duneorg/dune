@@ -38,7 +38,7 @@ interface AdminAuthMiddleware {
   authenticate(req: Request): Promise<unknown>;
 }
 import type { DuneConfig } from "../config/types.ts";
-import type { AdminBarAction, AdminBarActionContext, DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
+import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
 import { highestAdminRole, roleHasPermission, SITE_RESOURCE } from "../auth/authz-schema.ts";
@@ -72,11 +72,6 @@ export interface RunResponseTransformsOptions {
   auth: AdminAuthMiddleware | null;
   /** Cookies that carry the `editor.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
   sessionCookies?: readonly string[];
-  /**
-   * Bar buttons contributed to the `bar.actions` point, in plugin registration
-   * order. Handed to transform plugins as `ResponseTransformContext.barActions`.
-   */
-  barActions?: readonly ((ctx: AdminBarActionContext) => AdminBarAction[])[];
   /**
    * Polizy authz system — the sole authority for the `pages.update` check
    * below (dec-identity-unification Phase 5c/7). Undefined only when authz
@@ -134,7 +129,6 @@ export async function runPluginResponseTransforms(
     config,
     adminPrefix,
     actionToRelations,
-    barActions = [],
     sessionCookies,
   } = opts;
 
@@ -202,12 +196,6 @@ export async function runPluginResponseTransforms(
           template: matchedPage.template,
         }
         : null,
-      // "" when no admin is installed: plugins that build admin links only do so for a signed-in admin.
-      adminPrefix: adminPrefix ?? "",
-      // A plugin can contribute to `bar.actions` without declaring
-      // transformResponse itself, so the list comes from the contribution
-      // point, not from the plugins selected to run a transform.
-      barActions,
     });
   }
 

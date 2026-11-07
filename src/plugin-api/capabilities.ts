@@ -29,14 +29,7 @@
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { HistoryEngine } from "../history/mod.ts";
-import type {
-  AdminBarAction,
-  AdminBarActionContext,
-  AdminPageRegistration,
-  AdminRouteRegistration,
-  ContentEditorPlugin,
-  HookRegistry,
-} from "../hooks/types.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import type { InlineEditManager } from "../inline-edit/types.ts";
 import type { ScheduledAction } from "../workflow/types.ts";
 import type { PluginServices } from "./services.ts";
@@ -91,8 +84,22 @@ export interface AdminPrefix {
 }
 
 /**
- * Slots. An `interface` so a later release can open it to declaration merging;
- * 1.0 ships first-party keys only and third-party keys are unsupported.
+ * Slots: what core itself consumes, or what every plugin may rely on.
+ *
+ * Open to declaration merging. A plugin that offers an extension point of its
+ * own declares the key next to its types, so core's contract does not grow with
+ * every plugin's features:
+ *
+ * ```ts
+ * declare module "@dune/plugin-api" {
+ *   interface Capabilities { "admin.editor": ContentEditorPlugin }
+ * }
+ * ```
+ *
+ * The rule: **a key is prefixed with the name of the plugin that consumes it**
+ * (`admin.*` is the admin's, `bar.*` plugin-inline-edit's). Unprefixed
+ * namespaces (`auth`, `editor`, `scheduler`, `admin.prefix`) belong to core.
+ * Core never reads a key it did not declare.
  */
 export interface Capabilities {
   /** Where the admin is mounted. Consumers: core's request handling, static build and plugin-route registration. */
@@ -103,19 +110,15 @@ export interface Capabilities {
   "scheduler.executor": ScheduledActionExecutor;
   /** Real-time inline editing. Consumers: core's `/api/inline-edit/ws`, the admin. */
   "editor.inline": InlineEditManager;
-  /** A replacement page editor. Consumer: the admin. */
-  "editor.content": ContentEditorPlugin;
 }
 
-/** Contribution points. */
-export interface Contributions {
-  /** An extra admin page. Consumer: the admin. */
-  "admin.pages": AdminPageRegistration;
-  /** A guarded admin route (any method) under the admin prefix. Consumer: the admin, which applies authentication, CSRF and permission checks. */
-  "admin.routes": AdminRouteRegistration;
-  /** Buttons for the admin bar. Consumer: the bar renderer, via core's response transforms. */
-  "bar.actions": (ctx: AdminBarActionContext) => AdminBarAction[];
-}
+/**
+ * Contribution points: one item from each contributing plugin. Open to
+ * declaration merging under the same rule as {@link Capabilities}. Core
+ * declares none: every point today belongs to the plugin that reads it.
+ */
+// deno-lint-ignore no-empty-interface
+export interface Contributions {}
 
 /** What a slot factory receives: core infrastructure that exists once `setup()`s have settled. */
 export interface CapabilityContext {
