@@ -1,11 +1,9 @@
 /**
  * Tests for src/runtime/server.ts's standalone helper functions:
  *
- * - checkInlineEditPermission() / checkInlineEditPermissionForSiteUser() —
- *   the pages.update decision behind /api/inline-edit/ws, for an admin
- *   session and a public-auth (src/auth/) session respectively —
- *   dec-identity-unification Phase 5c/7's authz-first cutover, extended to
- *   let the inline-edit WS route work without @dune/plugin-admin at all.
+ * - assertInlineEditSameOrigin() — the origin gate on /api/inline-edit/*
+ *   requests that change something. (The pages.update decision itself lives
+ *   in tests/auth/editor_test.ts.)
  * - stripUserHeader() — part of the internal x-dune-user header handling
  *   (dec-identity-unification's User rename); ensures the header is only
  *   ever set by Dune's own middleware, never accepted from an incoming
@@ -22,98 +20,36 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertInlineEditWsOrigin,
-  checkInlineEditPermission,
-  checkInlineEditPermissionForSiteUser,
+  assertInlineEditSameOrigin,
   isIndexedInlineEditPath,
   isSafeInlineEditPath,
   stripUserHeader,
 } from "../../src/runtime/server.ts";
 import { clientIp, rememberSocketAddr } from "../../src/security/rate-limit.ts";
-import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import { USER_HEADER } from "../../src/auth/types.ts";
 
-function makeAuthz(allowed: boolean) {
-  const calls = { check: 0 };
-  return {
-    calls,
-    // deno-lint-ignore no-explicit-any
-    check(_args: any): Promise<boolean> {
-      calls.check++;
-      return Promise.resolve(allowed);
-    },
-  };
+// ── assertInlineEditSameOrigin ──────────────────────────────────────────
+
+function req(method: string, headers: Record<string, string> = {}): Request {
+  return new Request("https://site.test/api/inline-edit/content/x/commit", { method, headers });
 }
 
-const authResult = { authenticated: true, user: { id: "u1" } };
-
-Deno.test("checkInlineEditPermission: allows when authz.check() allows", async () => {
-  const authz = makeAuthz(true);
-  const result = await checkInlineEditPermission(
-    authz as unknown as DuneAuthSystem,
-    authResult,
-  );
-  assertEquals(result, true);
-  assertEquals(authz.calls.check, 1);
+Deno.test("assertInlineEditSameOrigin: reads need no origin", () => {
+  assertEquals(assertInlineEditSameOrigin(req("GET")), null);
 });
 
-Deno.test("checkInlineEditPermission: denies when authz.check() denies", async () => {
-  const authz = makeAuthz(false);
-  const result = await checkInlineEditPermission(
-    authz as unknown as DuneAuthSystem,
-    authResult,
-  );
-  assertEquals(result, false);
-  assertEquals(authz.calls.check, 1);
+Deno.test("assertInlineEditSameOrigin: a write from the same origin passes", () => {
+  assertEquals(assertInlineEditSameOrigin(req("POST", { origin: "https://site.test" })), null);
 });
 
-Deno.test("checkInlineEditPermission: fails closed (denies) when authz is undefined, no ROLE_PERMISSIONS fallback", async () => {
-  const result = await checkInlineEditPermission(undefined, authResult);
-  assertEquals(result, false);
+Deno.test("assertInlineEditSameOrigin: a write from another origin is refused", () => {
+  assertEquals(assertInlineEditSameOrigin(req("PATCH", { origin: "https://evil.test" }))?.status, 403);
 });
 
-// ── checkInlineEditPermissionForSiteUser ────────────────────────────────
-
-Deno.test("checkInlineEditPermissionForSiteUser: authz.check() decides when configured, regardless of roles", async () => {
-  const authz = makeAuthz(true);
-  const result = await checkInlineEditPermissionForSiteUser(
-    authz as unknown as DuneAuthSystem,
-    { id: "u1", roles: [] },
-  );
-  assertEquals(result, true);
-  assertEquals(authz.calls.check, 1);
-});
-
-Deno.test("checkInlineEditPermissionForSiteUser: authz.check() denial wins even with an editor role", async () => {
-  const authz = makeAuthz(false);
-  const result = await checkInlineEditPermissionForSiteUser(
-    authz as unknown as DuneAuthSystem,
-    { id: "u1", roles: ["editor"] },
-  );
-  assertEquals(result, false);
-  assertEquals(authz.calls.check, 1);
-});
-
-Deno.test("checkInlineEditPermissionForSiteUser: fails closed (denies) when authz is undefined, no roles[] fallback", async () => {
-  // An editor role used to grant inline edit access here when authz was
-  // undefined — that fallback was removed: authz.check() is the sole
-  // authority, no exceptions.
-  const result = await checkInlineEditPermissionForSiteUser(undefined, {
-    id: "u1",
-    roles: ["editor"],
-  });
-  assertEquals(result, false);
-
-  const adminResult = await checkInlineEditPermissionForSiteUser(undefined, {
-    id: "u1",
-    roles: ["admin"],
-  });
-  assertEquals(adminResult, false);
-
-  const unknownRoles = await checkInlineEditPermissionForSiteUser(undefined, {
-    id: "u1",
-    roles: ["member", "subscriber"],
-  });
-  assertEquals(unknownRoles, false);
+Deno.test("assertInlineEditSameOrigin: a write without Origin passes only when the browser says same-origin", () => {
+  assertEquals(assertInlineEditSameOrigin(req("POST"))?.status, 403);
+  assertEquals(assertInlineEditSameOrigin(req("POST", { "sec-fetch-site": "cross-site" }))?.status, 403);
+  assertEquals(assertInlineEditSameOrigin(req("POST", { "sec-fetch-site": "same-origin" })), null);
 });
 
 // ── stripUserHeader ────────────────────────────────────────────────────

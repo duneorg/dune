@@ -49,9 +49,9 @@ export type HookEvent =
   // server, a CLI command, a plugin), never by core on their behalf. Payloads
   // carry paths relative to the content directory. Edits made outside Dune
   // (an editor, git pull) fire nothing per page: they surface as onRebuild.
-  | "onPageCreate" // a page file was created: { sourcePath, title }
-  | "onPageUpdate" // a page file was written: { sourcePath }
-  | "onPageDelete" // a page file was deleted: { sourcePath }
+  | "onPageCreate" // a page file was created: { sourcePath, title, actor? }
+  | "onPageUpdate" // a page file was written: { sourcePath, actor? }
+  | "onPageDelete" // a page file was deleted: { sourcePath, actor? }
   | "onPageMove" // pages were renamed or reordered: PageMovePayload
   | "onWorkflowChange" // page workflow status changed: { sourcePath, from, to }
   // Public features (fired by core, so they work without an admin plugin)
@@ -65,9 +65,17 @@ export type HookEvent =
  * file, as paths relative to the content directory. Every page at or below
  * `from` now lives at the same position below `to`. One event covers one
  * operation (a reorder renames many folders), so a handler can re-index once.
+ *
+ * The other page events carry `actor?: string` the same way: `onPageCreate`
+ * `{ sourcePath, title, actor? }`, `onPageUpdate` and `onPageDelete`
+ * `{ sourcePath, actor? }`. Whoever writes the page fires the event and fills
+ * `actor` when a person is behind the write, so audit and webhook plugins
+ * need no access to the writer's request.
  */
 export interface PageMovePayload {
   moves: Array<{ from: string; to: string }>;
+  /** Who did it (the user's name or id), when a person did; absent for CLI and automated writes. @since 0.36.0 */
+  actor?: string;
 }
 
 /**

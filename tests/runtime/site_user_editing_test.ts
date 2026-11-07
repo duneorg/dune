@@ -25,6 +25,19 @@ const inlineEdit: DunePlugin = {
   setup(api) {
     api.capabilities.provide("editor.inline", () => ({
       handleUpgrade: () => new Response(null, { status: 204 }),
+      // Echo what core handed over, so the tests can see the gate's output.
+      handleRequest: async (req: Request, ctx: {
+        editor: unknown;
+        path: string;
+        pageFrontmatter(p: string): Promise<unknown>;
+      }) =>
+        Response.json({
+          method: req.method,
+          editor: ctx.editor,
+          path: ctx.path,
+          title: (await ctx.pageFrontmatter("01.home/default.md") as { title?: string } | null)?.title ?? null,
+          missing: await ctx.pageFrontmatter("nope/default.md"),
+        }),
     } as never));
   },
 };
@@ -97,11 +110,20 @@ async function withSite(
           },
         }),
       );
+    http = (path, init, cookie) =>
+      handler(
+        new Request(`http://localhost/api/inline-edit/${path}`, {
+          ...init,
+          headers: { ...(init.headers as Record<string, string> | undefined), ...(cookie ? { cookie } : {}) },
+        }),
+      );
     await fn(ws, cookieFor, { services: ctx.pluginServices, ids });
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 }
+
+let http: (path: string, init: RequestInit, cookie?: string) => Promise<Response>;
 
 const opts = { sanitizeOps: false, sanitizeResources: false };
 
@@ -141,5 +163,38 @@ Deno.test("a role granted through a plugin's user store while the app runs appli
 
     await users.update(ids.get("subscriber")!, { roles: ["subscriber"] });
     assertEquals((await ws(cookie)).status, 403);
+  });
+});
+
+Deno.test("/api/inline-edit/*: core resolves the editor, then hands the request to the provider", opts, async () => {
+  await withSite([], async (_ws, cookieFor, { ids }) => {
+    const cookie = await cookieFor("editor");
+    const res = await http("content/01.home%2Fdefault.md/source", { method: "GET" }, cookie);
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), {
+      method: "GET",
+      editor: { id: ids.get("editor"), username: "editor@example.com", roles: ["editor"], source: "site" },
+      path: "content/01.home%2Fdefault.md/source",
+      title: "Home",
+      missing: null,
+    });
+  });
+});
+
+Deno.test("/api/inline-edit/*: 401 without a login, 403 for a user who may not edit, nothing reaches the provider", opts, async () => {
+  await withSite([], async (_ws, cookieFor) => {
+    assertEquals((await http("content/x/source", { method: "GET" })).status, 401);
+    assertEquals((await http("content/x/source", { method: "GET" }, await cookieFor("member"))).status, 403);
+  });
+});
+
+Deno.test("/api/inline-edit/*: a write needs a same-origin request", opts, async () => {
+  await withSite([], async (_ws, cookieFor) => {
+    const cookie = await cookieFor("editor");
+    const write = (headers: Record<string, string>) =>
+      http("content/x/commit", { method: "POST", headers }, cookie);
+    assertEquals((await write({})).status, 403);
+    assertEquals((await write({ origin: "http://evil.test" })).status, 403);
+    assertEquals((await write({ origin: "http://localhost" })).status, 200);
   });
 });

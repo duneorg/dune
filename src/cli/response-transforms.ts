@@ -5,15 +5,12 @@
  * `transformResponse` hook (see `ResponseTransformContext` in hooks/types.ts).
  * Responsibilities:
  *
- * - Resolve the auth context once per request, enforcing the documented
- *   contract: `auth` is non-null only for a valid admin session that holds
- *   the `pages.update` permission. Plugins can rely on this and must not
- *   need to re-authenticate. The permission check itself is `authz.check()` —
- *   the sole authority every admin permission check follows
- *   (dec-identity-unification Phase 5c/6/7); if `authz` is somehow
- *   undefined (authz creation itself failed at startup — already logged
- *   loudly there), this fails closed rather than falling back to a
- *   separate, less-audited mechanism.
+ * - Resolve the editor once per request (`createEditorResolver()`), enforcing
+ *   the documented contract: `auth` is non-null only for a signed-in user
+ *   (site login or `editor.session` provider) who holds `pages.update`.
+ *   Plugins can rely on this and must not need to re-authenticate. The
+ *   permission check is `authz.check()`, the sole authority; it fails closed
+ *   when authz is missing.
  * - Never run transforms on admin-panel paths (defense in depth — admin
  *   routes are mounted separately and should never reach the content
  *   catch-all, but the pipeline must not depend on routing order alone).
@@ -29,23 +26,14 @@
  * Used by both the production and dev request paths in fresh-app.ts.
  */
 
-/**
- * Minimal auth middleware interface — concrete type is from `@dune/plugin-admin`.
- * `authenticate()` is still the only way to validate an admin session cookie
- * (core doesn't own admin session cookie config).
- */
-interface AdminAuthMiddleware {
-  authenticate(req: Request): Promise<unknown>;
-}
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { CapabilityReader } from "../plugin-api/capabilities.ts";
 
-import type { DuneAuthSystem } from "../auth/authz.ts";
+import type { EditorResolver } from "../auth/editor.ts";
 import type { PageIndex } from "../content/types.ts";
-import { highestAdminRole, roleHasPermission, SITE_RESOURCE } from "../auth/authz-schema.ts";
+import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
-import { hasSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
 import { scrubMarkersFromResponse } from "./marker-scrub.ts";
 
@@ -75,21 +63,13 @@ export interface RunResponseTransformsOptions {
   /** All registered plugins; filtered on `transformResponse` internally. */
   plugins: DunePlugin[];
   /**
-   * Admin auth middleware — null when the admin plugin is disabled or not yet mounted.
-   * When null, all sessions are treated as anonymous (transformAuth stays null).
+   * Resolves who is editing this request (`createEditorResolver()`): a site
+   * user or the `editor.session` provider's user holding `pages.update`.
+   * Omitted means every request is anonymous.
    */
-  auth: AdminAuthMiddleware | null;
-  /** Cookies that carry the `editor.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
-  sessionCookies?: readonly string[];
+  resolveEditor?: EditorResolver;
   /** What plugins provide; handed to transform plugins as `ResponseTransformContext.capabilities`. Omitted means nothing is provided. */
   capabilities?: CapabilityReader;
-  /**
-   * Polizy authz system — the sole authority for the `pages.update` check
-   * below (dec-identity-unification Phase 5c/7). Undefined only when authz
-   * creation itself failed at startup (already logged loudly there — see
-   * `src/runtime/bootstrap.ts`), in which case the check fails closed.
-   */
-  authz?: DuneAuthSystem;
   /**
    * This site's actual `actionToRelations` map (built-ins plus whatever
    * plugins contributed via `DunePlugin.authzActions`) —
@@ -134,13 +114,11 @@ export async function runPluginResponseTransforms(
     req,
     response,
     plugins,
-    auth,
-    authz,
+    resolveEditor,
     resolve,
     config,
     adminPrefix,
     actionToRelations,
-    sessionCookies,
     capabilities = EMPTY_CAPABILITIES,
   } = opts;
 
@@ -150,45 +128,22 @@ export async function runPluginResponseTransforms(
   if (isAdminPath(url.pathname, adminPrefix)) return response;
 
   let transformAuth: ResponseTransformContext["auth"] = null;
-  if (auth && hasSessionCookie(req, sessionCookies)) {
-    try {
-      const result = await auth.authenticate(req);
-      // Contract (ResponseTransformContext.auth): non-null only when the
-      // session is valid AND holds pages.update — same gate the pre-plugin
-      // admin-bar injector enforced.
-      // deno-lint-ignore no-explicit-any
-      const r = result as any;
-      const canUpdatePages = r?.authenticated && r?.user && (
-        authz
-          ? await authz.check({
-            who: { type: "user", id: r.user.id as string },
-            // deno-lint-ignore no-explicit-any
-            canThey: "pages.update" as any,
-            onWhat: SITE_RESOURCE,
-          })
-          : false
-      );
-      if (canUpdatePages) {
-        const user = r.user as Record<string, unknown>;
-        // This context field keeps its original `role: string` shape (a
-        // published hook type, ResponseTransformContext — minimize churn for
-        // plugin authors) rather than switching to `roles`.
-        const roles = user.roles as string[] | undefined;
-        // The merged User type mixes admin-tier roles with content-gating
-        // tags in roles[] (e.g. ["member", "admin"]) with no guaranteed
-        // order — roles[0] is not necessarily an admin role. The published
-        // role string and hasPermission() answers sourced from it must use
-        // the highest admin-tier entry, or the synchronous approximation
-        // would under-privilege relative to what authz.check() (which
-        // unions all the user's relations) decided just above.
-        const role = highestAdminRole(roles);
-        transformAuth = {
-          username: user.username as string,
-          role,
-          hasPermission: (perm) => roleHasPermission(role, perm, actionToRelations),
-        };
-      }
-    } catch { /* invalid session — treat as unauthenticated */ }
+  if (resolveEditor) {
+    const resolved = await resolveEditor(req);
+    if (resolved.ok) {
+      // The context keeps its original `role: string` shape (a published hook
+      // type) rather than switching to `roles`. The roles list mixes admin-tier
+      // roles with content-gating tags in no guaranteed order, so the published
+      // role and the synchronous hasPermission() answers use the highest
+      // admin-tier entry, or they would under-privilege relative to the
+      // authz.check() that already decided this user may edit.
+      const role = highestAdminRole(resolved.editor.roles);
+      transformAuth = {
+        username: resolved.editor.username,
+        role,
+        hasPermission: (perm) => roleHasPermission(role, perm, actionToRelations),
+      };
+    }
   }
 
   let out = response;

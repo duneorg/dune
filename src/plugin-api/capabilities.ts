@@ -104,11 +104,11 @@ export interface AdminPrefix {
 export interface Capabilities {
   /** Where the admin is mounted. Consumers: core's request handling, static build and plugin-route registration. */
   "admin.prefix": AdminPrefix;
-  /** Who is treated as an editor on this request. Consumers: the admin bar's response transform, the inline-edit WebSocket. */
+  /** Who is treated as an editor on this request. Consumers: the editor resolver behind the bar's response transform and `/api/inline-edit/*`. */
   "editor.session": RequestAuthenticator;
   /** Executes due scheduled actions. Consumer: `dune serve`, which owns the scheduler's polling loop. */
   "scheduler.executor": ScheduledActionExecutor;
-  /** Real-time inline editing. Consumers: core's `/api/inline-edit/ws`, the admin. */
+  /** Real-time inline editing and its HTTP routes. Consumers: core's `/api/inline-edit/*` gate, the admin (WebSocket, presence). */
   "editor.inline": InlineEditManager;
 }
 
