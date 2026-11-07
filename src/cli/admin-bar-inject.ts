@@ -14,7 +14,7 @@
 /**
  * Cheap check for the presence of an admin session cookie — no validation.
  *
- * `names` are the cookies the `auth.session` provider declared
+ * `names` are the cookies the `editor.session` provider declared
  * (`RequestAuthenticator.sessionCookies`). When the provider did not declare
  * any, every request that carries a `Cookie` header counts as possibly signed
  * in: core cannot know which cookie another admin uses, and a missed session
