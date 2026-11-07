@@ -156,7 +156,7 @@ Deno.test("paths service: data dir and runtime dir default, and follow config", 
   assertEquals(services().paths, { dataDir: "data", runtimeDir: ".dune/admin" });
   const cfg = config();
   cfg.system = { ...cfg.system, data_dir: "var/data" } as never;
-  cfg.admin = { ...cfg.admin, runtime_dir: ".state" } as never;
+  cfg.system = { ...cfg.system, runtime_dir: ".state" } as never;
   assertEquals(createPluginServices({ config: cfg, storage: new MemoryStorageAdapter() }).paths, {
     dataDir: "var/data",
     runtimeDir: ".state",
@@ -183,7 +183,7 @@ Deno.test("search analytics: off by default, on with system.search.analytics, an
     const summary = await on.search.analytics.summarize();
     assertEquals(summary.totalSearches, 2);
     assertEquals(summary.zeroResultQueries, [{ query: "stripe", count: 1 }]);
-    // the file lives under admin.runtime_dir in the site root
+    // the file lives under system.runtime_dir in the site root
     assertEquals((await Deno.stat(`${root}/.dune/admin/search-analytics.json`)).isFile, true);
   } finally {
     await Deno.remove(root, { recursive: true });

@@ -19,14 +19,12 @@ Deno.test("adminSettingsAtRisk: a default config has nothing at risk", () => {
 
 Deno.test("adminSettingsAtRisk: names every renamed admin-read key moved off its default", () => {
   const c = withAdmin({
-    runtime_dir: "var/admin",
     authz_store: "db",
     max_upload_mb: 5,
     audit: { log_file: "a.log" },
     auth_provider: { type: "ldap" },
   });
   assertEquals(adminSettingsAtRisk(c), [
-    "admin.runtime_dir",
     "admin.max_upload_mb",
     "admin.authz_store",
     "admin.audit.log_file",
@@ -36,13 +34,13 @@ Deno.test("adminSettingsAtRisk: names every renamed admin-read key moved off its
 
 Deno.test("adminSettingsAtRisk: a value equal to the default is not at risk", () => {
   assertEquals(
-    adminSettingsAtRisk(withAdmin({ runtime_dir: ".dune/admin" })),
+    adminSettingsAtRisk(withAdmin({ max_upload_mb: 100 })),
     [],
   );
 });
 
 Deno.test("checkAdminVersion: admin >= the minimum major is ok", () => {
-  const c = withAdmin({ runtime_dir: "var/admin" });
+  const c = withAdmin({ max_upload_mb: 5 });
   assertEquals(checkAdminVersion(`${MIN_ADMIN_MAJOR}.0.0`, c).level, "ok");
   assertEquals(checkAdminVersion(`${MIN_ADMIN_MAJOR + 1}.2.3`, c).level, "ok");
 });

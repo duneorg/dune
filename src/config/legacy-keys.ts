@@ -25,8 +25,6 @@ const RULES: Rule[] = [
     parent: ["admin"],
     renames: {
       sessionLifetime: "session_lifetime",
-      runtimeDir: "runtime_dir",
-      maxRevisions: "max_revisions",
       maxUploadMb: "max_upload_mb",
       authzStore: "authz_store",
     },
@@ -78,6 +76,10 @@ const MOVED: MovedRule[] = [
       incomingWebhooks: "webhooks.incoming in system.yaml",
       data_dir: "data_dir at the top level of system.yaml",
       dataDir: "data_dir at the top level of system.yaml",
+      runtime_dir: "runtime_dir at the top level of system.yaml",
+      runtimeDir: "runtime_dir at the top level of system.yaml",
+      max_revisions: "max_revisions at the top level of system.yaml",
+      maxRevisions: "max_revisions at the top level of system.yaml",
     },
   },
   {

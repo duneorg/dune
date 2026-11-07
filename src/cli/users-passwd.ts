@@ -46,6 +46,7 @@ import {
 } from "../session/mod.ts";
 import { acquirePassword, PasswordInputError } from "./password-input.ts";
 import type { PasswordInputOptions } from "./password-input.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
 
 export interface UsersPasswdOptions extends PasswordInputOptions {
   /**
@@ -71,7 +72,7 @@ async function openContext(root: string, siteId?: string): Promise<Context> {
   });
   // Same resolution as the admin plugin and core: system.data_dir.
   const dataDir = resolveFormsConfig(config).dataDir;
-  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   const siteAuth = (config.site as { auth?: { user_store?: string } }).auth;
 
   let userStore: UserStore;

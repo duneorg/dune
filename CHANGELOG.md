@@ -25,6 +25,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `resolveDataDir()` (`@dune/core/forms`); before, several commands
   (`users:create`, `users:grant-role`, `authz:sign`, the `migrate:*` user and
   auth migrations) read only `admin.data_dir` and ignored `system.data_dir`.
+- **`admin.runtime_dir` and `admin.max_revisions`.** They are core settings, not
+  the admin's: core's history engine, job state, search analytics and public
+  sessions all use them. They are now `runtime_dir` and `max_revisions` at the
+  top level of system.yaml (`system.runtime_dir`, `system.max_revisions`;
+  defaults `.dune/admin` and 50, so existing state stays where it is). The old
+  keys, in either spelling, refuse to load and say where the setting went.
+  `resolveRuntimeDir()` and `resolveMaxRevisions()` (`@dune/core/forms`) are the
+  one place that resolves them. A plugin reads the directory from
+  `services.paths.runtimeDir`. `@dune/plugin-admin` 4.0.0 does the same.
 - **The legacy `smtp:` block in form notifications.** Use `site.email`.
   Magic-link login emails also go through `site.email` now (they used to need
   the legacy `admin.notifications.email.smtp`); a site without

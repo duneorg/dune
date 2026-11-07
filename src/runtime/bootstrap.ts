@@ -8,7 +8,7 @@
 import { createPluginServices } from "../plugin-api/create-services.ts";
 import { type CapabilityReader, type CapabilityRegistry, createCapabilityRegistry } from "../plugin-api/capabilities.ts";
 import type { PluginServices } from "../plugin-api/services.ts";
-import { resolveDataDir } from "../forms/config.ts";
+import { resolveDataDir, resolveMaxRevisions, resolveRuntimeDir } from "../forms/config.ts";
 import { startupStep } from "./startup-step.ts";
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
@@ -539,16 +539,15 @@ export async function bootstrap(
   const adminConfig = config.admin ?? {
     path: "/admin",
     session_lifetime: 86400,
-    runtime_dir: ".dune/admin",
     enabled: true,
   };
-  const runtimeDir = adminConfig.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   const dataDir = resolveDataDir(config);
 
   const history = createHistoryEngine({
     storage,
     dataDir: runtimeDir,
-    maxRevisions: adminConfig.max_revisions ?? 50,
+    maxRevisions: resolveMaxRevisions(config),
   });
 
   // 11. Authorization (Polizy) — created in core so that admin-user tuples
