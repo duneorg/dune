@@ -116,6 +116,7 @@ export function registerContentCatchAll(
       resolve: engine.router.resolve,
       config,
       adminPrefix: adminPrefix(),
+      capabilities: ctx.capabilities,
     });
 
   app.all("/*", async (fc) => {

@@ -611,3 +611,36 @@ Deno.test("runPluginResponseTransforms: an admin prefix still keeps its own path
   assertEquals(seen.length, 0);
   assertStrictEquals(result, original);
 });
+
+Deno.test("runPluginResponseTransforms: ctx.capabilities is the registry's reader, and empty when none is supplied", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen[0].capabilities.get("admin.prefix"), undefined);
+  assertEquals(seen[0].capabilities.providers(), []);
+
+  const reader = {
+    get: (name: string) => (name === "admin.prefix" ? { prefix: "/admin" } : undefined),
+    list: () => [],
+    providers: () => [],
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+    capabilities: reader,
+  });
+  assertEquals(seen[1].capabilities.get("admin.prefix")?.prefix, "/admin");
+});

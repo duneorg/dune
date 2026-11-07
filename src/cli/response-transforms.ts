@@ -39,6 +39,8 @@ interface AdminAuthMiddleware {
 }
 import type { DuneConfig } from "../config/types.ts";
 import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
+import type { CapabilityReader } from "../plugin-api/capabilities.ts";
+
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
 import { highestAdminRole, roleHasPermission, SITE_RESOURCE } from "../auth/authz-schema.ts";
@@ -46,6 +48,13 @@ import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
 import { scrubMarkersFromResponse } from "./marker-scrub.ts";
+
+/** What a transform sees when the caller supplies no registry: nothing is provided. */
+const EMPTY_CAPABILITIES: CapabilityReader = {
+  get: () => undefined,
+  list: () => [],
+  providers: () => [],
+};
 
 /**
  * Narrow shape accepted from a route resolver's result — just the fields
@@ -72,6 +81,8 @@ export interface RunResponseTransformsOptions {
   auth: AdminAuthMiddleware | null;
   /** Cookies that carry the `editor.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
   sessionCookies?: readonly string[];
+  /** What plugins provide; handed to transform plugins as `ResponseTransformContext.capabilities`. Omitted means nothing is provided. */
+  capabilities?: CapabilityReader;
   /**
    * Polizy authz system — the sole authority for the `pages.update` check
    * below (dec-identity-unification Phase 5c/7). Undefined only when authz
@@ -130,6 +141,7 @@ export async function runPluginResponseTransforms(
     adminPrefix,
     actionToRelations,
     sessionCookies,
+    capabilities = EMPTY_CAPABILITIES,
   } = opts;
 
   const transformPlugins = plugins.filter((p) => p.transformResponse);
@@ -196,6 +208,7 @@ export async function runPluginResponseTransforms(
           template: matchedPage.template,
         }
         : null,
+      capabilities,
     });
   }
 

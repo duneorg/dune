@@ -148,9 +148,9 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `@dune/plugin-inline-edit`), which declares them by declaration merging. Both interfaces are
   now open to merging; the rule is that a key is prefixed with the name of the plugin that
   consumes it, and unprefixed names are core's. At runtime nothing changes: the registry was
-  already keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are gone:
-  a bar-owning plugin reads `bar.actions` and the `admin.prefix` slot through
-  `MountApi.capabilities`.
+  already keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
+  by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
+  bar-owning plugin reads `list("bar.actions")` and `get("admin.prefix")` per request.
 - **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
   and the other admin-tier actions name what they protect (this site's content), not the panel
   that happens to administer it, so the same check works on a site with no admin, one admin

@@ -555,6 +555,16 @@ export interface ResponseTransformContext {
    * (admin paths, API paths, plugin routes, theme static assets, etc.).
    */
   page: { sourcePath: string; route: string; title: string | null; template: string } | null;
+  /**
+   * What plugins provide, as `MountApi.capabilities` offers it: the slots
+   * (`get("admin.prefix")`, `get("auth.session")`) and any extension point a
+   * plugin declares (`list("bar.actions")`). A transform reads what it needs
+   * here per request, so a plugin module shared between sites keeps no state
+   * of its own.
+   *
+   * @since 0.36.0
+   */
+  capabilities: import("../plugin-api/capabilities.ts").CapabilityReader;
 }
 
 /**
