@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
+import { parse as parseYamlText } from "@std/yaml";
 import { migrateConfigCommand } from "../../src/cli/migrate-config.ts";
 
 async function withSite(
@@ -43,14 +44,12 @@ Deno.test("migrate:config rewrites site, system and env overlay files", async ()
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "config/site.yaml");
+    // the admin: block moved into the admin plugin's entry
     assertEquals(
       await Deno.readTextFile(join(root, "config/site.yaml")),
-      "# c\nauth:\n  user_store: db # keep\n" + ADMIN,
+      "# c\nauth:\n  user_store: db # keep\n" + ADMIN + "    config:\n      max_upload_mb: 5\n",
     );
-    assertEquals(
-      await Deno.readTextFile(join(root, "config/system.yaml")),
-      "admin:\n  max_upload_mb: 5\n",
-    );
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "");
     assertEquals(
       await Deno.readTextFile(join(root, "config/env/production/system.yaml")),
       "metrics:\n  slow_query_threshold_ms: 10\n",
@@ -108,11 +107,11 @@ Deno.test("migrate:config deletes keys that were declared and never read", async
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "removed cache, timezone");
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "# c\n");
     assertEquals(
-      await Deno.readTextFile(join(root, "config/system.yaml")),
-      "# c\nadmin:\n  max_upload_mb: 5\n",
+      await Deno.readTextFile(join(root, "config/site.yaml")),
+      "title: T\n" + ADMIN + "    config:\n      max_upload_mb: 5\n",
     );
-    assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n" + ADMIN);
   });
 });
 
@@ -135,8 +134,11 @@ Deno.test("migrate:config removes admin.enabled: true and adds the admin plugin"
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "removed admin.enabled");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "admin:\n  max_upload_mb: 5\ndebug: true\n");
-    assertStringIncludes(await Deno.readTextFile(join(root, "config/site.yaml")), "jsr:@dune/plugin-admin@^4");
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\n");
+    assertEquals(
+      await Deno.readTextFile(join(root, "config/site.yaml")),
+      "title: T\n\nplugins:\n  - src: jsr:@dune/plugin-admin@^4\n    config:\n      max_upload_mb: 5\n",
+    );
   });
 });
 
@@ -148,7 +150,8 @@ Deno.test("migrate:config removes admin.enabled: false and leaves the site witho
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "removed admin.enabled");
     assertStringIncludes(out, "admin plugin is not added");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "admin:\ndebug: true\n");
+    assertStringIncludes(out, "removed the admin: block");
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\n");
     assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
   });
 });
@@ -161,5 +164,53 @@ Deno.test("migrate:config --dry-run reports the admin changes and writes nothing
     assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
     assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
     assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
+  });
+});
+
+Deno.test("migrate:config moves the whole admin: block: settings into the plugin's config, runtime_dir and max_revisions to the top level", async () => {
+  await withSite({
+    "config/site.yaml": "title: T\n",
+    "config/system.yaml":
+      "debug: true\nadmin:\n  path: /cms\n  runtime_dir: var/rt\n  maxRevisions: 20\n  authz_store: local\n  audit:\n    log_file: audit/a.log\n  webhooks:\n    - url: https://hooks.example.test/x\n      events: [onPageUpdate]\n",
+  }, async (root) => {
+    const out = await quiet(() => migrateConfigCommand(root));
+    assertStringIncludes(out, "moved the admin: block");
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\nruntime_dir: var/rt\nmax_revisions: 20\n");
+    const site = parseYamlText(await Deno.readTextFile(join(root, "config/site.yaml"))) as {
+      plugins: { src: string; config: Record<string, unknown> }[];
+    };
+    assertEquals(site.plugins[0].src, "jsr:@dune/plugin-admin@^4");
+    assertEquals(site.plugins[0].config, {
+      path: "/cms",
+      audit: { log_file: "audit/a.log" },
+      webhooks: [{ url: "https://hooks.example.test/x", events: ["onPageUpdate"] }],
+    });
+    assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
+  });
+});
+
+Deno.test("migrate:config leaves an admin: block holding keys that belong elsewhere for a manual move", async () => {
+  const system = "admin:\n  path: /cms\n  honeypot: x\n";
+  await withSite({ "config/site.yaml": "title: T\n", "config/system.yaml": system }, async (root) => {
+    const origExit = Deno.exit;
+    let code: number | undefined;
+    // deno-lint-ignore no-explicit-any
+    (Deno as any).exit = (c?: number) => {
+      code = c;
+      throw new Error("exit");
+    };
+    let out = "";
+    try {
+      out = await quiet(async () => {
+        try {
+          await migrateConfigCommand(root);
+        } catch { /* exit */ }
+      });
+    } finally {
+      Deno.exit = origExit;
+    }
+    assertEquals(code, 1);
+    assertStringIncludes(out, "admin.honeypot");
+    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
   });
 });

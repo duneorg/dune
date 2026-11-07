@@ -67,6 +67,14 @@ interface MovedRule {
 const MOVED: MovedRule[] = [
   {
     file: "system",
+    parent: [],
+    keys: {
+      admin:
+        "the admin's settings are the admin plugin's own config now: put them under `config:` of its entry in plugins: (site.yaml); `dune migrate:config` moves them",
+    },
+  },
+  {
+    file: "system",
     parent: ["admin"],
     keys: {
       honeypot: "forms.honeypot in site.yaml",
@@ -162,6 +170,14 @@ const ADMIN_ENABLED: MovedRule[] = [{ file: "system", parent: ["admin"], keys: {
 /** Delete the `admin.enabled` line from a system.yaml text (comments and the rest are kept). */
 export function removeAdminEnabledInText(text: string): { text: string; removed: boolean } {
   const r = removeKeysInText(ADMIN_ENABLED, "system", text);
+  return { text: r.text, removed: r.removed.length > 0 };
+}
+
+const ADMIN_BLOCK: MovedRule[] = [{ file: "system", parent: [], keys: { admin: "" } }];
+
+/** Delete the top-level `admin:` block (key and children) from a system.yaml text. */
+export function removeAdminBlockInText(text: string): { text: string; removed: boolean } {
+  const r = removeKeysInText(ADMIN_BLOCK, "system", text);
   return { text: r.text, removed: r.removed.length > 0 };
 }
 

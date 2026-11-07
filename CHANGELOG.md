@@ -34,6 +34,19 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `resolveRuntimeDir()` and `resolveMaxRevisions()` (`@dune/core/forms`) are the
   one place that resolves them. A plugin reads the directory from
   `services.paths.runtimeDir`. `@dune/plugin-admin` 4.0.0 does the same.
+- **The admin's settings are the admin plugin's config, not core's (#123, step 5).**
+  `DuneConfig.admin`, `AdminConfig`, `AuthProviderConfig`, `WebhookEndpointConfig` and
+  `WebhookContentEvent` are gone, along with the `admin` defaults, the `admin` property of the
+  config JSON schema, and core's validation of `admin.path` and `admin.auth_provider`. A
+  system.yaml `admin:` block is refused. `path`, `session_lifetime`, `max_upload_mb`,
+  `git_commit`, `webhooks`, `auth_provider` and `audit` are now `config:` under the admin's
+  entry in `plugins:` (site.yaml), read by the plugin as `config.plugins.admin`, which the
+  plugin validates itself. `runtime_dir`, `max_revisions` and `data_dir` go to the top level of
+  system.yaml. `dune migrate:config` does the whole move for the base system.yaml (an
+  `admin:` block in an environment overlay, or one that still holds `honeypot`, `notifications`
+  or `incoming_webhooks`, is left for you). The MCP server no longer reports `admin` settings
+  and loses its `dune://site/audit` resource: core cannot know where the admin writes its log.
+  `Role` is now `config/role.ts`; `WebhookNotificationConfig` lives with the forms config.
 - **Core no longer loads the admin: it is a plugin you list (#123, step 4).** `bootstrap()`
   used to import `jsr:@dune/plugin-admin@*` itself unless `admin.enabled` was false; now the
   admin runs only when `config/site.yaml` lists it under `plugins:`

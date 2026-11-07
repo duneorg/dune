@@ -91,7 +91,6 @@ export type {
   ThemeConfig,
   /** @since 0.36.0 */
   TemplateConfig,
-  AdminConfig,
 } from "./config/types.ts";
 
 // ── Content ────────────────────────────────────────────────────────────────
