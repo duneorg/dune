@@ -39,6 +39,7 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
 import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
+import { describeConflict, invalidAdminPrefix } from "../plugin-api/capabilities.ts";
 import { createPluginRuntime } from "../plugin-api/runtime.ts";
 import { resolveRuntimeDir } from "../forms/config.ts";
 import { pluginCoreMismatch } from "./core-handshake.ts";
@@ -403,7 +404,11 @@ export async function applyResponseTransforms(
  *
  * Idempotent: slots that have resolved are not run again, so the app builder,
  * `dune build` and any other caller that needs to read a slot can call it.
- * Never throws (a throwing factory is logged and leaves its slot empty).
+ * A throwing factory is logged and leaves its slot empty, but two setups the
+ * site cannot sensibly run with stop the boot: an exclusive slot (`editor.session`,
+ * `admin.prefix`) provided by two different plugins, and an `admin.prefix` that
+ * is not a usable path. Both would otherwise change which requests core treats
+ * as the admin's, so a bad value must not quietly mean "no admin".
  */
 export async function resolveCapabilities(
   ctx: import("../runtime/bootstrap.ts").BootstrapResult,
@@ -415,6 +420,18 @@ export async function resolveCapabilities(
   // initializes, so wait for every plugin's setup() to settle before any of
   // them run.
   await ctx.hooks.whenSetupComplete();
+
+  // An exclusive slot provided by two plugins is not something to pick a winner
+  // for: stop the boot, and leave `dune doctor --boot` the report that says why.
+  const conflicts = ctx.capabilityRegistry.conflicts();
+  if (conflicts.length > 0) {
+    await writeDoctorReport(async () => ({
+      providers: ctx.capabilityRegistry.reader.providers(),
+      conflicts,
+      scheduledActions: 0,
+    }));
+    throw new Error(conflicts.map(describeConflict).join("\n"));
+  }
 
   // Capability slots: every plugin has declared by now, and the infrastructure
   // a factory may need (history, hooks, storage) exists. A throwing factory is
@@ -433,6 +450,14 @@ export async function resolveCapabilities(
     // case (multisite demo fixtures) has no admin.
     contentDir: ctx.config.system.content.dir,
   });
+
+  const badPrefix = invalidAdminPrefix(ctx.capabilityRegistry.reader);
+  if (badPrefix !== null) {
+    throw new Error(
+      `The "admin.prefix" capability provided ${JSON.stringify(badPrefix)}, which is not a usable path: ` +
+        `it must start with "/", must not be "/" and must not end with "/" (for example "/admin").`,
+    );
+  }
 }
 
 /**

@@ -529,13 +529,13 @@ export async function bootstrap(
   });
 
   // The authz system exists when something needs it: a plugin that provides
-  // `auth.session` has declared itself the admin (without authz its sessions
+  // `editor.session` has declared itself the admin (without authz its sessions
   // could never be authorised: `pages.update` fails closed when authz is
   // missing), or a plugin declares `authzActions` of its own. Plugins register,
   // and so declare, before this point; settle async setup() first so a
   // declaration made after an await is seen too.
   await hooks.whenSetupComplete();
-  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "auth.session");
+  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "editor.session");
   const hasAuthzActions = Object.keys(pluginAuthzActions).length > 0;
   if (hasSessionProvider || hasAuthzActions) {
     try {
