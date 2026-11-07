@@ -216,15 +216,6 @@ export interface LoadConfigOptions {
   skipValidation?: boolean;
 }
 
-/** Merge a system.yaml `admin:` block into the top-level `admin` config. */
-function mergeAdminYaml(
-  config: Record<string, unknown>,
-  admin: unknown,
-): Record<string, unknown> {
-  if (!admin || typeof admin !== "object" || Array.isArray(admin)) return config;
-  return deepMerge(config, { admin: admin as Record<string, unknown> });
-}
-
 /**
  * Load and merge configuration from all sources.
  * Returns a fully resolved DuneConfig object.
@@ -292,15 +283,9 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
     config = deepMerge(config, { plugins: pluginCfgsFromSite });
   }
 
-  // system.yaml values go under the "system" key, except `admin:` — that
-  // is DuneConfig.admin (what bootstrap and the admin plugin read), not part
-  // of SystemConfig. Without this promotion `admin.enabled: false` and every
-  // other documented `admin:` key was silently ignored.
-  const { admin: adminFromSystem, ...systemWithoutAdmin } = systemYaml;
-  if (Object.keys(systemWithoutAdmin).length > 0) {
-    config = deepMerge(config, { system: systemWithoutAdmin });
+  if (Object.keys(systemYaml).length > 0) {
+    config = deepMerge(config, { system: systemYaml });
   }
-  config = mergeAdminYaml(config, adminFromSystem);
 
   // --- Layer 3: Environment-specific overrides ---
   const envDir = `config/env/${environment}`;
@@ -312,11 +297,9 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   if (Object.keys(envSiteYaml).length > 0) {
     config = deepMerge(config, { site: envSiteYaml });
   }
-  const { admin: adminFromEnvSystem, ...envSystemWithoutAdmin } = envSystemYaml;
-  if (Object.keys(envSystemWithoutAdmin).length > 0) {
-    config = deepMerge(config, { system: envSystemWithoutAdmin });
+  if (Object.keys(envSystemYaml).length > 0) {
+    config = deepMerge(config, { system: envSystemYaml });
   }
-  config = mergeAdminYaml(config, adminFromEnvSystem);
 
   // --- Layer 4: dune.config.ts ---
   if (!skipConfigTs) {

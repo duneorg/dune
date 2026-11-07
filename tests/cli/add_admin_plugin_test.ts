@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
-import { ADMIN_PLUGIN_ENTRY_SRC, addAdminPluginToText } from "../../src/cli/add-admin-plugin.ts";
+import { ADMIN_PLUGIN_ENTRY_SRC, addAdminPluginToText, setAdminPluginConfigInText } from "../../src/cli/add-admin-plugin.ts";
 
 const SRC = ADMIN_PLUGIN_ENTRY_SRC;
 
@@ -45,4 +45,25 @@ Deno.test("addAdminPluginToText: flow style with entries cannot be extended safe
   const r = addAdminPluginToText(text);
   assertEquals(r.outcome, "manual");
   assertEquals(r.text, text);
+});
+
+Deno.test("setAdminPluginConfigInText: writes config: under the admin entry, leaving the rest alone", () => {
+  const text = `plugins:\n  - src: ./a.ts\n  - src: ${SRC}\n    integrity: sha256:abc\n  - src: ./b.ts\ntheme:\n  name: x\n`;
+  const r = setAdminPluginConfigInText(text, { path: "/cms", audit: { enabled: false } });
+  assertEquals(r.outcome, "set");
+  const doc = parseYaml(r.text) as { plugins: Record<string, unknown>[]; theme: { name: string } };
+  assertEquals(doc.plugins[1], { src: SRC, integrity: "sha256:abc", config: { path: "/cms", audit: { enabled: false } } });
+  assertEquals(doc.plugins[0], { src: "./a.ts" });
+  assertEquals(doc.plugins[2], { src: "./b.ts" });
+  assertEquals(doc.theme.name, "x");
+});
+
+Deno.test("setAdminPluginConfigInText: nothing to write, no admin entry, or an existing config: are left alone", () => {
+  const text = `plugins:\n  - src: ${SRC}\n`;
+  assertEquals(setAdminPluginConfigInText(text, {}), { text, outcome: "none" });
+  assertEquals(setAdminPluginConfigInText("title: T\n", { path: "/cms" }).outcome, "manual");
+  const withConfig = `plugins:\n  - src: ${SRC}\n    config:\n      path: /x\n`;
+  const r = setAdminPluginConfigInText(withConfig, { path: "/cms" });
+  assertEquals(r.outcome, "manual");
+  assertEquals(r.text, withConfig);
 });

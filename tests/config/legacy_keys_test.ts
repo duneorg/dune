@@ -119,11 +119,10 @@ Deno.test("loadConfig refuses a legacy key and names the new one", async () => {
 Deno.test("loadConfig accepts the migrated keys", async () => {
   const cfg = await load({
     "config/site.yaml": "title: T\nauth:\n  user_store: db\n",
-    "config/system.yaml": "max_revisions: 7\nadmin:\n  max_upload_mb: 7\n",
+    "config/system.yaml": "max_revisions: 7\n",
   });
   assertEquals((cfg.site as any).auth.user_store, "db");
   assertEquals(cfg.system.max_revisions, 7);
-  assertEquals(cfg.admin?.max_upload_mb, 7);
 });
 
 Deno.test("findMovedKeys: the removed forms aliases, admin.data_dir and the smtp block", () => {
@@ -133,7 +132,7 @@ Deno.test("findMovedKeys: the removed forms aliases, admin.data_dir and the smtp
   );
   assertEquals(
     system.map((k) => k.path).sort(),
-    ["admin.dataDir", "admin.data_dir", "admin.enabled", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
+    ["admin", "admin.dataDir", "admin.data_dir", "admin.enabled", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
   );
   const site = findMovedKeys(
     "site",
@@ -156,7 +155,7 @@ Deno.test("loadConfig refuses a moved key and says where it went", async () => {
 
 Deno.test("admin.enabled and admin.authz_store are removed with a message that says what to do", async () => {
   const moved = findMovedKeys("system", parseYaml("admin:\n  enabled: true\n  authz_store: local\n  authzStore: local\n"));
-  assertEquals(moved.map((k) => k.path).sort(), ["admin.authzStore", "admin.authz_store", "admin.enabled"]);
+  assertEquals(moved.map((k) => k.path).sort(), ["admin", "admin.authzStore", "admin.authz_store", "admin.enabled"]);
   let message = "";
   try {
     await load({ "config/system.yaml": "admin:\n  enabled: false\n" });
@@ -174,7 +173,7 @@ Deno.test("admin.runtime_dir and admin.max_revisions moved to the top level of s
   );
   assertEquals(
     moved.map((k) => k.path).sort(),
-    ["admin.maxRevisions", "admin.max_revisions", "admin.runtimeDir", "admin.runtime_dir"],
+    ["admin", "admin.maxRevisions", "admin.max_revisions", "admin.runtimeDir", "admin.runtime_dir"],
   );
   let message = "";
   try {

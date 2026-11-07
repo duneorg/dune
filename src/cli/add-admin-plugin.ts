@@ -9,7 +9,7 @@
  * @module
  */
 
-import { parse as parseYaml } from "@std/yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 
 /** The specifier written for the admin: a major range, which the plugin pin rule accepts. */
 export const ADMIN_PLUGIN_ENTRY_SRC = "jsr:@dune/plugin-admin@^4";
@@ -80,4 +80,38 @@ export function addAdminPluginToText(text: string): AddAdminResult {
   if (itemIndent === null) return { text, outcome: "manual" };
   lines.splice(last + 1, 0, `${itemIndent}- ${entry}`);
   return { text: lines.join("\n"), outcome: "added" };
+}
+
+export interface SetConfigResult {
+  text: string;
+  /** `set`: written under the entry; `none`: nothing to write; `manual`: no admin entry found, or it already has a `config:`. */
+  outcome: "set" | "none" | "manual";
+}
+
+/**
+ * Write `config:` under the admin's entry in a site.yaml text (the admin's
+ * settings are its plugin config since 0.36). Refuses to merge into an
+ * existing `config:` block.
+ */
+export function setAdminPluginConfigInText(text: string, settings: Record<string, unknown>): SetConfigResult {
+  if (Object.keys(settings).length === 0) return { text, outcome: "none" };
+  const lines = text.split("\n");
+  const idx = lines.findIndex((l) => /^\s*(-\s+)?src:\s*\S*plugin-admin/.test(l));
+  if (idx < 0) return { text, outcome: "manual" };
+  const m = lines[idx].match(/^(\s*)(-\s+)?src:/)!;
+  const keyIndent = m[1].length + (m[2]?.length ?? 0);
+
+  let last = idx;
+  for (let i = idx + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^\s*(#.*)?$/.test(l)) continue;
+    const ind = l.match(/^(\s*)/)![1].length;
+    if (ind < keyIndent) break;
+    if (ind === keyIndent && /^config\s*:/.test(l.trim())) return { text, outcome: "manual" };
+    last = i;
+  }
+  const pad = " ".repeat(keyIndent);
+  const body = stringifyYaml(settings).trimEnd().split("\n").map((l) => `${pad}  ${l}`);
+  lines.splice(last + 1, 0, `${pad}config:`, ...body);
+  return { text: lines.join("\n"), outcome: "set" };
 }

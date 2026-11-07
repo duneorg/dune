@@ -187,38 +187,27 @@ Deno.test("loadConfig: merges system.yaml into system config", async () => {
   assertEquals(config.system.images.cache_dir, ".dune/cache/images");
 });
 
-Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.system", async () => {
+Deno.test("loadConfig: a system.yaml `admin:` block is refused and says where the settings went", async () => {
   const storage = new MemoryStorage({
     "config/system.yaml": `admin:\n  max_upload_mb: 7\ndebug: true`,
   });
-  const config = await loadConfig({
-    storage,
-    rootDir: "/tmp/test",
-    skipConfigTs: true,
-    skipValidation: true,
-  });
-  assertEquals(config.admin?.max_upload_mb, 7);
-  // Unset admin keys keep their defaults
-  assertEquals(config.admin?.path, "/admin");
-  assertEquals((config.system as unknown as Record<string, unknown>).admin, undefined);
-  // The rest of system.yaml is unaffected
-  assertEquals(config.system.debug, true);
+  await assertRejects(
+    () => loadConfig({ storage, rootDir: "/tmp/test", skipConfigTs: true, skipValidation: true }),
+    Error,
+    "plugins:",
+  );
 });
 
-Deno.test("loadConfig: env system.yaml `admin:` overrides the base file", async () => {
-  const storage = new MemoryStorage({
-    "config/system.yaml": `admin:\n  max_upload_mb: 7\n  git_commit: false`,
-    "config/env/production/system.yaml": `admin:\n  git_commit: true`,
-  });
+Deno.test("loadConfig: there is no DuneConfig.admin and no default admin settings", async () => {
   const config = await loadConfig({
-    storage,
+    storage: new MemoryStorage({ "config/system.yaml": `debug: true` }),
     rootDir: "/tmp/test",
-    env: "production",
     skipConfigTs: true,
     skipValidation: true,
   });
-  assertEquals(config.admin?.git_commit, true);
-  assertEquals(config.admin?.max_upload_mb, 7);
+  assertEquals((config as unknown as Record<string, unknown>).admin, undefined);
+  assertEquals((config.system as unknown as Record<string, unknown>).admin, undefined);
+  assertEquals(config.system.debug, true);
 });
 
 Deno.test("loadConfig: environment-specific overrides", async () => {
