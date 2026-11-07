@@ -561,7 +561,7 @@ export interface DunePlugin {
    * Use this to register routes and middleware (e.g. a dashboard, a set of
    * auth routes). Handlers receive a {@link PluginRouteContext}.
    *
-   * Capability slots (`auth.session`, `inline-edit`, ...) are resolved before
+   * Capability slots (`editor.session`, `editor.inline`, ...) are resolved before
    * `mount()` runs and are read through `api.capabilities`, lazily (at request
    * time): do not assume a provider exists.
    *
@@ -758,7 +758,7 @@ export interface MountApi {
   /** The same services object `setup()` received (`PluginApi.services`). */
   services: import("../plugin-api/services.ts").PluginServices;
   /**
-   * What plugins provide: `capabilities.get("auth.session")`, `.list("admin.pages")`.
+   * What plugins provide: `capabilities.get("editor.session")`, `.list("admin.pages")`.
    * Slots are resolved before `mount()` runs; read them lazily (at request
    * time) rather than assuming a provider exists.
    */

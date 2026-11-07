@@ -18,13 +18,13 @@ import { join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 
-/** A stand-in admin: all core looks at is that something provides `auth.session`. */
+/** A stand-in admin: all core looks at is that something provides `editor.session`. */
 const admin: DunePlugin = {
   name: "test-admin",
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.provide("auth.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
+    api.capabilities.provide("editor.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
   },
 };
 

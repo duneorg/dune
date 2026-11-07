@@ -70,7 +70,7 @@ export interface RunResponseTransformsOptions {
    * When null, all sessions are treated as anonymous (transformAuth stays null).
    */
   auth: AdminAuthMiddleware | null;
-  /** Cookies that carry the `auth.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
+  /** Cookies that carry the `editor.session` provider's session (`RequestAuthenticator.sessionCookies`); omitted means any cookie. */
   sessionCookies?: readonly string[];
   /**
    * Bar buttons contributed to the `bar.actions` point, in plugin registration

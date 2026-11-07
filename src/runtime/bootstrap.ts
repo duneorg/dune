@@ -528,14 +528,14 @@ export async function bootstrap(
   });
 
   // The authz system exists when something needs it: a plugin that provides
-  // `auth.session` (without authz its sessions could never be authorised:
+  // `editor.session` (without authz its sessions could never be authorised:
   // `pages.update` fails closed when authz is missing), a plugin that declares
   // `authzActions` of its own, or the site's own login (`site.auth`, whose
   // users are authorised through it for page gating and inline editing).
   // Plugins register, and so declare, before this point; settle async setup()
   // first so a declaration made after an await is seen too.
   await hooks.whenSetupComplete();
-  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "auth.session");
+  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "editor.session");
   const hasAuthzActions = Object.keys(pluginAuthzActions).length > 0;
   const hasSiteAuth = !!config.site.auth;
   if (hasSessionProvider || hasAuthzActions || hasSiteAuth) {

@@ -3,7 +3,7 @@
  * or without an admin plugin (duneorg/dune#130).
  *
  * The site has a login (`site.auth`) and a stub plugin providing the
- * `inline-edit` slot, and no admin. Before the fix the authz system did not
+ * `editor.inline` slot, and no admin. Before the fix the authz system did not
  * exist for such a site, and where it did, a site user's role granted nothing
  * because the permission lived in per-user tuples only the admin plugin wrote.
  */
@@ -23,7 +23,7 @@ const inlineEdit: DunePlugin = {
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.provide("inline-edit", () => ({
+    api.capabilities.provide("editor.inline", () => ({
       handleUpgrade: () => new Response(null, { status: 204 }),
     } as never));
   },
@@ -34,7 +34,7 @@ const sessionProvider: DunePlugin = {
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.provide("auth.session", () => ({
+    api.capabilities.provide("editor.session", () => ({
       authenticate: () => Promise.resolve({ authenticated: false }),
     }));
   },
@@ -113,7 +113,7 @@ Deno.test("login only, no admin: an editor may edit, a plain member may not", op
   });
 });
 
-Deno.test("login plus a plugin providing auth.session: same answers", opts, async () => {
+Deno.test("login plus a plugin providing editor.session: same answers", opts, async () => {
   await withSite([sessionProvider], async (ws, cookieFor) => {
     assertEquals((await ws(await cookieFor("editor"))).status, 204);
     assertEquals((await ws(await cookieFor("member"))).status, 403);
