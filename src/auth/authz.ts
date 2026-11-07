@@ -42,7 +42,7 @@
 
 import { AuthSystem } from "polizy";
 import type { AuthSchema } from "polizy";
-import { duneAuthzSchema } from "./authz-schema.ts";
+import { duneAuthzSchema, SITE_RESOURCE } from "./authz-schema.ts";
 import { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { AuthzDbAdapter } from "./authz-adapter-db.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -209,7 +209,7 @@ export async function bootstrapRoleTuples(
 /**
  * Bootstrap permission tuples for existing admin User records (@dune/plugin-admin).
  *
- * Each admin user gets a direct relation tuple on `{ type: "app", id: "admin" }`
+ * Each admin user gets a direct relation tuple on {@link SITE_RESOURCE}
  * matching their role ("admin", "editor", or "author"). Idempotent — skips
  * tuples that already exist.
  *
@@ -223,7 +223,7 @@ export async function bootstrapAdminTuples(
 ): Promise<void> {
   for (const user of adminUsers) {
     const subject = { type: "user" as const, id: user.id };
-    const object = { type: "app" as const, id: "admin" };
+    const object = SITE_RESOURCE;
     const exists = await adapter.hasTuple(subject, user.role, object);
     if (!exists) {
       await authz.allow({
@@ -232,5 +232,28 @@ export async function bootstrapAdminTuples(
         onWhat: object,
       });
     }
+  }
+}
+
+/**
+ * Grant each admin-tier role its relation on {@link SITE_RESOURCE} once, at
+ * group level: `group:editor` holds `editor` on `app:site`. A site user whose
+ * role is `editor` is already a member of `group:editor` (site auth keeps
+ * that in sync, see {@link bootstrapRoleTuples}), so membership is all it
+ * takes, with no per-user tuple to write, forget, or leave behind on revoke.
+ * The admin's own accounts get direct tuples ({@link bootstrapAdminTuples});
+ * the two do not conflict, since `authz.check()` is true if either holds.
+ *
+ * Idempotent. Called wherever an authz system is created, so a site that has
+ * a login but no admin plugin still lets its editors edit.
+ */
+export async function bootstrapRoleGrants(
+  authz: DuneAuthSystem,
+  adapter: AuthzAdapterLike,
+): Promise<void> {
+  for (const role of ["admin", "editor", "author"] as const) {
+    const group = { type: "group" as const, id: role };
+    if (await adapter.hasTuple(group, role, SITE_RESOURCE)) continue;
+    await authz.allow({ who: group, toBe: role, onWhat: SITE_RESOURCE });
   }
 }

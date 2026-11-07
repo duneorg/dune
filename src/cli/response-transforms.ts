@@ -41,7 +41,7 @@ import type { DuneConfig } from "../config/types.ts";
 import type { AdminBarAction, AdminBarActionContext, DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { PageIndex } from "../content/types.ts";
-import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
+import { highestAdminRole, roleHasPermission, SITE_RESOURCE } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { hasSessionCookie } from "./admin-bar-inject.ts";
 import { isAdminPath } from "./serve-utils.ts";
@@ -158,7 +158,7 @@ export async function runPluginResponseTransforms(
             who: { type: "user", id: r.user.id as string },
             // deno-lint-ignore no-explicit-any
             canThey: "pages.update" as any,
-            onWhat: { type: "app", id: "admin" },
+            onWhat: SITE_RESOURCE,
           })
           : false
       );

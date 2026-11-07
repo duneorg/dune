@@ -13,6 +13,7 @@ import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
 import { createStagingEngine } from "../staging/engine.ts";
 import { bootstrapAdminTuples } from "../auth/authz.ts";
+import { withRoleSync } from "../auth/sync-roles.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
 import { resolveDataDir, resolveRuntimeDir } from "../forms/config.ts";
 import { logger } from "../core/logger.ts";
@@ -56,7 +57,9 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       },
     },
     users: {
-      createLocalStore: ({ usersDir }) => createLocalUserStore({ storage, usersDir }),
+      // Writes through this store keep group membership in step with roles[],
+      // so a role an admin grants takes effect without a restart.
+      createLocalStore: ({ usersDir }) => withRoleSync(createLocalUserStore({ storage, usersDir }), () => opts.getAuthz?.()),
     },
     passwords: {
       hash: hashPassword,
