@@ -98,7 +98,7 @@ export interface AdminPrefix {
  *
  * The rule: **a key is prefixed with the name of the plugin that consumes it**
  * (`admin.*` is the admin's, `bar.*` plugin-inline-edit's). Unprefixed
- * namespaces (`auth`, `editor`, `scheduler`, `admin.prefix`) belong to core.
+ * namespaces (`editor`, `scheduler`, `admin.prefix`) belong to core.
  * Core never reads a key it did not declare.
  */
 export interface Capabilities {
