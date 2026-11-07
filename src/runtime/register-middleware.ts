@@ -94,8 +94,8 @@ export function registerContentCatchAll(
   } = opts;
   const { engine, imageHandler, hooks, config, metrics, authz, authzSchema } = ctx;
   // Who the admin is on this request comes from whichever plugin provides the
-  // `auth.session` capability; with none, every visitor is anonymous here.
-  const getAdminAuth = () => ctx.capabilities.get("auth.session") ?? null;
+  // `editor.session` capability; with none, every visitor is anonymous here.
+  const getAdminAuth = () => ctx.capabilities.get("editor.session") ?? null;
 
   // Plugin response transforms (admin bar and friends) for a content response.
   // A bare response (template `output` mode) is not an HTML document, so only

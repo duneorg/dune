@@ -1,5 +1,5 @@
 /**
- * The inline-edit WebSocket route takes its manager from the `inline-edit`
+ * The inline-edit WebSocket route takes its manager from the `editor.inline`
  * capability, not from the removed `adminServices` field.
  *
  * Without a provider the route answers 501 ("not enabled"); with one it
@@ -52,7 +52,7 @@ Deno.test(
       version: "1.0.0",
       hooks: {},
       setup(api) {
-        api.capabilities.provide("inline-edit", () => ({
+        api.capabilities.provide("editor.inline", () => ({
           handleUpgrade: () => new Response(null, { status: 204 }),
         } as never));
       },
