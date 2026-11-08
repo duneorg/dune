@@ -25,6 +25,71 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `resolveDataDir()` (`@dune/core/forms`); before, several commands
   (`users:create`, `users:grant-role`, `authz:sign`, the `migrate:*` user and
   auth migrations) read only `admin.data_dir` and ignored `system.data_dir`.
+- **`admin.runtime_dir` and `admin.max_revisions`.** They are core settings, not
+  the admin's: core's history engine, job state, search analytics and public
+  sessions all use them. They are now `runtime_dir` and `max_revisions` at the
+  top level of system.yaml (`system.runtime_dir`, `system.max_revisions`;
+  defaults `.dune/admin` and 50, so existing state stays where it is). The old
+  keys, in either spelling, refuse to load and say where the setting went.
+  `resolveRuntimeDir()` and `resolveMaxRevisions()` (`@dune/core/forms`) are the
+  one place that resolves them. A plugin reads the directory from
+  `services.paths.runtimeDir`. `@dune/plugin-admin` 4.0.0 does the same.
+- **The admin's settings are the admin plugin's config, not core's (#123, step 5).**
+  `DuneConfig.admin`, `AdminConfig`, `AuthProviderConfig`, `WebhookEndpointConfig` and
+  `WebhookContentEvent` are gone, along with the `admin` defaults, the `admin` property of the
+  config JSON schema, and core's validation of `admin.path` and `admin.auth_provider`. A
+  system.yaml `admin:` block is refused. `path`, `session_lifetime`, `max_upload_mb`,
+  `git_commit`, `webhooks`, `auth_provider` and `audit` are now `config:` under the admin's
+  entry in `plugins:` (site.yaml), read by the plugin as `config.plugins.admin`, which the
+  plugin validates itself. `runtime_dir`, `max_revisions` and `data_dir` go to the top level of
+  system.yaml. `dune migrate:config` does the whole move for the base system.yaml (an
+  `admin:` block in an environment overlay, or one that still holds `honeypot`, `notifications`
+  or `incoming_webhooks`, is left for you). The MCP server no longer reports `admin` settings
+  and loses its `dune://site/audit` resource: core cannot know where the admin writes its log.
+  `site.machine_translation` is the admin's too: it moves into the same `config:` as
+  `machine_translation:` with `api_key` and `base_url` (they were `apiKey` and `baseUrl`), a
+  `site.yaml` that still has it is refused, and `migrate:config` moves and renames it.
+  `Role` is now `config/role.ts`; `WebhookNotificationConfig` lives with the forms config.
+- **Core no longer loads the admin: it is a plugin you list (#123, step 4).** `bootstrap()`
+  used to import `jsr:@dune/plugin-admin@*` itself unless `admin.enabled` was false; now the
+  admin runs only when `config/site.yaml` lists it under `plugins:`
+  (`- src: jsr:@dune/plugin-admin@^4`, which `dune new` writes and `dune migrate:config` adds).
+  A site that lists nothing has no admin, no `editor.session`, no authz system (unless a plugin
+  declares `authzActions`), and says so once at boot (`bootstrap.no_admin`). Gone with it:
+  `admin.enabled` and `admin.authz_store` (both refused with a message; the authz store was
+  always local), the `authProvider` bootstrap option (build the admin plugin yourself and pass
+  it in `plugins`), `AdminAuthProvider`, `ADMIN_PLUGIN_SPECIFIER` / `ADMIN_MOUNT_SPECIFIER` /
+  `MIN_ADMIN_MAJOR` and the admin version guard, and the admin special case in
+  `lockfile-resolve-helper` (a listed admin is found like any plugin). The authz system is
+  created when some plugin provides `editor.session` or declares `authzActions`. A plugin factory
+  (a default export that is a function) now receives `(config, { root, dev })`. The two-core-copies
+  check now runs for every plugin that exports `resolvedCoreSentinel`. `dune doctor` calls a
+  plugin that provides `admin.prefix` without a working `editor.session` half installed. Multisite
+  builds one island snapshot from the island specifiers of every site's loaded plugins, instead
+  of importing the admin's. `dune migrate:config` deletes `admin.enabled` and adds the admin
+  entry (run it once: it adds the admin to a site that has none listed).
+- **Core no longer assumes the admin lives at `/admin` (#123, step 2).** Where the admin
+  is mounted is the new `admin.prefix` capability slot (`{ prefix: "/admin" }`), provided by
+  the admin plugin. Core reads it lazily for the things it must keep apart from content:
+  the page cache and response transforms skip admin paths, `onRequest` cannot short-circuit
+  them, plugin `publicRoutes` cannot shadow them, `dune build --hybrid` forwards them to the
+  Worker, and `dune dev` / `dune serve` print the admin URL. With no provider there is no
+  admin: `/admin/...` is an ordinary content path, nothing is reserved, and hybrid output
+  forwards only `/api/*`. `ResponseTransformContext.adminPrefix` and
+  `AdminBarActionContext.adminPrefix` are `""` when no admin is installed. The MCP server
+  (which loads no plugins) no longer reports `admin.path`. New: `resolveCapabilities()`
+  (`@dune/core/plugins`) settles plugin setup and resolves slots, idempotently, for callers
+  that read a slot before `createDuneApp()`. `@dune/plugin-admin` 4.0.0 provides the slot.
+- **Machine translation and the audit trail are the admin's, not core's (#123, step 3).**
+  `services.engines.mt` and `services.engines.audit` are gone from `PluginServices`
+  (`EngineServices` is `workflow`, `scheduler`, `staging`), `PluginServicesOptions.root`
+  with them, and the `@dune/core/mt` and `@dune/core/audit` entry points are removed:
+  `@dune/plugin-admin` 4.0.0 owns `AuditLogger`, the translators and their types, builds
+  them in its own `setup()`, and sends translator requests through `services.security.safeFetch`.
+  `SiteConfig` no longer declares `machine_translation` (the admin reads it from the site
+  config, as before, until its settings move in step 5); `admin.audit` is unchanged. A
+  published `@dune/plugin-admin` older than 4.0.0 imports the removed entry points and
+  cannot run on this core.
 - **The legacy `smtp:` block in form notifications.** Use `site.email`.
   Magic-link login emails also go through `site.email` now (they used to need
   the legacy `admin.notifications.email.smtp`); a site without
@@ -74,15 +139,53 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Core gates `/api/inline-edit/*`; the `editor.inline` provider serves it (#127).** Core resolves who
+  is editing (a site user, else the `editor.session` provider's user, both holding `pages.update` by
+  `authz.check()`), checks that writes are same-origin, and hands the request to the provider's new
+  `InlineEditManager.handleRequest(req, { editor, path, pageFrontmatter })`. The inline-edit
+  WebSocket and the bar use the same resolver (`createEditorResolver()`), so a signed-in site user who
+  may edit now gets the bar too, and any signed-in request bypasses the shared page cache. The
+  `source` / `commit` / `fields` routes that lived in the admin move to the provider
+  (`/api/inline-edit/content/<path>/...`). `InlineEditManager` loses `commit` and `patchFields` (core
+  never called them) and gains `handleRequest`; exports `EditorIdentity` and
+  `InlineEditRequestContext` (`@dune/core/inline-edit`). `runPluginResponseTransforms()` takes
+  `resolveEditor` instead of `auth`, `authz` and `sessionCookies`. `checkInlineEditPermission()` and
+  `checkInlineEditPermissionForSiteUser()` are gone.
+- **Page events carry an optional `actor`.** `onPageCreate`, `onPageUpdate`, `onPageDelete` and
+  `onPageMove` payloads may include `actor?: string`, the user's name when a person did the write.
+
+- **The contract keeps only what core consumes; each plugin declares its own extension points
+  (#127).** `AdminPageRegistration`, `AdminRouteRegistration`, `ContentEditorPlugin`,
+  `AdminBarAction` and `AdminBarActionContext` leave `@dune/core/plugins` and
+  `@dune/plugin-api`; core never read them. The keys `admin.pages`, `admin.routes`,
+  `editor.content` (now `admin.editor`) and `bar.actions` leave `Capabilities` /
+  `Contributions` (which is removed) and belong to the plugin that reads them
+  (`@dune/plugin-admin`, `@dune/plugin-inline-edit`), which exports them as typed keys
+  (`capabilityKey<T>("admin.pages")`, from `@dune/core/plugin-api`). `provide`, `contribute`, `get` and
+  `list` accept a key and are typed by it; `Capabilities` stays closed and lists only what core
+  reads. There is no module augmentation: JSR refuses it in a published package. The rule is that
+  a key's name is prefixed with the plugin that consumes it, and unprefixed names are core's. Two
+  keys with the same name are the same capability, so a plugin can recreate another's key from its
+  documented name instead of importing it. At runtime nothing changes: the registry was already
+  keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
+  by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
+  bar-owning plugin reads `list(BAR_ACTIONS)` and `get("admin.prefix")` per request.
+- **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
+  and the other admin-tier actions name what they protect (this site's content), not the panel
+  that happens to administer it, so the same check works on a site with no admin, one admin
+  plugin or another. Tuples are derived data and are re-seeded at every start; a store protected
+  with `DUNE_AUTHZ_HMAC_SECRET` needs `dune authz:sign` once after upgrading. A plugin that
+  checks the resource itself uses `SITE_RESOURCE` (`@dune/core`); `@dune/plugin-admin` 4.0.0
+  and `@dune/testing` 2.0.0 already do.
 - **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
-  switch (#97).** The `auth.session` provider declares the cookies that carry its session
+  switch (#97).** The `editor.session` provider declares the cookies that carry its session
   (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
   `authenticate()` on a public page and whether to keep the response out of the shared page
   cache (an editor's response must never be cached for anonymous visitors). Undeclared, any
   request with a `Cookie` header counts as possibly signed in. Before, both decisions were
   hard-wired to the cookie `dune_session`, so a replacement admin using another cookie name
   got no admin bar and could have its editor-rendered pages cached for everyone. The authz
-  system is now also created when a plugin provides `auth.session`, even with
+  system is now also created when a plugin provides `editor.session`, even with
   `admin.enabled: false`; before, a replacement admin had no authz and every `pages.update`
   check failed closed.
 - **`TemplateProps.config` is typed as `TemplateConfig`, not the whole `DuneConfig`**
@@ -99,7 +202,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   staged-preview route uses core's own staging engine
   (`pluginServices.engines.staging`). Who the admin is on a request (the admin bar's
   response transform, the inline-edit WebSocket's admin fallback) comes from the
-  `auth.session` capability. `dune serve` starts the workflow scheduler's polling loop
+  `editor.session` capability. `dune serve` starts the workflow scheduler's polling loop
   only when a plugin provides `scheduler.executor`, and hands the job scheduler to
   plugins as `BootstrapResult.jobScheduler`. `ResponseTransformContext.barActions`
   carries the `bar.actions` contributions. A plugin-admin that still only fills the
@@ -109,7 +212,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   the capability registry (`PluginApi.capabilities` / `MountApi.capabilities`):
   - `DunePlugin.adminServices` and `AdminServices` / `AdminServicesContext` /
     `collectAdminServices()` / `MountApi.adminServices` / `BootstrapResult.adminServices`
-    -> provide the `inline-edit` or `editor.content` slot in `setup()`.
+    -> provide the `editor.inline` or `editor.content` slot in `setup()`.
   - `DunePlugin.adminPages` -> `capabilities.contribute("admin.pages", page)`. `permission`
     is now required on every `admin.pages` and `admin.routes` contribution (it used to be
     optional on pages, meaning any authenticated admin), so nothing is exposed to every
@@ -123,10 +226,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
     `ResponseTransformContext.plugins` is replaced by `ResponseTransformContext.barActions`.
   - `DunePlugin.mountEarly` and the admin-first mount ordering (`ADMIN_PLUGIN_NAME`).
     A plugin route that needs to know who the admin is calls
-    `capabilities.get("auth.session")?.authenticate(req)`; there is no shared
+    `capabilities.get("editor.session")?.authenticate(req)`; there is no shared
     per-request state to rely on, so nothing needs admin middleware to be mounted first.
   - `BootstrapResult.adminContext`, the untyped bag core used to read from the admin.
-  `/api/inline-edit/ws` now takes its manager from the `inline-edit` capability.
+  `/api/inline-edit/ws` now takes its manager from the `editor.inline` capability.
   `plugin-admin` 4.0.0 and `plugin-inline-edit` provide and consume these; a site-local
   plugin that used the removed fields fails type-checking until it moves to the registry.
 - **Config keys are snake_case everywhere (#96).** Authored keys that were camelCase
@@ -215,7 +318,7 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 - **`dune doctor --boot` says who provides what, and checks the admin (#97).**
   The booted site reports its capability slots and contribution points (and
   writes one `capabilities.resolved` log line at startup). Doctor lists them and
-  errors when the admin is enabled but no plugin provides `auth.session` (the
+  errors when the admin is enabled but no plugin provides `editor.session` (the
   site boots, but nobody can sign in and there is no editing bar) or when a
   provider's factory threw, and warns when scheduled actions are queued with no
   `scheduler.executor`. Findings gain an `info` severity, which never fails a run.
@@ -224,11 +327,17 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   (in `setup()`: `provide(name, factory)` for slots, `contribute(point, item)` for
   contribution points) and `MountApi.capabilities` / `BootstrapResult.capabilities`
   (`get`, `list`, `providers`) replace reaching into the admin plugin's untyped
-  `ctx.adminContext` bag. First-party keys: slots `auth.session`,
-  `scheduler.executor`, `inline-edit`, `editor.content`; contribution points
+  `ctx.adminContext` bag. First-party keys: slots `editor.session`,
+  `scheduler.executor`, `editor.inline`, `editor.content`; contribution points
   `admin.pages`, `admin.routes`, `bar.actions`. Core resolves the slot factories once, after every
   `setup()` has settled and before `mount()`; a later provider replaces an earlier
-  one with a warning, a throwing factory is logged and leaves its slot empty. The
+  one with a warning, except `editor.session` and `admin.prefix`: two different plugins providing
+  either stops the boot with an error naming both (the winner must not depend on load
+  order: `editor.session` decides who is treated as an editor, `admin.prefix` which paths
+  core reserves; one admin per site; `dune doctor --boot` reports it too). An
+  `admin.prefix` that is not a usable path (`admin/`, `/`, `/admin/`) also stops the boot
+  rather than meaning "no admin". A
+  throwing factory is logged and leaves its slot empty. The
   old fields it replaces are removed (see "Removed — BREAKING").
 - **`--site <id>` for multisite installs (#91).** In a multisite install every site has
   its own config, `data_dir`, users and sessions, but the CLI only knew one
@@ -270,6 +379,23 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **A signed-in site user with an editing role can edit inline without the admin plugin
+  (#130).** The authz system is now created whenever the site has a login (`site.auth`), a
+  plugin provides `editor.session`, or a plugin declares `authzActions`; `mountDuneAuth` reuses
+  that one instance. The `admin`, `editor` and `author` roles are granted once at group level
+  (`group:editor` holds `editor` on `app:site`), so a user's membership, which site auth
+  already keeps in sync, is enough. No per-user tuple and no admin plugin needed. A role that
+  is only a content tag (`member`, `subscriber`, ...) still grants nothing. Also applies to an
+  `external-jwt` site: a role claim of `admin`, `editor` or `author` in the identity provider's
+  token now carries that permission.
+- **A role granted or revoked while the app runs now takes effect without a restart.** Group
+  membership (`member of group:<role>`), which page gating and the grants above read, was only
+  seeded at startup, so a `roles[]` change made by an admin, a plugin or the CLI waited for the
+  next restart. User stores created by core (`services.users.createLocalStore()`, and the site
+  auth store) are now wrapped with `withRoleSync`: every `create`, `update` of `roles`, and
+  `delete` makes membership match the record. `dune users:create`, `users:grant-role` and
+  `users:revoke-role` do the same. The payments webhook no longer writes the membership twice on
+  such a store.
 - **`search.custom_fields`, `search.fields`, `search.highlight` and
   `search.excerpt_length` now do what the docs say (#97).** They were validated
   and documented, but bootstrap never passed them to the search engine, so setting

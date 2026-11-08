@@ -17,7 +17,8 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
 import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
-import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
+import { isValidPluginIslandSpecifier, resolveCapabilities } from "../plugins/loader.ts";
+import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
@@ -85,12 +86,15 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   await registerInstance({
     mode: "dev", root, title: config.site.title ?? null, port, version: CORE_VERSION,
   });
-  const adminPrefix = config.admin?.path ?? "/admin";
+  // Slots resolve once every plugin's setup() has settled; the banner needs
+  // `admin.prefix` before the app (and mountPlugins) exists.
+  await resolveCapabilities(ctx);
+  const adminPrefix = adminPrefixOf(ctx.capabilities);
 
   console.log(`  📄 ${engine.pages.length} pages indexed`);
   console.log(`  🏷️  ${taxonomy.names().length} taxonomies`);
   console.log(`  🔍 Search index built`);
-  if (config.admin?.enabled !== false) {
+  if (adminPrefix) {
     console.log(`  🔐 Admin panel: http://localhost:${port}${adminPrefix}/`);
   }
 

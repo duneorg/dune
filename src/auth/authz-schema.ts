@@ -5,7 +5,7 @@
  *
  * Covers all authorization layers uniformly:
  *   - Content gating (`roles:` frontmatter) — "access" on object type "group"
- *   - Admin panel access + granular admin permissions — actions on object type "app"
+ *   - Site-wide editing permissions — actions on object `app:site` ({@link SITE_RESOURCE})
  *   - Inline editing — "edit" on object type "resource"
  *   - Resource-level grants — "owner" relation on object type "resource"
  *
@@ -16,11 +16,11 @@
  *   `roles: member` → authz.check({ who: user, canThey: "access", onWhat: { type: "group", id: "member" } })
  *   authz.addMember({ member: { type: "user", id }, group: { type: "group", id: "member" } })
  *
- * ## Admin panel access (top-level)
- *   authz.check({ who: adminUser, canThey: "access", onWhat: { type: "app", id: "admin" } })
+ * ## Site access (top-level)
+ *   authz.check({ who: adminUser, canThey: "access", onWhat: { type: "app", id: "site" } })
  *
- * ## Granular admin permissions
- *   authz.check({ who: adminUser, canThey: "pages.create", onWhat: { type: "app", id: "admin" } })
+ * ## Granular permissions
+ *   authz.check({ who: adminUser, canThey: "pages.create", onWhat: { type: "app", id: "site" } })
  *
  * The admin permission actions below are the sole, canonical *built-in*
  * permission definition — `@dune/plugin-admin` no longer keeps its own
@@ -33,7 +33,17 @@
 
 import { defineSchema } from "polizy";
 import type { AuthSchema } from "polizy";
-import type { Role } from "../config/admin-config.ts";
+import type { Role } from "../config/role.ts";
+
+/**
+ * The object every site-wide permission is checked against: "may this user
+ * edit this site's content". It names what is protected, not who administers
+ * it, so it is the same on a site with no admin panel and for any admin
+ * plugin. Admin-tier roles hold their relation on it: site users through
+ * their role's group ({@link bootstrapRoleGrants}), the admin's own accounts
+ * through direct tuples (`AuthzService.seedAdminTuples`).
+ */
+export const SITE_RESOURCE = { type: "app", id: "site" } as const;
 
 /**
  * A polizy relation name a plugin-contributed action can require. Limited
@@ -136,7 +146,7 @@ export function buildDuneAuthzSchema(
       ...DUNE_BASE_AUTHZ_ACTIONS,
       ...pluginActions,
     },
-    subjectTypes: ["user"] as const,
+    subjectTypes: ["user", "group"] as const,
     objectTypes: ["group", "app", "resource"] as const,
   });
 }

@@ -29,8 +29,6 @@ import type { SearchAnalytics, SearchAnalyticsSummary } from "../search/analytic
 import type { WorkflowEngine } from "../workflow/engine.ts";
 import type { Scheduler } from "../workflow/scheduler.ts";
 import type { StagingEngine } from "../staging/engine.ts";
-import type { MachineTranslator } from "../mt/types.ts";
-import type { AuditLogger } from "../audit/logger.ts";
 
 /** Stateless security policy. */
 export interface SecurityService {
@@ -106,10 +104,6 @@ export interface EngineServices {
   scheduler: Scheduler;
   /** Staged drafts of published pages. */
   staging: StagingEngine;
-  /** The configured machine translator, or null when none is configured. */
-  mt: MachineTranslator | null;
-  /** The audit trail, or null when `admin.audit.enabled` is false. */
-  audit: AuditLogger | null;
 }
 
 /** The site's frontmatter schemas (blueprints), as currently loaded. */
@@ -159,8 +153,6 @@ export interface PluginServices {
 export interface PluginServicesOptions {
   config: import("../config/types.ts").DuneConfig;
   storage: StorageAdapter;
-  /** Site root. Needed for the audit trail's file path; without it `engines.audit` is null. */
-  root?: string;
   /** The query recorder, when `system.search.analytics` is on. */
   searchAnalytics?: SearchAnalytics | null;
   /** The blueprints currently loaded by the content engine (read at call time; they reload). */

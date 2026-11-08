@@ -18,6 +18,8 @@ import {
 import { scrubMarkersFromResponse } from "../cli/marker-scrub.ts";
 import { isBareResponse } from "../routing/bare-response.ts";
 import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
+import type { EditorResolver } from "../auth/editor.ts";
+import { getUser } from "../auth/types.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
 import {
   buildCacheControl,
@@ -46,8 +48,11 @@ export interface ContentMiddlewareOptions {
   cacheDefaults: { maxAge: number; swr: number };
   feedEnabled: boolean;
   siteName: string;
-  adminPrefix: string;
+  /** Where the admin is mounted, or null when there is no admin. Read per request. */
+  adminPrefix: () => string | null;
   routes: DuneRoutes;
+  /** Who is editing a request (see `createEditorResolver()`); drives the bar and marker scrubbing. */
+  resolveEditor: EditorResolver;
 }
 
 function makeRenderJsx(
@@ -90,11 +95,12 @@ export function registerContentCatchAll(
     siteName,
     adminPrefix,
     routes,
+    resolveEditor,
   } = opts;
-  const { engine, imageHandler, hooks, config, metrics, authz, authzSchema } = ctx;
+  const { engine, imageHandler, hooks, config, metrics, authzSchema } = ctx;
   // Who the admin is on this request comes from whichever plugin provides the
-  // `auth.session` capability; with none, every visitor is anonymous here.
-  const getAdminAuth = () => ctx.capabilities.get("auth.session") ?? null;
+  // `editor.session` capability; with none, every visitor is anonymous here.
+  const getAdminAuth = () => ctx.capabilities.get("editor.session") ?? null;
 
   // Plugin response transforms (admin bar and friends) for a content response.
   // A bare response (template `output` mode) is not an HTML document, so only
@@ -108,14 +114,12 @@ export function registerContentCatchAll(
       req,
       response,
       plugins: hooks.plugins(),
-      auth: getAdminAuth(),
-      sessionCookies: getAdminAuth()?.sessionCookies,
-      barActions: ctx.capabilities.list("bar.actions"),
-      authz,
+      resolveEditor,
       actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
       resolve: engine.router.resolve,
       config,
-      adminPrefix,
+      adminPrefix: adminPrefix(),
+      capabilities: ctx.capabilities,
     });
 
   app.all("/*", async (fc) => {
@@ -199,10 +203,13 @@ export function registerContentCatchAll(
         const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
         const ccValue = buildCacheControl(policy);
 
-        // Admin-session requests bypass the shared page cache (their response
-        // includes the injected admin bar and must never be stored anonymously).
+        // Signed-in requests bypass the shared page cache: an editor's response
+        // includes the injected bar and must never be stored anonymously. That
+        // covers the `editor.session` provider's cookies and anyone signed in
+        // through the site login (the bar also shows for site users who may edit).
         const adminAuth = getAdminAuth();
-        const bypassPageCache = adminAuth ? hasSessionCookie(req, adminAuth.sessionCookies) : false;
+        const bypassPageCache = getUser(req) !== null ||
+          (adminAuth ? hasSessionCookie(req, adminAuth.sessionCookies) : false);
 
         // Role-gated pages must never enter the shared page cache. The cache is
         // keyed by pathname only and is not partitioned by authorization, so a

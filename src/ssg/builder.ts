@@ -37,6 +37,8 @@ import {
   hashFile,
   type BuildManifest,
 } from "./manifest.ts";
+import { resolveCapabilities } from "../plugins/loader.ts";
+import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -195,7 +197,10 @@ export async function buildStatic(
   // ── Hybrid config ─────────────────────────────────────────────────────────
 
   if (opts.hybrid) {
-    await writeHybridConfig(outDir, config);
+    // The admin prefix comes from the `admin.prefix` slot; resolve slots first
+    // (idempotent). No admin means only the API is forwarded to the Worker.
+    await resolveCapabilities(ctx);
+    await writeHybridConfig(outDir, adminPrefixOf(ctx.capabilities));
   }
 
   // ── Save manifest ─────────────────────────────────────────────────────────
@@ -551,14 +556,13 @@ async function copyDir(
  * routes are forwarded to a Worker while everything else is served from the
  * static assets.
  */
-async function writeHybridConfig(outDir: string, config: DuneConfig): Promise<void> {
-  const adminPath = config.admin?.path ?? "/admin";
+async function writeHybridConfig(outDir: string, adminPath: string | null): Promise<void> {
 
   // Cloudflare Pages _routes.json
   const routesJson = {
     version: 1,
     description: "Dune hybrid mode — static pages + dynamic API/admin",
-    include: [`${adminPath}/*`, "/api/*"],
+    include: [...(adminPath ? [`${adminPath}/*`] : []), "/api/*"],
     exclude: ["/static/*", "/themes/*", "/content-media/*"],
   };
   await Deno.writeTextFile(
@@ -568,7 +572,7 @@ async function writeHybridConfig(outDir: string, config: DuneConfig): Promise<vo
 
   // Netlify _redirects for API/admin proxy
   const netlifyRedirects = [
-    `${adminPath}/*  /.netlify/functions/dune  200`,
+    ...(adminPath ? [`${adminPath}/*  /.netlify/functions/dune  200`] : []),
     `/api/*  /.netlify/functions/dune  200`,
   ].join("\n") + "\n";
   await Deno.writeTextFile(join(outDir, "_redirects"), netlifyRedirects);

@@ -299,7 +299,7 @@ export const CONFIG_SCHEMA = {
               type: "boolean",
               default: false,
               description:
-                "Record GET /api/search queries (text and result count) to admin.runtime_dir/search-analytics.json (bounded counters, not a request log) for top-query and zero-result reports. Off by default: it contains what visitors typed.",
+                "Record GET /api/search queries (text and result count) to system.runtime_dir/search-analytics.json (bounded counters, not a request log) for top-query and zero-result reports. Off by default: it contains what visitors typed.",
             },
             custom_fields: {
               type: "array",
@@ -353,6 +353,18 @@ export const CONFIG_SCHEMA = {
           default: "data",
           description:
             "Persistent data directory (git-tracked): form submissions, admin users. Replaces admin.dataDir.",
+        },
+        runtime_dir: {
+          type: "string",
+          default: ".dune/admin",
+          description:
+            "Machine-local runtime state (gitignored): job state, revision history, scheduled actions, search analytics. Replaces admin.runtime_dir.",
+        },
+        max_revisions: {
+          type: "integer",
+          minimum: 0,
+          default: 50,
+          description: "Revisions kept per page (0 keeps all). Replaces admin.max_revisions.",
         },
         webhooks: {
           type: "object",
@@ -463,78 +475,6 @@ export const CONFIG_SCHEMA = {
             },
           },
         ],
-      },
-    },
-
-    admin: {
-      type: "object",
-      description: "Admin panel settings",
-      properties: {
-        enabled: { type: "boolean", default: true },
-        path: {
-          type: "string",
-          default: "/admin",
-          description: "Admin panel route prefix (e.g. /admin, /cms)",
-        },
-        session_lifetime: {
-          type: "integer",
-          minimum: 0,
-          default: 86400,
-          description: "Admin session TTL in seconds",
-        },
-        runtime_dir: { type: "string", default: ".dune/admin" },
-        max_revisions: { type: "integer", minimum: 0, default: 50 },
-        max_upload_mb: { type: "integer", minimum: 1, default: 100 },
-        git_commit: {
-          type: "boolean",
-          default: false,
-          description: "Auto-commit page saves via git",
-        },
-        audit: {
-          type: "object",
-          properties: {
-            enabled: { type: "boolean", default: true },
-            log_file: { type: "string", description: "Path to JSONL audit log file" },
-          },
-        },
-        auth_provider: {
-          type: "object",
-          description:
-            "Auth provider. Only the built-in local password auth is configurable (omit this, or type: local); LDAP and SAML are not supported. Inject a custom provider through the admin plugin's authProvider option.",
-          properties: {
-            type: { type: "string", enum: ["local"] },
-          },
-          required: ["type"],
-          additionalProperties: false,
-        },
-        webhooks: {
-          type: "array",
-          description: "Outbound webhook endpoints for content events",
-          items: {
-            type: "object",
-            required: ["url", "events"],
-            properties: {
-              url: { type: "string", format: "uri" },
-              secret: { type: "string" },
-              events: {
-                type: "array",
-                items: {
-                  type: "string",
-                  enum: [
-                    "onPageCreate",
-                    "onPageUpdate",
-                    "onPageDelete",
-                    "onPageMove",
-                    "onWorkflowChange",
-                  ],
-                },
-              },
-              enabled: { type: "boolean", default: true },
-              label: { type: "string" },
-              allow_private: { type: "boolean", default: false },
-            },
-          },
-        },
       },
     },
   },

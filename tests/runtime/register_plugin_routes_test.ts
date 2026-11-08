@@ -5,8 +5,8 @@
  *
  * This is the real gap the fix closes: previously the only code that turned
  * a plugin's `publicRoutes` into a live Fresh route lived in
- * @dune/plugin-admin's mountDuneAdmin(), so a site with `admin.enabled:
- * false`, headless mode without an explicit mountDuneAdmin() call, or any
+ * @dune/plugin-admin's mountDuneAdmin(), so a site with no admin plugin listed,
+ * headless mode without an explicit mountDuneAdmin() call, or any
  * bootstrap()-only tool never got publicRoutes wired at all — silently, no
  * error. bootstrap.ts always collected BootstrapResult.pluginPublicRoutes;
  * nothing turned that into an app.get() call unless plugin-admin's mount()
@@ -37,10 +37,8 @@ async function withTestApp(
       "---\ntitle: Home\n---\n\n# Home\n",
     );
 
-    // No @dune/plugin-admin (or any admin package) is passed via `plugins`
-    // below — this is the exact "admin package absent" scenario the fix
-    // targets, since no site.yaml `plugins:` list or admin auto-registration
-    // is involved when constructing the plugin array directly like this.
+    // No admin package at all: none is listed in site.yaml and none is passed
+    // via `plugins` below unless a test supplies its own stand-in.
     const ctx = await bootstrap(root, { plugins });
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     const handler = app.handler();
@@ -121,8 +119,20 @@ Deno.test(
   },
 );
 
+/** A stand-in admin: all core needs from it is where it is mounted. */
+function adminAt(prefix: string): DunePlugin {
+  return {
+    name: "test-admin",
+    version: "1.0.0",
+    hooks: {},
+    setup(api) {
+      api.capabilities.provide("admin.prefix", () => ({ prefix }));
+    },
+  };
+}
+
 Deno.test(
-  "registerPluginPublicRoutes: rejects a route that shadows a reserved prefix",
+  "registerPluginPublicRoutes: rejects a route under the prefix an admin provides",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     const plugin: DunePlugin = {
@@ -136,15 +146,57 @@ Deno.test(
         },
       ],
     };
-    await withTestApp([plugin], async (handler) => {
-      // No admin package is registered, so /admin/hijack isn't claimed by
-      // real admin routes either — if the plugin route had registered, it
-      // would answer with 200. It must not: the reserved-prefix check
-      // rejects it regardless of whether the admin panel is actually
-      // running, since the check is about the path shape, not runtime
-      // admin state.
+    await withTestApp([adminAt("/admin"), plugin], async (handler) => {
+      // The admin package here only declares where it lives (it mounts no
+      // routes), so /admin/hijack would answer 200 if the plugin route had
+      // registered. It must not: the provided prefix is reserved.
       const res = await handler(new Request("http://localhost/admin/hijack"));
       assertEquals(res.status !== 200, true);
+    });
+  },
+);
+
+Deno.test(
+  "registerPluginPublicRoutes: with no admin installed, /admin is an ordinary path",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const plugin: DunePlugin = {
+      name: "test-no-admin-plugin",
+      version: "1.0.0",
+      hooks: {},
+      publicRoutes: [
+        {
+          path: "/admin/status",
+          handler: () => new Response("mine", { status: 200 }),
+        },
+      ],
+    };
+    await withTestApp([plugin], async (handler) => {
+      const res = await handler(new Request("http://localhost/admin/status"));
+      assertEquals(res.status, 200);
+      assertEquals(await res.text(), "mine");
+    });
+  },
+);
+
+Deno.test(
+  "registerPluginPublicRoutes: a custom admin prefix is the reserved one, /admin is not",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const plugin: DunePlugin = {
+      name: "test-custom-prefix-plugin",
+      version: "1.0.0",
+      hooks: {},
+      publicRoutes: [
+        { path: "/admin/open", handler: () => new Response("open", { status: 200 }) },
+        { path: "/cms/closed", handler: () => new Response("closed", { status: 200 }) },
+      ],
+    };
+    await withTestApp([adminAt("/cms"), plugin], async (handler) => {
+      const open = await handler(new Request("http://localhost/admin/open"));
+      assertEquals(open.status, 200);
+      const closed = await handler(new Request("http://localhost/cms/closed"));
+      assertEquals(closed.status !== 200, true);
     });
   },
 );
@@ -294,8 +346,7 @@ Deno.test(
       await Deno.writeTextFile(
         join(root, "content", "01.home", "default.md"),
         "---\ntitle: Home\n---\n\n# Home\n",
-      );
-      const ctx = await bootstrap(root, { plugins: [plugin] });
+      );      const ctx = await bootstrap(root, { plugins: [plugin] });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
       registerPluginPublicRoutes(app, ctx, { adminPrefix: "/admin" });

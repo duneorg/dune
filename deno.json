@@ -41,8 +41,6 @@
     "./staging": "./src/staging/engine.ts",
     "./workflow": "./src/workflow/mod.ts",
     "./session": "./src/session/mod.ts",
-    "./audit": "./src/audit/mod.ts",
-    "./mt": "./src/mt/mod.ts",
     "./security": "./src/security/mod.ts",
     "./history": "./src/history/mod.ts",
     "./metrics": "./src/metrics/mod.ts",

@@ -245,6 +245,19 @@ export interface SystemConfig {
    */
   data_dir?: string;
   /**
+   * Machine-local runtime state (ephemeral, gitignored): job state, revision
+   * history, scheduled actions, staged drafts, search analytics, and whatever
+   * an admin plugin keeps. Default: ".dune/admin" (the name predates the move
+   * out of `admin:`; kept so existing sites keep their state). Replaces
+   * `admin.runtime_dir`.
+   */
+  runtime_dir?: string;
+  /**
+   * Revisions kept per page; the oldest is pruned on each save. 0 keeps all.
+   * Default: 50. Replaces `admin.max_revisions`.
+   */
+  max_revisions?: number;
+  /**
    * Webhooks. `incoming` lets external systems trigger actions by POSTing to
    * `/api/webhook/incoming` with a token, no admin plugin needed.
    *

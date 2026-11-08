@@ -25,10 +25,7 @@ const RULES: Rule[] = [
     parent: ["admin"],
     renames: {
       sessionLifetime: "session_lifetime",
-      runtimeDir: "runtime_dir",
-      maxRevisions: "max_revisions",
       maxUploadMb: "max_upload_mb",
-      authzStore: "authz_store",
     },
   },
   { file: "system", parent: ["admin", "audit"], renames: { logFile: "log_file" } },
@@ -69,6 +66,22 @@ interface MovedRule {
 
 const MOVED: MovedRule[] = [
   {
+    file: "site",
+    parent: [],
+    keys: {
+      machine_translation:
+        "the admin plugin's config (`config:` of its entry in plugins:), with api_key and base_url in snake_case; `dune migrate:config` moves it",
+    },
+  },
+  {
+    file: "system",
+    parent: [],
+    keys: {
+      admin:
+        "the admin's settings are the admin plugin's own config now: put them under `config:` of its entry in plugins: (site.yaml); `dune migrate:config` moves them",
+    },
+  },
+  {
     file: "system",
     parent: ["admin"],
     keys: {
@@ -78,6 +91,13 @@ const MOVED: MovedRule[] = [
       incomingWebhooks: "webhooks.incoming in system.yaml",
       data_dir: "data_dir at the top level of system.yaml",
       dataDir: "data_dir at the top level of system.yaml",
+      enabled: "removed: the admin runs only when jsr:@dune/plugin-admin is listed under plugins: in site.yaml (delete this key to run without it)",
+      authz_store: "removed: the admin's authz store is always local",
+      authzStore: "removed: the admin's authz store is always local",
+      runtime_dir: "runtime_dir at the top level of system.yaml",
+      runtimeDir: "runtime_dir at the top level of system.yaml",
+      max_revisions: "max_revisions at the top level of system.yaml",
+      maxRevisions: "max_revisions at the top level of system.yaml",
     },
   },
   {
@@ -149,6 +169,33 @@ export function removeIgnoredKeysInText(
   file: ConfigFileKind,
   text: string,
 ): { text: string; removed: MovedKey[] } {
+  return removeKeysInText(IGNORED, file, text);
+}
+
+/** `admin.enabled` in system.yaml: removed in 0.36 (the admin runs only when its plugin is listed). */
+const ADMIN_ENABLED: MovedRule[] = [{ file: "system", parent: ["admin"], keys: { enabled: "" } }];
+
+/** Delete the `admin.enabled` line from a system.yaml text (comments and the rest are kept). */
+export function removeAdminEnabledInText(text: string): { text: string; removed: boolean } {
+  const r = removeKeysInText(ADMIN_ENABLED, "system", text);
+  return { text: r.text, removed: r.removed.length > 0 };
+}
+
+/** Delete a top-level key and its children from a config file's text (comments elsewhere are kept). */
+export function removeTopLevelKeyInText(
+  file: ConfigFileKind,
+  text: string,
+  key: string,
+): { text: string; removed: boolean } {
+  const r = removeKeysInText([{ file, parent: [], keys: { [key]: "" } }], file, text);
+  return { text: r.text, removed: r.removed.length > 0 };
+}
+
+function removeKeysInText(
+  rules: MovedRule[],
+  file: ConfigFileKind,
+  text: string,
+): { text: string; removed: MovedKey[] } {
   const removed: MovedKey[] = [];
   const stack: { indent: number; key: string }[] = [];
   const lines = text.split("\n");
@@ -173,7 +220,7 @@ export function removeIgnoredKeysInText(
     const indent = m[1].length;
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
     const path = stack.map((x) => x.key);
-    const hit = IGNORED.find((r) => r.file === file && matches(r.parent, path) && m[2] in r.keys);
+    const hit = rules.find((r) => r.file === file && matches(r.parent, path) && m[2] in r.keys);
     if (hit) {
       removed.push({ path: [...path, m[2]].join("."), to: hit.keys[m[2]] });
       skipIndent = indent;

@@ -4,7 +4,6 @@
 
 import type { SiteConfig } from "./site-config.ts";
 import type { SystemConfig, ThemeConfig } from "./system-config.ts";
-import type { AdminConfig } from "./admin-config.ts";
 
 /**
  * A single plugin entry declared in site.yaml under the `plugins:` key.
@@ -109,6 +108,4 @@ export interface DuneConfig {
    * you have a trusted local workflow that expects drop-in plugin files.
    */
   autoDiscoverPlugins?: boolean;
-  /** Admin panel configuration (optional — defaults applied if omitted) */
-  admin?: AdminConfig;
 }

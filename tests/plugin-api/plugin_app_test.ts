@@ -4,7 +4,7 @@ import { App, type FreshContext } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import { mountPlugins } from "../../src/plugins/loader.ts";
 import type { PluginApp, PluginRouteContext, PluginRouteHandler } from "../../src/plugin-api/app.ts";
-import type { AdminPageRegistration, AdminRouteRegistration, PublicRouteRegistration } from "../../src/hooks/types.ts";
+import type { PublicRouteRegistration } from "../../src/hooks/types.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 
 // ── Types: Fresh's App and FreshContext satisfy the contract ────────────────
@@ -22,13 +22,10 @@ Deno.test("the contract's route types are satisfied by Fresh's own, both ways", 
   // deno-lint-ignore no-explicit-any
   new App<any>().get("/x", handler);
 
-  // Contribution types take a handler written against a full Fresh context
-  // (they declare `handler` as a method, so the parameter is checked bivariantly).
-  const full = (ctx: FreshContext<{ n: number }>) => new Response(String(ctx.state.n));
-  const page: AdminPageRegistration<{ n: number }> = { path: "/p", label: "P", permission: "pages.read", handler: full };
-  const route: AdminRouteRegistration<{ n: number }> = { method: "POST", path: "/r", permission: "pages.update", handler: full };
+  // A route registration takes a handler written against a full Fresh context
+  // (it declares `handler` as a method, so the parameter is checked bivariantly).
   const pub: PublicRouteRegistration = { path: "/pub", handler: (ctx: FreshContext<unknown>) => new Response(ctx.req.method) };
-  assertEquals([page.path, route.path, pub.path], ["/p", "/r", "/pub"]);
+  assertEquals(pub.path, "/pub");
 });
 
 // ── Runtime: a plugin written only against PluginApp works ──────────────────
