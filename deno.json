@@ -12,7 +12,6 @@
     "./cli": "./src/cli.ts",
     "./plugins": "./src/plugins/mod.ts",
     "./sections": "./src/sections/mod.ts",
-    "./theme-helpers": "./src/theme-helpers/mod.ts",
     "./content": "./src/content/api.ts",
     "./content/types": "./src/content/types.ts",
     "./content/path-utils": "./src/content/path-utils.ts",

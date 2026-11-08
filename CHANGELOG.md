@@ -13,6 +13,13 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Removed — BREAKING
 
+- **`@dune/core/theme-helpers` is gone.** It was used only by themes; core, `@dune/plugin-admin`
+  and sites did not import it. Every helper it had (`paginate`, `formatDate`, `getCanonicalUrl`,
+  `getSearchUrl`, `sortPages`, `groupByYear`, `truncate`, `buildPageTitle`) is in `@dune/theme-api`,
+  which has no dependency on core. Themes already published keep working on a 0.36 site: they pin
+  `@dune/core@^0.31`, which resolves their own copy. A theme moves to `@dune/theme-api@^1` when it
+  next releases. The content types stay in `@dune/core/content/types`.
+
 Everything that was marked deprecated is gone, so nothing deprecated is frozen
 into 1.0. A config file that still uses a removed key refuses to load and says
 where the setting lives now (see `dune migrate:config`, which reports these too).
