@@ -4,6 +4,10 @@
  * Import from this module instead of CMS internals so your theme stays
  * decoupled from the engine's file structure.
  *
+ * Theme authors: import these helpers and the template types from
+ * `@dune/theme-api` instead, so a theme does not depend on the CMS. This
+ * module is not deprecated; core, the CLI and sites keep using it.
+ *
  * @example
  * ```ts
  * import { formatDate, paginate, truncate } from "@dune/core/theme-helpers";

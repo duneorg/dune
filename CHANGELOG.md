@@ -294,6 +294,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   admin account, so the next-steps list now includes
   `dune users:create you@example.com --role admin --password-prompt` before
   `deno task dev`, and the admin panel line says so.
+- **Theme authors: import from `@dune/theme-api`.** The doc comments on
+  `@dune/core/content/types` and `@dune/core/theme-helpers` now say so. The
+  subpaths are not deprecated: core, the CLI, `@dune/testing` and sites keep
+  using them. Themes should depend on the leaf package instead of on core.
 
 ### Fixed
 
