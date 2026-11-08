@@ -24,15 +24,15 @@ export type {
   AuthenticateResult,
   CapabilityContext,
   CapabilityFactory,
+  CapabilityKey,
   CapabilityProvider,
   CapabilityReader,
   CapabilityRegistrar,
   Capabilities,
-  Contributions,
   RequestAuthenticator,
   ScheduledActionExecutor,
 } from "./capabilities.ts";
-export { adminPrefixOf, createCapabilityRegistry } from "./capabilities.ts";
+export { adminPrefixOf, capabilityKey, createCapabilityRegistry } from "./capabilities.ts";
 export type { CapabilityRegistry } from "./capabilities.ts";
 export type { PluginApp, PluginRouteContext, PluginRouteHandler } from "./app.ts";
 export type { PluginRuntime } from "./runtime.ts";

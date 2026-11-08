@@ -421,8 +421,8 @@ export interface DunePlugin {
    * @example
    * ```ts
    * // Gate a plugin-specific admin capability behind its own permission,
-   * // reachable from an `admin.routes` contribution (the admin plugin's extension point):
-   * //   api.capabilities.contribute("admin.routes", { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
+   * // reachable from an `ADMIN_ROUTES` contribution (the admin plugin's extension point):
+   * //   api.capabilities.contribute(ADMIN_ROUTES, { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
    * export default {
    *   name: "my-billing-plugin",
    *   version: "1.0.0",
@@ -565,8 +565,8 @@ export interface ResponseTransformContext {
   page: { sourcePath: string; route: string; title: string | null; template: string } | null;
   /**
    * What plugins provide, as `MountApi.capabilities` offers it: the slots
-   * (`get("admin.prefix")`, `get("auth.session")`) and any extension point a
-   * plugin declares (`list("bar.actions")`). A transform reads what it needs
+   * (`get("admin.prefix")`, `get("editor.session")`) and any extension point a
+   * plugin declares (`list(BAR_ACTIONS)`). A transform reads what it needs
    * here per request, so a plugin module shared between sites keeps no state
    * of its own.
    *

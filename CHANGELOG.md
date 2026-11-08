@@ -159,13 +159,17 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `AdminBarAction` and `AdminBarActionContext` leave `@dune/core/plugins` and
   `@dune/plugin-api`; core never read them. The keys `admin.pages`, `admin.routes`,
   `editor.content` (now `admin.editor`) and `bar.actions` leave `Capabilities` /
-  `Contributions` and belong to the plugin that reads them (`@dune/plugin-admin`,
-  `@dune/plugin-inline-edit`), which declares them by declaration merging. Both interfaces are
-  now open to merging; the rule is that a key is prefixed with the name of the plugin that
-  consumes it, and unprefixed names are core's. At runtime nothing changes: the registry was
-  already keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
+  `Contributions` (which is removed) and belong to the plugin that reads them
+  (`@dune/plugin-admin`, `@dune/plugin-inline-edit`), which exports them as typed keys
+  (`capabilityKey<T>("admin.pages")`, from `@dune/core/plugin-api`). `provide`, `contribute`, `get` and
+  `list` accept a key and are typed by it; `Capabilities` stays closed and lists only what core
+  reads. There is no module augmentation: JSR refuses it in a published package. The rule is that
+  a key's name is prefixed with the plugin that consumes it, and unprefixed names are core's. Two
+  keys with the same name are the same capability, so a plugin can recreate another's key from its
+  documented name instead of importing it. At runtime nothing changes: the registry was already
+  keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
   by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
-  bar-owning plugin reads `list("bar.actions")` and `get("admin.prefix")` per request.
+  bar-owning plugin reads `list(BAR_ACTIONS)` and `get("admin.prefix")` per request.
 - **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
   and the other admin-tier actions name what they protect (this site's content), not the panel
   that happens to administer it, so the same check works on a site with no admin, one admin
