@@ -34,7 +34,7 @@ import type {
 import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "../../src/storage/types.ts";
 import type { Submission, SubmissionFile, SubmissionMeta, SubmissionStatus } from "../../src/forms/submissions.ts";
 import type { BlueprintField } from "../../src/blueprints/types.ts";
-import type { InlineEditManager } from "../../src/inline-edit/types.ts";
+import type { EditorIdentity, InlineEditManager, InlineEditRequestContext } from "../../src/inline-edit/types.ts";
 import type { ScheduledAction } from "../../src/workflow/types.ts";
 import type { PluginApp, PluginRouteContext } from "../../src/plugin-api/app.ts";
 import type { PluginServices } from "../../src/plugin-api/services.ts";
@@ -64,11 +64,6 @@ import type { ThemeLoader } from "../../src/themes/loader.ts";
 import type { RouteResolver } from "../../src/routing/resolver.ts";
 import type { PluginRuntime } from "../../src/plugin-api/runtime.ts";
 import type {
-  AdminBarAction,
-  AdminBarActionContext,
-  AdminPageRegistration,
-  AdminRouteRegistration,
-  ContentEditorPlugin,
   DunePlugin,
   FormSubmitPayload,
   HookContext,
@@ -85,11 +80,12 @@ import type {
   AuthenticateResult,
   Capabilities,
   CapabilityContext,
+  CapabilityKey,
   CapabilityReader,
   CapabilityRegistrar,
-  Contributions,
 } from "../../src/plugin-api/capabilities.ts";
 import { isDuneError as coreIsDuneError } from "../../src/plugin-api/errors.ts";
+import { capabilityKey as coreCapabilityKey } from "../../src/plugin-api/capabilities.ts";
 
 // Both directions: identical on both sides.
 function same<A, B>(..._ok: [A] extends [B] ? ([B] extends [A] ? [] : [never]) : [never]): void {}
@@ -120,6 +116,8 @@ handsOut<Logger, P.Logger>();
 takesIn<P.SearchEngine, SearchEngine>();
 takesIn<P.InjectedSearchRecord, InjectedSearchRecord>();
 takesIn<P.InlineEditManager, InlineEditManager>();
+same<EditorIdentity, P.EditorIdentity>();
+same<InlineEditRequestContext, P.InlineEditRequestContext>();
 
 // --- identity: a provider supplies its own stores and cores consumes them -
 handsOut<User, P.User>();
@@ -175,18 +173,14 @@ handsOut<CapabilityRegistrar, P.CapabilityRegistrar>();
 // What a plugin supplies and core consumes.
 takesIn<P.DunePlugin, DunePlugin>();
 takesIn<P.PublicRouteRegistration, PublicRouteRegistration>();
-takesIn<P.AdminPageRegistration, AdminPageRegistration>();
-takesIn<P.AdminRouteRegistration, AdminRouteRegistration>();
-takesIn<P.ContentEditorPlugin, ContentEditorPlugin>();
 takesIn<P.Capabilities, Capabilities>();
-takesIn<P.Contributions, Contributions>();
+// Extension points a plugin owns are typed keys, not entries in a shared interface.
+same<CapabilityKey<unknown>, P.CapabilityKey<unknown>>();
 
 same<HookEvent, P.HookEvent>();
 same<PageMovePayload, P.PageMovePayload>();
 same<FormSubmitPayload, P.FormSubmitPayload>();
 same<SystemActionPayload, P.SystemActionPayload>();
-same<AdminBarAction, P.AdminBarAction>();
-same<AdminBarActionContext, P.AdminBarActionContext>();
 same<AuthenticateResult, P.AuthenticateResult>();
 
 Deno.test("isDuneError behaves the same in the package and in core", () => {
@@ -195,4 +189,9 @@ Deno.test("isDuneError behaves the same in the package and in core", () => {
     assertEquals(pluginIsDuneError(err, code), coreIsDuneError(err, code));
   }
   assertEquals(pluginIsDuneError(new Error("x"), "ssrf_blocked"), false);
+});
+
+Deno.test("a capability key made by the package is the key core reads", async () => {
+  const { capabilityKey: pluginCapabilityKey } = await import("@dune/plugin-api");
+  assertEquals(pluginCapabilityKey("bar.actions"), coreCapabilityKey("bar.actions"));
 });
