@@ -1,10 +1,10 @@
 /**
- * Headless smoke test: a site with the admin plugin turned off
- * (`admin.enabled: false`) must still do everything its public visitors see.
+ * Headless smoke test: a site that does not list the admin plugin under
+ * `plugins:` must still do everything its public visitors see.
  *
  * Admin is optional (see the plugin-api contract audit), so a feature that
- * silently needs it is a bug. This boots a freshly scaffolded site with admin
- * off, adds pages with publish windows, and checks the public surface.
+ * silently needs it is a bug. This boots a freshly scaffolded site with the
+ * admin entry removed from `plugins:`, adds pages with publish windows, and checks the public surface.
  *
  *   dune new /path/to/site
  *   deno run -A scripts/headless-smoke.ts /path/to/site [port]
@@ -28,15 +28,23 @@ const base = `http://localhost:${port}`;
 
 const systemPath = `${root}/config/system.yaml`;
 const system = await Deno.readTextFile(systemPath);
-// Public forms and the deploy webhook use their own config keys, not admin:.
+// Public forms and the deploy webhook use their own config keys, not the admin's.
 await Deno.writeTextFile(
   systemPath,
-  `${system.trimEnd()}\nadmin:\n  enabled: false\nwebhooks:\n  incoming:\n    - token: smoke-token\n      actions: [purge-cache]\n`,
+  `${system.trimEnd()}\nwebhooks:\n  incoming:\n    - token: smoke-token\n      actions: [purge-cache]\n`,
 );
 const sitePath = `${root}/config/site.yaml`;
+// Headless: the admin is a plugin like any other, so a site without it simply
+// does not list it. `dune new` lists it as the only entry under `plugins:`.
+const scaffolded = await Deno.readTextFile(sitePath);
+const adminEntry = "plugins:\n  - src: jsr:@dune/plugin-admin@^4\n";
+if (!scaffolded.includes(adminEntry)) {
+  console.error("the scaffolded site.yaml no longer lists the admin the way this script expects");
+  Deno.exit(2);
+}
 await Deno.writeTextFile(
   sitePath,
-  `${(await Deno.readTextFile(sitePath)).trimEnd()}\nforms:\n  honeypot: _hp\n`,
+  `${scaffolded.replace(adminEntry, "plugins: []\n").trimEnd()}\nforms:\n  honeypot: _hp\n`,
 );
 await Deno.mkdir(`${root}/forms`, { recursive: true });
 await Deno.writeTextFile(
