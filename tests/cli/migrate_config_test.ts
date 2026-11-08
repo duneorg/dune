@@ -232,3 +232,33 @@ Deno.test("migrate:config moves site.machine_translation into the admin plugin's
     assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
   });
 });
+
+Deno.test("migrate:config warns when an environment overlay alone switched the admin off", async () => {
+  await withSite({
+    "config/site.yaml": "title: T\n",
+    "config/system.yaml": "debug: true\n",
+    "config/env/staging/system.yaml": "admin:\n  enabled: false\n",
+  }, async (root) => {
+    // An overlay left with an empty admin: key is reported as a manual move and exits 1; the
+    // warning under test is printed before that.
+    const origExit = Deno.exit;
+    // deno-lint-ignore no-explicit-any
+    (Deno as any).exit = () => {
+      throw new Error("exit");
+    };
+    let out: string;
+    try {
+      out = await quiet(async () => {
+        try {
+          await migrateConfigCommand(root);
+        } catch { /* exit */ }
+      });
+    } finally {
+      Deno.exit = origExit;
+    }
+    assertStringIncludes(out, "added jsr:@dune/plugin-admin");
+    // The warning names the overlay and says what to do about it.
+    assertStringIncludes(out, "config/env/staging/system.yaml set admin.enabled: false for that environment only");
+    assertStringIncludes(out, "plugins: list without the admin");
+  });
+});

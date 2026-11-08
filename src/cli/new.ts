@@ -385,24 +385,27 @@ const HEADLESS_DENO_JSON = `{
 const HEADLESS_MAIN_TS = `/**
  * Headless Dune site — Fresh developer owns all routes.
  *
- * Dune provides: content management, admin panel, CMS API.
+ * Dune provides: content management, CMS API, and the admin panel if you list
+ * it under plugins: in config/site.yaml.
  * You provide: routes, layout, islands, design system.
  */
 import { App, staticFiles } from "fresh";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "@dune/core";
 import { withSocketAddr } from "@dune/core/security";
-import { mountDuneAdmin, getDuneAdminIslands } from "jsr:@dune/plugin-admin/admin/mount";
+import { mountPlugins } from "@dune/core/plugins";
 
-// 1. Bootstrap Dune (content index, admin, search, …)
+// 1. Bootstrap Dune (content index, plugins, search, …)
 const ctx = await bootstrap("./");
 const app = new App();
 
 // 2. Static files from /_fresh/js/* (island bundles) and /static/
 app.use(staticFiles());
 
-// 3. Dune admin panel (/admin/*) + public API (/api/forms/*)
-await mountDuneAdmin(app, ctx);
+// 3. Mount the plugins listed in site.yaml: the admin panel (/admin/*) when it
+// is listed, and every other plugin's routes. Remove the admin from plugins:
+// to run without it.
+await mountPlugins(app, ctx);
 
 // 4. Make the content API available to your own routes via ctx.state —
 // no global state, works the same in tests and multi-site setups.
@@ -414,11 +417,11 @@ app.use((freshCtx) => {
 // 5. Your own routes — Fresh discovers them from routes/ automatically
 app.fsRoutes("./routes");
 
-// 6. Build island bundles (admin islands + your own islands in islands/)
+// 6. Build island bundles (plugin islands, e.g. the admin's, + your own in islands/)
 const builder = new Builder({
   root: "./",
   islandDir: "./islands",
-  islandSpecifiers: getDuneAdminIslands(),
+  islandSpecifiers: ctx.hooks.plugins().flatMap((p) => p.islandSpecifiers ?? []),
 });
 const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 applySnapshot(app);
