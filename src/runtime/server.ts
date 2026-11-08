@@ -15,7 +15,7 @@ import { App, staticFiles } from "fresh";
 import { captureHandlerSocketAddr, copySocketAddr } from "../security/rate-limit.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
-import { createEditorResolver } from "../auth/editor.ts";
+import { createEditorResolver, mayEditPage } from "../auth/editor.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
 import { USER_HEADER } from "../auth/types.ts";
@@ -442,6 +442,17 @@ export async function createDuneApp(
   //    @dune/plugin-inline-edit work for a site with a login and no admin
   //    plugin. The decision itself is authz.check(pages.update), the sole
   //    authority every other permission check follows.
+  // Frontmatter of an indexed page, or null for a path that is not one.
+  const pageFrontmatter = async (sourcePath: string): Promise<Record<string, unknown> | null> => {
+    const page = engine.pages.find((p) => p.sourcePath === sourcePath);
+    if (!page) return null;
+    try {
+      return (await engine.loadPage(page.sourcePath)).frontmatter as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
   app.get("/api/inline-edit/ws", async (fc) => {
     const inlineEdit = ctx.capabilities.get("editor.inline");
     if (!inlineEdit) {
@@ -465,6 +476,10 @@ export async function createDuneApp(
       return new Response(resolved.status === 401 ? "Unauthorized" : "Forbidden", { status: resolved.status });
     }
     const { editor } = resolved;
+    // An author edits only the pages they created, as at commit.
+    if (!mayEditPage(editor, await pageFrontmatter(sourcePath))) {
+      return new Response("Forbidden", { status: 403 });
+    }
     return inlineEdit.handleUpgrade(fc.req, { id: editor.id, name: editor.username });
   });
 
@@ -484,15 +499,7 @@ export async function createDuneApp(
     return await inlineEdit.handleRequest(fc.req, {
       editor: resolved.editor,
       path: new URL(fc.req.url).pathname.slice("/api/inline-edit/".length),
-      pageFrontmatter: async (sourcePath) => {
-        const page = engine.pages.find((p) => p.sourcePath === sourcePath);
-        if (!page) return null;
-        try {
-          return (await engine.loadPage(page.sourcePath)).frontmatter as Record<string, unknown>;
-        } catch {
-          return null;
-        }
-      },
+      pageFrontmatter,
     });
   });
 

@@ -84,3 +84,22 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
     };
   };
 }
+
+/**
+ * Whether `editor` may edit the page with this frontmatter. An `admin` or
+ * `editor` may edit any page; anyone else (an `author`) only the pages they
+ * created, recorded as `createdBy` in the frontmatter. `null` is a path that is
+ * not a page, which nobody may edit.
+ *
+ * The HTTP routes of the inline-edit provider apply the same rule at commit;
+ * core applies it at the WebSocket too, so a live session cannot be opened on a
+ * page whose commit would be refused.
+ */
+export function mayEditPage(
+  editor: Pick<EditorIdentity, "id" | "roles">,
+  frontmatter: Record<string, unknown> | null,
+): boolean {
+  if (!frontmatter) return false;
+  if (editor.roles.includes("admin") || editor.roles.includes("editor")) return true;
+  return frontmatter.createdBy === editor.id;
+}

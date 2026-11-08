@@ -170,6 +170,18 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
   by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
   bar-owning plugin reads `list(BAR_ACTIONS)` and `get("admin.prefix")` per request.
+- **Holding `admin`, `editor` or `author` in `roles[]` carries editing rights for any signed-in user,
+  with or without the admin plugin (#130).** Before, a site user got them only after a restart and
+  only on a site that ran the admin with the local user store; now the roles are granted at group
+  level and kept in step with `roles[]` live, for the site login, `user_store: db` and
+  `external-jwt` role claims alike. Check this on upgrade if a site uses `editor` or `author` as a
+  *content* tier (in `roles:` frontmatter, a payment product's `role`, or a sign-up default): those
+  users can now edit. Use another role name for a content tier. Nothing is refused: paid
+  contributors are a legitimate use. `author` stays limited to the pages it created, `admin` and
+  `editor` edit any page. Core logs `auth.automatic_admin_tier_grant` at start, and
+  `dune doctor --boot` prints an `access` line, wherever the *config* assigns such a role by itself
+  (a payment product's `role`, an `external-jwt` login). It is informational (a warning for
+  `admin`) and never fails the run.
 - **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
   and the other admin-tier actions name what they protect (this site's content), not the panel
   that happens to administer it, so the same check works on a site with no admin, one admin
@@ -380,6 +392,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **A live editing session respects page ownership.** An `author` could join the inline-edit
+  WebSocket on a page it did not create and type into the shared draft, though a commit of that page
+  was refused. Core now applies the same rule at the socket: `admin` and `editor` any page, an
+  `author` only the pages it created (`createdBy`).
 - **A signed-in site user with an editing role can edit inline without the admin plugin
   (#130).** The authz system is now created whenever the site has a login (`site.auth`), a
   plugin provides `editor.session`, or a plugin declares `authzActions`; `mountDuneAuth` reuses

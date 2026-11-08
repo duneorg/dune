@@ -23,6 +23,8 @@ export interface DoctorReport {
   conflicts?: CapabilityConflict[];
   /** Scheduled actions waiting to run (they only run while a `scheduler.executor` is provided). */
   scheduledActions: number;
+  /** Where the config hands out admin-tier roles automatically (a payment product's role, an identity provider's role claims). */
+  automaticGrants?: Array<{ severity: "info" | "warning"; message: string }>;
 }
 
 /**
