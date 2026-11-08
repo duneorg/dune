@@ -143,7 +143,8 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   and the other admin-tier actions name what they protect (this site's content), not the panel
   that happens to administer it, so the same check works on a site with no admin, one admin
   plugin or another. Tuples are derived data and are re-seeded at every start; a store protected
-  with `DUNE_AUTHZ_HMAC_SECRET` needs `dune authz:sign` once after upgrading. A plugin that
+  with `DUNE_AUTHZ_HMAC_SECRET` needs `dune authz:sign` once after upgrading. The old `app:admin` tuples are not removed: nothing reads them any more, and they can be
+  deleted from `data/permissions/` at leisure. A plugin that
   checks the resource itself uses `SITE_RESOURCE` (`@dune/core`); `@dune/plugin-admin` 4.0.0
   and `@dune/testing` 2.0.0 already do.
 - **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
