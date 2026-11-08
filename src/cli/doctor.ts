@@ -35,7 +35,7 @@ import { describeConflict } from "../plugin-api/capabilities.ts";
 import { formatNpmCacheMismatchError, isNpmCacheMismatchError } from "./npm-cache-error.ts";
 
 export interface DoctorFinding {
-  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot" | "capabilities";
+  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot" | "capabilities" | "access";
   /** `info` is context for the reader and never fails the run. */
   severity: "error" | "warning" | "info";
   message: string;
@@ -187,6 +187,11 @@ export function capabilityFindings(report: DoctorReport): DoctorFinding[] {
       message: `${slot("admin.prefix")!.provider} provides "admin.prefix" (it is an admin) but no plugin provides ` +
         `"editor.session", so nobody can sign in and no editing bar is shown.`,
     });
+  }
+
+  // Admin-tier roles handed out by configuration (never an error: it is often exactly the point).
+  for (const g of report.automaticGrants ?? []) {
+    findings.push({ category: "access", severity: g.severity, message: `Editing rights are assigned automatically: ${g.message}` });
   }
 
   if (report.scheduledActions > 0 && slot("scheduler.executor")?.status !== "active") {

@@ -39,6 +39,7 @@ import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
 import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
+import { automaticAdminTierGrants } from "../auth/automatic-grants.ts";
 import { describeConflict, invalidAdminPrefix } from "../plugin-api/capabilities.ts";
 import { createPluginRuntime } from "../plugin-api/runtime.ts";
 import { resolveRuntimeDir } from "../forms/config.ts";
@@ -503,6 +504,7 @@ export async function mountPlugins(
   await writeDoctorReport(async () => ({
     providers: ctx.capabilityRegistry.reader.providers(),
     scheduledActions: (await ctx.pluginServices.engines.scheduler.list()).length,
+    automaticGrants: automaticAdminTierGrants(ctx.config),
   }));
 
   // mount(), registration order (admin last): a plugin's own

@@ -111,3 +111,15 @@ Deno.test("editor: a session user without pages.update is 403", async () => {
   const r = await resolve(new Request("https://site.test/", { headers: { cookie: "sid=x" } }));
   assertEquals(r, { ok: false, status: 403 });
 });
+
+import { mayEditPage } from "../../src/auth/editor.ts";
+
+Deno.test("mayEditPage: admin and editor edit any page; an author only the pages they created; no page, no edit", () => {
+  const page = { createdBy: "a1" };
+  assertEquals(mayEditPage({ id: "x", roles: ["admin"] }, page), true);
+  assertEquals(mayEditPage({ id: "x", roles: ["member", "editor"] }, page), true);
+  assertEquals(mayEditPage({ id: "a1", roles: ["author"] }, page), true);
+  assertEquals(mayEditPage({ id: "a2", roles: ["author"] }, page), false);
+  assertEquals(mayEditPage({ id: "a1", roles: ["author"] }, {}), false);
+  assertEquals(mayEditPage({ id: "x", roles: ["admin"] }, null), false);
+});
