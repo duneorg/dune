@@ -33,6 +33,11 @@ export interface RoleSyncTarget {
 /**
  * Make the user's `member of group:<role>` tuples match `roles`: add the
  * missing ones, remove the stale ones. Idempotent.
+ *
+ * "Match" is exact: a membership that is not in `roles` is removed, including
+ * one a plugin added by hand with `authz.addMember()`. `roles[]` is the single
+ * source of truth for group membership; a grant that `roles[]` cannot express
+ * (a payment, a resource owner) should use `allow()` on a resource, not a group.
  */
 export async function syncUserRoles(
   target: RoleSyncTarget,
@@ -111,7 +116,7 @@ export function withRoleSync(
   // A proxy rather than a spread, so stores written as classes keep working.
   return new Proxy(store, {
     get(target, prop, receiver) {
-      if (prop in overrides) return overrides[prop as keyof typeof overrides];
+      if (Object.hasOwn(overrides, prop)) return overrides[prop as keyof typeof overrides];
       const value = Reflect.get(target, prop, receiver);
       return typeof value === "function" ? value.bind(target) : value;
     },

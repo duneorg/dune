@@ -107,3 +107,13 @@ Deno.test("no authz target: writes pass straight through", async () => {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+Deno.test("membership is exactly roles[]: a group added by hand is removed on the next role write", async () => {
+  await withStore(async ({ store, authz, groups }) => {
+    const user = await store.create({ email: "m@example.com", provider: "local", roles: ["member"] });
+    await authz.addMember({ member: { type: "user", id: user.id }, group: { type: "group", id: "vip" } });
+    assertEquals(await groups(user.id), ["member", "vip"]);
+    await store.update(user.id, { roles: ["member"] });
+    assertEquals(await groups(user.id), ["member"]);
+  });
+});
