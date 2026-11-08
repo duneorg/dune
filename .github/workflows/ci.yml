@@ -138,7 +138,7 @@ jobs:
             exit 1
           fi
 
-  # Admin is optional: with `admin.enabled: false` a site must still serve
+  # Admin is optional: with it not listed under `plugins:` a site must still serve
   # everything its public visitors see. Runs this checkout's CLI against a
   # freshly scaffolded, headless site (see scripts/headless-smoke.ts). A
   # feature that silently needs the admin plugin fails here.
@@ -160,7 +160,7 @@ jobs:
         timeout-minutes: 10
         run: deno cache main.ts
 
-      - name: Boot it with admin off and check the public surface
+      - name: Boot it without the admin and check the public surface
         timeout-minutes: 5
         run: deno run -A scripts/headless-smoke.ts /tmp/headless-smoke-site
 
