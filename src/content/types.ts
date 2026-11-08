@@ -4,7 +4,7 @@
  *
  * Theme authors: import the template types from `@dune/theme-api` instead of
  * from here, so a theme does not depend on the CMS. This module is not
- * deprecated; core, the CLI and sites keep using it.
+ * deprecated; core, plugins, the CLI and sites keep using it.
  *
  * @module
  */
