@@ -74,6 +74,9 @@ export async function migrateConfigCommand(
   // `admin.enabled`: false means the site ran without the admin and keeps doing
   // so; anything else (true, or the key absent) means it had one.
   let adminWasDisabled = false;
+  // Overlay files (config/environments/<env>/system.yaml) that switched the admin off for that
+  // environment only. The plugin list is not per environment here, so they lose that.
+  const adminDisabledInOverlays: string[] = [];
   for (const { path, kind } of await candidateFiles(root)) {
     let text: string;
     try {
@@ -86,7 +89,10 @@ export async function migrateConfigCommand(
     if (kind === "system") {
       const admin = (parsedBefore as { admin?: { enabled?: unknown } } | null)?.admin;
       if (admin && typeof admin === "object" && "enabled" in admin) {
-        if (admin.enabled === false && path === join(root, "config", "system.yaml")) adminWasDisabled = true;
+        if (admin.enabled === false) {
+          if (path === join(root, "config", "system.yaml")) adminWasDisabled = true;
+          else adminDisabledInOverlays.push(rel);
+        }
         const stripped = removeAdminEnabledInText(text);
         if (stripped.removed) {
           text = stripped.text;
@@ -156,6 +162,13 @@ export async function migrateConfigCommand(
       unresolvedFiles++;
       console.error(
         `  ✗ config/site.yaml: add the admin by hand under plugins:\n        - src: ${ADMIN_PLUGIN_ENTRY_SRC}`,
+      );
+    }
+    if (added.outcome === "added" && adminDisabledInOverlays.length > 0) {
+      console.error(
+        `  ⚠ ${adminDisabledInOverlays.join(", ")} set admin.enabled: false for that environment only. ` +
+          `The admin is now listed in config/site.yaml and so loads in every environment; ` +
+          `to keep it off in those, give that environment's site.yaml a plugins: list without the admin.`,
       );
     }
   } else if (adminWasDisabled) {
