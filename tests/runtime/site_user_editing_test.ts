@@ -63,7 +63,7 @@ const ROLES = ["author", "editor", "admin", "member", "subscriber"];
 async function withSite(
   plugins: DunePlugin[],
   fn: (
-    ws: (cookie?: string) => Promise<Response>,
+    ws: (cookie?: string, path?: string) => Promise<Response>,
     cookieFor: (role: string) => Promise<string>,
     plugin: { services: Awaited<ReturnType<typeof bootstrap>>["pluginServices"]; ids: Map<string, string> },
   ) => Promise<void>,
@@ -83,6 +83,12 @@ async function withSite(
       const user = await userStore.create({ email: `${role}@example.com`, provider: "local", roles: [role] });
       ids.set(role, user.id);
     }
+    // A page the author created: authors edit their own pages, not others'.
+    await Deno.mkdir(join(root, "content", "02.mine"), { recursive: true });
+    await Deno.writeTextFile(
+      join(root, "content", "02.mine", "default.md"),
+      `---\ntitle: Mine\ncreatedBy: ${ids.get("author")}\n---\n\nMine\n`,
+    );
     const ctx = await bootstrap(root, { plugins: [inlineEdit, ...plugins] });
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     const handler = app.handler();
@@ -100,9 +106,9 @@ async function withSite(
       const session = await sessions.create(ids.get(role)!);
       return `${SITE_COOKIE_NAME}=${session.id}`;
     };
-    const ws = (cookie?: string) =>
+    const ws = (cookie?: string, path = "01.home/default.md") =>
       handler(
-        new Request("http://localhost/api/inline-edit/ws?path=01.home/default.md", {
+        new Request(`http://localhost/api/inline-edit/ws?path=${path}`, {
           headers: {
             upgrade: "websocket",
             origin: "http://localhost",
@@ -144,10 +150,20 @@ Deno.test("login plus a plugin providing editor.session: same answers", opts, as
 
 Deno.test("every admin-tier role may edit pages, content tags may not", opts, async () => {
   await withSite([], async (ws, cookieFor) => {
-    for (const role of ["author", "editor", "admin"]) {
+    for (const role of ["editor", "admin"]) {
       assertEquals((await ws(await cookieFor(role))).status, 204, role);
     }
     assertEquals((await ws(await cookieFor("subscriber"))).status, 403);
+  });
+});
+
+Deno.test("an author joins a live session only on a page they created", opts, async () => {
+  await withSite([], async (ws, cookieFor) => {
+    const author = await cookieFor("author");
+    assertEquals((await ws(author, "02.mine/default.md")).status, 204);
+    assertEquals((await ws(author, "01.home/default.md")).status, 403);
+    // An editor is not limited to their own pages.
+    assertEquals((await ws(await cookieFor("editor"), "02.mine/default.md")).status, 204);
   });
 });
 
