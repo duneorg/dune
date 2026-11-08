@@ -5,7 +5,7 @@
   "author": "zumbrunn (https://zumbrunn.com)",
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@dune/plugin-admin", "jsr:@dune/core"]
+    "exclude": ["jsr:@dune/core"]
   },
   "exports": {
     ".": "./src/mod.ts",
@@ -60,12 +60,6 @@
     "./watchdog": "./src/runtime/watchdog.ts"
   },
   "imports": {
-    "@dune/plugin-admin": "jsr:@dune/plugin-admin@*",
-    "@dune/plugin-admin/admin/mount": "jsr:@dune/plugin-admin@*/admin/mount",
-    "@dune/plugin-admin/admin/context": "jsr:@dune/plugin-admin@*/admin/context",
-    "@dune/plugin-admin/admin/types": "jsr:@dune/plugin-admin@*/admin/types",
-    "@dune/plugin-admin/admin/auth/middleware": "jsr:@dune/plugin-admin@*/admin/auth/middleware",
-    "@dune/plugin-admin/admin/auth/provider": "jsr:@dune/plugin-admin@*/admin/auth/provider",
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",
     "preact/hooks": "npm:preact@^10/hooks",

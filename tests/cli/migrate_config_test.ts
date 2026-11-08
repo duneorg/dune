@@ -163,3 +163,17 @@ Deno.test("migrate:config --dry-run reports the admin changes and writes nothing
     assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
   });
 });
+
+Deno.test("migrate:config warns when an environment overlay alone switched the admin off", async () => {
+  await withSite({
+    "config/site.yaml": "title: T\n",
+    "config/system.yaml": "debug: true\n",
+    "config/env/staging/system.yaml": "admin:\n  enabled: false\n",
+  }, async (root) => {
+    const out = await quiet(() => migrateConfigCommand(root));
+    assertStringIncludes(out, "added jsr:@dune/plugin-admin");
+    // The warning names the overlay and says what to do about it.
+    assertStringIncludes(out, "config/env/staging/system.yaml set admin.enabled: false for that environment only");
+    assertStringIncludes(out, "plugins: list without the admin");
+  });
+});
