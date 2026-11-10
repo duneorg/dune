@@ -138,6 +138,19 @@ export interface DuneEngine {
   /** Rebuild the content index (for dev mode / after changes) */
   rebuild(): Promise<void>;
   /**
+   * Attach the hook registry after creation, for callers that can only build it
+   * after the engine. From then on the engine fires `onRebuild` and `onThemeSwitch`.
+   */
+  setHooks(hooks: HookRegistry): void;
+  /**
+   * Run `listener` after every successful rebuild, once `pages` and `taxonomyMap` are the new
+   * ones and before the `onRebuild` hook fires. For the engine's own derived indexes
+   * (bootstrap uses it to refresh taxonomy, collections and search): unlike a hook handler it
+   * is not skipped when a plugin's `onRebuild` handler throws. A listener that throws is logged
+   * and the rest still run.
+   */
+  onRebuilt(listener: () => void | Promise<void>): void;
+  /**
    * List available theme names (subdirectory names under `themesDir`).
    * Used by the admin theme-switcher.
    */
@@ -185,7 +198,9 @@ export async function createDuneEngine(
   options: DuneEngineOptions,
 ): Promise<DuneEngine> {
   const { storage, config, formats } = options;
-  const hooks = options.hooks;
+  // Late-bound: bootstrap() creates the engine before the hook registry exists and attaches it
+  // with setHooks(), so `onRebuild` and `onThemeSwitch` fire in a real server too.
+  let hooks = options.hooks;
   const themesDir = options.themesDir ?? "themes";
   const storageRoot = options.storageRoot;
   const { storage: contentStorage, contentDir } = createContentStorage(
@@ -349,9 +364,7 @@ export async function createDuneEngine(
     await loadThemeConfig();
 
     // Fire hook so plugins can react
-    if (hooks) {
-      await hooks.fire("onThemeSwitch", { from: oldName, to: name });
-    }
+    await fireLifecycleHook("onThemeSwitch", { from: oldName, to: name });
 
     // Rebuild content index
     await rebuild();
@@ -387,6 +400,7 @@ export async function createDuneEngine(
   // In dev mode, rapid file changes can trigger multiple rebuild() calls;
   // we serialize them by chaining onto the in-flight rebuild promise.
   let rebuildChain: Promise<void> = Promise.resolve();
+  const rebuiltListeners: Array<() => void | Promise<void>> = [];
 
   /**
    * Load a single page by source path (with caching).
@@ -618,13 +632,34 @@ export async function createDuneEngine(
   }
 
   /**
+   * Fire a lifecycle hook (`onRebuild`, `onThemeSwitch`) without letting a
+   * throwing handler undo the work that already happened. The index is rebuilt
+   * (or the theme switched) by the time this runs; a plugin's handler failing
+   * is that plugin's problem, logged by name of the event, and must not fail
+   * the caller (an admin save) or stop later rebuilds.
+   */
+  async function fireLifecycleHook(event: "onRebuild" | "onThemeSwitch", data: unknown): Promise<void> {
+    if (!hooks) return;
+    try {
+      await hooks.fire(event, data);
+    } catch (err) {
+      logger.warn("hooks.lifecycle_handler_failed", {
+        event,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
    * Rebuild content index and router (dev mode hot-reload).
    *
    * Serialized via rebuildChain — concurrent calls queue behind the in-flight
-   * rebuild rather than interleaving their mutations to shared state.
+   * rebuild rather than interleaving their mutations to shared state. A rebuild
+   * that fails rejects its own caller only: the chain itself never stays
+   * rejected, or every later rebuild would be skipped until a restart.
    */
   function rebuild(): Promise<void> {
-    rebuildChain = rebuildChain.then(async () => {
+    const run = rebuildChain.then(async () => {
       await tracer.startActiveSpan("engine.rebuild", { pageCount: pages.length }, async (span) => {
         pageCache.clear();
         themes.clearCache();
@@ -657,12 +692,33 @@ export async function createDuneEngine(
           logger.debug("index.rebuilt", { indexed: result.indexed, durationMs: result.duration });
         }
 
-        if (hooks) {
-          await hooks.fire("onRebuild", {});
+        // onRebuild handlers read engine.pages and engine.taxonomyMap (metrics, CDN purge, the
+        // taxonomy/collections/search refresh in bootstrap): they must see the new index, not
+        // the one this rebuild replaced.
+        syncEngineState();
+
+        // The engine's own derived indexes first (taxonomy, collections, search): they do not
+        // depend on any plugin's handler being healthy.
+        for (const listener of rebuiltListeners) {
+          try {
+            await listener();
+          } catch (err) {
+            logger.warn("engine.rebuilt_listener_failed", { reason: err instanceof Error ? err.message : String(err) });
+          }
         }
+        await fireLifecycleHook("onRebuild", {});
       });
     });
-    return rebuildChain;
+    rebuildChain = run.catch(() => {});
+    return run;
+  }
+
+  /** Copy the closure's index state onto the public engine object. */
+  function syncEngineState(): void {
+    engine.pages = pages;
+    engine.taxonomyMap = taxonomyMap;
+    engine.indexErrors = indexErrors;
+    engine.blueprints = blueprints ?? {};
   }
 
   // Build the engine object
@@ -700,11 +756,15 @@ export async function createDuneEngine(
 
     async rebuild() {
       await rebuild();
-      // Sync closure state after rebuild
-      engine.pages = pages;
-      engine.taxonomyMap = taxonomyMap;
-      engine.indexErrors = indexErrors;
-      engine.blueprints = blueprints ?? {};
+      syncEngineState();
+    },
+
+    setHooks(registry: HookRegistry) {
+      hooks = registry;
+    },
+
+    onRebuilt(listener: () => void | Promise<void>) {
+      rebuiltListeners.push(listener);
     },
 
     getAvailableThemes,

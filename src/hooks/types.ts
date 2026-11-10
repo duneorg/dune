@@ -43,7 +43,7 @@ export type HookEvent =
   | "onRebuild" // fired at the end of a successful engine.rebuild()
   | "onThemeSwitch" // fired when the active theme changes
   // Search
-  | "onSearchRecordsCollect" // collect plugin-injected records before indexing
+  | "onSearchRecordsCollect" // collect plugin-injected records; fires at boot and again on every rebuild, so a handler must return the current set each time
   | "onSearchEngineCreate" // let a plugin provide an alternative search engine
   // Content mutation: fired by whoever writes the page (an admin, the MCP
   // server, a CLI command, a plugin), never by core on their behalf. Payloads

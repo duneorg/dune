@@ -34,6 +34,7 @@
 
 import type {
   FacetCounts,
+  InjectedSearchRecord,
   SearchEngine,
   SearchOptions,
   SearchResult,
@@ -140,6 +141,7 @@ export function createSearchManager(
   const entries = new Map<string, Entry>();
   const queryWarnedAt = new Map<string, number>();
   let lastPages: PageIndex[] | null = null;
+  let lastRecords: InjectedSearchRecord[] | undefined;
   let closed = false;
 
   const fresh = (engine: SearchEngine): Entry => ({
@@ -171,8 +173,9 @@ export function createSearchManager(
       if (closed || entries.get(name) !== entry) return;
       // Retry what failed: re-index current pages if we have seen them, else the first build.
       const pages = lastPages;
+      const records = lastRecords;
       void attempt(name, entry, pages ? "rebuild" : "build", () =>
-        pages ? entry.engine.rebuild(pages) : entry.engine.build());
+        pages ? entry.engine.rebuild(pages, records) : entry.engine.build());
     }, delay);
     Deno.unrefTimer(entry.timer as unknown as number);
   }
@@ -322,9 +325,10 @@ export function createSearchManager(
       }
     },
 
-    async rebuild(pages: PageIndex[]): Promise<void> {
+    async rebuild(pages: PageIndex[], injectedRecords?: InjectedSearchRecord[]): Promise<void> {
       lastPages = pages;
-      await runAll("rebuild", (e) => e.rebuild(pages));
+      lastRecords = injectedRecords;
+      await runAll("rebuild", (e) => e.rebuild(pages, injectedRecords));
     },
 
     async search(

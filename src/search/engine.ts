@@ -141,8 +141,16 @@ export interface SearchEngine {
    * and callers should treat a missing method as "no counts available".
    */
   facetCounts?(query: string, field: string): Promise<FacetCounts>;
-  /** Rebuild index (after content changes) */
-  rebuild(pages: PageIndex[]): Promise<void>;
+  /**
+   * Rebuild the index (after content changes).
+   *
+   * `injectedRecords` are the plugin-contributed records collected afresh for
+   * this rebuild (`onSearchRecordsCollect` fires again on every rebuild). The
+   * array is the same one the engine was handed at creation, updated in
+   * place, so an engine that kept that reference already sees them; an engine
+   * that copied it takes them from here.
+   */
+  rebuild(pages: PageIndex[], injectedRecords?: InjectedSearchRecord[]): Promise<void>;
   /**
    * Return autocomplete suggestions for a given prefix string.
    *
@@ -797,8 +805,12 @@ export function createSearchEngine(
       return Promise.resolve(counts);
     },
 
-    async rebuild(newPages: PageIndex[]): Promise<void> {
+    async rebuild(newPages: PageIndex[], records?: InjectedSearchRecord[]): Promise<void> {
       pages = newPages;
+      if (records && records !== injectedRecords) {
+        injectedRecords.length = 0;
+        injectedRecords.push(...records);
+      }
       await this.build();
     },
 
