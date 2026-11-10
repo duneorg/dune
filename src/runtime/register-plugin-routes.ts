@@ -3,7 +3,7 @@
  *
  * Moved here from `@dune/plugin-admin`'s `mountDuneAdmin()` so `publicRoutes`
  * actually works in every `createDuneApp()` context, not only when the admin
- * package's `mount()` happens to run — headless sites, `admin.enabled: false`,
+ * package's `mount()` happens to run — headless sites, sites with no admin plugin listed,
  * and `bootstrap()`-only tools all get it now. `bootstrap.ts` already collects
  * `BootstrapResult.pluginPublicRoutes`; this is the piece that was missing —
  * turning that collected list into actual `app.get()`/`app.post()`/etc. calls.

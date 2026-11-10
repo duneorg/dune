@@ -242,8 +242,6 @@ Deno.test(
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
       await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n");
-      await Deno.mkdir(join(root, "config"), { recursive: true });
-      await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
       let runs = 0;
       const plugin: DunePlugin = {
         name: "test-admin",

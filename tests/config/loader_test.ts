@@ -189,7 +189,7 @@ Deno.test("loadConfig: merges system.yaml into system config", async () => {
 
 Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.system", async () => {
   const storage = new MemoryStorage({
-    "config/system.yaml": `admin:\n  enabled: false\n  max_upload_mb: 7\ndebug: true`,
+    "config/system.yaml": `admin:\n  max_upload_mb: 7\ndebug: true`,
   });
   const config = await loadConfig({
     storage,
@@ -197,7 +197,6 @@ Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.sy
     skipConfigTs: true,
     skipValidation: true,
   });
-  assertEquals(config.admin?.enabled, false);
   assertEquals(config.admin?.max_upload_mb, 7);
   // Unset admin keys keep their defaults
   assertEquals(config.admin?.path, "/admin");
@@ -206,20 +205,10 @@ Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.sy
   assertEquals(config.system.debug, true);
 });
 
-Deno.test("loadConfig: admin stays enabled when system.yaml has no admin block", async () => {
-  const config = await loadConfig({
-    storage: new MemoryStorage({ "config/system.yaml": `debug: true` }),
-    rootDir: "/tmp/test",
-    skipConfigTs: true,
-    skipValidation: true,
-  });
-  assertEquals(config.admin?.enabled, true);
-});
-
 Deno.test("loadConfig: env system.yaml `admin:` overrides the base file", async () => {
   const storage = new MemoryStorage({
-    "config/system.yaml": `admin:\n  enabled: true\n  max_upload_mb: 7`,
-    "config/env/production/system.yaml": `admin:\n  enabled: false`,
+    "config/system.yaml": `admin:\n  max_upload_mb: 7\n  git_commit: false`,
+    "config/env/production/system.yaml": `admin:\n  git_commit: true`,
   });
   const config = await loadConfig({
     storage,
@@ -228,7 +217,7 @@ Deno.test("loadConfig: env system.yaml `admin:` overrides the base file", async 
     skipConfigTs: true,
     skipValidation: true,
   });
-  assertEquals(config.admin?.enabled, false);
+  assertEquals(config.admin?.git_commit, true);
   assertEquals(config.admin?.max_upload_mb, 7);
 });
 

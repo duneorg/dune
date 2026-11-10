@@ -49,7 +49,6 @@ export const DEFAULT_CONFIG: DuneConfig = {
   admin: {
     path: "/admin",
     session_lifetime: 86400,
-    enabled: true,
     max_upload_mb: 100,
   },
 };

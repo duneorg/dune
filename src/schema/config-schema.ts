@@ -482,7 +482,6 @@ export const CONFIG_SCHEMA = {
       type: "object",
       description: "Admin panel settings",
       properties: {
-        enabled: { type: "boolean", default: true },
         path: {
           type: "string",
           default: "/admin",
