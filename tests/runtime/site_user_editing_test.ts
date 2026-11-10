@@ -53,7 +53,7 @@ const sessionProvider: DunePlugin = {
   },
 };
 
-const ROLES = ["author", "editor", "admin", "member", "subscriber"];
+const ROLES = ["author", "editor", "admin", "member", "subscriber", "staff"];
 
 /**
  * Run `fn` against a site with a login and one existing user per role. The
@@ -67,12 +67,14 @@ async function withSite(
     cookieFor: (role: string) => Promise<string>,
     plugin: { services: Awaited<ReturnType<typeof bootstrap>>["pluginServices"]; ids: Map<string, string> },
   ) => Promise<void>,
+  systemYaml?: string,
 ) {
   const root = await Deno.makeTempDir({ prefix: "dune_test_site_user_editing_" });
   try {
     await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
     await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\nHi\n");
     await Deno.mkdir(join(root, "config"), { recursive: true });
+    if (systemYaml) await Deno.writeTextFile(join(root, "config", "system.yaml"), systemYaml);
     await Deno.writeTextFile(
       join(root, "config", "site.yaml"),
       "title: Test\nurl: http://localhost\nauth:\n  mode: dune\n",
@@ -83,6 +85,12 @@ async function withSite(
       const user = await userStore.create({ email: `${role}@example.com`, provider: "local", roles: [role] });
       ids.set(role, user.id);
     }
+    // A page the "editor" user created (it only matters when "editor" is remapped to author).
+    await Deno.mkdir(join(root, "content", "03.editors"), { recursive: true });
+    await Deno.writeTextFile(
+      join(root, "content", "03.editors", "default.md"),
+      `---\ntitle: Editors\ncreatedBy: ${ids.get("editor")}\n---\n\nEditors\n`,
+    );
     // A page the author created: authors edit their own pages, not others'.
     await Deno.mkdir(join(root, "content", "02.mine"), { recursive: true });
     await Deno.writeTextFile(
@@ -189,7 +197,7 @@ Deno.test("/api/inline-edit/*: core resolves the editor, then hands the request 
     assertEquals(res.status, 200);
     assertEquals(await res.json(), {
       method: "GET",
-      editor: { id: ids.get("editor"), username: "editor@example.com", roles: ["editor"], source: "site" },
+      editor: { id: ids.get("editor"), username: "editor@example.com", roles: ["editor"], relation: "editor", source: "site" },
       path: "content/01.home%2Fdefault.md/source",
       title: "Home",
       missing: null,
@@ -213,4 +221,30 @@ Deno.test("/api/inline-edit/*: a write needs a same-origin request", opts, async
     assertEquals((await write({ origin: "http://evil.test" })).status, 403);
     assertEquals((await write({ origin: "http://localhost" })).status, 200);
   });
+});
+
+Deno.test("system.role_grants: a remapped group edits, the default one no longer does; {} switches the grants off", opts, async () => {
+  await withSite([], async (ws, cookieFor) => {
+    assertEquals((await ws(await cookieFor("staff"))).status, 204);
+    assertEquals((await ws(await cookieFor("editor"))).status, 403, "'editor' is a content tier on this site");
+    assertEquals((await ws(await cookieFor("member"))).status, 403);
+  }, "role_grants:\n  staff: editor\n");
+
+  await withSite([], async (ws, cookieFor) => {
+    for (const role of ["author", "editor", "admin", "staff"]) {
+      assertEquals((await ws(await cookieFor(role))).status, 403, role);
+    }
+  }, "role_grants: {}\n");
+});
+
+Deno.test("system.role_grants: a default-named group remapped DOWN keeps the own-pages-only limit at the socket", opts, async () => {
+  await withSite([], async (ws, cookieFor) => {
+    // "editor" is a content tier here, mapped to author: its users edit their own pages only.
+    const editor = await cookieFor("editor");
+    assertEquals((await ws(editor, "03.editors/default.md")).status, 204, "a page it created");
+    assertEquals((await ws(editor, "01.home/default.md")).status, 403, "someone else's page");
+    assertEquals((await ws(editor, "02.mine/default.md")).status, 403, "the author's page");
+    // "author" is no longer mapped to anything, so that role grants nothing.
+    assertEquals((await ws(await cookieFor("author"), "02.mine/default.md")).status, 403);
+  }, "role_grants:\n  editor: author\n");
 });

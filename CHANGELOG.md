@@ -170,6 +170,17 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
   by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
   bar-owning plugin reads `list(BAR_ACTIONS)` and `get("admin.prefix")` per request.
+- **`system.role_grants` chooses which groups hold the admin-tier relations (#139).** The default is
+  what the entry below describes: groups `admin`, `editor` and `author` each hold their own relation
+  on the site. Set your own group onto a relation (`staff: editor`), keep a subset, or `{}` to turn
+  the group-level grants off. The relations are fixed by the authz schema; this only chooses which
+  group gets which. The grants are reconciled at every start: a grant no longer configured is
+  revoked (every group → admin/editor/author tuple on the site belongs to this setting).
+  `EditorIdentity.relation` tells an inline-edit provider the relation core decided, so an `author`
+  limit follows the mapping, not role names: core reads the relation from the authz system (what the
+  user actually holds), so a default-named group remapped *down* (`editor: author`) is limited too.
+  `role_grants` in an environment overlay replaces the base mapping instead of merging into it. An
+  admin plugin's own accounts keep their rights whatever the mapping says. `dune doctor --boot` and the start-up note follow the mapping.
 - **Holding `admin`, `editor` or `author` in `roles[]` carries editing rights for any signed-in user,
   with or without the admin plugin (#130).** Before, a site user got them only after a restart and
   only on a site that ran the admin with the local user store; now the roles are granted at group

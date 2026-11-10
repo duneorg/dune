@@ -41,6 +41,7 @@ import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
 import { bootstrapRoleGrants, createDuneAuthSystem } from "../auth/authz.ts";
 import { automaticAdminTierGrants } from "../auth/automatic-grants.ts";
+import { resolveRoleGrants } from "../auth/role-grants.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
@@ -552,7 +553,7 @@ export async function bootstrap(
       authzForServices = { authz: bundle.authz, adapter: bundle.adapter };
       // Admin-tier roles hold their relation on the site at group level, so a
       // site user's role is enough, with or without an admin plugin.
-      await bootstrapRoleGrants(bundle.authz, bundle.adapter);
+      await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config));
       // Say where the config hands out those roles by itself (a payment product's
       // role, an identity provider's role claims). Informational: it is often the point.
       for (const g of automaticAdminTierGrants(config)) {

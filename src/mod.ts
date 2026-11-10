@@ -322,6 +322,12 @@ export {
   bootstrapRoleGrants,
 } from "./auth/authz.ts";
 export {
+  /** Group → relation grants on the site: defaults, resolution from `system.role_grants`. @since 0.36.0 */
+  DEFAULT_ROLE_GRANTS,
+  resolveRoleGrants,
+} from "./auth/role-grants.ts";
+export type { GrantRelation, RoleGrants } from "./auth/role-grants.ts";
+export {
   /** Make a user's `member of group:<role>` tuples match their `roles[]`. @since 0.36.0 */
   syncUserRoles,
   /** Wrap a user store so create/update/delete keep group membership in step. @since 0.36.0 */
