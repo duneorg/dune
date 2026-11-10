@@ -49,9 +49,9 @@ export type HookEvent =
   // server, a CLI command, a plugin), never by core on their behalf. Payloads
   // carry paths relative to the content directory. Edits made outside Dune
   // (an editor, git pull) fire nothing per page: they surface as onRebuild.
-  | "onPageCreate" // a page file was created: { sourcePath, title }
-  | "onPageUpdate" // a page file was written: { sourcePath }
-  | "onPageDelete" // a page file was deleted: { sourcePath }
+  | "onPageCreate" // a page file was created: { sourcePath, title, actor? }
+  | "onPageUpdate" // a page file was written: { sourcePath, actor? }
+  | "onPageDelete" // a page file was deleted: { sourcePath, actor? }
   | "onPageMove" // pages were renamed or reordered: PageMovePayload
   | "onWorkflowChange" // page workflow status changed: { sourcePath, from, to }
   // Public features (fired by core, so they work without an admin plugin)
@@ -65,9 +65,17 @@ export type HookEvent =
  * file, as paths relative to the content directory. Every page at or below
  * `from` now lives at the same position below `to`. One event covers one
  * operation (a reorder renames many folders), so a handler can re-index once.
+ *
+ * The other page events carry `actor?: string` the same way: `onPageCreate`
+ * `{ sourcePath, title, actor? }`, `onPageUpdate` and `onPageDelete`
+ * `{ sourcePath, actor? }`. Whoever writes the page fires the event and fills
+ * `actor` when a person is behind the write, so audit and webhook plugins
+ * need no access to the writer's request.
  */
 export interface PageMovePayload {
   moves: Array<{ from: string; to: string }>;
+  /** Who did it (the user's name or id), when a person did; absent for CLI and automated writes. @since 0.36.0 */
+  actor?: string;
 }
 
 /**
@@ -413,8 +421,8 @@ export interface DunePlugin {
    * @example
    * ```ts
    * // Gate a plugin-specific admin capability behind its own permission,
-   * // reachable from an `admin.routes` contribution (the admin plugin's extension point):
-   * //   api.capabilities.contribute("admin.routes", { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
+   * // reachable from an `ADMIN_ROUTES` contribution (the admin plugin's extension point):
+   * //   api.capabilities.contribute(ADMIN_ROUTES, { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
    * export default {
    *   name: "my-billing-plugin",
    *   version: "1.0.0",
@@ -557,8 +565,8 @@ export interface ResponseTransformContext {
   page: { sourcePath: string; route: string; title: string | null; template: string } | null;
   /**
    * What plugins provide, as `MountApi.capabilities` offers it: the slots
-   * (`get("admin.prefix")`, `get("auth.session")`) and any extension point a
-   * plugin declares (`list("bar.actions")`). A transform reads what it needs
+   * (`get("admin.prefix")`, `get("editor.session")`) and any extension point a
+   * plugin declares (`list(BAR_ACTIONS)`). A transform reads what it needs
    * here per request, so a plugin module shared between sites keeps no state
    * of its own.
    *

@@ -139,18 +139,49 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Core gates `/api/inline-edit/*`; the `editor.inline` provider serves it (#127).** Core resolves who
+  is editing (a site user, else the `editor.session` provider's user, both holding `pages.update` by
+  `authz.check()`), checks that writes are same-origin, and hands the request to the provider's new
+  `InlineEditManager.handleRequest(req, { editor, path, pageFrontmatter })`. The inline-edit
+  WebSocket and the bar use the same resolver (`createEditorResolver()`), so a signed-in site user who
+  may edit now gets the bar too, and any signed-in request bypasses the shared page cache. The
+  `source` / `commit` / `fields` routes that lived in the admin move to the provider
+  (`/api/inline-edit/content/<path>/...`). `InlineEditManager` loses `commit` and `patchFields` (core
+  never called them) and gains `handleRequest`; exports `EditorIdentity` and
+  `InlineEditRequestContext` (`@dune/core/inline-edit`). `runPluginResponseTransforms()` takes
+  `resolveEditor` instead of `auth`, `authz` and `sessionCookies`. `checkInlineEditPermission()` and
+  `checkInlineEditPermissionForSiteUser()` are gone.
+- **Page events carry an optional `actor`.** `onPageCreate`, `onPageUpdate`, `onPageDelete` and
+  `onPageMove` payloads may include `actor?: string`, the user's name when a person did the write.
+
 - **The contract keeps only what core consumes; each plugin declares its own extension points
   (#127).** `AdminPageRegistration`, `AdminRouteRegistration`, `ContentEditorPlugin`,
   `AdminBarAction` and `AdminBarActionContext` leave `@dune/core/plugins` and
   `@dune/plugin-api`; core never read them. The keys `admin.pages`, `admin.routes`,
   `editor.content` (now `admin.editor`) and `bar.actions` leave `Capabilities` /
-  `Contributions` and belong to the plugin that reads them (`@dune/plugin-admin`,
-  `@dune/plugin-inline-edit`), which declares them by declaration merging. Both interfaces are
-  now open to merging; the rule is that a key is prefixed with the name of the plugin that
-  consumes it, and unprefixed names are core's. At runtime nothing changes: the registry was
-  already keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
+  `Contributions` (which is removed) and belong to the plugin that reads them
+  (`@dune/plugin-admin`, `@dune/plugin-inline-edit`), which exports them as typed keys
+  (`capabilityKey<T>("admin.pages")`, from `@dune/core/plugin-api`). `provide`, `contribute`, `get` and
+  `list` accept a key and are typed by it; `Capabilities` stays closed and lists only what core
+  reads. There is no module augmentation: JSR refuses it in a published package. The rule is that
+  a key's name is prefixed with the plugin that consumes it, and unprefixed names are core's. Two
+  keys with the same name are the same capability, so a plugin can recreate another's key from its
+  documented name instead of importing it. At runtime nothing changes: the registry was already
+  keyed by string. `ResponseTransformContext.barActions` and `.adminPrefix` are replaced
   by `ResponseTransformContext.capabilities`, the same reader `MountApi.capabilities` offers: a
-  bar-owning plugin reads `list("bar.actions")` and `get("admin.prefix")` per request.
+  bar-owning plugin reads `list(BAR_ACTIONS)` and `get("admin.prefix")` per request.
+- **Holding `admin`, `editor` or `author` in `roles[]` carries editing rights for any signed-in user,
+  with or without the admin plugin (#130).** Before, a site user got them only after a restart and
+  only on a site that ran the admin with the local user store; now the roles are granted at group
+  level and kept in step with `roles[]` live, for the site login, `user_store: db` and
+  `external-jwt` role claims alike. Check this on upgrade if a site uses `editor` or `author` as a
+  *content* tier (in `roles:` frontmatter, a payment product's `role`, or a sign-up default): those
+  users can now edit. Use another role name for a content tier. Nothing is refused: paid
+  contributors are a legitimate use. `author` stays limited to the pages it created, `admin` and
+  `editor` edit any page. Core logs `auth.automatic_admin_tier_grant` at start, and
+  `dune doctor --boot` prints an `access` line, wherever the *config* assigns such a role by itself
+  (a payment product's `role`, an `external-jwt` login). It is informational (a warning for
+  `admin`) and never fails the run.
 - **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
   and the other admin-tier actions name what they protect (this site's content), not the panel
   that happens to administer it, so the same check works on a site with no admin, one admin
@@ -365,6 +396,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **A live editing session respects page ownership.** An `author` could join the inline-edit
+  WebSocket on a page it did not create and type into the shared draft, though a commit of that page
+  was refused. Core now applies the same rule at the socket: `admin` and `editor` any page, an
+  `author` only the pages it created (`createdBy`).
 - **A signed-in site user with an editing role can edit inline without the admin plugin
   (#130).** The authz system is now created whenever the site has a login (`site.auth`), a
   plugin provides `editor.session`, or a plugin declares `authzActions`; `mountDuneAuth` reuses

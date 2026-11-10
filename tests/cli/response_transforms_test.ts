@@ -11,7 +11,12 @@ import {
   assertEquals,
   assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { runPluginResponseTransforms } from "../../src/cli/response-transforms.ts";
+import {
+  type RunResponseTransformsOptions,
+  runPluginResponseTransforms as run,
+} from "../../src/cli/response-transforms.ts";
+import { createEditorResolver } from "../../src/auth/editor.ts";
+import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import type {
   DunePlugin,
   ResponseTransformContext,
@@ -27,6 +32,38 @@ interface AuthResult {
 }
 
 const config = {} as DuneConfig;
+
+/**
+ * Drive the pipeline the way core does: the options a test names (a session
+ * provider, its cookie names, an authz system) become the editor resolver the
+ * pipeline is given. Tests keep stating the scenario, not the wiring.
+ */
+type LegacyOptions =
+  & Omit<RunResponseTransformsOptions, "resolveEditor">
+  & {
+    auth?: { authenticate(req: Request): Promise<unknown> } | null;
+    sessionCookies?: readonly string[];
+    authz?: DuneAuthSystem;
+  };
+function runPluginResponseTransforms(opts: LegacyOptions): Promise<Response> {
+  const { auth, sessionCookies, authz, ...rest } = opts;
+  const provider = auth ? Object.assign(auth, { sessionCookies }) : undefined;
+  const capabilities = rest.capabilities ?? {
+    get: (name: string) => (name === "editor.session" ? provider : undefined),
+    list: () => [],
+    providers: () => [],
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  const resolveEditor = createEditorResolver({
+    capabilities: {
+      ...capabilities,
+      get: (name: string) => name === "editor.session" ? provider : capabilities.get(name),
+    },
+    siteAuthz: () => authz,
+    sessionAuthz: () => authz,
+  });
+  return run({ ...rest, capabilities, resolveEditor });
+}
 
 function makeUser(role: string): User {
   return {

@@ -32,8 +32,8 @@
  * - `PluginApi.capabilities` / `MountApi.capabilities` — what plugins provide to
  *   core and to each other (`admin.prefix`, `editor.session`, `scheduler.executor`,
  *   `editor.inline`). Extension points a plugin offers to others (`admin.pages`,
- *   `admin.routes`, `admin.editor`, `bar.actions`) are declared by that plugin, by
- *   declaration merging, and are not part of core's contract.
+ *   `admin.routes`, `admin.editor`, `bar.actions`) are typed keys (`capabilityKey`) that
+ *   plugin exports, and are not part of core's contract.
  *   Replaces `DunePlugin.adminServices`, `adminPages`, `adminBarActions` and
  *   `mountEarly`, and the untyped `ctx.adminContext`. See `@dune/core/plugin-api`.
  *
