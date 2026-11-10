@@ -414,6 +414,26 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **A production server now refreshes the taxonomy, the collections and search after `engine.rebuild()` (#145).**
+  `engine.rebuild()` gives the engine a new `pages` array, and the taxonomy, the collections and the search
+  engines were built over the old one. Only `dune dev` and the multisite watcher refreshed them, so a page
+  written at runtime (the admin, inline editing, a plugin) was missing from search, its taxonomy terms and
+  collections until a restart. Bootstrap now does it on `onRebuild`; `dune dev` and the multisite watcher drop
+  their duplicate calls. The taxonomy and collections refresh before `rebuild()` returns; search re-reads every
+  page body, so it refreshes in the background and is coalesced (a burst of saves costs one extra run).
+- **`onSearchRecordsCollect` fires on every search rebuild, not once at boot (#145).** A record a plugin adds
+  (a PDF copied into `content/pdf/`) is indexed, and one it drops disappears. The records are refreshed in
+  place in the array the engines were handed at creation and passed as an optional second argument,
+  `SearchEngine.rebuild(pages, injectedRecords?)`. A handler must return the current set each time.
+- **`onRebuild` and `onThemeSwitch` now fire in a real server.** The engine was created before the hook
+  registry and never got it, so both events fired only where a caller built the engine with hooks (tests).
+  `DuneEngine.setHooks()` attaches the registry. Handlers also see the rebuilt index: `engine.pages` and
+  `engine.taxonomyMap` are updated before `onRebuild` fires, not after (the metrics page count and the CDN
+  purge list were one rebuild behind).
+  A throwing `onRebuild`/`onThemeSwitch` handler is logged and no longer fails the rebuild, and a failed
+  `engine.rebuild()` rejects only its own caller instead of permanently breaking every later rebuild. The
+  engine's own derived indexes (taxonomy, collections, search) refresh through `DuneEngine.onRebuilt()`
+  listeners that run before plugin hooks, so a faulty plugin handler cannot skip them.
 - **`dune migrate:config` no longer reports an empty `admin:` key in an environment overlay as a block to
   move by hand (#142).** An overlay (`config/env/<env>/system.yaml`) whose whole `admin:` block was
   `enabled: false` kept an empty `admin:` key after `enabled` was removed, and the command exited 1 with

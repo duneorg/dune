@@ -5,7 +5,7 @@
   "author": "zumbrunn (https://zumbrunn.com)",
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@dune/core", "jsr:@dune/plugin-api"]
+    "exclude": ["jsr:@dune/core", "jsr:@dune/plugin-api", "jsr:@dune/theme-api"]
   },
   "exports": {
     ".": "./src/mod.ts",
@@ -58,6 +58,7 @@
   },
   "imports": {
     "@dune/plugin-api": "jsr:@dune/plugin-api@^1",
+    "@dune/theme-api": "jsr:@dune/theme-api@^1",
     "fresh": "jsr:@fresh/core@^2",
     "preact": "npm:preact@^10",
     "preact/hooks": "npm:preact@^10/hooks",
