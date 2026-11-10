@@ -78,38 +78,54 @@ export async function removeUserTuples(
  *
  * `getTarget` is read on every write, so the store can be created before the
  * authz system exists; with no target (no authz system) writes pass straight
- * through. A failed sync is logged, not thrown: the user write has already
- * happened, and the next start re-seeds membership from the records.
+ * through. A failed sync is retried once. After a `create` it is then only
+ * logged: a user without their memberships has too little access, and the next
+ * start re-seeds them from the records. After an `update` or a `delete` it is
+ * thrown, because the stale memberships would otherwise keep a revoked role
+ * working until the next start without anyone being told: the caller sees
+ * that the change did not fully apply and can save again.
  */
 export function withRoleSync(
   store: UserStore,
   getTarget: () => RoleSyncTarget | undefined,
 ): UserStore {
-  const sync = async (fn: (t: RoleSyncTarget) => Promise<void>) => {
+  const sync = async (fn: (t: RoleSyncTarget) => Promise<void>, failure: "log" | "throw") => {
     const target = getTarget();
     if (!target) return;
-    try {
-      await fn(target);
-    } catch (err) {
-      logger.error("authz.role_sync_failed", { reason: String(err) });
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await fn(target);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    logger.error("authz.role_sync_failed", { reason: String(lastErr) });
+    if (failure === "throw") {
+      throw new Error(
+        "The user record was saved, but its group memberships could not be brought in line with its roles. " +
+          "Save the user again to retry; until then a removed role may still apply.",
+        { cause: lastErr },
+      );
     }
   };
   const overrides: Pick<UserStore, "create" | "update" | "delete"> = {
     async create(input) {
       const user = await store.create(input);
-      await sync((t) => syncUserRoles(t, user));
+      await sync((t) => syncUserRoles(t, user), "log");
       return user;
     },
     async update(id, updates) {
       const user = await store.update(id, updates);
       if (user && updates.roles !== undefined) {
-        await sync((t) => syncUserRoles(t, user));
+        await sync((t) => syncUserRoles(t, user), "throw");
       }
       return user;
     },
     async delete(id) {
       const deleted = await store.delete(id);
-      if (deleted) await sync((t) => removeUserTuples(t, id));
+      if (deleted) await sync((t) => removeUserTuples(t, id), "throw");
       return deleted;
     },
   };

@@ -251,3 +251,48 @@ Deno.test("deepMerge: an override of role_grants replaces the mapping instead of
   // Other nested objects still merge key by key.
   assertEquals(deepMerge(base, { system: { debug: true } }).system, { role_grants: { staff: "editor", editor: "author" }, debug: true });
 });
+
+Deno.test("loadConfig: dune.config.ts with a renamed (camelCase) key is refused like the YAML files", async () => {
+  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".cfg-ts-" });
+  try {
+    await Deno.writeTextFile(
+      `${dir}/dune.config.ts`,
+      `export default { system: { content: { allowTsxFormat: true } } };\n`,
+    );
+    await assertRejects(
+      () => loadConfig({ storage: new MemoryStorage(), rootDir: dir, skipValidation: true }),
+      Error,
+      "allowTsxFormat",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("loadConfig: dune.config.ts with a top-level admin block is refused: core has no admin config any more", async () => {
+  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".cfg-ts-" });
+  try {
+    await Deno.writeTextFile(`${dir}/dune.config.ts`, `export default { admin: { session_lifetime: 60 } };\n`);
+    await assertRejects(
+      () => loadConfig({ storage: new MemoryStorage(), rootDir: dir, skipValidation: true }),
+      Error,
+      "admin",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("loadConfig: dune.config.ts with current keys still loads", async () => {
+  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".cfg-ts-" });
+  try {
+    await Deno.writeTextFile(
+      `${dir}/dune.config.ts`,
+      `export default { site: { title: "From TS" }, system: { content: { allow_tsx_format: true } } };\n`,
+    );
+    const config = await loadConfig({ storage: new MemoryStorage(), rootDir: dir, skipValidation: true });
+    assertEquals(config.site.title, "From TS");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

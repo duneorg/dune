@@ -160,6 +160,7 @@ Deno.test("submit: validation failure redirects back to the Referer with form_er
 
 Deno.test("submit: validation failure behind a TLS proxy uses the public origin (Host + X-Forwarded-Proto)", async () => {
   const h = harness();
+  h.rt.config.system.trusted_proxies = true;
   const res = await handleFormSubmission(
     h.rt,
     post("/api/forms/contact", BAD_FORM_BODY, {
@@ -170,6 +171,20 @@ Deno.test("submit: validation failure behind a TLS proxy uses the public origin 
     "contact",
   );
   assertEquals(res.headers.get("location"), "/contact/?form_error=1");
+});
+
+Deno.test("submit: without trusted_proxies a forged Host + X-Forwarded-Proto is not accepted as the public origin", async () => {
+  const h = harness();
+  const res = await handleFormSubmission(
+    h.rt,
+    post("/api/forms/contact", BAD_FORM_BODY, {
+      referer: "https://evil.example/contact/",
+      host: "evil.example",
+      "x-forwarded-proto": "https",
+    }),
+    "contact",
+  );
+  assertEquals(res.headers.get("location"), "/");
 });
 
 Deno.test("submit: validation failure with a cross-origin Referer falls back to /", async () => {

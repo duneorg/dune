@@ -88,16 +88,17 @@ function safeRedirectPath(target: string, req: Request): string {
  * Referer is missing, unparseable or from another origin (open redirect).
  * Behind a TLS-terminating proxy req.url carries the internal origin
  * (http://localhost:PORT), so the public origin from Host + X-Forwarded-Proto
- * is accepted too. Only the path is returned, so a forged Host cannot
+ * is accepted too, but only when `system.trusted_proxies` is set. Only the path is returned, so a forged Host cannot
  * redirect off-site.
  */
-function refererRedirectPath(req: Request, param: string): string {
+function refererRedirectPath(req: Request, param: string, trustProxy: boolean): string {
   const referer = req.headers.get("referer");
   if (!referer) return "/";
   try {
     const host = req.headers.get("host");
+    // Host and X-Forwarded-Proto are client-controlled unless a trusted proxy sets them.
     const proto = req.headers.get("x-forwarded-proto") ?? "https";
-    const publicOrigin = host ? `${proto}://${host}` : null;
+    const publicOrigin = trustProxy && host ? `${proto}://${host}` : null;
     const u = new URL(referer);
     if (
       u.origin !== new URL(req.url).origin && u.origin !== publicOrigin
@@ -328,7 +329,7 @@ export async function handleFormSubmission(
         );
       }
       // For regular form POST, redirect back with error indicator
-      const redirectPath = refererRedirectPath(req, "form_error");
+      const redirectPath = refererRedirectPath(req, "form_error", config.system?.trusted_proxies === true);
       return new Response(null, {
         status: 302,
         headers: { Location: redirectPath },

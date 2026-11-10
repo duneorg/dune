@@ -117,3 +117,101 @@ Deno.test("membership is exactly roles[]: a group added by hand is removed on th
     assertEquals(await groups(user.id), ["member"]);
   });
 });
+
+/** An authz system whose writes throw while `state.fail` is above zero. */
+function flakyAuthz<A extends object>(authz: A, state: { fail: number }): A {
+  return new Proxy(authz, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function" || prop === "check") return value;
+      return (...args: unknown[]) => {
+        if (state.fail > 0) {
+          state.fail--;
+          throw new Error("authz store unavailable");
+        }
+        return value.apply(target, args);
+      };
+    },
+  });
+}
+
+async function withFlakyStore(
+  fn: (ctx: {
+    store: ReturnType<typeof withRoleSync>;
+    state: { fail: number };
+    groups: (id: string) => Promise<string[]>;
+  }) => Promise<void>,
+) {
+  const root = await Deno.makeTempDir({ prefix: "dune_test_sync_roles_flaky_" });
+  try {
+    const storage = createStorage({ rootDir: root });
+    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, storage);
+    await bootstrapRoleGrants(authz, adapter);
+    const state = { fail: 0 };
+    const store = withRoleSync(
+      createLocalUserStore({ storage, usersDir: "data/users" }),
+      () => ({ authz: flakyAuthz(authz, state), adapter }),
+    );
+    await fn({
+      store,
+      state,
+      groups: async (id) =>
+        (await adapter.findObjects({ type: "user", id }, "member", { objectType: "group" }))
+          .map((g) => g.id).sort(),
+    });
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+}
+
+Deno.test("update: a failed membership write is retried once", async () => {
+  await withFlakyStore(async ({ store, state, groups }) => {
+    const user = await store.create({ email: "r@example.com", provider: "local", roles: ["editor"] });
+    state.fail = 1;
+    await store.update(user.id, { roles: ["member"] });
+    assertEquals(await groups(user.id), ["member"]);
+  });
+});
+
+Deno.test("update: when the membership write keeps failing the caller is told, and saving again fixes it", async () => {
+  await withFlakyStore(async ({ store, state, groups }) => {
+    const user = await store.create({ email: "r2@example.com", provider: "local", roles: ["editor"] });
+    state.fail = Infinity;
+    let message = "";
+    try {
+      await store.update(user.id, { roles: ["member"] });
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    assertEquals(message.includes("Save the user again"), true);
+    // The record changed but the stale membership is still there: exactly what the caller was told.
+    assertEquals((await store.getById(user.id))?.roles, ["member"]);
+    assertEquals(await groups(user.id), ["editor"]);
+    state.fail = 0;
+    await store.update(user.id, { roles: ["member"] });
+    assertEquals(await groups(user.id), ["member"]);
+  });
+});
+
+Deno.test("delete: a failed tuple removal is not swallowed", async () => {
+  await withFlakyStore(async ({ store, state }) => {
+    const user = await store.create({ email: "r3@example.com", provider: "local", roles: ["editor"] });
+    state.fail = Infinity;
+    let threw = false;
+    try {
+      await store.delete(user.id);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true);
+  });
+});
+
+Deno.test("create: a failed membership write is logged, not thrown (the user has too little access, never too much)", async () => {
+  await withFlakyStore(async ({ store, state, groups }) => {
+    state.fail = Infinity;
+    const user = await store.create({ email: "r4@example.com", provider: "local", roles: ["editor"] });
+    assertEquals(user.email, "r4@example.com");
+    assertEquals(await groups(user.id), []);
+  });
+});

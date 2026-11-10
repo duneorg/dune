@@ -99,6 +99,27 @@ export function detectEnvironment(): string {
   return "development";
 }
 
+/**
+ * Refuse a config whose authored keys were renamed to snake_case, moved or
+ * removed. Applies to the YAML files and to `dune.config.ts` alike: a stale key
+ * is never read, so accepting it would leave a security setting (JWT, uploads,
+ * auth limits) silently unset.
+ */
+function assertNoChangedKeys(kind: "site" | "system", parsed: unknown, path: string): void {
+  const legacy = findLegacyKeys(kind, parsed);
+  const moved = findMovedKeys(kind, parsed);
+  if (legacy.length === 0 && moved.length === 0) return;
+  const parts = [
+    legacy.length > 0 ? `renamed to snake_case: ${describeLegacyKeys(legacy)}` : "",
+    moved.length > 0 ? `moved or removed: ${describeMovedKeys(moved)}` : "",
+  ].filter(Boolean);
+  const hints = [
+    legacy.length > 0 ? "Run `dune migrate:config` to rename the renamed keys." : "",
+    moved.length > 0 ? "Move the moved or removed keys by hand." : "",
+  ].filter(Boolean);
+  throw new ConfigError(`Config keys changed: ${parts.join("; ")}. ${hints.join(" ")}`, path);
+}
+
 /** Try to load and parse a YAML file. Returns empty object if not found. */
 async function loadYamlFile(
   storage: StorageAdapter,
@@ -121,22 +142,7 @@ async function loadYamlFile(
     }
     const kind = path.endsWith("/site.yaml") ? "site" : path.endsWith("/system.yaml") ? "system" : null;
     if (kind) {
-      const legacy = findLegacyKeys(kind, parsed);
-      const moved = findMovedKeys(kind, parsed);
-      if (legacy.length > 0 || moved.length > 0) {
-        const parts = [
-          legacy.length > 0 ? `renamed to snake_case: ${describeLegacyKeys(legacy)}` : "",
-          moved.length > 0 ? `moved or removed: ${describeMovedKeys(moved)}` : "",
-        ].filter(Boolean);
-        const hints = [
-          legacy.length > 0 ? "Run `dune migrate:config` to rename the renamed keys." : "",
-          moved.length > 0 ? "Move the moved or removed keys by hand." : "",
-        ].filter(Boolean);
-        throw new ConfigError(
-          `Config keys changed: ${parts.join("; ")}. ${hints.join(" ")}`,
-          path,
-        );
-      }
+      assertNoChangedKeys(kind, parsed, path);
       for (const k of findIgnoredKeys(kind, parsed)) {
         const id = `${path}:${k.path}`;
         if (warnedIgnored.has(id)) continue;
@@ -315,6 +321,14 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   if (!skipConfigTs) {
     const tsConfig = await loadConfigTs(rootDir);
     if (Object.keys(tsConfig).length > 0) {
+      // The same renamed-key check the YAML files get. `admin:` was system.yaml's block, which
+      // dune.config.ts carried at the top level; core has no admin config any more.
+      const tsPath = join(resolve(rootDir), "dune.config.ts");
+      assertNoChangedKeys("site", tsConfig.site, tsPath);
+      assertNoChangedKeys("system", {
+        ...((tsConfig.system as object) ?? {}),
+        ...("admin" in tsConfig ? { admin: (tsConfig as Record<string, unknown>).admin } : {}),
+      }, tsPath);
       config = deepMerge(config, tsConfig);
     }
   }
