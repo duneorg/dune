@@ -26,6 +26,7 @@ import { type User, USER_HEADER } from "./types.ts";
 import { copySocketAddr } from "../security/rate-limit.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { bootstrapRoleGrants, bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
+import { resolveRoleGrants } from "./role-grants.ts";
 import { withRoleSync } from "./sync-roles.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
@@ -204,7 +205,7 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
-    await bootstrapRoleGrants(bundle.authz, bundle.adapter).catch((err) =>
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
       logger.error("auth.role_grants_failed", {
         error: err instanceof Error ? err.message : String(err),
         effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
@@ -232,7 +233,7 @@ export async function mountDuneAuth(
     mountAdapter = bundle.adapter;
     // Idempotent; bootstrap() already did this for its own bundle, a headless
     // caller's fresh one has not been seeded yet.
-    await bootstrapRoleGrants(bundle.authz, bundle.adapter).catch((err) =>
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
       logger.error("auth.role_grants_failed", {
         error: err instanceof Error ? err.message : String(err),
         effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",

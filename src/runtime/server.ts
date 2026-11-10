@@ -16,6 +16,7 @@ import { captureHandlerSocketAddr, copySocketAddr } from "../security/rate-limit
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import { createEditorResolver, mayEditPage } from "../auth/editor.ts";
+import { resolveRoleGrants } from "../auth/role-grants.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
 import { USER_HEADER } from "../auth/types.ts";
@@ -430,6 +431,7 @@ export async function createDuneApp(
     capabilities: ctx.capabilities,
     siteAuthz: () => publicAuthz ?? ctx.authz,
     sessionAuthz: () => ctx.authz,
+    grants: () => resolveRoleGrants(config),
   });
   if (mountAuth && config.site.auth) {
     publicAuthz = (await mountDuneAuth(app, ctx)).authz;

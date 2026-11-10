@@ -16,6 +16,7 @@ import type { EditorIdentity } from "../inline-edit/types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import { SITE_RESOURCE } from "./authz-schema.ts";
 import { getUser } from "./types.ts";
+import { GRANT_RELATIONS, type GrantRelation, type RoleGrants } from "./role-grants.ts";
 import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
 
 /** Outcome of {@link EditorResolver}: an editor, or why there is none. */
@@ -36,6 +37,24 @@ export interface EditorResolverOptions {
   siteAuthz: () => DuneAuthSystem | undefined;
   /** The authz system bootstrap built; decides for `editor.session` users. */
   sessionAuthz: () => DuneAuthSystem | undefined;
+  /** The site's `system.role_grants`: which group holds which relation. */
+  grants: () => RoleGrants;
+}
+
+const RANK: Record<GrantRelation, number> = { admin: 3, editor: 2, author: 1 };
+
+/**
+ * The highest admin-tier relation `roles` carry on this site: through the
+ * groups `grants` maps, else (an account an admin plugin seeded directly) the
+ * role name itself. `author`, the least privilege, when neither says.
+ */
+export function relationOf(roles: readonly string[], grants: RoleGrants): GrantRelation {
+  let best: GrantRelation | undefined;
+  for (const role of roles) {
+    const candidates = [grants[role], GRANT_RELATIONS.includes(role as GrantRelation) ? role as GrantRelation : undefined];
+    for (const r of candidates) if (r && (!best || RANK[r] > RANK[best])) best = r;
+  }
+  return best ?? "author";
 }
 
 /** Display name of a user record: username, else name, else email, else id. */
@@ -62,7 +81,13 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
       if (!await canUpdatePages(opts.siteAuthz(), siteUser.id)) return { ok: false, status: 403 };
       return {
         ok: true,
-        editor: { id: siteUser.id, username: displayName(siteUser), roles: siteUser.roles, source: "site" },
+        editor: {
+          id: siteUser.id,
+          username: displayName(siteUser),
+          roles: siteUser.roles,
+          relation: relationOf(siteUser.roles, opts.grants()),
+          source: "site",
+        },
       };
     }
 
@@ -79,6 +104,7 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
         id: user.id as string,
         username: displayName(user),
         roles: (user.roles as string[] | undefined) ?? [],
+        relation: relationOf((user.roles as string[] | undefined) ?? [], opts.grants()),
         source: "session",
       },
     };
@@ -86,9 +112,9 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
 }
 
 /**
- * Whether `editor` may edit the page with this frontmatter. An `admin` or
- * `editor` may edit any page; anyone else (an `author`) only the pages they
- * created, recorded as `createdBy` in the frontmatter. `null` is a path that is
+ * Whether `editor` may edit the page with this frontmatter. An editor whose
+ * {@link EditorIdentity.relation} is `admin` or `editor` may edit any page; an
+ * `author` only the pages it created, recorded as `createdBy` in the frontmatter. `null` is a path that is
  * not a page, which nobody may edit.
  *
  * The HTTP routes of the inline-edit provider apply the same rule at commit;
@@ -96,10 +122,10 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
  * page whose commit would be refused.
  */
 export function mayEditPage(
-  editor: Pick<EditorIdentity, "id" | "roles">,
+  editor: Pick<EditorIdentity, "id" | "relation">,
   frontmatter: Record<string, unknown> | null,
 ): boolean {
   if (!frontmatter) return false;
-  if (editor.roles.includes("admin") || editor.roles.includes("editor")) return true;
+  if (editor.relation === "admin" || editor.relation === "editor") return true;
   return frontmatter.createdBy === editor.id;
 }
