@@ -32,12 +32,10 @@ import { join } from "@std/path";
 import { checkLockfileStaleness } from "./lockfile.ts";
 import { DOCTOR_REPORT_ENV, type DoctorReport } from "../plugin-api/doctor-report.ts";
 import { describeConflict } from "../plugin-api/capabilities.ts";
-import { createStorage } from "../storage/mod.ts";
-import { loadConfig } from "../config/mod.ts";
 import { formatNpmCacheMismatchError, isNpmCacheMismatchError } from "./npm-cache-error.ts";
 
 export interface DoctorFinding {
-  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot" | "capabilities";
+  category: "deno-version" | "resolution" | "npm-cache" | "lockfile" | "boot" | "capabilities" | "access";
   /** `info` is context for the reader and never fails the run. */
   severity: "error" | "warning" | "info";
   message: string;
@@ -153,7 +151,7 @@ export function searchDegradedFindings(healthStatus: unknown, bootOutput: string
  * - Scheduled actions with no `scheduler.executor` are a warning: they are
  *   queued and nothing will ever run them.
  */
-export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: boolean }): DoctorFinding[] {
+export function capabilityFindings(report: DoctorReport): DoctorFinding[] {
   const findings: DoctorFinding[] = [];
   const slot = (name: string) => report.providers.find((p) => p.kind === "slot" && p.name === name);
 
@@ -180,13 +178,20 @@ export function capabilityFindings(report: DoctorReport, opts: { adminEnabled: b
     }
   }
 
-  if (opts.adminEnabled && slot("editor.session")?.status !== "active") {
+  // A plugin that says it is the admin (it provides `admin.prefix`) but provides
+  // no working `editor.session` is half installed: its pages exist and nobody can sign in.
+  if (slot("admin.prefix") && slot("editor.session")?.status !== "active") {
     findings.push({
       category: "capabilities",
       severity: "error",
-      message: `The admin is enabled but no plugin provides "editor.session", so nobody can sign in ` +
-        `and no editing bar is shown. Install the admin plugin, or set \`admin.enabled: false\`.`,
+      message: `${slot("admin.prefix")!.provider} provides "admin.prefix" (it is an admin) but no plugin provides ` +
+        `"editor.session", so nobody can sign in and no editing bar is shown.`,
     });
+  }
+
+  // Admin-tier roles handed out by configuration (never an error: it is often exactly the point).
+  for (const g of report.automaticGrants ?? []) {
+    findings.push({ category: "access", severity: g.severity, message: `Editing rights are assigned automatically: ${g.message}` });
   }
 
   if (report.scheduledActions > 0 && slot("scheduler.executor")?.status !== "active") {
@@ -299,12 +304,7 @@ async function runBootCheck(root: string): Promise<DoctorFinding[]> {
     });
     return findings;
   }
-  let adminEnabled = true;
-  try {
-    const config = await loadConfig({ storage: createStorage({ rootDir: root }), rootDir: root, skipConfigTs: true });
-    adminEnabled = config.admin?.enabled !== false;
-  } catch { /* assume enabled: the safer reading */ }
-  return [...findings, ...capabilityFindings(report, { adminEnabled })];
+  return [...findings, ...capabilityFindings(report)];
 }
 
 /** Run doctor's checks and return the findings, without printing or exiting. */

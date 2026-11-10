@@ -12,7 +12,6 @@ import { resolveDataDir, resolveMaxRevisions, resolveRuntimeDir } from "../forms
 import { startupStep } from "./startup-step.ts";
 import { createStorageAsync } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
-import { ADMIN_PLUGIN_SPECIFIER, adminCoreMismatch, checkAdminVersion } from "../plugins/builtin.ts";
 import { FormatRegistry } from "../content/formats/registry.ts";
 import { MarkdownHandler } from "../content/formats/markdown.ts";
 import { TsxHandler } from "../content/formats/tsx.ts";
@@ -40,7 +39,9 @@ import { createHistoryEngine } from "../history/engine.ts";
 import { createFlexEngine } from "../flex/engine.ts";
 import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
-import { createDuneAuthSystem } from "../auth/authz.ts";
+import { bootstrapRoleGrants, createDuneAuthSystem } from "../auth/authz.ts";
+import { automaticAdminTierGrants } from "../auth/automatic-grants.ts";
+import { resolveRoleGrants } from "../auth/role-grants.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
@@ -69,19 +70,6 @@ import type { DuneConfig } from "../config/types.ts";
 import { createSubmissionManager } from "../forms/submissions.ts";
 import { resolveFormsConfig } from "../forms/config.ts";
 import type { StorageAdapter } from "../storage/types.ts";
-
-/**
- * Minimal auth-provider interface for the admin panel.
- * The concrete `AuthProvider` type lives in `@dune/plugin-admin/admin/auth/provider`;
- * this stub lets core accept it without creating a hard publish-time dependency.
- * @since 0.24.0
- */
-export interface AdminAuthProvider {
-  readonly type: string;
-  authenticate(credentials: { username: string; password: string; [k: string]: unknown }): Promise<{ id: string; [k: string]: unknown } | null>;
-  initiateLogin?(req: Request): Promise<string | null>;
-  handleCallback?(req: Request): Promise<{ id: string; [k: string]: unknown } | null>;
-}
 
 /** All services produced by a successful `bootstrap()` call. */
 export interface BootstrapResult {
@@ -203,22 +191,6 @@ export interface BootstrapOptions {
    * Also honoured when DUNE_ENV=dev is set in the environment.
    */
   dev?: boolean;
-  /**
-   * Custom authentication provider for the admin panel.
-   *
-   * When supplied, takes precedence over `admin.auth_provider` in system.yaml.
-   * Forwarded to the built-in admin plugin (`@dune/plugin-admin`). When running
-   * a custom admin plugin that handles its own auth, this option is ignored.
-   *
-   * @example
-   * ```ts
-   * import { bootstrap } from "@dune/core";
-   * import { MyOidcProvider } from "./auth/oidc-provider.ts";
-   *
-   * const ctx = await bootstrap("./", { authProvider: new MyOidcProvider() });
-   * ```
-   */
-  authProvider?: AdminAuthProvider;
   /**
    * Pre-created storage adapter to use instead of the default filesystem/KV
    * adapter derived from `root`. When supplied, the `root` parameter is used
@@ -376,7 +348,6 @@ export async function bootstrap(
   const pluginServices = createPluginServices({
     config,
     storage,
-    root,
     getBlueprints: () => engine.blueprints,
     searchAnalytics,
     getAuthz: () => authzForServices,
@@ -396,7 +367,7 @@ export async function bootstrap(
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
   await loadPluginAdminConfigs(config, storage, resolveDataDir(config));
-  await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root }));
+  await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root, dev }));
 
   // Collect plugin asset dirs, template dirs, and public routes.
   // pluginAdminPages are no longer aggregated here — @dune/plugin-admin's
@@ -536,11 +507,6 @@ export async function bootstrap(
 
   // 10. History engine — stays in core so CapabilityContext and @dune/plugin-inline-edit
   // can both access it without depending on the admin plugin.
-  const adminConfig = config.admin ?? {
-    path: "/admin",
-    session_lifetime: 86400,
-    enabled: true,
-  };
   const runtimeDir = resolveRuntimeDir(config);
   const dataDir = resolveDataDir(config);
 
@@ -551,18 +517,8 @@ export async function bootstrap(
   });
 
   // 11. Authorization (Polizy) — created in core so that admin-user tuples
-  // (@dune/plugin-admin) and site-user tuples (mountDuneAuth) share one index.
-  //
-  // Admin-side authz creation reads `admin.authzStore` — its own setting,
-  // independent of `site.auth`'s (public-auth) mode/authzStore. It used to
-  // read the public-auth config for this too, which meant a site running
-  // `site.auth.mode: "external-jwt"` (or `site.auth.authz_store: "db"`)
-  // silently lost real admin-panel permission checking as well, even though
-  // Admin User tuples (bootstrapAdminTuples(), @dune/plugin-admin) have nothing to do with how
-  // public site users authenticate. Default is "local", created whenever
-  // the admin panel itself is enabled — see AdminConfig.authzStore's doc
-  // comment (src/config/admin-config.ts) for the full reasoning.
-  const adminAuthzStoreCfg = adminConfig.authz_store ?? "local";
+  // (the admin plugin) and site-user tuples (mountDuneAuth) share one index.
+  // Admin-side authz is independent of `site.auth`'s (public-auth) mode.
 
   let bootstrappedAuthz: DuneAuthSystem | undefined;
   let bootstrappedAuthzAdapter: AuthzLocalAdapter | AuthzDbAdapter | undefined;
@@ -573,13 +529,18 @@ export async function bootstrap(
     return null;
   });
 
-  // The authz system exists for the built-in admin (when enabled) and for any
-  // other admin: a plugin that provides the `editor.session` capability has
-  // declared itself the admin (plugins register, and so declare, before this
-  // point). Without it a replacement admin could never have its sessions
-  // authorised (`pages.update` fails closed when authz is missing).
+  // The authz system exists when something needs it: a plugin that provides
+  // `editor.session` (without authz its sessions could never be authorised:
+  // `pages.update` fails closed when authz is missing), a plugin that declares
+  // `authzActions` of its own, or the site's own login (`site.auth`, whose
+  // users are authorised through it for page gating and inline editing).
+  // Plugins register, and so declare, before this point; settle async setup()
+  // first so a declaration made after an await is seen too.
+  await hooks.whenSetupComplete();
   const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "editor.session");
-  if ((adminConfig.enabled !== false || hasSessionProvider) && adminAuthzStoreCfg === "local") {
+  const hasAuthzActions = Object.keys(pluginAuthzActions).length > 0;
+  const hasSiteAuth = !!config.site.auth;
+  if (hasSessionProvider || hasAuthzActions || hasSiteAuth) {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",
@@ -590,6 +551,16 @@ export async function bootstrap(
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
       authzForServices = { authz: bundle.authz, adapter: bundle.adapter };
+      // Admin-tier roles hold their relation on the site at group level, so a
+      // site user's role is enough, with or without an admin plugin.
+      await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config));
+      // Say where the config hands out those roles by itself (a payment product's
+      // role, an identity provider's role claims). Informational: it is often the point.
+      for (const g of automaticAdminTierGrants(config)) {
+        logger[g.severity === "warning" ? "warn" : "info"]("auth.automatic_admin_tier_grant", {
+          detail: g.message,
+        });
+      }
       // Admin-user tuples are bootstrapped by @dune/plugin-admin's mount() hook
       // after it creates the UserManager. Core only creates the empty system here.
     } catch (err) {
@@ -636,36 +607,14 @@ export async function bootstrap(
     }
   }
 
-  // 12. Register the built-in admin plugin before user plugins so user plugins
-  // can override its services through the capability registry. The plugin's setup() runs
-  // immediately (via hooks.registerPlugin); mount() runs later in mountPlugins().
-  // Non-literal dynamic import breaks the circular publish-time dependency between
-  // @dune/core and @dune/plugin-admin (each would otherwise need the other to be
-  // on JSR before it could be published). Deno can't follow the variable import
-  // statically, so the specifier constant lives in plugins/builtin.ts where the
-  // lockfile discovery helper also reports it — see that module's doc.
-  if (adminConfig.enabled !== false) {
-    const adminPkg: string = ADMIN_PLUGIN_SPECIFIER;
-    const adminModule = await import(adminPkg) as Record<string, unknown> & { // lockfile-safe: constant from plugins/builtin.ts, reported by lockfile discovery
-      createAdminPlugin: (config: DuneConfig, storage: StorageAdapter, opts: Record<string, unknown>) => DunePlugin;
-    };
-    const mismatch = adminCoreMismatch(adminModule);
-    if (mismatch) logger.warn("bootstrap.admin_plugin.version_mismatch", { detail: mismatch });
-    const { createAdminPlugin } = adminModule;
-    const adminPlugin = createAdminPlugin(config, storage, {
-      root,
-      dev,
-      authProvider: options.authProvider,
-      authz: bootstrappedAuthz,
-      authzAdapter: bootstrappedAuthzAdapter,
-      hmacKey,
-    } as Record<string, unknown>);
-    const versionCheck = checkAdminVersion(adminPlugin.version, config);
-    if (versionCheck.level === "refuse") throw new Error(versionCheck.message);
-    if (versionCheck.level === "warn") {
-      logger.warn("bootstrap.admin_plugin.pre_snake_case", { detail: versionCheck.message });
-    }
-    hooks.registerPlugin(adminPlugin);
+  // 12. There is no built-in admin: the admin is a plugin like any other and
+  // loads only when site.yaml lists it under `plugins:`. Say so once when
+  // nothing provides the admin's prefix, so a site that upgraded without
+  // listing it can tell why the panel is gone.
+  if (!capabilityRegistry.reader.providers().some((p) => p.name === "admin.prefix")) {
+    logger.info("bootstrap.no_admin", {
+      hint: "No plugin provides the admin panel. List jsr:@dune/plugin-admin under plugins: in config/site.yaml to run it (`dune migrate:config` adds it).",
+    });
   }
 
   // 13. Metrics collector

@@ -8,6 +8,7 @@
  */
 
 import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import { roleGrantProblems } from "../auth/role-grants.ts";
 import {
   assertPinnedThemeSpecifier,
   assertThemeName,
@@ -40,50 +41,8 @@ export function validateConfig(config: DuneConfig): string[] {
   validateThemeList(config.themeList, errors);
   validatePlugins(config.plugins, errors);
   validatePluginList(config.pluginList, errors);
-  validateAdmin(config.admin, errors);
 
   return errors.map(formatError);
-}
-
-// --- Admin validation ---
-
-const ADMIN_PATH_RE = /^\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/;
-
-function validateAdmin(
-  admin: DuneConfig["admin"],
-  errors: ValidationError[],
-): void {
-  if (!admin) return;
-  if (admin.auth_provider !== undefined) {
-    const type = (admin.auth_provider as { type?: unknown }).type;
-    if (type !== "local") {
-      errors.push({
-        path: "admin.auth_provider.type",
-        message: "only \"local\" is supported; LDAP and SAML were never implemented. " +
-          "Omit auth_provider for the built-in password auth, or inject a custom provider through the admin plugin's `authProvider` option",
-        got: type,
-      });
-    }
-  }
-  if (admin.path !== undefined) {
-    if (typeof admin.path !== "string") {
-      errors.push({
-        path: "admin.path",
-        message: "must be a string starting with a leading slash",
-        got: admin.path,
-      });
-    } else if (!ADMIN_PATH_RE.test(admin.path)) {
-      // The middleware uses pathname.startsWith(admin.path) and slices on
-      // its length. Anything that isn't an unambiguous absolute path with
-      // safe characters and no trailing slash will desync that logic and
-      // either lock users out or expose admin routes outside the prefix.
-      errors.push({
-        path: "admin.path",
-        message: 'must start with "/", contain only [a-zA-Z0-9_-] segments, and have no trailing slash (e.g. "/admin", "/cms/admin")',
-        got: admin.path,
-      });
-    }
-  }
 }
 
 // --- Site validation ---
@@ -241,6 +200,10 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
         suggestion: `Supported: ${JSON.stringify(system.languages.supported)}`,
       });
     }
+  }
+
+  for (const message of roleGrantProblems(system.role_grants)) {
+    errors.push({ path: "system.role_grants", message, got: system.role_grants });
   }
 
   if (typeof system.debug !== "boolean") {

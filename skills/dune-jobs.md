@@ -89,6 +89,8 @@ Every file you want to actually run must also be listed in `site.yaml`'s `jobs:`
 
 ## Admin panel
 
+Only on a site that lists `@dune/plugin-admin` under `plugins:`; jobs run the same without it.
+
 `/admin/jobs` (UI) and `GET /admin/api/jobs` (API, requires `config.read`) list all registered jobs with:
 - `lastRun` — timestamp of most recent execution, or `null` if never run
 - `nextRun` — best-estimate next scheduled execution time, or `null`

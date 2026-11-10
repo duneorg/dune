@@ -49,9 +49,9 @@ export type HookEvent =
   // server, a CLI command, a plugin), never by core on their behalf. Payloads
   // carry paths relative to the content directory. Edits made outside Dune
   // (an editor, git pull) fire nothing per page: they surface as onRebuild.
-  | "onPageCreate" // a page file was created: { sourcePath, title }
-  | "onPageUpdate" // a page file was written: { sourcePath }
-  | "onPageDelete" // a page file was deleted: { sourcePath }
+  | "onPageCreate" // a page file was created: { sourcePath, title, actor? }
+  | "onPageUpdate" // a page file was written: { sourcePath, actor? }
+  | "onPageDelete" // a page file was deleted: { sourcePath, actor? }
   | "onPageMove" // pages were renamed or reordered: PageMovePayload
   | "onWorkflowChange" // page workflow status changed: { sourcePath, from, to }
   // Public features (fired by core, so they work without an admin plugin)
@@ -65,9 +65,17 @@ export type HookEvent =
  * file, as paths relative to the content directory. Every page at or below
  * `from` now lives at the same position below `to`. One event covers one
  * operation (a reorder renames many folders), so a handler can re-index once.
+ *
+ * The other page events carry `actor?: string` the same way: `onPageCreate`
+ * `{ sourcePath, title, actor? }`, `onPageUpdate` and `onPageDelete`
+ * `{ sourcePath, actor? }`. Whoever writes the page fires the event and fills
+ * `actor` when a person is behind the write, so audit and webhook plugins
+ * need no access to the writer's request.
  */
 export interface PageMovePayload {
   moves: Array<{ from: string; to: string }>;
+  /** Who did it (the user's name or id), when a person did; absent for CLI and automated writes. @since 0.36.0 */
+  actor?: string;
 }
 
 /**
@@ -215,7 +223,7 @@ export interface PluginApi {
  * them onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` wires
  * them as programmatic Fresh routes before the content catch-all handler —
  * this happens in `@dune/core` itself (`registerPluginPublicRoutes()`), so it
- * works in every `createDuneApp()` context (headless, `admin.enabled: false`,
+ * works in every `createDuneApp()` context (headless, no admin plugin listed,
  * etc.), not only when an admin package's `mount()` happens to run. Unlike
  * `onRequest`, these are proper Fresh routes: core passes a real Fresh context,
  * so a handler whose `ctx` is annotated `FreshContext` can call `ctx.render()`
@@ -247,133 +255,6 @@ export interface PublicRouteRegistration {
    * Example: `new URL("./islands/ConfirmPage.tsx", import.meta.url).pathname`
    */
   island?: string;
-}
-
-/**
- * Context passed to a `bar.actions` contribution.
- *
- * Deliberately the same narrowed shape {@link ResponseTransformContext}
- * passes as `page`/`adminPrefix` (plus `template`, which actions need to
- * decide what to show but `transformResponse` itself has never needed) —
- * a plugin contributing bar actions is answering "what belongs on the bar
- * for this response," the same question `transformResponse` answers for
- * the page body.
- *
- * @since 1.2.0
- */
-export interface AdminBarActionContext {
-  /** Content page matching the current URL, or null for non-content routes. */
-  page: { sourcePath: string; route: string; title: string | null; template: string } | null;
-  /** Admin panel URL prefix (e.g. `"/admin"`). */
-  adminPrefix: string;
-}
-
-/**
- * A button contributed to the shared admin bar UI through the `bar.actions`
- * contribution point. Rendered by whichever plugin owns the
- * bar (e.g. `@dune/plugin-inline-edit`) — the contributing plugin controls
- * only the button's appearance and behavior, not its position or styling.
- *
- * @since 1.2.0
- */
-export interface AdminBarAction {
-  /**
-   * Unique id — namespace by plugin name to avoid collisions across
-   * plugins, e.g. `"pdf-export:download"`.
-   */
-  id: string;
-  /** Button label. */
-  label: string;
-  /** Optional emoji/icon prefix. */
-  icon?: string;
-  /**
-   * Renders as a plain link (`<a href>`) when set — the common case for
-   * downloads and navigation. Mutually exclusive with `onClick`; `href`
-   * takes precedence if both are set.
-   */
-  href?: string;
-  /**
-   * Renders as a `<button>` running this literal JavaScript on click, when
-   * `href` is not set. Trusted content from a loaded plugin, not user
-   * input — no sanitization is applied, the same trust level as any other
-   * server-rendered admin-only script.
-   */
-  onClick?: string;
-}
-
-/**
- * A custom admin page contributed by a plugin.
- *
- * Plugins contribute these to the `admin.pages` point:
- * `api.capabilities.contribute("admin.pages", { path, label, permission, handler })`.
- * Unlike `publicRoutes`, this is **not** wired by `@dune/core` itself: whichever
- * admin package provides the admin UI reads the list (`capabilities.list("admin.pages")`)
- * and mounts each page as a programmatic route, enforcing its declared
- * `permission`. A site without an admin package gets no admin pages; there is
- * no core fallback, because enforcing `permission` needs an admin-specific
- * auth system that `@dune/core` has no reason to depend on.
- *
- * @since 0.7.0
- */
-// deno-lint-ignore no-explicit-any
-export interface AdminPageRegistration<S = any> {
-  /**
-   * URL path relative to the admin prefix (must start with `/`).
-   * Example: `/my-plugin` registers at `/admin/my-plugin`.
-   */
-  path: string;
-  /** Human-readable nav label shown in the admin sidebar */
-  label: string;
-  /** Optional icon — emoji or inline SVG */
-  icon?: string;
-  /**
-   * Admin permission required to view this page. Required, like
-   * {@link AdminRouteRegistration.permission}: every admin contribution says
-   * who may use it, so a page cannot be exposed to every authenticated admin
-   * by leaving a field out.
-   */
-  permission: string;
-  /** GET handler for the page (a method, so a full Fresh context is accepted: see {@link PluginRouteContext}). */
-  handler(ctx: PluginRouteContext<S>): Promise<Response> | Response;
-}
-
-/**
- * A guarded admin route contributed by a plugin: the way to add a `POST`, `PUT`,
- * `PATCH` or `DELETE` endpoint (or a `GET` API route that is not a sidebar page)
- * under the admin prefix.
- *
- * Plugins contribute these to the `admin.routes` point:
- * `api.capabilities.contribute("admin.routes", { method, path, permission, handler })`.
- * Whichever admin package provides the admin UI reads the list
- * (`capabilities.list("admin.routes")`) and mounts each route behind its own
- * authentication, with the CSRF check applied to every non-safe method and the
- * declared `permission` enforced, so the handler only runs for a request that
- * passed all three. A site without an admin package mounts nothing.
- *
- * A route registered directly in a plugin's `mount()` is *not* behind the
- * admin's middleware (mount order is registration order, and the admin mounts
- * last), so it cannot use the admin's guards: contribute it here instead.
- *
- * @since 0.36.0
- */
-// deno-lint-ignore no-explicit-any
-export interface AdminRouteRegistration<S = any> {
-  /** HTTP method. Anything other than `GET` is subject to the CSRF check. */
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  /**
-   * URL path relative to the admin prefix (must start with `/`).
-   * Example: `/my-plugin/save` registers at `/admin/my-plugin/save`.
-   */
-  path: string;
-  /**
-   * Admin permission required (including ones the plugin declares through
-   * `authzActions`). Required, not optional: a mutation endpoint must say who
-   * may call it, so it cannot be mounted open to every authenticated admin by
-   * leaving a field out.
-   */
-  permission: string;
-  /** Handler; runs only after authentication, CSRF and permission checks pass (a method, so a full Fresh context is accepted). */
-  handler(ctx: PluginRouteContext<S>): Promise<Response> | Response;
 }
 
 /**
@@ -540,8 +421,8 @@ export interface DunePlugin {
    * @example
    * ```ts
    * // Gate a plugin-specific admin capability behind its own permission,
-   * // reachable from an `admin.routes` contribution:
-   * //   api.capabilities.contribute("admin.routes", { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
+   * // reachable from an `ADMIN_ROUTES` contribution (the admin plugin's extension point):
+   * //   api.capabilities.contribute(ADMIN_ROUTES, { method: "POST", path: "/billing/refund", permission: "billing.manage", handler })
    * export default {
    *   name: "my-billing-plugin",
    *   version: "1.0.0",
@@ -634,43 +515,6 @@ export interface DunePlugin {
 }
 
 /**
- * Plugin-provided replacement for the built-in block editor.
- *
- * Provide it as the `editor.content` capability: `api.capabilities.provide("editor.content", () => impl)`.
- * The edit route delegates to `pageEditorHandler` instead of the default block editor.
- *
- * Defined in core (not in `@dune/plugin-admin`) so that alternative editor plugins can
- * type their implementation without taking a dependency on the admin plugin itself.
- *
- * @since 0.24.0
- */
-export interface ContentEditorPlugin {
-  /**
-   * Handle `GET /admin/pages/edit?path=...`.
-   *
-   * Core passes the full Fresh context: annotate `ctx` as `FreshContext` and call
-   * `ctx.render(component)` to render within the admin layout, or return any
-   * `Response` directly. An unannotated `ctx` is a {@link PluginRouteContext}.
-   * Access `ctx.state.adminContext` for engine, config, and other admin services.
-   * The context state type is `AdminState` from `@dune/plugin-admin`; typed as
-   * `any` here so core does not depend on admin-internal types.
-   */
-  pageEditorHandler(ctx: PluginRouteContext): Response | Promise<Response>;
-
-  /**
-   * Optional WebSocket upgrade handler for real-time collaboration.
-   *
-   * When present, `GET /admin/api/content-editor/ws?path=...` delegates here
-   * after auth and path validation. Return a `101 Switching Protocols` response
-   * via `Deno.upgradeWebSocket`. When absent the WS endpoint responds 501.
-   */
-  wsHandler?: (
-    req: Request,
-    user: { id: string; name: string },
-  ) => Response;
-}
-
-/**
  * Context passed to {@link DunePlugin.transformResponse}.
  *
  * Auth is pre-resolved by core before calling plugins — no additional session
@@ -717,21 +561,18 @@ export interface ResponseTransformContext {
   /**
    * Content page matching the current URL, or null for non-content routes
    * (admin paths, API paths, plugin routes, theme static assets, etc.).
-   * `template` was added in 1.2.0 alongside the bar actions — existing
-   * consumers destructuring the other four fields are unaffected.
    */
   page: { sourcePath: string; route: string; title: string | null; template: string } | null;
-  /** Admin panel URL prefix (e.g. `"/admin"`). */
-  adminPrefix: string;
   /**
-   * Bar buttons contributed through the `bar.actions` capability point
-   * (`PluginApi.capabilities.contribute("bar.actions", fn)`), in plugin
-   * registration order. Call each with the bar action context. A bar-owning
-   * plugin (e.g. `@dune/plugin-inline-edit`) collects other plugins' buttons here.
+   * What plugins provide, as `MountApi.capabilities` offers it: the slots
+   * (`get("admin.prefix")`, `get("editor.session")`) and any extension point a
+   * plugin declares (`list(BAR_ACTIONS)`). A transform reads what it needs
+   * here per request, so a plugin module shared between sites keeps no state
+   * of its own.
    *
    * @since 0.36.0
    */
-  barActions: readonly ((ctx: AdminBarActionContext) => AdminBarAction[])[];
+  capabilities: import("../plugin-api/capabilities.ts").CapabilityReader;
 }
 
 /**
@@ -758,7 +599,7 @@ export interface MountApi {
   /** The same services object `setup()` received (`PluginApi.services`). */
   services: import("../plugin-api/services.ts").PluginServices;
   /**
-   * What plugins provide: `capabilities.get("editor.session")`, `.list("admin.pages")`.
+   * What plugins provide: `capabilities.get("editor.session")`, and any extension point a plugin declares (the admin's `admin.pages`, say).
    * Slots are resolved before `mount()` runs; read them lazily (at request
    * time) rather than assuming a provider exists.
    */

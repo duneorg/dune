@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
@@ -11,11 +11,22 @@ import { MemoryStorageAdapter } from "../../src/storage/memory.ts";
 import {
   adminPrefixOf,
   type CapabilityContext,
+  type CapabilityKey,
+  capabilityKey,
   createCapabilityRegistry,
   describeConflict,
   invalidAdminPrefix,
   type RequestAuthenticator,
 } from "../../src/plugin-api/capabilities.ts";
+
+// The contract names no extension point of a plugin's own. A plugin exports
+// typed keys next to its types, prefixed with its name; these two stand in for
+// `admin.pages` / `admin.routes` of the admin plugin.
+const TEST_PAGES: CapabilityKey<{ path: string; label: string; permission: string; handler: () => Response }> =
+  capabilityKey("test.pages");
+const TEST_ROUTES: CapabilityKey<
+  { method: "GET" | "POST" | "DELETE"; path: string; permission: string; handler: () => Response }
+> = capabilityKey("test.routes");
 
 const auth = (name: string): RequestAuthenticator => ({
   authenticate: () => Promise.resolve({ authenticated: true, user: { id: name, username: name } }),
@@ -37,7 +48,7 @@ Deno.test("capabilities: an unprovided slot is simply absent", async () => {
   const reg = createCapabilityRegistry();
   await reg.resolve(ctx);
   assertEquals(reg.reader.get("editor.inline"), undefined);
-  assertEquals(reg.reader.list("bar.actions"), []);
+  assertEquals(reg.reader.list(TEST_PAGES), []);
   assertEquals(reg.reader.providers(), []);
 });
 
@@ -116,13 +127,13 @@ Deno.test("capabilities: a factory returning undefined declines the slot", async
 Deno.test("capabilities: contributions append in registration order and name their provider", () => {
   const reg = createCapabilityRegistry();
   const page = (path: string) => ({ path, label: path, permission: "pages.read", handler: () => new Response("") });
-  reg.registrar("x").contribute("admin.pages", page("/x"));
-  reg.registrar("y").contribute("admin.pages", page("/y"));
-  assertEquals(reg.reader.list("admin.pages").map((p) => p.path), ["/x", "/y"]);
-  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["admin.pages:x", "admin.pages:y"]);
+  reg.registrar("x").contribute(TEST_PAGES, page("/x"));
+  reg.registrar("y").contribute(TEST_PAGES, page("/y"));
+  assertEquals(reg.reader.list(TEST_PAGES).map((p) => p.path), ["/x", "/y"]);
+  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["test.pages:x", "test.pages:y"]);
 });
 
-Deno.test("capabilities: admin.routes contributions keep their method and order", () => {
+Deno.test("capabilities: test.routes contributions keep their method and order", () => {
   const reg = createCapabilityRegistry();
   const route = (method: "GET" | "POST" | "DELETE", path: string) => ({
     method,
@@ -130,27 +141,13 @@ Deno.test("capabilities: admin.routes contributions keep their method and order"
     permission: "config.update",
     handler: () => new Response(""),
   });
-  reg.registrar("a").contribute("admin.routes", route("POST", "/api/a/save"));
-  reg.registrar("b").contribute("admin.routes", route("DELETE", "/api/b/item"));
-  assertEquals(reg.reader.list("admin.routes").map((r) => `${r.method} ${r.path}`), [
+  reg.registrar("a").contribute(TEST_ROUTES, route("POST", "/api/a/save"));
+  reg.registrar("b").contribute(TEST_ROUTES, route("DELETE", "/api/b/item"));
+  assertEquals(reg.reader.list(TEST_ROUTES).map((r) => `${r.method} ${r.path}`), [
     "POST /api/a/save",
     "DELETE /api/b/item",
   ]);
   assertEquals(reg.reader.providers().map((p) => p.provider), ["a", "b"]);
-});
-
-Deno.test("capabilities: an admin.pages contribution must name a permission (compile-time)", () => {
-  const reg = createCapabilityRegistry();
-  // @ts-expect-error `permission` is required on admin.pages
-  reg.registrar("a").contribute("admin.pages", { path: "/x", label: "X", handler: () => new Response("") });
-  assertEquals(reg.reader.list("admin.pages").length, 1);
-});
-
-Deno.test("capabilities: an admin.routes contribution must name a permission (compile-time)", () => {
-  const reg = createCapabilityRegistry();
-  // @ts-expect-error `permission` is required on admin.routes
-  reg.registrar("a").contribute("admin.routes", { method: "POST", path: "/x", handler: () => new Response("") });
-  assertEquals(reg.reader.list("admin.routes").length, 1);
 });
 
 Deno.test("capabilities: the hook registry attributes a plugin's declarations to its name", async () => {
@@ -189,7 +186,7 @@ Deno.test(
             factoryRanBeforeMount = true;
             return auth("provided");
           });
-          api.capabilities.contribute("admin.pages", { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
+          api.capabilities.contribute(TEST_PAGES, { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
         },
       };
       const consumer: DunePlugin = {
@@ -199,7 +196,7 @@ Deno.test(
         async mount({ capabilities }) {
           const a = capabilities.get("editor.session");
           seen = a ? (await a.authenticate(new Request("http://x/"))).user?.id : undefined;
-          if (capabilities.list("admin.pages").length !== 1) seen = "contribution-missing";
+          if (capabilities.list(TEST_PAGES).length !== 1) seen = "contribution-missing";
         },
       };
 
@@ -242,8 +239,6 @@ Deno.test(
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
       await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n");
-      await Deno.mkdir(join(root, "config"), { recursive: true });
-      await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
       let runs = 0;
       const plugin: DunePlugin = {
         name: "test-admin",
@@ -361,3 +356,42 @@ async function removeWithRetry(root: string): Promise<void> {
   }
   throw lastErr;
 }
+
+Deno.test("capabilities: a plugin's own slot is provided and read through its key; the same name is the same capability", async () => {
+  const EDITOR: CapabilityKey<{ label: string }> = capabilityKey("test.editor");
+  const reg = createCapabilityRegistry();
+  reg.registrar("alt").provide(EDITOR, () => ({ label: "alt" }));
+  assertEquals(reg.reader.get(EDITOR), undefined, "not resolved yet");
+  await reg.resolve(ctx);
+  assertEquals(reg.reader.get(EDITOR)?.label, "alt");
+  // Another plugin recreates the key from its documented name instead of importing it.
+  assertEquals(reg.reader.get(capabilityKey<{ label: string }>("test.editor"))?.label, "alt");
+  assertEquals(reg.reader.providers(), [{ name: "test.editor", kind: "slot", provider: "alt", status: "active" }]);
+});
+
+Deno.test("capabilities: list() and contribute() refuse the string form instead of silently ignoring it", () => {
+  const reg = createCapabilityRegistry();
+  // What an unmigrated plugin (plain JavaScript, or `any`) does.
+  // deno-lint-ignore no-explicit-any
+  const reader = reg.reader as any;
+  // deno-lint-ignore no-explicit-any
+  const registrar = reg.registrar("old-plugin") as any;
+  const listErr = assertThrows(() => reader.list("bar.actions"), TypeError);
+  assertStringIncludes(listErr.message, 'capabilities.list() needs a CapabilityKey, got the string "bar.actions"');
+  assertStringIncludes(listErr.message, 'capabilityKey("bar.actions")');
+  const contributeErr = assertThrows(() => registrar.contribute("bar.actions", () => []), TypeError);
+  assertStringIncludes(contributeErr.message, "capabilities.contribute() needs a CapabilityKey");
+  // Nothing was registered under a stray name, and a real key still works.
+  assertEquals(reg.reader.providers(), []);
+  const BAR = capabilityKey<() => string[]>("bar.actions");
+  reg.registrar("new-plugin").contribute(BAR, () => ["x"]);
+  assertEquals(reg.reader.list(BAR).length, 1);
+  assertThrows(() => reader.list(undefined), TypeError);
+});
+
+Deno.test("capabilities: get() and provide() keep taking a core slot's string name", async () => {
+  const reg = createCapabilityRegistry();
+  reg.registrar("admin").provide("editor.session", () => auth("a"));
+  await reg.resolve(ctx);
+  assertExists(reg.reader.get("editor.session"));
+});

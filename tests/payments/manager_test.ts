@@ -16,6 +16,7 @@ import type { PaymentProvider, CheckoutSession, WebhookEvent, Product } from "..
 import type { UserStore } from "../../src/auth/user-store.ts";
 import type { User, UserCreate } from "../../src/auth/types.ts";
 import { createDuneAuthSystem } from "../../src/auth/authz.ts";
+import { withRoleSync } from "../../src/auth/sync-roles.ts";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -383,6 +384,30 @@ Deno.test("handleWebhook: authz.addMember called when role is granted", async ()
     }),
     true,
   );
+});
+
+Deno.test("handleWebhook: on a role-synced user store the membership is written once", async () => {
+  const storage = makeStorage();
+  const { authz, adapter } = createDuneAuthSystem({ dataDir: "data" }, storage);
+
+  const user = makeUser({ id: "user-sync", roles: [] });
+  const provider = new MockPaymentProvider();
+  provider.parseWebhookResult = { type: "checkout.session.completed", userId: "user-sync", productId: "membership", raw: {} };
+  const inner = new MockUserStore();
+  inner.users.set(user.id, user);
+
+  const manager = createPaymentManager({
+    provider,
+    products: [makeProduct()],
+    webhookSecret: "whsec_test",
+    userStore: withRoleSync(inner, () => ({ authz, adapter })),
+    baseUrl: "https://example.com",
+    authz,
+  });
+  await manager.handleWebhook(new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }));
+
+  const groups = await adapter.findObjects({ type: "user", id: "user-sync" }, "member", { objectType: "group" });
+  assertEquals(groups.map((g) => g.id), ["member"]);
 });
 
 Deno.test("handleWebhook: authz not called when role already present", async () => {

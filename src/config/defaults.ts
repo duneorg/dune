@@ -46,10 +46,4 @@ export const DEFAULT_CONFIG: DuneConfig = {
   pluginList: [],
   themeList: [],
   autoDiscoverPlugins: false,
-  admin: {
-    path: "/admin",
-    session_lifetime: 86400,
-    enabled: true,
-    max_upload_mb: 100,
-  },
 };

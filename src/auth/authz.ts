@@ -42,7 +42,8 @@
 
 import { AuthSystem } from "polizy";
 import type { AuthSchema } from "polizy";
-import { duneAuthzSchema } from "./authz-schema.ts";
+import { duneAuthzSchema, SITE_RESOURCE } from "./authz-schema.ts";
+import { DEFAULT_ROLE_GRANTS, GRANT_RELATIONS, type RoleGrants } from "./role-grants.ts";
 import { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { AuthzDbAdapter } from "./authz-adapter-db.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -178,6 +179,15 @@ export interface AuthzAdapterLike {
   hasTuple(subject: { type: string; id: string }, relation: string, object: { type: string; id: string }): Promise<boolean>;
 }
 
+/** What {@link bootstrapRoleGrants} needs besides {@link AuthzAdapterLike}: finding who holds a relation. */
+export interface RoleGrantAdapter extends AuthzAdapterLike {
+  findSubjects(
+    object: { type: string; id: string },
+    relation: string,
+    options?: { subjectType?: string },
+  ): Promise<{ type: string; id: string }[]>;
+}
+
 /**
  * Bootstrap role-based permission tuples from existing User `roles[]`.
  *
@@ -209,7 +219,7 @@ export async function bootstrapRoleTuples(
 /**
  * Bootstrap permission tuples for existing admin User records (@dune/plugin-admin).
  *
- * Each admin user gets a direct relation tuple on `{ type: "app", id: "admin" }`
+ * Each admin user gets a direct relation tuple on {@link SITE_RESOURCE}
  * matching their role ("admin", "editor", or "author"). Idempotent — skips
  * tuples that already exist.
  *
@@ -223,7 +233,7 @@ export async function bootstrapAdminTuples(
 ): Promise<void> {
   for (const user of adminUsers) {
     const subject = { type: "user" as const, id: user.id };
-    const object = { type: "app" as const, id: "admin" };
+    const object = SITE_RESOURCE;
     const exists = await adapter.hasTuple(subject, user.role, object);
     if (!exists) {
       await authz.allow({
@@ -232,5 +242,42 @@ export async function bootstrapAdminTuples(
         onWhat: object,
       });
     }
+  }
+}
+
+/**
+ * Make the groups named in `grants` hold their relation on {@link SITE_RESOURCE},
+ * and nothing else: `group:editor` holds `editor` on `app:site` by default. A
+ * site user whose `roles[]` has `editor` is a member of `group:editor` (site
+ * auth keeps that in sync, see {@link bootstrapRoleTuples}), so membership is
+ * all it takes, with no per-user tuple to write, forget, or leave behind on
+ * revoke. `grants` comes from `system.role_grants` ({@link resolveRoleGrants}).
+ *
+ * Reconciles, not only adds: every (group → admin/editor/author) tuple on the
+ * site belongs to this setting, so one that is no longer configured is revoked.
+ * A plugin that wants a group-level grant on the site writes it through
+ * `system.role_grants`, not by hand.
+ *
+ * An admin plugin's own accounts get direct tuples ({@link bootstrapAdminTuples});
+ * `authz.check()` is true if either holds. Idempotent. Called wherever an authz
+ * system is created, so a site that has a login but no admin plugin still lets
+ * its editors edit.
+ */
+export async function bootstrapRoleGrants(
+  authz: DuneAuthSystem,
+  adapter: RoleGrantAdapter,
+  grants: RoleGrants = DEFAULT_ROLE_GRANTS,
+): Promise<void> {
+  for (const relation of GRANT_RELATIONS) {
+    for (const subject of await adapter.findSubjects(SITE_RESOURCE, relation, { subjectType: "group" })) {
+      if (grants[subject.id] !== relation) {
+        await authz.disallowAllMatching({ who: { type: "group", id: subject.id }, was: relation, onWhat: SITE_RESOURCE });
+      }
+    }
+  }
+  for (const [group, relation] of Object.entries(grants)) {
+    const who = { type: "group" as const, id: group };
+    if (await adapter.hasTuple(who, relation, SITE_RESOURCE)) continue;
+    await authz.allow({ who, toBe: relation, onWhat: SITE_RESOURCE });
   }
 }

@@ -15,8 +15,13 @@
  *    the boot, because the provider decides who is treated as an editor (the
  *    admin bar, editing markers, the inline-edit WebSocket) and load order
  *    must not;
- *  - a **contribution point** collects one item from each contributing plugin
- *    ({@link Contributions}).
+ *  - a **contribution point** collects one item from each contributing plugin.
+ *
+ * A plugin that other plugins can extend declares its own keys as typed tokens
+ * ({@link CapabilityKey}, made with {@link capabilityKey}) and exports them next
+ * to its types. A token works for both shapes: `provide(KEY, factory)`,
+ * `contribute(KEY, item)`, `get(KEY)` and `list(KEY)` are typed by it, with no
+ * module augmentation (which JSR does not accept in a published package).
  *
  * Plugins declare in `setup()`; core resolves every slot factory once, after
  * all `setup()`s have settled and core infrastructure exists, in registration
@@ -29,14 +34,7 @@
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { HistoryEngine } from "../history/mod.ts";
-import type {
-  AdminBarAction,
-  AdminBarActionContext,
-  AdminPageRegistration,
-  AdminRouteRegistration,
-  ContentEditorPlugin,
-  HookRegistry,
-} from "../hooks/types.ts";
+import type { HookRegistry } from "../hooks/types.ts";
 import type { InlineEditManager } from "../inline-edit/types.ts";
 import type { ScheduledAction } from "../workflow/types.ts";
 import type { PluginServices } from "./services.ts";
@@ -91,30 +89,48 @@ export interface AdminPrefix {
 }
 
 /**
- * Slots. An `interface` so a later release can open it to declaration merging;
- * 1.0 ships first-party keys only and third-party keys are unsupported.
+ * Slots core itself consumes. This list is closed: it holds only what core
+ * reads. An extension point that belongs to a plugin is a {@link CapabilityKey}
+ * that plugin exports, not an entry here.
  */
 export interface Capabilities {
   /** Where the admin is mounted. Consumers: core's request handling, static build and plugin-route registration. */
   "admin.prefix": AdminPrefix;
-  /** Who is treated as an editor on this request. Consumers: the admin bar's response transform, the inline-edit WebSocket. */
+  /** Who is treated as an editor on this request. Consumers: the editor resolver behind the bar's response transform and `/api/inline-edit/*`. */
   "editor.session": RequestAuthenticator;
   /** Executes due scheduled actions. Consumer: `dune serve`, which owns the scheduler's polling loop. */
   "scheduler.executor": ScheduledActionExecutor;
-  /** Real-time inline editing. Consumers: core's `/api/inline-edit/ws`, the admin. */
+  /** Real-time inline editing and its HTTP routes. Consumers: core's `/api/inline-edit/*` gate, the admin (WebSocket, presence). */
   "editor.inline": InlineEditManager;
-  /** A replacement page editor. Consumer: the admin. */
-  "editor.content": ContentEditorPlugin;
 }
 
-/** Contribution points. */
-export interface Contributions {
-  /** An extra admin page. Consumer: the admin. */
-  "admin.pages": AdminPageRegistration;
-  /** A guarded admin route (any method) under the admin prefix. Consumer: the admin, which applies authentication, CSRF and permission checks. */
-  "admin.routes": AdminRouteRegistration;
-  /** Buttons for the admin bar. Consumer: the bar renderer, via core's response transforms. */
-  "bar.actions": (ctx: AdminBarActionContext) => AdminBarAction[];
+/**
+ * A typed name for a capability slot or contribution point that a plugin
+ * declares. Create it once with {@link capabilityKey} and export it:
+ *
+ * ```ts
+ * export const BAR_ACTIONS: CapabilityKey<(ctx: BarActionContext) => BarAction[]> =
+ *   capabilityKey("bar.actions");
+ * // contributor:  api.capabilities.contribute(BAR_ACTIONS, ({ page }) => [...])
+ * // consumer:     capabilities.list(BAR_ACTIONS)
+ * ```
+ *
+ * The rule for names: **prefix the name with the plugin that consumes it**
+ * (`admin.*` is the admin's, `bar.*` plugin-inline-edit's). Unprefixed
+ * namespaces (`editor`, `scheduler`, `admin.prefix`) belong to core, which
+ * never reads a key it did not declare. Two keys with the same name are the same
+ * capability at runtime, so a plugin may recreate another plugin's key from its
+ * documented name instead of importing it.
+ */
+export interface CapabilityKey<T> {
+  readonly name: string;
+  /** Phantom: carries `T` for the type checker only. Never set. */
+  readonly __type?: T;
+}
+
+/** Make a {@link CapabilityKey}. */
+export function capabilityKey<T>(name: string): CapabilityKey<T> {
+  return { name };
 }
 
 /** What a slot factory receives: core infrastructure that exists once `setup()`s have settled. */
@@ -138,8 +154,11 @@ export type CapabilityFactory<T> = (ctx: CapabilityContext) => T | undefined | P
 
 /** `PluginApi.capabilities`: how a plugin declares what it provides. */
 export interface CapabilityRegistrar {
+  /** Provide a slot: one of core's, or a plugin's own {@link CapabilityKey}. */
   provide<K extends keyof Capabilities>(name: K, factory: CapabilityFactory<Capabilities[K]>): void;
-  contribute<K extends keyof Contributions>(point: K, item: Contributions[K]): void;
+  provide<T>(key: CapabilityKey<T>, factory: CapabilityFactory<T>): void;
+  /** Contribute one item to a plugin's contribution point. */
+  contribute<T>(key: CapabilityKey<T>, item: T): void;
 }
 
 /** One entry of {@link CapabilityReader.providers}. */
@@ -156,8 +175,9 @@ export interface CapabilityProvider {
 export interface CapabilityReader {
   /** The active provider of a slot, or undefined (nobody provides it, it declined, it failed, or resolution has not run). */
   get<K extends keyof Capabilities>(name: K): Capabilities[K] | undefined;
+  get<T>(key: CapabilityKey<T>): T | undefined;
   /** Everything contributed to a point, in plugin registration order. */
-  list<K extends keyof Contributions>(point: K): readonly Contributions[K][];
+  list<T>(key: CapabilityKey<T>): readonly T[];
   /** Who provides what, for `dune doctor`. */
   providers(): CapabilityProvider[];
 }
@@ -238,6 +258,32 @@ interface SlotEntry {
   value?: unknown;
 }
 
+function keyName(nameOrKey: string | CapabilityKey<unknown>): string {
+  return typeof nameOrKey === "string" ? nameOrKey : nameOrKey.name;
+}
+
+/**
+ * A contribution point is always a plugin's own {@link CapabilityKey}: core
+ * declares none, so a string can only come from a plugin written for the
+ * string-keyed API (or plain JavaScript, which the type checker does not
+ * catch). Accepting it would quietly register under no name at all and the
+ * plugin would lose its buttons or pages with nothing in the log, so refuse it
+ * and say what to do. (`get` and `provide` do take a string: core's own slots
+ * are still named that way.)
+ */
+function contributionKey(method: string, key: unknown): string {
+  if (typeof key === "object" && key !== null && typeof (key as CapabilityKey<unknown>).name === "string") {
+    return (key as CapabilityKey<unknown>).name;
+  }
+  const given = typeof key === "string" ? `the string ${JSON.stringify(key)}` : String(key);
+  throw new TypeError(
+    `capabilities.${method}() needs a CapabilityKey, got ${given}. Use the key the plugin that reads the point ` +
+      `exports (for example BAR_ACTIONS from @dune/plugin-inline-edit), or capabilityKey(${
+        typeof key === "string" ? JSON.stringify(key) : '"the.point.name"'
+      }) from @dune/core/plugin-api.`,
+  );
+}
+
 export function createCapabilityRegistry(): CapabilityRegistry {
   const slots = new Map<string, SlotEntry>();
   const contributions = new Map<string, { provider: string; item: unknown }[]>();
@@ -245,12 +291,12 @@ export function createCapabilityRegistry(): CapabilityRegistry {
   let resolving = false;
 
   const reader: CapabilityReader = {
-    get(name) {
-      const slot = slots.get(name);
+    get(name: string | CapabilityKey<unknown>) {
+      const slot = slots.get(keyName(name));
       return slot?.status === "active" ? slot.value as never : undefined;
     },
-    list(point) {
-      return (contributions.get(point) ?? []).map((c) => c.item) as never;
+    list(key: CapabilityKey<unknown>) {
+      return (contributions.get(contributionKey("list", key)) ?? []).map((c) => c.item) as never;
     },
     providers() {
       const out: CapabilityProvider[] = [];
@@ -269,7 +315,8 @@ export function createCapabilityRegistry(): CapabilityRegistry {
 
     registrar(provider) {
       return {
-        provide(name, factory) {
+        provide(nameOrKey: string | CapabilityKey<unknown>, factory: CapabilityFactory<unknown>) {
+          const name = keyName(nameOrKey);
           const previous = slots.get(name);
           if (previous && EXCLUSIVE_SLOTS.has(name) && previous.provider !== provider) {
             // Keep the first provider; the boot stops on the conflict (see conflicts()).
@@ -285,12 +332,13 @@ export function createCapabilityRegistry(): CapabilityRegistry {
             slots.delete(name);
           }
           if (resolving) logger.warn("capabilities.provided_late", { capability: name, provider });
-          slots.set(name, { provider, factory: factory as CapabilityFactory<unknown>, status: "unresolved" });
+          slots.set(name, { provider, factory, status: "unresolved" });
         },
-        contribute(point, item) {
-          const list = contributions.get(point) ?? [];
+        contribute(key: CapabilityKey<unknown>, item: unknown) {
+          const name = contributionKey("contribute", key);
+          const list = contributions.get(name) ?? [];
           list.push({ provider, item });
-          contributions.set(point, list);
+          contributions.set(name, list);
         },
       };
     },

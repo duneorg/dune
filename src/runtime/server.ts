@@ -15,9 +15,10 @@ import { App, staticFiles } from "fresh";
 import { captureHandlerSocketAddr, copySocketAddr } from "../security/rate-limit.ts";
 import type { BootstrapResult } from "./bootstrap.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
+import { createEditorResolver, mayEditPage } from "../auth/editor.ts";
 import { mountPlugins } from "../plugins/loader.ts";
 import { mountDuneAuth } from "../auth/mount.ts";
-import { getUser, USER_HEADER } from "../auth/types.ts";
+import { USER_HEADER } from "../auth/types.ts";
 import { isAdminPath, withSecurityHeaders } from "../cli/serve-utils.ts";
 import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { trackRequest } from "./watchdog.ts";
@@ -186,56 +187,23 @@ export function isIndexedInlineEditPath(
 }
 
 /**
- * Whether an authenticated admin session may perform inline edits
- * (`pages.update`). `authz` is the sole authority — the flat
- * `ROLE_PERMISSIONS` fallback this used to have was removed
- * (dec-identity-unification Phase 5c, second half): `admin.authzStore`
- * defaults to `"local"` and is created automatically whenever the admin
- * panel is enabled, regardless of `site.auth`'s mode, so `authz` being
- * undefined here means its creation itself failed at startup (already
- * logged loudly there) — an exceptional condition that should fail closed
- * (deny), not silently degrade to a materially different, less-audited
- * authorization mechanism. Extracted from the `/api/inline-edit/ws` handler
- * below and exported so this decision is directly unit-testable without a
- * full app + WebSocket-upgrade harness.
+ * Same-origin gate for `/api/inline-edit/*` requests that change something.
+ * A browser's fetch sends `Origin`; a request without one passes only when the
+ * browser vouches for it (`Sec-Fetch-Site: same-origin`). A non-browser client
+ * holding a stolen cookie has neither.
  */
-export async function checkInlineEditPermission(
-  authz: DuneAuthSystem | undefined,
-  // deno-lint-ignore no-explicit-any
-  authResult: any,
-): Promise<boolean> {
-  if (!authz) return false;
-  return await checkPagesUpdateViaAuthz(authz, authResult.user.id);
-}
-
-function checkPagesUpdateViaAuthz(
-  authz: DuneAuthSystem,
-  userId: string,
-): Promise<boolean> {
-  return authz.check({
-    who: { type: "user", id: userId },
-    // deno-lint-ignore no-explicit-any
-    canThey: "pages.update" as any,
-    onWhat: { type: "app", id: "admin" },
-  });
-}
-
-/**
- * Same `pages.update` decision as {@link checkInlineEditPermission}, for a
- * user resolved via the public-auth session (`src/auth/`, `getUser(req)`)
- * rather than an admin session — this is what lets `/api/inline-edit/ws`
- * work for a site that has `@dune/plugin-admin` decoupled entirely. Like
- * every other admin permission check, this fails closed (deny) when `authz`
- * is undefined — there is no role-table fallback for public-auth users (and
- * after 3.0.0, none for admin sessions either): `authz.check()` is the sole
- * authority, no exceptions.
- */
-export async function checkInlineEditPermissionForSiteUser(
-  authz: DuneAuthSystem | undefined,
-  user: { id: string; roles: string[] },
-): Promise<boolean> {
-  if (!authz) return false;
-  return await checkPagesUpdateViaAuthz(authz, user.id);
+export function assertInlineEditSameOrigin(req: Request): Response | null {
+  const method = req.method;
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host === new URL(req.url).host) return null;
+    } catch { /* fall through to deny */ }
+    return Response.json({ error: "Cross-origin request rejected" }, { status: 403 });
+  }
+  if (req.headers.get("sec-fetch-site") === "same-origin") return null;
+  return Response.json({ error: "Origin required" }, { status: 403 });
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────────
@@ -456,19 +424,35 @@ export async function createDuneApp(
   // no /auth/* routes, no per-request middleware). mountDuneAuth() must run
   // after mountPlugins() so it can reuse the authz bundle bootstrap()/the
   // admin plugin already built (see mount.ts's own comment on this).
+  let publicAuthz: DuneAuthSystem | null = null;
+  // The site login's authz system is known only once mountDuneAuth() has run, so the resolver reads it per request.
+  const resolveEditor = createEditorResolver({
+    capabilities: ctx.capabilities,
+    siteAuthz: () => publicAuthz ?? ctx.authz,
+    sessionAuthz: () => ctx.authz,
+  });
   if (mountAuth && config.site.auth) {
-    await mountDuneAuth(app, ctx);
+    publicAuthz = (await mountDuneAuth(app, ctx)).authz;
   }
 
-  // 6. Inline-edit WebSocket — in core so it works without @dune/plugin-admin.
-  //    Auth prefers the public-auth session (src/auth/, getUser(req)) set by
-  //    mountDuneAuth() above — this is what makes @dune/plugin-inline-edit
-  //    genuinely independent of @dune/plugin-admin when a site has `auth:`
-  //    configured. Falls back to the admin session (same cookie as /admin/*)
-  //    when this site has no public auth configured, which today is still
-  //    the common case. Either way, the pages.update decision itself goes
-  //    through authz.check() when configured — the sole authority every
-  //    other permission check follows (dec-identity-unification Phase 5c/7).
+  // 6. Inline editing: the WebSocket and the plugin's HTTP routes. Core owns
+  //    who may edit; the `editor.inline` provider owns what happens. They live
+  //    here, after mountDuneAuth(), because only requests that went through its
+  //    middleware carry a site user (getUser(req)), and that is what lets
+  //    @dune/plugin-inline-edit work for a site with a login and no admin
+  //    plugin. The decision itself is authz.check(pages.update), the sole
+  //    authority every other permission check follows.
+  // Frontmatter of an indexed page, or null for a path that is not one.
+  const pageFrontmatter = async (sourcePath: string): Promise<Record<string, unknown> | null> => {
+    const page = engine.pages.find((p) => p.sourcePath === sourcePath);
+    if (!page) return null;
+    try {
+      return (await engine.loadPage(page.sourcePath)).frontmatter as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
   app.get("/api/inline-edit/ws", async (fc) => {
     const inlineEdit = ctx.capabilities.get("editor.inline");
     if (!inlineEdit) {
@@ -487,38 +471,36 @@ export async function createDuneApp(
       return new Response("Unknown path", { status: 404 });
     }
 
-    let userId: string;
-    let username: string;
-    let permitted: boolean;
-
-    const siteUser = getUser(fc.req);
-    if (siteUser) {
-      userId = siteUser.id;
-      username = siteUser.username ?? siteUser.name ?? siteUser.email;
-      permitted = await checkInlineEditPermissionForSiteUser(
-        ctx.authz,
-        siteUser,
-      );
-    } else {
-      const adminAuth = ctx.capabilities.get("editor.session");
-      if (!adminAuth) return new Response("Unauthorized", { status: 401 });
-      const authResult = await adminAuth.authenticate(fc.req).catch(() =>
-        null
-      );
-      if (!authResult?.authenticated || !authResult.user) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      userId = authResult.user.id;
-      username = authResult.user.username ?? authResult.user.name ?? authResult.user.email ?? authResult.user.id;
-      permitted = await checkInlineEditPermission(
-        ctx.authz,
-        authResult,
-      );
+    const resolved = await resolveEditor(fc.req);
+    if (!resolved.ok) {
+      return new Response(resolved.status === 401 ? "Unauthorized" : "Forbidden", { status: resolved.status });
     }
+    const { editor } = resolved;
+    // An author edits only the pages they created, as at commit.
+    if (!mayEditPage(editor, await pageFrontmatter(sourcePath))) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    return inlineEdit.handleUpgrade(fc.req, { id: editor.id, name: editor.username });
+  });
 
-    if (!permitted) return new Response("Forbidden", { status: 403 });
-
-    return inlineEdit.handleUpgrade(fc.req, { id: userId, name: username });
+  app.all("/api/inline-edit/*", async (fc) => {
+    const inlineEdit = ctx.capabilities.get("editor.inline");
+    if (!inlineEdit) {
+      return Response.json({ error: "Inline editing not enabled" }, { status: 501 });
+    }
+    const resolved = await resolveEditor(fc.req);
+    if (!resolved.ok) {
+      return Response.json({ error: resolved.status === 401 ? "Unauthorized" : "Forbidden" }, {
+        status: resolved.status,
+      });
+    }
+    const originDenied = assertInlineEditSameOrigin(fc.req);
+    if (originDenied) return originDenied;
+    return await inlineEdit.handleRequest(fc.req, {
+      editor: resolved.editor,
+      path: new URL(fc.req.url).pathname.slice("/api/inline-edit/".length),
+      pageFrontmatter,
+    });
   });
 
   // 7. Core content API (admin API handled by fsRoutes in plugin).
@@ -542,6 +524,7 @@ export async function createDuneApp(
     siteName,
     adminPrefix: getAdminPrefix,
     routes,
+    resolveEditor,
   });
 
   const createHandler = app.handler.bind(app);

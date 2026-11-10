@@ -126,9 +126,6 @@ async function hybridSite(root: string): Promise<void> {
     join(root, "content", "01.home", "default.md"),
     "---\ntitle: Home\n---\n\n# Home\n",
   );
-  // No built-in admin: these tests supply (or withhold) the admin.prefix slot themselves.
-  await Deno.mkdir(join(root, "config"), { recursive: true });
-  await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
 }
 
 Deno.test(

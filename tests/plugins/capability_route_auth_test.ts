@@ -60,7 +60,7 @@ Deno.test(
       const ctx = await bootstrap(root, {
         plugins: [userPlugin, authProvider],
         // deno-lint-ignore no-explicit-any
-        configOverrides: { admin: { enabled: false } as any },
+        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
@@ -99,7 +99,7 @@ Deno.test(
       const ctx = await bootstrap(root, {
         plugins: [userPlugin],
         // deno-lint-ignore no-explicit-any
-        configOverrides: { admin: { enabled: false } as any },
+        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
