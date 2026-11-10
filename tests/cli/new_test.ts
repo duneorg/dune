@@ -97,8 +97,11 @@ Deno.test("dune new: import map includes dune-core's full runtime dependency clo
     await newCommand(dir);
     const denoJson = JSON.parse(await Deno.readTextFile(join(dir, "deno.json")));
     const duneOwn = JSON.parse(await Deno.readTextFile(join("src", "..", "deno.json")));
+    // Dev/test-only imports are not runtime dependencies: @std/assert, and the contract
+    // packages, which core only type-tests against (tests/contract/).
+    const testOnly = ["@std/assert", "@dune/plugin-api", "@dune/theme-api"];
     const required = Object.keys(duneOwn.imports).filter(
-      (k) => k !== "@std/assert" && !k.startsWith("@dune/plugin-admin"),
+      (k) => !testOnly.includes(k) && !k.startsWith("@dune/plugin-admin"),
     );
     const missing = required.filter((k) => !(k in denoJson.imports));
     assertEquals(missing, []);
