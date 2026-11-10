@@ -139,6 +139,14 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Changed — BREAKING
 
+- **Site-wide permissions are checked on `app:site`, not `app:admin` (#130).** `pages.update`
+  and the other admin-tier actions name what they protect (this site's content), not the panel
+  that happens to administer it, so the same check works on a site with no admin, one admin
+  plugin or another. Tuples are derived data and are re-seeded at every start; a store protected
+  with `DUNE_AUTHZ_HMAC_SECRET` needs `dune authz:sign` once after upgrading. The old `app:admin` tuples are not removed: nothing reads them any more, and they can be
+  deleted from `data/permissions/` at leisure. A plugin that
+  checks the resource itself uses `SITE_RESOURCE` (`@dune/core`); `@dune/plugin-admin` 4.0.0
+  and `@dune/testing` 2.0.0 already do.
 - **Core no longer assumes the built-in admin's session cookie or its `admin.enabled`
   switch (#97).** The `editor.session` provider declares the cookies that carry its session
   (`RequestAuthenticator.sessionCookies`); core uses them to decide whether to call
@@ -345,6 +353,23 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **A signed-in site user with an editing role can edit inline without the admin plugin
+  (#130).** The authz system is now created whenever the site has a login (`site.auth`), a
+  plugin provides `editor.session`, or a plugin declares `authzActions`; `mountDuneAuth` reuses
+  that one instance. The `admin`, `editor` and `author` roles are granted once at group level
+  (`group:editor` holds `editor` on `app:site`), so a user's membership, which site auth
+  already keeps in sync, is enough. No per-user tuple and no admin plugin needed. A role that
+  is only a content tag (`member`, `subscriber`, ...) still grants nothing. Also applies to an
+  `external-jwt` site: a role claim of `admin`, `editor` or `author` in the identity provider's
+  token now carries that permission.
+- **A role granted or revoked while the app runs now takes effect without a restart.** Group
+  membership (`member of group:<role>`), which page gating and the grants above read, was only
+  seeded at startup, so a `roles[]` change made by an admin, a plugin or the CLI waited for the
+  next restart. User stores created by core (`services.users.createLocalStore()`, and the site
+  auth store) are now wrapped with `withRoleSync`: every `create`, `update` of `roles`, and
+  `delete` makes membership match the record. `dune users:create`, `users:grant-role` and
+  `users:revoke-role` do the same. The payments webhook no longer writes the membership twice on
+  such a store.
 - **`search.custom_fields`, `search.fields`, `search.highlight` and
   `search.excerpt_length` now do what the docs say (#97).** They were validated
   and documented, but bootstrap never passed them to the search engine, so setting

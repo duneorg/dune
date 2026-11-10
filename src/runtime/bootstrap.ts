@@ -39,7 +39,7 @@ import { createHistoryEngine } from "../history/engine.ts";
 import { createFlexEngine } from "../flex/engine.ts";
 import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { MetricsCollector } from "../metrics/mod.ts";
-import { createDuneAuthSystem } from "../auth/authz.ts";
+import { bootstrapRoleGrants, createDuneAuthSystem } from "../auth/authz.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
@@ -528,15 +528,17 @@ export async function bootstrap(
   });
 
   // The authz system exists when something needs it: a plugin that provides
-  // `editor.session` has declared itself the admin (without authz its sessions
-  // could never be authorised: `pages.update` fails closed when authz is
-  // missing), or a plugin declares `authzActions` of its own. Plugins register,
-  // and so declare, before this point; settle async setup() first so a
-  // declaration made after an await is seen too.
+  // `editor.session` (without authz its sessions could never be authorised:
+  // `pages.update` fails closed when authz is missing), a plugin that declares
+  // `authzActions` of its own, or the site's own login (`site.auth`, whose
+  // users are authorised through it for page gating and inline editing).
+  // Plugins register, and so declare, before this point; settle async setup()
+  // first so a declaration made after an await is seen too.
   await hooks.whenSetupComplete();
   const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "editor.session");
   const hasAuthzActions = Object.keys(pluginAuthzActions).length > 0;
-  if (hasSessionProvider || hasAuthzActions) {
+  const hasSiteAuth = !!config.site.auth;
+  if (hasSessionProvider || hasAuthzActions || hasSiteAuth) {
     try {
       const bundle = createDuneAuthSystem({
         authzStore: "local",
@@ -547,6 +549,9 @@ export async function bootstrap(
       bootstrappedAuthz = bundle.authz;
       bootstrappedAuthzAdapter = bundle.adapter;
       authzForServices = { authz: bundle.authz, adapter: bundle.adapter };
+      // Admin-tier roles hold their relation on the site at group level, so a
+      // site user's role is enough, with or without an admin plugin.
+      await bootstrapRoleGrants(bundle.authz, bundle.adapter);
       // Admin-user tuples are bootstrapped by @dune/plugin-admin's mount() hook
       // after it creates the UserManager. Core only creates the empty system here.
     } catch (err) {
