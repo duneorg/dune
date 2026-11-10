@@ -9,7 +9,7 @@
  *   - Inline editing — "edit" on object type "resource"
  *   - Resource-level grants — "owner" relation on object type "resource"
  *
- * Subject types: "user"
+ * Subject types: "user" | "group" (a group holds a relation too: see `bootstrapRoleGrants`)
  * Object types:  "group" | "app" | "resource"
  *
  * ## Content gating
