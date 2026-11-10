@@ -119,17 +119,3 @@ Deno.test("validator: valid custom config passes", () => {
   const errors = validateConfig(config);
   assertEquals(errors.length, 0);
 });
-
-Deno.test("validator: admin.auth_provider other than local is refused (LDAP and SAML were never implemented)", () => {
-  for (const type of ["ldap", "saml"]) {
-    const config = cloneConfig();
-    // @ts-ignore: testing invalid input
-    config.admin = { ...(config.admin ?? {}), auth_provider: { type } };
-    const errors = validateConfig(config);
-    assertEquals(errors.some((e) => e.includes("admin.auth_provider.type") && e.includes("never implemented")), true, type);
-  }
-  const ok = cloneConfig();
-  // @ts-ignore: partial admin config is fine for this check
-  ok.admin = { ...(ok.admin ?? {}), auth_provider: { type: "local" } };
-  assertEquals(validateConfig(ok).some((e) => e.includes("auth_provider")), false);
-});

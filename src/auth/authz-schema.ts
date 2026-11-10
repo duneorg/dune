@@ -33,7 +33,7 @@
 
 import { defineSchema } from "polizy";
 import type { AuthSchema } from "polizy";
-import type { Role } from "../config/admin-config.ts";
+import type { Role } from "../config/role.ts";
 
 /**
  * A polizy relation name a plugin-contributed action can require. Limited
