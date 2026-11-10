@@ -61,6 +61,7 @@ function runPluginResponseTransforms(opts: LegacyOptions): Promise<Response> {
     },
     siteAuthz: () => authz,
     sessionAuthz: () => authz,
+    grants: () => ({ admin: "admin", editor: "editor", author: "author" }),
   });
   return run({ ...rest, capabilities, resolveEditor });
 }
