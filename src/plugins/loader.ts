@@ -465,11 +465,9 @@ export async function resolveCapabilities(
  * Resolve the plugins' capability slots, then call every plugin's `mount()`
  * hook in registration order.
  *
- * `mount()` registers routes, including a plugin's own `publicRoutes`.
- * `@dune/plugin-admin`'s own `mount()` finalizes those via an internal
- * `registerPluginPublicRoutes()` call, which must run *after* every other
- * plugin has had a chance to register its own `mount()`-time middleware, so it
- * relies on `mount()` running in registration order (admin last; see
+ * `mount()` registers routes and middleware. A plugin's `publicRoutes` are
+ * registered afterwards by `createDuneApp()` itself, so they come after every
+ * plugin's `mount()`-time middleware (see
  * `tests/runtime/register_plugin_routes_test.ts`).
  *
  * Capability slots are resolved first, once, after every `setup()` has settled
@@ -507,10 +505,8 @@ export async function mountPlugins(
     automaticGrants: automaticAdminTierGrants(ctx.config),
   }));
 
-  // mount(), registration order (admin last): a plugin's own
-  // route-finalizing work (e.g. admin's internal registerPluginPublicRoutes()
-  // call) must run after every other plugin's mount()-time middleware and
-  // routes already exist — see this function's doc comment.
+  // mount(), registration order. publicRoutes are registered by createDuneApp()
+  // after this, so they follow every mount()-time middleware and route.
   const runtime = createPluginRuntime(ctx);
   for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;

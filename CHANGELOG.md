@@ -143,6 +143,15 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `onBeforeRender` for the assembled template props, `transformResponse` for the
   rendered response, or do the work in your theme. Re-adding an event later is
   additive; removing one after 1.0 would not be.
+- **`registerFormRoutes()`, `registerPluginPublicRoutes()` and
+  `createSubmissionManager()` are no longer exported (#97, slice 4).** They were
+  core's own wiring, exported only so `@dune/plugin-admin` could call them from
+  its headless `mountDuneAdmin()` path. `createDuneApp()` registers the form and
+  webhook endpoints and plugins' `publicRoutes` itself (it always did; the admin's
+  second call was a no-op), and the submission store is `BootstrapResult.submissions`
+  / `PluginRuntime.submissions`. The `Submission*` types stay exported from
+  `@dune/core/forms`; `RegisterPluginPublicRoutesOptions` is gone with its
+  function. Build the app with `createDuneApp()`.
 
 ### Changed — BREAKING
 
