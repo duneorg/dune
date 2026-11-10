@@ -8,6 +8,7 @@
  */
 
 import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import { roleGrantProblems } from "../auth/role-grants.ts";
 import {
   assertPinnedThemeSpecifier,
   assertThemeName,
@@ -199,6 +200,10 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
         suggestion: `Supported: ${JSON.stringify(system.languages.supported)}`,
       });
     }
+  }
+
+  for (const message of roleGrantProblems(system.role_grants)) {
+    errors.push({ path: "system.role_grants", message, got: system.role_grants });
   }
 
   if (typeof system.debug !== "boolean") {

@@ -15,6 +15,7 @@
  */
 
 import type { DuneConfig } from "../config/types.ts";
+import { resolveRoleGrants } from "./role-grants.ts";
 
 /** One automatic path to an admin-tier role. */
 export interface AutomaticGrant {
@@ -29,33 +30,36 @@ const CAN: Record<string, string> = {
   author: "create pages and edit the pages they created",
 };
 
-const ADMIN_TIER = ["admin", "editor", "author"];
-
-/** The automatic paths to an admin-tier role that `config` sets up. Empty for most sites. */
+/** The automatic paths to an editing role that `config` sets up. Empty for most sites. */
 export function automaticAdminTierGrants(config: DuneConfig): AutomaticGrant[] {
   const out: AutomaticGrant[] = [];
   const site = config.site;
+  const grants = resolveRoleGrants(config);
 
   const payments = site?.payments;
   if (payments?.secret_key) {
     for (const product of payments.products ?? []) {
       const role = product.role;
-      if (role && ADMIN_TIER.includes(role)) {
+      const relation = role ? grants[role] : undefined;
+      if (role && relation) {
         out.push({
-          severity: role === "admin" ? "warning" : "info",
-          message: `payments product "${product.id}" gives every buyer the "${role}" role, which can ${CAN[role]}. ` +
-            `Intended? If "${role}" is only a content tier here, use another role name.`,
+          severity: relation === "admin" ? "warning" : "info",
+          message: `payments product "${product.id}" gives every buyer the "${role}" role, which ` +
+            `${role === relation ? "is" : `is mapped by system.role_grants to "${relation}" and`} can ${CAN[relation]}. ` +
+            `Intended? If "${role}" is only a content tier here, use another role name` +
+            `${role === relation ? "" : " or change role_grants"}.`,
         });
       }
     }
   }
 
-  if (site?.auth?.mode === "external-jwt") {
+  const mapped = Object.entries(grants);
+  if (site?.auth?.mode === "external-jwt" && mapped.length > 0) {
     out.push({
       severity: "info",
       message: `the external-jwt login trusts the token's "${site.auth.jwt?.roles_claim ?? "roles"}" claim: a token that ` +
-        `carries "admin", "editor" or "author" grants editing rights (author: ${CAN.author}; editor: ${CAN.editor}; ` +
-        `admin: ${CAN.admin}). Make sure the identity provider only issues those to staff.`,
+        `carries ${mapped.map(([g, r]) => `"${g}" (${r}: ${CAN[r]})`).join(", ")} grants editing rights. ` +
+        `Make sure the identity provider only issues those to staff.`,
     });
   }
   return out;

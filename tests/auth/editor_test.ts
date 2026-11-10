@@ -7,7 +7,7 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createEditorResolver } from "../../src/auth/editor.ts";
+import { createEditorResolver, mayEditPage } from "../../src/auth/editor.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import { USER_HEADER } from "../../src/auth/types.ts";
 
@@ -44,10 +44,11 @@ function siteRequest(user: Record<string, unknown>): Request {
 }
 
 Deno.test("editor: a site user holding pages.update is an editor, named by username, then name, then email", async () => {
+  // This fake authz says yes to everything, so the relation read from it is the highest, whatever the role is called.
   const authz = makeAuthz(true);
   const resolve = createEditorResolver({ capabilities: caps(), siteAuthz: () => authz, sessionAuthz: () => undefined });
   const r = await resolve(siteRequest({ id: "u1", roles: ["editor"], email: "e@x.test", name: "Ed" }));
-  assertEquals(r, { ok: true, editor: { id: "u1", username: "Ed", roles: ["editor"], source: "site" } });
+  assertEquals(r, { ok: true, editor: { id: "u1", username: "Ed", roles: ["editor"], relation: "admin", source: "site" } });
   assertEquals((authz.calls[0] as { onWhat: unknown }).onWhat, { type: "app", id: "site" });
 });
 
@@ -71,7 +72,7 @@ Deno.test("editor: a session-provider user is an editor when authz allows; the s
     sessionAuthz: () => session,
   });
   const r = await resolve(new Request("https://site.test/", { headers: { cookie: "sid=abc" } }));
-  assertEquals(r, { ok: true, editor: { id: "a1", username: "ada", roles: ["admin"], source: "session" } });
+  assertEquals(r, { ok: true, editor: { id: "a1", username: "ada", roles: ["admin"], relation: "admin", source: "session" } });
   assertEquals(site.calls.length, 0);
 });
 
@@ -112,14 +113,72 @@ Deno.test("editor: a session user without pages.update is 403", async () => {
   assertEquals(r, { ok: false, status: 403 });
 });
 
-import { mayEditPage } from "../../src/auth/editor.ts";
 
-Deno.test("mayEditPage: admin and editor edit any page; an author only the pages they created; no page, no edit", () => {
+Deno.test("mayEditPage: admin and editor relations edit any page; an author only the pages it created; no page, no edit", () => {
   const page = { createdBy: "a1" };
-  assertEquals(mayEditPage({ id: "x", roles: ["admin"] }, page), true);
-  assertEquals(mayEditPage({ id: "x", roles: ["member", "editor"] }, page), true);
-  assertEquals(mayEditPage({ id: "a1", roles: ["author"] }, page), true);
-  assertEquals(mayEditPage({ id: "a2", roles: ["author"] }, page), false);
-  assertEquals(mayEditPage({ id: "a1", roles: ["author"] }, {}), false);
-  assertEquals(mayEditPage({ id: "x", roles: ["admin"] }, null), false);
+  assertEquals(mayEditPage({ id: "x", relation: "admin" }, page), true);
+  assertEquals(mayEditPage({ id: "x", relation: "editor" }, page), true);
+  assertEquals(mayEditPage({ id: "a1", relation: "author" }, page), true);
+  assertEquals(mayEditPage({ id: "a2", relation: "author" }, page), false);
+  assertEquals(mayEditPage({ id: "a1", relation: "author" }, {}), false);
+  assertEquals(mayEditPage({ id: "x", relation: "admin" }, null), false);
+});
+
+// ── The relation is what authz says the user holds, not what their role is called ──
+
+import { createStorage } from "../../src/storage/mod.ts";
+import { bootstrapRoleGrants, createDuneAuthSystem } from "../../src/auth/authz.ts";
+import { DUNE_BASE_AUTHZ_ACTIONS, RELATION_PROBE_ACTIONS, SITE_RESOURCE } from "../../src/auth/authz-schema.ts";
+import type { RoleGrants } from "../../src/auth/role-grants.ts";
+
+Deno.test("the relation probes tell the three relations apart in the built-in schema", () => {
+  assertEquals([...DUNE_BASE_AUTHZ_ACTIONS[RELATION_PROBE_ACTIONS.admin]], ["admin"]);
+  assertEquals([...DUNE_BASE_AUTHZ_ACTIONS[RELATION_PROBE_ACTIONS.editor]], ["admin", "editor"]);
+  assertEquals([...DUNE_BASE_AUTHZ_ACTIONS["pages.update"]], ["admin", "editor", "author"]);
+});
+
+async function relationUnder(grants: RoleGrants, roles: string[], direct?: "admin" | "editor" | "author") {
+  const root = await Deno.makeTempDir({ prefix: "dune_test_editor_relation_" });
+  try {
+    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, createStorage({ rootDir: root }));
+    await bootstrapRoleGrants(authz, adapter, grants);
+    for (const role of roles) {
+      await authz.addMember({ member: { type: "user", id: "u1" }, group: { type: "group", id: role } });
+    }
+    if (direct) await authz.allow({ who: { type: "user", id: "u1" }, toBe: direct, onWhat: SITE_RESOURCE });
+    const resolve = createEditorResolver({ capabilities: caps(), siteAuthz: () => authz, sessionAuthz: () => undefined });
+    const r = await resolve(siteRequest({ id: "u1", roles }));
+    return r.ok ? r.editor.relation : r.status;
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+}
+
+const DEFAULTS: RoleGrants = { admin: "admin", editor: "editor", author: "author" };
+
+Deno.test("with the default grants each role holds its own relation", async () => {
+  assertEquals(await relationUnder(DEFAULTS, ["admin"]), "admin");
+  assertEquals(await relationUnder(DEFAULTS, ["member", "editor"]), "editor");
+  assertEquals(await relationUnder(DEFAULTS, ["author"]), "author");
+});
+
+Deno.test("a remap to a LOWER relation lowers the reported relation (editor -> author, admin -> editor)", async () => {
+  assertEquals(await relationUnder({ editor: "author" }, ["editor"]), "author");
+  assertEquals(await relationUnder({ admin: "editor" }, ["admin"]), "editor");
+  // and the author limit then applies: an author edits only the pages it created.
+  assertEquals(mayEditPage({ id: "u1", relation: "author" }, { createdBy: "someone-else" }), false);
+});
+
+Deno.test("a remap to a higher relation, or of an own group, raises it", async () => {
+  assertEquals(await relationUnder({ staff: "editor" }, ["staff"]), "editor");
+  assertEquals(await relationUnder({ author: "admin" }, ["author"]), "admin");
+});
+
+Deno.test("an account with a direct tuple holds what the tuple says, whatever its groups say; the highest of both wins", async () => {
+  assertEquals(await relationUnder({}, ["admin"], "admin"), "admin");
+  assertEquals(await relationUnder({ editor: "author" }, ["editor"], "editor"), "editor");
+});
+
+Deno.test("with the grants off and no direct tuple a role grants nothing", async () => {
+  assertEquals(await relationUnder({}, ["editor"]), 403);
 });

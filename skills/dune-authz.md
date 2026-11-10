@@ -74,7 +74,7 @@ const canEdit = await getAuthz().check({
 });
 ```
 
-Who holds what: a **site user** gets their admin-tier role (`admin`/`editor`/`author` in `roles[]`) through the role's group: Dune writes `(group:<role>, <role>, app:site)` once at startup (`bootstrapRoleGrants`) and the user is a `member` of `group:<role>`. The **admin plugin's own accounts** get direct tuples (`services.authz.seedAdminTuples([{ id, role }])` from a plugin). Either way `authz.check()` answers the same, so a signed-in site user with the `editor` role may edit inline with no admin plugin installed.
+Who holds what: a **site user** gets their admin-tier role (`admin`/`editor`/`author` in `roles[]`) through the role's group: Dune writes `(group:<role>, <role>, app:site)` at startup (`bootstrapRoleGrants`), as `system.role_grants` in `system.yaml` says: a mapping of group to relation, default `admin: admin, editor: editor, author: author`. Remap your own group (`staff: editor`), keep a subset, or `{}` for none; grants no longer configured are revoked at start and the user is a `member` of `group:<role>`. The **admin plugin's own accounts** get direct tuples (`services.authz.seedAdminTuples([{ id, role }])` from a plugin). Either way `authz.check()` answers the same, so a signed-in site user with the `editor` role may edit inline with no admin plugin installed.
 
 You rarely call this yourself: the admin's route guards (`requirePermission`) and core's inline-edit gate already do, and deny when `authz` is undefined. There is no role-table fallback.
 

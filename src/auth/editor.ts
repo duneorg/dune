@@ -14,8 +14,9 @@
 import type { CapabilityReader } from "../plugin-api/capabilities.ts";
 import type { EditorIdentity } from "../inline-edit/types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
-import { SITE_RESOURCE } from "./authz-schema.ts";
+import { RELATION_PROBE_ACTIONS, SITE_RESOURCE } from "./authz-schema.ts";
 import { getUser } from "./types.ts";
+import type { GrantRelation } from "./role-grants.ts";
 import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
 
 /** Outcome of {@link EditorResolver}: an editor, or why there is none. */
@@ -43,15 +44,28 @@ function displayName(user: { id: string; username?: string; name?: string; email
   return user.username ?? user.name ?? user.email ?? user.id;
 }
 
-function canUpdatePages(authz: DuneAuthSystem | undefined, userId: string): Promise<boolean> {
+/**
+ * The admin-tier relation `userId` actually holds on the site, read from the
+ * authz system, or null when they may not edit pages at all. Asking authz (and
+ * not inferring from role names) is what keeps this right under
+ * `system.role_grants`: a user in `group:editor` remapped to `author` holds
+ * `author`, whatever their role is called, and an account seeded with a direct
+ * tuple holds what the tuple says.
+ */
+async function editorRelation(authz: DuneAuthSystem | undefined, userId: string): Promise<GrantRelation | null> {
   // Fail closed: no authz system means nobody is an editor.
-  if (!authz) return Promise.resolve(false);
-  return authz.check({
-    who: { type: "user", id: userId },
-    // deno-lint-ignore no-explicit-any
-    canThey: "pages.update" as any,
-    onWhat: SITE_RESOURCE,
-  }).catch(() => false);
+  if (!authz) return null;
+  const can = (action: string) =>
+    authz.check({
+      who: { type: "user", id: userId },
+      // deno-lint-ignore no-explicit-any
+      canThey: action as any,
+      onWhat: SITE_RESOURCE,
+    }).catch(() => false);
+  if (!await can("pages.update")) return null;
+  if (await can(RELATION_PROBE_ACTIONS.admin)) return "admin";
+  if (await can(RELATION_PROBE_ACTIONS.editor)) return "editor";
+  return "author";
 }
 
 /** Build the {@link EditorResolver} of a site. */
@@ -59,10 +73,17 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
   return async (req) => {
     const siteUser = getUser(req);
     if (siteUser) {
-      if (!await canUpdatePages(opts.siteAuthz(), siteUser.id)) return { ok: false, status: 403 };
+      const relation = await editorRelation(opts.siteAuthz(), siteUser.id);
+      if (!relation) return { ok: false, status: 403 };
       return {
         ok: true,
-        editor: { id: siteUser.id, username: displayName(siteUser), roles: siteUser.roles, source: "site" },
+        editor: {
+          id: siteUser.id,
+          username: displayName(siteUser),
+          roles: siteUser.roles,
+          relation,
+          source: "site",
+        },
       };
     }
 
@@ -72,13 +93,15 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
     // deno-lint-ignore no-explicit-any
     const user = (result as any)?.authenticated ? (result as any).user : null;
     if (!user?.id) return { ok: false, status: 401 };
-    if (!await canUpdatePages(opts.sessionAuthz(), user.id as string)) return { ok: false, status: 403 };
+    const relation = await editorRelation(opts.sessionAuthz(), user.id as string);
+    if (!relation) return { ok: false, status: 403 };
     return {
       ok: true,
       editor: {
         id: user.id as string,
         username: displayName(user),
         roles: (user.roles as string[] | undefined) ?? [],
+        relation,
         source: "session",
       },
     };
@@ -86,9 +109,9 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
 }
 
 /**
- * Whether `editor` may edit the page with this frontmatter. An `admin` or
- * `editor` may edit any page; anyone else (an `author`) only the pages they
- * created, recorded as `createdBy` in the frontmatter. `null` is a path that is
+ * Whether `editor` may edit the page with this frontmatter. An editor whose
+ * {@link EditorIdentity.relation} is `admin` or `editor` may edit any page; an
+ * `author` only the pages it created, recorded as `createdBy` in the frontmatter. `null` is a path that is
  * not a page, which nobody may edit.
  *
  * The HTTP routes of the inline-edit provider apply the same rule at commit;
@@ -96,10 +119,10 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
  * page whose commit would be refused.
  */
 export function mayEditPage(
-  editor: Pick<EditorIdentity, "id" | "roles">,
+  editor: Pick<EditorIdentity, "id" | "relation">,
   frontmatter: Record<string, unknown> | null,
 ): boolean {
   if (!frontmatter) return false;
-  if (editor.roles.includes("admin") || editor.roles.includes("editor")) return true;
+  if (editor.relation === "admin" || editor.relation === "editor") return true;
   return frontmatter.createdBy === editor.id;
 }

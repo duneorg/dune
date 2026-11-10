@@ -360,6 +360,13 @@ export const CONFIG_SCHEMA = {
           description:
             "Machine-local runtime state (gitignored): job state, revision history, scheduled actions, search analytics. Replaces admin.runtime_dir.",
         },
+        role_grants: {
+          type: "object",
+          description:
+            "Which groups hold the admin-tier relations on the site: group name -> admin | editor | author. A user is a member of every group named in roles[]. Default: admin, editor and author each hold their own relation. Remap (staff: editor), keep a subset, or {} to turn the group-level grants off.",
+          additionalProperties: { type: "string", enum: ["admin", "editor", "author"] },
+          default: { admin: "admin", editor: "editor", author: "author" },
+        },
         max_revisions: {
           type: "integer",
           minimum: 0,
