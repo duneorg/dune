@@ -11,6 +11,60 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-11-10
+
+Dune 0.36 moves the admin out of core and freezes the plugin and theme contracts as two small
+packages. It is a breaking release for sites that configure the admin, for plugins and for
+themes that import from core. Sites that never touched those keys keep working after one command.
+
+### Upgrading a site
+
+1. Run `dune migrate:config` (`--dry-run` first). It renames camelCase keys to snake_case, lifts
+   `runtime_dir`, `max_revisions` and `data_dir` to the top level of `system.yaml`, moves the
+   `admin:` block and `machine_translation:` into the admin plugin's `config:` and lists the admin
+   under `plugins:`. Anything it cannot move is reported and the command exits 1.
+2. The admin is a plugin you list, not something core loads: `plugins:` in `site.yaml` needs
+   `jsr:@dune/plugin-admin@^4`. A site without that entry has no admin. `admin.enabled` is gone.
+3. A config file that still uses an old key is refused at load, with the new name, instead of the
+   key being silently ignored. This includes `dune.config.ts`.
+4. Check which role names your users, payment products and identity-provider claims carry.
+   `admin`, `editor` and `author` grant editing (an `author` only on pages it created), live,
+   including for `user_store: db` and `external-jwt`. A site that uses `editor` or `author` as a
+   content tier should rename them, or map the groups with `system.role_grants` (`{}` turns the
+   group-level grants off). `dune doctor --boot` lists where the config hands these roles out.
+
+### For plugin authors
+
+- The plugin contract is the `@dune/plugin-api` package (1.0.0); core type-tests against it.
+- Extension points belong to the plugin that reads them and are typed `CapabilityKey<T>` tokens
+  (`capabilityKey(name)`), not strings and not `declare module` augmentation. `list()` and
+  `contribute()` refuse the string form with a `TypeError`.
+- `/api/inline-edit/*` is gated by core; an inline-edit provider implements
+  `InlineEditManager.handleRequest` and applies the ownership rule for authors. Page events carry
+  an optional `actor`.
+- `@dune/plugin-admin` 4.0.0, `@dune/testing` 2.0.0 and a new major of
+  `@dune/plugin-inline-edit` are the matching releases.
+
+### For theme authors
+
+- `@dune/theme-api` (1.0.0) is the theme contract: the template types and the helpers.
+  `@dune/core/theme-helpers` is removed. Published themes pin `@dune/core@^0.31`, resolve their own
+  copy and keep working on a 0.36 site; a theme moves to `@dune/theme-api@^1` when it next releases.
+
+### Behaviour you may notice
+
+- `onRebuild` and `onThemeSwitch` now fire in a production server (they used to fire only where
+  tests built the engine with hooks). CDN purge on rebuild, the metrics page count and the HTTP
+  page-cache invalidation depend on them and start working. A plugin handler that throws is logged
+  and no longer fails the rebuild or later rebuilds.
+- After `engine.rebuild()` the taxonomy, collections and search follow the new page index without a
+  restart; search refreshes in the background. `onSearchRecordsCollect` runs on every search
+  rebuild, so a handler must return the current set each time.
+- Sites on Meilisearch: because search now refreshes after every content save, a site on
+  `@dune/plugin-meilisearch` 1.2.6 or older empties and refills its index in the background on each
+  save, and a search in that window returns nothing. Update to a release newer than 1.2.6, which
+  upserts instead.
+
 ### Removed — BREAKING
 
 Everything that was marked deprecated is gone, so nothing deprecated is frozen
@@ -528,10 +582,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `POST /api/forms/:name` only sent the visitor back to the page (with
   `?form_error=1`) when the Referer's origin matched `req.url`; behind a
   TLS-terminating proxy that is the internal `http://` origin, so it always
-  fell back to `/` and the error banner never showed. It now also accepts the
-  public origin from `Host` + `X-Forwarded-Proto`, as `POST /api/contact`
-  already did, through one shared helper. Only the path is ever returned, so a
-  forged Host cannot redirect off-site.
+  fell back to `/` and the error banner never showed. With
+  `system.trusted_proxies` set, it now also accepts the public origin from
+  `Host` + `X-Forwarded-Proto` (the same condition client-IP handling uses),
+  through one shared helper. Only the path is ever returned.
 
 - **Multisite sites no longer share Redis/KV sessions (#93).** The Redis and
   Deno KV session stores used fixed keys (`dune:session:<id>`,
