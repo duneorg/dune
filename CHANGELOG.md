@@ -17,6 +17,13 @@ Everything that was marked deprecated is gone, so nothing deprecated is frozen
 into 1.0. A config file that still uses a removed key refuses to load and says
 where the setting lives now (see `dune migrate:config`, which reports these too).
 
+- **`@dune/core/theme-helpers` is gone.** It was used only by themes; core, `@dune/plugin-admin`
+  and sites did not import it. Every helper it had (`paginate`, `formatDate`, `getCanonicalUrl`,
+  `getSearchUrl`, `sortPages`, `groupByYear`, `truncate`, `buildPageTitle`) is in `@dune/theme-api`,
+  which has no dependency on core. Themes already published keep working on a 0.36 site: they pin
+  `@dune/core@^0.31`, which resolves their own copy. A theme moves to `@dune/theme-api@^1` when it
+  next releases. The content types stay in `@dune/core/content/types`.
+
 - **The `admin.*` form settings.** `admin.honeypot` → `forms.honeypot` (site.yaml),
   `admin.notifications` → `forms.notifications` (site.yaml),
   `admin.incoming_webhooks` → `webhooks.incoming` (system.yaml), `admin.data_dir`
@@ -406,6 +413,19 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   leaf package instead of on core.
 
 ### Fixed
+
+- **`dune migrate:config` no longer reports an empty `admin:` key in an environment overlay as a block to
+  move by hand (#142).** An overlay (`config/env/<env>/system.yaml`) whose whole `admin:` block was
+  `enabled: false` kept an empty `admin:` key after `enabled` was removed, and the command exited 1 with
+  nothing to move. The empty key is dropped; an overlay `admin:` block that still holds settings is still
+  reported.
+
+- **`capabilities.list()` and `contribute()` refuse the string form of a point (#143).** Since typed keys
+  replaced strings, a plugin still calling `list("bar.actions")` or `contribute("bar.actions", fn)` (plain
+  JavaScript or `any`, which the type checker does not catch) got an empty list, or had its item registered under
+  no name, with nothing in the log, and quietly lost its bar buttons or admin pages. Both now throw a `TypeError`
+  that names the fix (the key the plugin that reads the point exports, or `capabilityKey("...")`). `get()` and
+  `provide()` still take a core slot's string name.
 
 - **A live editing session respects page ownership.** An `author` could join the inline-edit
   WebSocket on a page it did not create and type into the shared draft, though a commit of that page

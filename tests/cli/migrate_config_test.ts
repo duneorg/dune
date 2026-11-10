@@ -239,27 +239,29 @@ Deno.test("migrate:config warns when an environment overlay alone switched the a
     "config/system.yaml": "debug: true\n",
     "config/env/staging/system.yaml": "admin:\n  enabled: false\n",
   }, async (root) => {
-    // An overlay left with an empty admin: key is reported as a manual move and exits 1; the
-    // warning under test is printed before that.
-    const origExit = Deno.exit;
-    // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = () => {
-      throw new Error("exit");
-    };
-    let out: string;
-    try {
-      out = await quiet(async () => {
-        try {
-          await migrateConfigCommand(root);
-        } catch { /* exit */ }
-      });
-    } finally {
-      Deno.exit = origExit;
-    }
+    const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "added jsr:@dune/plugin-admin");
     // The warning names the overlay and says what to do about it.
     assertStringIncludes(out, "config/env/staging/system.yaml set admin.enabled: false for that environment only");
     assertStringIncludes(out, "plugins: list without the admin");
+    // Nothing is left of the overlay's admin: block, so no empty key and no "move by hand" (#142).
+    assertEquals(await Deno.readTextFile(join(root, "config/env/staging/system.yaml")), "");
+    assertEquals(out.includes("move by hand"), false);
+  });
+});
+
+Deno.test("migrate:config keeps a non-empty admin: block in an overlay and reports it (#142)", async () => {
+  await withSite({
+    "config/site.yaml": "title: T\n",
+    "config/system.yaml": "debug: true\n",
+    "config/env/staging/system.yaml": "admin:\n  enabled: false\n  max_upload_mb: 5\ndebug: false\n",
+  }, async (root) => {
+    const { code, out } = await runCapturingExit(root);
+    assertEquals(code, 1);
+    assertStringIncludes(out, "move by hand");
+    const left = await Deno.readTextFile(join(root, "config/env/staging/system.yaml"));
+    assertStringIncludes(left, "max_upload_mb");
+    assertEquals(left.includes("enabled"), false);
   });
 });
 
