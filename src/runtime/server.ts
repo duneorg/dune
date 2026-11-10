@@ -32,8 +32,6 @@ import { registerFormRoutes } from "../forms/register.ts";
 import { registerStaticRoutes } from "./register-static.ts";
 import { registerContentCatchAll } from "./register-middleware.ts";
 import { registerPluginPublicRoutes } from "./register-plugin-routes.ts";
-export { registerPluginPublicRoutes } from "./register-plugin-routes.ts";
-export type { RegisterPluginPublicRoutesOptions } from "./register-plugin-routes.ts";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -407,16 +405,9 @@ export async function createDuneApp(
 
   // 4b. Plugin public routes (DunePlugin.publicRoutes) — core-owned, unlike the
   // `admin.pages` contributions, so this works in every createDuneApp() context
-  // regardless of whether @dune/plugin-admin (or any admin package) is present. Calling
-  // this after mountPlugins() (rather than before, as originally written)
-  // is what makes the ordering above work: when admin is enabled,
-  // @dune/plugin-admin's own mountDuneAdmin() (invoked via mountPlugins())
-  // already calls this internally, correctly ordered after its own
-  // middleware within that same call — this trailing call is then a no-op
-  // via the ctx-keyed WeakSet guard in registerPluginPublicRoutes(). When
-  // admin is disabled (headless mode), nothing calls it during
-  // mountPlugins(), so this call is what actually registers the routes —
-  // unchanged from the behavior commit 77bf31f introduced this call to fix.
+  // regardless of whether @dune/plugin-admin (or any admin package) is present. It
+  // runs after mountPlugins() so the routes follow every plugin's mount()-time
+  // middleware. This is the only call: the function is not exported.
   registerPluginPublicRoutes(app, ctx, { adminPrefix: getAdminPrefix() });
 
   // 5b. Public auth — only when the site has an `auth:` block at all, so

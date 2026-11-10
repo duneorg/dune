@@ -38,7 +38,6 @@
 
 export { loadForms, loadForm } from "./loader.ts";
 export { validateFormSubmission } from "./validator.ts";
-export { createSubmissionManager } from "./submissions.ts";
 export type {
   Submission,
   SubmissionFile,
@@ -47,7 +46,6 @@ export type {
   SubmissionMeta,
   SubmissionStatus,
 } from "./submissions.ts";
-export { registerFormRoutes } from "./register.ts";
 export { resolveDataDir, resolveFormsConfig } from "./config.ts";
 export type { ResolvedFormsConfig } from "./config.ts";
 export type {
