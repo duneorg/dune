@@ -103,6 +103,27 @@ export function planAdminMove(block: unknown, machineTranslation?: unknown): Adm
   return plan;
 }
 
+/**
+ * Append the lifted keys to the top level of a system.yaml text. A key the file
+ * already has with the same value is skipped; one with a different value is a
+ * conflict (writing it twice would make the file unparseable), reported for a
+ * manual decision.
+ */
+export function liftToTopLevel(
+  text: string,
+  lifted: Record<string, unknown>,
+): { text: string; conflicts: string[] } {
+  const existing = (parseYaml(text) as Record<string, unknown> | null) ?? {};
+  const conflicts: string[] = [];
+  const toAdd: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(lifted)) {
+    if (!(key in existing)) toAdd[key] = value;
+    else if (JSON.stringify(existing[key]) !== JSON.stringify(value)) conflicts.push(key);
+  }
+  const out = Object.keys(toAdd).length > 0 ? text.replace(/\n*$/, "\n") + stringifyYaml(toAdd) : text;
+  return { text: out, conflicts };
+}
+
 export async function migrateConfigCommand(
   root: string,
   opts: MigrateConfigOptions = {},
@@ -225,15 +246,34 @@ export async function migrateConfigCommand(
 
   if (hasAdminSettings) {
     if (adminWasDisabled) {
-      // The admin is not loaded, so its settings have nowhere to go: drop them.
+      // The admin is not loaded, so its own settings have nowhere to go: drop them.
+      // What is not the admin's (runtime_dir, max_revisions, data_dir are core settings;
+      // honeypot, notifications and incoming_webhooks belong to forms and webhooks) is kept.
+      const plan = planAdminMove(adminBlock, mtBlock);
       let nextSystem = systemText;
       let nextSite = siteText;
       if (adminBlock !== undefined && nextSystem !== null) nextSystem = removeTopLevelKeyInText("system", nextSystem, "admin").text;
       if (mtBlock !== undefined && nextSite !== null) nextSite = removeTopLevelKeyInText("site", nextSite, "machine_translation").text;
-      changed++;
-      console.log("  ✓ removed the admin: block and machine_translation (the admin is not loaded)");
-      if (nextSystem !== null && adminBlock !== undefined) await write(systemPath, nextSystem);
-      if (nextSite !== null && mtBlock !== undefined) await write(sitePath, nextSite);
+      const lifted = nextSystem !== null && Object.keys(plan.lifted).length > 0
+        ? liftToTopLevel(nextSystem, plan.lifted)
+        : { text: nextSystem, conflicts: [] as string[] };
+      if (plan.blocked.length > 0 || lifted.conflicts.length > 0) {
+        unresolvedFiles++;
+        console.error(
+          `  ✗ move the admin's settings by hand — ` +
+            (plan.blocked.length > 0
+              ? `${plan.blocked.join(", ")} belong${plan.blocked.length === 1 ? "s" : ""} elsewhere (see the messages above)`
+              : `${lifted.conflicts.join(", ")} ${lifted.conflicts.length === 1 ? "is" : "are"} also set at the top level of system.yaml with a different value`),
+        );
+      } else {
+        changed++;
+        console.log(
+          "  ✓ removed the admin: block and machine_translation (the admin is not loaded)" +
+            (Object.keys(plan.lifted).length > 0 ? `; ${Object.keys(plan.lifted).join(", ")} now at the top level of system.yaml` : ""),
+        );
+        if (lifted.text !== null && adminBlock !== undefined) await write(systemPath, lifted.text);
+        if (nextSite !== null && mtBlock !== undefined) await write(sitePath, nextSite);
+      }
     } else {
       const plan = planAdminMove(adminBlock, mtBlock);
       if (plan.blocked.length > 0 || siteText === null) {
@@ -256,17 +296,21 @@ export async function migrateConfigCommand(
         const nextSystemRemoved = adminBlock !== undefined && systemText !== null
           ? removeTopLevelKeyInText("system", systemText, "admin")
           : { text: systemText ?? "", removed: true };
-        if (added.outcome === "manual" || withConfig.outcome === "manual" || !nextSite.removed || !nextSystemRemoved.removed) {
+        const lifted = liftToTopLevel(nextSystemRemoved.text, plan.lifted);
+        if (lifted.conflicts.length > 0) {
+          unresolvedFiles++;
+          console.error(
+            `  ✗ move the admin's settings by hand — ${lifted.conflicts.join(", ")} ` +
+              `${lifted.conflicts.length === 1 ? "is" : "are"} also set at the top level of system.yaml with a different value`,
+          );
+        } else if (added.outcome === "manual" || withConfig.outcome === "manual" || !nextSite.removed || !nextSystemRemoved.removed) {
           unresolvedFiles++;
           console.error(
             `  ✗ move the admin's settings by hand into the admin plugin's config: in site.yaml ` +
               `(plugins: is written in a way this command cannot extend, or the entry already has a config:)`,
           );
         } else {
-          let nextSystem = nextSystemRemoved.text;
-          if (Object.keys(plan.lifted).length > 0) {
-            nextSystem = nextSystem.replace(/\n*$/, "\n") + stringifyYaml(plan.lifted);
-          }
+          const nextSystem = lifted.text;
           changed++;
           const moved = Object.keys(plan.settings);
           console.log(
