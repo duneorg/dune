@@ -294,6 +294,8 @@ The command detects existing numeric-prefix folders (e.g. `02.blog/`) and places
 
 ### The HTTP admin API uses session cookies, not Bearer tokens
 
+The admin API exists only when `@dune/plugin-admin` is listed under `plugins:` in `site.yaml` (it is not loaded by default). Without it these URLs 404; write content through the CLI, MCP or the files instead.
+
 **There is no `Authorization: Bearer` support anywhere in the admin API.** `plugin-admin`'s auth middleware (`src/admin/auth/middleware.ts`) reads a session ID from the `Cookie` header only — it never looks at `Authorization` at all. A curl request with a Bearer token gets exactly the same response as one with no auth header: `401 { error: "No session cookie" }`. Log in first and reuse the cookie:
 
 ```sh
