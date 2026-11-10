@@ -29,7 +29,16 @@ import { validateConfig } from "./validator.ts";
 const warnedIgnored = new Set<string>();
 
 /**
- * Deep merge two objects.  Arrays are replaced, not concatenated.
+ * Keys whose value an override replaces whole instead of merging into. A mapping
+ * that is a complete answer (`system.role_grants`: which groups hold which
+ * relation) means "exactly this" in an environment overlay; merged key by key,
+ * an overlay `role_grants: {}` could never switch the base's grants off.
+ */
+const REPLACED_KEYS = new Set(["role_grants"]);
+
+/**
+ * Deep merge two objects.  Arrays are replaced, not concatenated, and so are
+ * the values under {@link REPLACED_KEYS}.
  *
  * @param depth  Internal recursion depth guard — callers should not pass this.
  *   Limits recursion to 20 levels to prevent a stack overflow from
@@ -52,6 +61,7 @@ export function deepMerge<T extends Record<string, unknown>>(
     const overVal = override[key];
 
     if (
+      !REPLACED_KEYS.has(key) &&
       overVal !== null &&
       typeof overVal === "object" &&
       !Array.isArray(overVal) &&

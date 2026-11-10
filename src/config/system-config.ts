@@ -264,6 +264,9 @@ export interface SystemConfig {
    * chooses which group gets which. Accounts an admin plugin seeds itself
    * (its password accounts) keep their rights regardless.
    *
+   * In an environment overlay (`config/env/<env>/system.yaml`) `role_grants` replaces the base mapping
+   * instead of merging into it, so one environment can switch the grants off with `{}`.
+   *
    * Grants no longer configured are revoked at start: every
    * (group → admin/editor/author) tuple on the site belongs to this setting.
    *

@@ -85,6 +85,12 @@ async function withSite(
       const user = await userStore.create({ email: `${role}@example.com`, provider: "local", roles: [role] });
       ids.set(role, user.id);
     }
+    // A page the "editor" user created (it only matters when "editor" is remapped to author).
+    await Deno.mkdir(join(root, "content", "03.editors"), { recursive: true });
+    await Deno.writeTextFile(
+      join(root, "content", "03.editors", "default.md"),
+      `---\ntitle: Editors\ncreatedBy: ${ids.get("editor")}\n---\n\nEditors\n`,
+    );
     // A page the author created: authors edit their own pages, not others'.
     await Deno.mkdir(join(root, "content", "02.mine"), { recursive: true });
     await Deno.writeTextFile(
@@ -229,4 +235,16 @@ Deno.test("system.role_grants: a remapped group edits, the default one no longer
       assertEquals((await ws(await cookieFor(role))).status, 403, role);
     }
   }, "role_grants: {}\n");
+});
+
+Deno.test("system.role_grants: a default-named group remapped DOWN keeps the own-pages-only limit at the socket", opts, async () => {
+  await withSite([], async (ws, cookieFor) => {
+    // "editor" is a content tier here, mapped to author: its users edit their own pages only.
+    const editor = await cookieFor("editor");
+    assertEquals((await ws(editor, "03.editors/default.md")).status, 204, "a page it created");
+    assertEquals((await ws(editor, "01.home/default.md")).status, 403, "someone else's page");
+    assertEquals((await ws(editor, "02.mine/default.md")).status, 403, "the author's page");
+    // "author" is no longer mapped to anything, so that role grants nothing.
+    assertEquals((await ws(await cookieFor("author"), "02.mine/default.md")).status, 403);
+  }, "role_grants:\n  editor: author\n");
 });

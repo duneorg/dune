@@ -32,7 +32,7 @@ import type { CapabilityReader } from "../plugin-api/capabilities.ts";
 
 import type { EditorResolver } from "../auth/editor.ts";
 import type { PageIndex } from "../content/types.ts";
-import { highestAdminRole, roleHasPermission } from "../auth/authz-schema.ts";
+import { roleHasPermission } from "../auth/authz-schema.ts";
 import { applyResponseTransforms } from "../plugins/loader.ts";
 import { isAdminPath } from "./serve-utils.ts";
 import { scrubMarkersFromResponse } from "./marker-scrub.ts";
@@ -131,13 +131,12 @@ export async function runPluginResponseTransforms(
   if (resolveEditor) {
     const resolved = await resolveEditor(req);
     if (resolved.ok) {
-      // The context keeps its original `role: string` shape (a published hook
-      // type) rather than switching to `roles`. The roles list mixes admin-tier
-      // roles with content-gating tags in no guaranteed order, so the published
-      // role and the synchronous hasPermission() answers use the highest
-      // admin-tier entry, or they would under-privilege relative to the
-      // authz.check() that already decided this user may edit.
-      const role = highestAdminRole(resolved.editor.roles);
+      // The context keeps its original `role: string` shape (a published hook type).
+      // The role is the relation authz reports for this user, not their highest
+      // role *name*: under `system.role_grants` a user in `group:editor` mapped to
+      // `author` holds `author`, and the synchronous hasPermission() answers must
+      // not exceed what authz.check() decided.
+      const role: string = resolved.editor.relation;
       transformAuth = {
         username: resolved.editor.username,
         role,

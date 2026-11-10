@@ -14,9 +14,9 @@
 import type { CapabilityReader } from "../plugin-api/capabilities.ts";
 import type { EditorIdentity } from "../inline-edit/types.ts";
 import type { DuneAuthSystem } from "./authz.ts";
-import { SITE_RESOURCE } from "./authz-schema.ts";
+import { RELATION_PROBE_ACTIONS, SITE_RESOURCE } from "./authz-schema.ts";
 import { getUser } from "./types.ts";
-import { GRANT_RELATIONS, type GrantRelation, type RoleGrants } from "./role-grants.ts";
+import type { GrantRelation } from "./role-grants.ts";
 import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
 
 /** Outcome of {@link EditorResolver}: an editor, or why there is none. */
@@ -37,24 +37,6 @@ export interface EditorResolverOptions {
   siteAuthz: () => DuneAuthSystem | undefined;
   /** The authz system bootstrap built; decides for `editor.session` users. */
   sessionAuthz: () => DuneAuthSystem | undefined;
-  /** The site's `system.role_grants`: which group holds which relation. */
-  grants: () => RoleGrants;
-}
-
-const RANK: Record<GrantRelation, number> = { admin: 3, editor: 2, author: 1 };
-
-/**
- * The highest admin-tier relation `roles` carry on this site: through the
- * groups `grants` maps, else (an account an admin plugin seeded directly) the
- * role name itself. `author`, the least privilege, when neither says.
- */
-export function relationOf(roles: readonly string[], grants: RoleGrants): GrantRelation {
-  let best: GrantRelation | undefined;
-  for (const role of roles) {
-    const candidates = [grants[role], GRANT_RELATIONS.includes(role as GrantRelation) ? role as GrantRelation : undefined];
-    for (const r of candidates) if (r && (!best || RANK[r] > RANK[best])) best = r;
-  }
-  return best ?? "author";
 }
 
 /** Display name of a user record: username, else name, else email, else id. */
@@ -62,15 +44,28 @@ function displayName(user: { id: string; username?: string; name?: string; email
   return user.username ?? user.name ?? user.email ?? user.id;
 }
 
-function canUpdatePages(authz: DuneAuthSystem | undefined, userId: string): Promise<boolean> {
+/**
+ * The admin-tier relation `userId` actually holds on the site, read from the
+ * authz system, or null when they may not edit pages at all. Asking authz (and
+ * not inferring from role names) is what keeps this right under
+ * `system.role_grants`: a user in `group:editor` remapped to `author` holds
+ * `author`, whatever their role is called, and an account seeded with a direct
+ * tuple holds what the tuple says.
+ */
+async function editorRelation(authz: DuneAuthSystem | undefined, userId: string): Promise<GrantRelation | null> {
   // Fail closed: no authz system means nobody is an editor.
-  if (!authz) return Promise.resolve(false);
-  return authz.check({
-    who: { type: "user", id: userId },
-    // deno-lint-ignore no-explicit-any
-    canThey: "pages.update" as any,
-    onWhat: SITE_RESOURCE,
-  }).catch(() => false);
+  if (!authz) return null;
+  const can = (action: string) =>
+    authz.check({
+      who: { type: "user", id: userId },
+      // deno-lint-ignore no-explicit-any
+      canThey: action as any,
+      onWhat: SITE_RESOURCE,
+    }).catch(() => false);
+  if (!await can("pages.update")) return null;
+  if (await can(RELATION_PROBE_ACTIONS.admin)) return "admin";
+  if (await can(RELATION_PROBE_ACTIONS.editor)) return "editor";
+  return "author";
 }
 
 /** Build the {@link EditorResolver} of a site. */
@@ -78,14 +73,15 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
   return async (req) => {
     const siteUser = getUser(req);
     if (siteUser) {
-      if (!await canUpdatePages(opts.siteAuthz(), siteUser.id)) return { ok: false, status: 403 };
+      const relation = await editorRelation(opts.siteAuthz(), siteUser.id);
+      if (!relation) return { ok: false, status: 403 };
       return {
         ok: true,
         editor: {
           id: siteUser.id,
           username: displayName(siteUser),
           roles: siteUser.roles,
-          relation: relationOf(siteUser.roles, opts.grants()),
+          relation,
           source: "site",
         },
       };
@@ -97,14 +93,15 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
     // deno-lint-ignore no-explicit-any
     const user = (result as any)?.authenticated ? (result as any).user : null;
     if (!user?.id) return { ok: false, status: 401 };
-    if (!await canUpdatePages(opts.sessionAuthz(), user.id as string)) return { ok: false, status: 403 };
+    const relation = await editorRelation(opts.sessionAuthz(), user.id as string);
+    if (!relation) return { ok: false, status: 403 };
     return {
       ok: true,
       editor: {
         id: user.id as string,
         username: displayName(user),
         roles: (user.roles as string[] | undefined) ?? [],
-        relation: relationOf((user.roles as string[] | undefined) ?? [], opts.grants()),
+        relation,
         source: "session",
       },
     };

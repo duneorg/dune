@@ -16,6 +16,7 @@ import {
   runPluginResponseTransforms as run,
 } from "../../src/cli/response-transforms.ts";
 import { createEditorResolver } from "../../src/auth/editor.ts";
+import { DUNE_BASE_AUTHZ_ACTIONS } from "../../src/auth/authz-schema.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import type {
   DunePlugin,
@@ -61,7 +62,6 @@ function runPluginResponseTransforms(opts: LegacyOptions): Promise<Response> {
     },
     siteAuthz: () => authz,
     sessionAuthz: () => authz,
-    grants: () => ({ admin: "admin", editor: "editor", author: "author" }),
   });
   return run({ ...rest, capabilities, resolveEditor });
 }
@@ -237,7 +237,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
     result: { authenticated: true, user: makeUser("editor") },
   });
   // deno-lint-ignore no-explicit-any
-  const authz = makeAuthz(true) as any;
+  const authz = makeAuthz(true, "editor") as any;
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
@@ -259,7 +259,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   assertEquals(ctxAuth?.hasPermission("pages.delete"), false);
 });
 
-Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — highest admin-tier role wins", async () => {
+Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — the relation authz reports is the role", async () => {
   // A merged User's roles[] can hold content-gating tags alongside the
   // admin-tier role, in no guaranteed order. roles[0] ("member") used to
   // become ctx.auth.role — under-privileging hasPermission() relative to
@@ -360,14 +360,16 @@ Deno.test("runPluginResponseTransforms: non-content route — page is null", asy
 // table to compare against anymore; these just prove authz's answer is what
 // actually governs `auth` in the returned context.
 
-function makeAuthz(allowed: boolean) {
+/** An authz system whose user holds `relation` (when `allowed`), answering each action as the built-in schema does. */
+function makeAuthz(allowed: boolean, relation: "admin" | "editor" | "author" = "admin") {
   const calls = { check: 0 };
   return {
     calls,
     // deno-lint-ignore no-explicit-any
-    check(_args: any): Promise<boolean> {
+    check(args: any): Promise<boolean> {
       calls.check++;
-      return Promise.resolve(allowed);
+      const relations: readonly string[] = (DUNE_BASE_AUTHZ_ACTIONS as Record<string, readonly string[]>)[args.canThey] ?? [];
+      return Promise.resolve(allowed && relations.includes(relation));
     },
   };
 }
@@ -377,7 +379,7 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing grants access", a
     result: { authenticated: true, user: makeUser("author") },
   });
   // deno-lint-ignore no-explicit-any
-  const authz = makeAuthz(true) as any;
+  const authz = makeAuthz(true, "author") as any;
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
@@ -389,8 +391,10 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing grants access", a
     config,
     adminPrefix: "/admin",
   });
-  assertEquals(authz.calls.check, 1);
+  // pages.update, then the probes that tell author from editor and admin.
+  assertEquals(authz.calls.check > 0, true);
   assertEquals(seen[0].auth?.username, "alice");
+  assertEquals(seen[0].auth?.role, "author");
 });
 
 Deno.test("runPluginResponseTransforms: authz.check() denying blocks access", async () => {

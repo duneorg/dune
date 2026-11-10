@@ -46,6 +46,16 @@ import type { Role } from "../config/role.ts";
 export const SITE_RESOURCE = { type: "app", id: "site" } as const;
 
 /**
+ * Built-in actions that tell the admin-tier relations apart, for code that must
+ * know which relation a user holds without the user's role names (those can be
+ * remapped by `system.role_grants`): `pages.delete` is satisfied by `admin`
+ * alone, `config.read` by `admin` and `editor`; anyone who can only
+ * `pages.update` holds `author`. A test pins these to
+ * {@link DUNE_BASE_AUTHZ_ACTIONS}.
+ */
+export const RELATION_PROBE_ACTIONS = { admin: "pages.delete", editor: "config.read" } as const;
+
+/**
  * A polizy relation name a plugin-contributed action can require. Limited
  * to Dune's existing built-in relations (no plugin can define a *new*
  * relation type today — see `buildDuneAuthzSchema`'s doc comment for why).

@@ -44,9 +44,11 @@ export interface EditorIdentity {
   roles: string[];
   /**
    * The admin-tier relation this editor holds on the site: `admin` and `editor` may edit any
-   * page, `author` only the pages it created. Decided by core from the site's
-   * `system.role_grants` (a group `staff` mapped to `editor` makes its members `editor`), so a
-   * provider applies ownership rules to this and not to role names.
+   * page, `author` only the pages it created. Read by core from the authz system (what the
+   * user actually holds, through the site's `system.role_grants` or a direct tuple), not
+   * inferred from role names: a group `staff` mapped to `editor` makes its members `editor`,
+   * and an `editor` role mapped down to `author` makes them `author`. A provider applies its
+   * ownership rules to this and not to role names.
    */
   relation: "admin" | "editor" | "author";
   /** `site`: signed in through the site's own login; `session`: through the `editor.session` provider. */

@@ -241,3 +241,13 @@ Deno.test("loadConfig: validation catches invalid config", async () => {
     "Invalid configuration",
   );
 });
+
+Deno.test("deepMerge: an override of role_grants replaces the mapping instead of merging into it", () => {
+  const base: { system: { role_grants: Record<string, string>; debug: boolean } } = {
+    system: { role_grants: { staff: "editor", editor: "author" }, debug: false },
+  };
+  assertEquals(deepMerge(base, { system: { role_grants: {} } }).system.role_grants, {});
+  assertEquals(deepMerge(base, { system: { role_grants: { boss: "admin" } } }).system.role_grants, { boss: "admin" });
+  // Other nested objects still merge key by key.
+  assertEquals(deepMerge(base, { system: { debug: true } }).system, { role_grants: { staff: "editor", editor: "author" }, debug: true });
+});
