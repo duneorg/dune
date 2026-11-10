@@ -25,10 +25,7 @@ await cli({ root: import.meta.dirname });
  * dune's own import map on top of the site's, the site's map has to carry
  * this whole closure itself — see plan-site-entrypoint.md's "costs" section.
  * Keep this in sync with dune's own deno.json imports (minus @std/assert, a
- * dev/test-only dependency, and the @dune/plugin-admin/* subpath entries,
- * which nothing reaches via a bare specifier — only via the literal jsr:
- * string in bootstrap.ts's variable dynamic import, which needs no import
- * map entry at all).
+ * dev/test-only dependency).
  */
 export const DUNE_CORE_RUNTIME_IMPORTS: Record<string, string> = {
   "fresh": "jsr:@fresh/core@^2",

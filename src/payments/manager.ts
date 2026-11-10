@@ -165,13 +165,18 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
 
     // Sync the new role into the authz tuple store so the grant takes effect
     // immediately without waiting for a restart + bootstrap.
+    // A user store wrapped with `withRoleSync` has already done this on
+    // update(); only add the membership when it is not there yet, so a synced
+    // store does not end up with the tuple twice.
     if (roleToGrant && updates.roles && authz) {
-      await authz.addMember({
-        member: { type: "user", id: userId },
-        group: { type: "group", id: roleToGrant },
-      }).catch((err) => {
+      const group = { type: "group" as const, id: roleToGrant };
+      const who = { type: "user" as const, id: userId };
+      try {
+        const already = await authz.check({ who, canThey: "access", onWhat: group });
+        if (!already) await authz.addMember({ member: who, group });
+      } catch (err) {
         logger.error("payments.webhook.role_grant_failed", { userId, role: roleToGrant, reason: String(err) });
-      });
+      }
     }
   }
 

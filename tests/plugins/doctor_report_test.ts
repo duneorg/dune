@@ -26,7 +26,7 @@ Deno.test(
         version: "1.0.0",
         hooks: {},
         setup(api) {
-          api.capabilities.provide("auth.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
+          api.capabilities.provide("editor.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
         },
       };
       const broken: DunePlugin = {
@@ -47,7 +47,7 @@ Deno.test(
 
       const report = JSON.parse(await Deno.readTextFile(reportPath)) as DoctorReport;
       const bySlot = Object.fromEntries(report.providers.map((p) => [p.name, `${p.provider}:${p.status}`]));
-      assertEquals(bySlot["auth.session"], "good-admin:active");
+      assertEquals(bySlot["editor.session"], "good-admin:active");
       assertEquals(bySlot["scheduler.executor"], "broken-executor:failed");
       assertEquals(report.scheduledActions, 0);
     } finally {

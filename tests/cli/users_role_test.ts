@@ -2,7 +2,7 @@
  * Tests for `dune users:grant-role` / `dune users:revoke-role` —
  * dec-identity-unification Phase 6's CLI leg for the role-granting
  * mechanism. Grants/revokes an admin-tier role on an existing unified User
- * (identified by email) and syncs the app:admin authz tuple
+ * (identified by email) and syncs the app:site authz tuple
  * `authz.check()` reads at permission-check time.
  */
 
@@ -80,7 +80,7 @@ async function hasAdminTuple(
   return await adapter.hasTuple(
     { type: "user", id: userId },
     relation,
-    { type: "app", id: "admin" },
+    { type: "app", id: "site" },
   );
 }
 
@@ -127,7 +127,7 @@ Deno.test("users:grant-role adds the role to a role-less user's roles[]", async 
   });
 });
 
-Deno.test("users:grant-role syncs the app:admin authz tuple", async () => {
+Deno.test("users:grant-role syncs the app:site authz tuple", async () => {
   await withTempSite(async (root) => {
     await writeUser(root, "u1.json", baseUser);
 
@@ -242,7 +242,7 @@ Deno.test("users:revoke-role removes the role from roles[]", async () => {
   });
 });
 
-Deno.test("users:revoke-role removes the app:admin authz tuple", async () => {
+Deno.test("users:revoke-role removes the app:site authz tuple", async () => {
   await withTempSite(async (root) => {
     await writeUser(root, "u1.json", { ...baseUser, roles: [] });
     await grantRoleCommand(root, "alice@example.com", "editor", {});

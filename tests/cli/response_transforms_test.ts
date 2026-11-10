@@ -11,18 +11,60 @@ import {
   assertEquals,
   assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { runPluginResponseTransforms } from "../../src/cli/response-transforms.ts";
+import {
+  type RunResponseTransformsOptions,
+  runPluginResponseTransforms as run,
+} from "../../src/cli/response-transforms.ts";
+import { createEditorResolver } from "../../src/auth/editor.ts";
+import { DUNE_BASE_AUTHZ_ACTIONS } from "../../src/auth/authz-schema.ts";
+import type { DuneAuthSystem } from "../../src/auth/authz.ts";
 import type {
   DunePlugin,
   ResponseTransformContext,
 } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
-import type {
-  AuthResult,
-  User,
-} from "jsr:@dune/plugin-admin/admin/types";
+import type { User } from "../../src/auth/types.ts";
+
+/** What the fake auth middleware resolves to (the admin's result shape, kept local: core tests do not depend on the published admin). */
+interface AuthResult {
+  authenticated: boolean;
+  user?: User;
+  error?: string;
+}
 
 const config = {} as DuneConfig;
+
+/**
+ * Drive the pipeline the way core does: the options a test names (a session
+ * provider, its cookie names, an authz system) become the editor resolver the
+ * pipeline is given. Tests keep stating the scenario, not the wiring.
+ */
+type LegacyOptions =
+  & Omit<RunResponseTransformsOptions, "resolveEditor">
+  & {
+    auth?: { authenticate(req: Request): Promise<unknown> } | null;
+    sessionCookies?: readonly string[];
+    authz?: DuneAuthSystem;
+  };
+function runPluginResponseTransforms(opts: LegacyOptions): Promise<Response> {
+  const { auth, sessionCookies, authz, ...rest } = opts;
+  const provider = auth ? Object.assign(auth, { sessionCookies }) : undefined;
+  const capabilities = rest.capabilities ?? {
+    get: (name: string) => (name === "editor.session" ? provider : undefined),
+    list: () => [],
+    providers: () => [],
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  const resolveEditor = createEditorResolver({
+    capabilities: {
+      ...capabilities,
+      get: (name: string) => name === "editor.session" ? provider : capabilities.get(name),
+    },
+    siteAuthz: () => authz,
+    sessionAuthz: () => authz,
+  });
+  return run({ ...rest, capabilities, resolveEditor });
+}
 
 function makeUser(role: string): User {
   return {
@@ -195,7 +237,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
     result: { authenticated: true, user: makeUser("editor") },
   });
   // deno-lint-ignore no-explicit-any
-  const authz = makeAuthz(true) as any;
+  const authz = makeAuthz(true, "editor") as any;
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
@@ -217,7 +259,7 @@ Deno.test("runPluginResponseTransforms: valid session WITH pages.update — auth
   assertEquals(ctxAuth?.hasPermission("pages.delete"), false);
 });
 
-Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — highest admin-tier role wins", async () => {
+Deno.test("runPluginResponseTransforms: roles[] mixing tags and admin roles — the relation authz reports is the role", async () => {
   // A merged User's roles[] can hold content-gating tags alongside the
   // admin-tier role, in no guaranteed order. roles[0] ("member") used to
   // become ctx.auth.role — under-privileging hasPermission() relative to
@@ -318,14 +360,16 @@ Deno.test("runPluginResponseTransforms: non-content route — page is null", asy
 // table to compare against anymore; these just prove authz's answer is what
 // actually governs `auth` in the returned context.
 
-function makeAuthz(allowed: boolean) {
+/** An authz system whose user holds `relation` (when `allowed`), answering each action as the built-in schema does. */
+function makeAuthz(allowed: boolean, relation: "admin" | "editor" | "author" = "admin") {
   const calls = { check: 0 };
   return {
     calls,
     // deno-lint-ignore no-explicit-any
-    check(_args: any): Promise<boolean> {
+    check(args: any): Promise<boolean> {
       calls.check++;
-      return Promise.resolve(allowed);
+      const relations: readonly string[] = (DUNE_BASE_AUTHZ_ACTIONS as Record<string, readonly string[]>)[args.canThey] ?? [];
+      return Promise.resolve(allowed && relations.includes(relation));
     },
   };
 }
@@ -335,7 +379,7 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing grants access", a
     result: { authenticated: true, user: makeUser("author") },
   });
   // deno-lint-ignore no-explicit-any
-  const authz = makeAuthz(true) as any;
+  const authz = makeAuthz(true, "author") as any;
   const { plugin, seen } = makeRecordingPlugin();
   await runPluginResponseTransforms({
     req: makeReq("/about", SESSION_COOKIE),
@@ -347,8 +391,10 @@ Deno.test("runPluginResponseTransforms: authz.check() allowing grants access", a
     config,
     adminPrefix: "/admin",
   });
-  assertEquals(authz.calls.check, 1);
+  // pages.update, then the probes that tell author from editor and admin.
+  assertEquals(authz.calls.check > 0, true);
   assertEquals(seen[0].auth?.username, "alice");
+  assertEquals(seen[0].auth?.role, "author");
 });
 
 Deno.test("runPluginResponseTransforms: authz.check() denying blocks access", async () => {
@@ -527,55 +573,6 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
   assertEquals(await result.text(), `<p>p</p><span>v</span>`);
 });
 
-Deno.test("runPluginResponseTransforms: ctx.barActions carries the bar.actions contributions in order", async () => {
-  const auth = makeAuth({
-    result: { authenticated: true, user: makeUser("admin") },
-  });
-  const barOwner: DunePlugin = {
-    name: "bar-owner",
-    version: "1.0.0",
-    hooks: {},
-    async transformResponse(ctx) {
-      const body = await ctx.response.text();
-      const actions = ctx.barActions.flatMap((fn) => fn({ page: ctx.page, adminPrefix: ctx.adminPrefix }));
-      return new Response(`${body}${actions.map((a) => `[${a.id}]`).join("")}`, {
-        status: ctx.response.status,
-        headers: ctx.response.headers,
-      });
-    },
-  };
-
-  const result = await runPluginResponseTransforms({
-    req: makeReq("/about", SESSION_COOKIE),
-    response: htmlResponse(`<p>p</p>`),
-    plugins: [barOwner],
-    barActions: [
-      () => [{ id: "a:one", label: "One", href: "/1" }],
-      ({ page }) => (page?.template === "post" ? [{ id: "b:two", label: "Two", href: "/2" }] : []),
-    ],
-    auth,
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-
-  assertEquals(await result.text(), `<p>p</p>[a:one][b:two]`);
-});
-
-Deno.test("runPluginResponseTransforms: barActions defaults to empty", async () => {
-  const { plugin, seen } = makeRecordingPlugin();
-  await runPluginResponseTransforms({
-    req: makeReq("/about"),
-    response: htmlResponse(`<p>p</p>`),
-    plugins: [plugin],
-    auth: null,
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-  assertEquals(seen[0].barActions, []);
-});
-
 Deno.test("runPluginResponseTransforms: a provider that declares its cookie name is consulted for that cookie only", async () => {
   const mk = () => makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
   const run = (auth: ReturnType<typeof mk>, cookie: string | undefined) =>
@@ -623,4 +620,69 @@ Deno.test("runPluginResponseTransforms: without declared cookie names any cookie
     adminPrefix: "/admin",
   });
   assertEquals(noCookie.calls.authenticate, 0);
+});
+
+Deno.test("runPluginResponseTransforms: no admin prefix — /admin is an ordinary path and plugins get an empty adminPrefix", async () => {
+  const auth = makeAuth({});
+  const { plugin, seen } = makeRecordingPlugin();
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/admin/news"),
+    response: htmlResponse("<p>news</p>"),
+    plugins: [plugin],
+    auth,
+    resolve,
+    config,
+    adminPrefix: null,
+  });
+  assertEquals(seen.length, 1, "the transform ran: with no admin, /admin/news is content");
+  assertEquals((await result.text()).includes("news"), true);
+});
+
+Deno.test("runPluginResponseTransforms: an admin prefix still keeps its own paths out of the pipeline", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  const original = htmlResponse("<p>panel</p>");
+  const result = await runPluginResponseTransforms({
+    req: makeReq("/admin/pages"),
+    response: original,
+    plugins: [plugin],
+    auth: makeAuth({}),
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen.length, 0);
+  assertStrictEquals(result, original);
+});
+
+Deno.test("runPluginResponseTransforms: ctx.capabilities is the registry's reader, and empty when none is supplied", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen[0].capabilities.get("admin.prefix"), undefined);
+  assertEquals(seen[0].capabilities.providers(), []);
+
+  const reader = {
+    get: (name: string) => (name === "admin.prefix" ? { prefix: "/admin" } : undefined),
+    list: () => [],
+    providers: () => [],
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+    capabilities: reader,
+  });
+  assertEquals(seen[1].capabilities.get("admin.prefix")?.prefix, "/admin");
 });

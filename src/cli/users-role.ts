@@ -7,7 +7,7 @@
  * dec-identity-unification Phase 6's role-granting mechanism. The admin
  * panel's `PUT /admin/api/users/:id` route already does this over HTTP; these
  * commands do the same two things it does — update the user's `roles[]` and
- * sync the `app:admin` authz tuple `authz.check()` actually reads — for
+ * sync the `app:site` authz tuple `authz.check()` actually reads — for
  * operators without (or before) web access: first-admin bootstrap on a
  * headless install, scripted/CI-driven site provisioning, or granting access
  * to an existing OAuth/magic-link account that has never had an admin-tier
@@ -39,6 +39,8 @@ import { createLocalUserStore } from "../auth/user-store.ts";
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
+import { SITE_RESOURCE } from "../auth/authz-schema.ts";
+import { syncUserRoles } from "../auth/sync-roles.ts";
 import { loadHmacKeyFromEnv } from "../auth/authz-hmac.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
@@ -82,28 +84,32 @@ async function openContext(root: string): Promise<Context> {
   return { storage, dataDir, userStore, closeDb: () => Promise.resolve() };
 }
 
-/** Sync the app:admin authz tuple to match `newRole` (undefined = no admin-tier role). */
+/** Sync the app:site authz tuple to match `newRole` (undefined = no admin-tier role). */
 async function syncAdminTuple(
   ctx: Context,
   userId: string,
   previousRole: string | undefined,
   newRole: string | undefined,
+  roles: string[],
 ): Promise<void> {
   const hmacKey = await loadHmacKeyFromEnv().catch((err) => {
     console.error("  ⚠️  Invalid DUNE_AUTHZ_HMAC_SECRET:", err.message);
     return null;
   });
-  const { authz } = createDuneAuthSystem({
+  const { authz, adapter } = createDuneAuthSystem({
     authzStore: "local",
     dataDir: ctx.dataDir,
     hmacKey,
   }, ctx.storage);
 
+  // Group membership, which page gating and the site-wide role grants read.
+  await syncUserRoles({ authz, adapter }, { id: userId, roles });
+
   if (previousRole && previousRole !== newRole) {
     await authz.disallowAllMatching({
       who: { type: "user", id: userId },
       was: previousRole as "admin" | "editor" | "author",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: SITE_RESOURCE,
     }).catch((err) => {
       console.warn(`  ⚠️  Failed to revoke old "${previousRole}" tuple:`, err);
     });
@@ -112,7 +118,7 @@ async function syncAdminTuple(
     await authz.allow({
       who: { type: "user", id: userId },
       toBe: newRole as "admin" | "editor" | "author",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: SITE_RESOURCE,
     });
   }
 }
@@ -179,7 +185,7 @@ async function changeRole(
         } — would update`,
       );
       console.log(
-        `  ~ ${email}: would sync app:admin tuple (${
+        `  ~ ${email}: would sync app:site tuple (${
           previousRole ?? "none"
         } → ${newRole ?? "none"})`,
       );
@@ -187,7 +193,7 @@ async function changeRole(
     }
 
     await ctx.userStore.update(user.id, { roles: newRoles });
-    await syncAdminTuple(ctx, user.id, previousRole, newRole);
+    await syncAdminTuple(ctx, user.id, previousRole, newRole, newRoles);
 
     console.log(
       grant

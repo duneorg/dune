@@ -333,10 +333,6 @@ function makeGetConfigHandler(engine: DuneEngine): ToolHandler {
         },
         debugMode: config.system.debug ?? false,
       },
-      admin: {
-        path: config.admin?.path ?? "/admin",
-        auditEnabled: config.admin?.audit?.enabled !== false,
-      },
       plugins: (config.pluginList ?? []).map((entry) => {
         const e = entry as { src?: string; spec?: string };
         return e.src ?? e.spec ?? "(unknown)";

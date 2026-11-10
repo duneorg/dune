@@ -12,12 +12,10 @@ import { DUMMY_HASH, hashPassword, needsRehash, verifyPassword } from "../auth/p
 import { createWorkflowEngine } from "../workflow/engine.ts";
 import { createScheduler } from "../workflow/scheduler.ts";
 import { createStagingEngine } from "../staging/engine.ts";
-import { createMachineTranslator } from "../mt/factory.ts";
-import { AuditLogger } from "../audit/logger.ts";
 import { bootstrapAdminTuples } from "../auth/authz.ts";
+import { withRoleSync } from "../auth/sync-roles.ts";
 import { resolveBlueprint, validateFrontmatter } from "../blueprints/validator.ts";
-import { resolveDataDir } from "../forms/config.ts";
-import { join } from "@std/path";
+import { resolveDataDir, resolveRuntimeDir } from "../forms/config.ts";
 import { logger } from "../core/logger.ts";
 
 /**
@@ -26,8 +24,7 @@ import { logger } from "../core/logger.ts";
  */
 export function createPluginServices(opts: PluginServicesOptions): PluginServices {
   const { config, storage } = opts;
-  const adminCfg = config.admin;
-  const runtimeDir = adminCfg?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   return {
     security: {
       sanitizeHtml,
@@ -60,7 +57,9 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       },
     },
     users: {
-      createLocalStore: ({ usersDir }) => createLocalUserStore({ storage, usersDir }),
+      // Writes through this store keep group membership in step with roles[],
+      // so a role an admin grants takes effect without a restart.
+      createLocalStore: ({ usersDir }) => withRoleSync(createLocalUserStore({ storage, usersDir }), () => opts.getAuthz?.()),
     },
     passwords: {
       hash: hashPassword,
@@ -73,8 +72,6 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       workflow: createWorkflowEngine({ storage, dataDir: runtimeDir }, config.site?.workflow ?? undefined),
       scheduler: createScheduler({ storage, dataDir: runtimeDir }),
       staging: createStagingEngine({ storage, runtimeDir }),
-      mt: config.site?.machine_translation ? createMachineTranslator(config.site.machine_translation) : null,
-      audit: createAuditTrail(opts, runtimeDir),
     },
     blueprints: {
       has: (template) => !!opts.getBlueprints?.()[template],
@@ -102,19 +99,4 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       },
     },
   };
-}
-
-function createAuditTrail(opts: PluginServicesOptions, runtimeDir: string): AuditLogger | null {
-  const audit = opts.config.admin?.audit;
-  if (opts.config.admin?.enabled === false || audit?.enabled === false || !opts.root) return null;
-  const root = opts.root;
-  const logFile = audit?.log_file ? join(root, audit.log_file) : join(root, runtimeDir, "audit.log");
-  const containmentRoot = root.endsWith("/") || root.endsWith("\\") ? root : root + "/";
-  if (!logFile.startsWith(containmentRoot)) {
-    throw new Error(
-      `[dune] admin.audit.log_file must resolve under the site root. ` +
-        `Got: ${audit?.log_file} -> ${logFile}`,
-    );
-  }
-  return new AuditLogger({ logFile });
 }

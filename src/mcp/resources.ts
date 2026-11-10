@@ -5,7 +5,6 @@
  * or read on demand. Unlike tools, resources represent persistent state.
  */
 
-import { join } from "@std/path";
 import type { McpResource, McpResourceContent, ResourceHandler } from "./server.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { StorageAdapter } from "../storage/types.ts";
@@ -32,12 +31,6 @@ function makeConfigHandler(engine: DuneEngine): ResourceHandler {
       },
       theme: config.theme,
       data_dir: config.system?.data_dir,
-      admin: {
-        path: config.admin?.path,
-        runtime_dir: config.admin?.runtime_dir,
-        audit: config.admin?.audit,
-        // Omit auth_provider details (may contain connection strings)
-      },
       plugins: (config.pluginList ?? []).map((entry) => {
         const e = entry as { src?: string; spec?: string };
         return e.src ?? e.spec ?? "(unknown)";
@@ -224,41 +217,6 @@ function makeFormsHandler(storage: StorageAdapter, _root: string): ResourceHandl
   };
 }
 
-// ── Resource: audit log tail ──────────────────────────────────────────────────
-
-const AUDIT_LOG_RESOURCE: McpResource = {
-  uri: "dune://site/audit",
-  name: "Audit Log",
-  description:
-    "The 50 most recent audit log entries from the admin panel. " +
-    "Each entry includes event type, actor, target, outcome, and timestamp. " +
-    "Returns an empty array when audit logging is not enabled.",
-  mimeType: "application/json",
-};
-
-function makeAuditLogHandler(_storage: StorageAdapter, root: string): ResourceHandler {
-  return async () => {
-    // Audit log is a JSONL file; read the last 50 lines
-    const logPath = join(root, ".dune", "admin", "audit.log");
-    const entries: unknown[] = [];
-
-    try {
-      const raw = await Deno.readTextFile(logPath);
-      const lines = raw.trimEnd().split("\n").filter(Boolean);
-      const tail = lines.slice(-50);
-      for (const line of tail) {
-        try { entries.push(JSON.parse(line)); } catch { /* skip */ }
-      }
-    } catch { /* log file absent or unreadable */ }
-
-    return {
-      uri: AUDIT_LOG_RESOURCE.uri,
-      mimeType: "application/json",
-      text: JSON.stringify(entries, null, 2),
-    };
-  };
-}
-
 // ── Registration ─────────────────────────────────────────────────────────────
 
 /** A registered MCP resource — descriptor plus its handler function. */
@@ -282,10 +240,7 @@ export function buildResources(
   ];
 
   if (storage && root) {
-    base.push(
-      { meta: FORMS_RESOURCE, handler: makeFormsHandler(storage, root) },
-      { meta: AUDIT_LOG_RESOURCE, handler: makeAuditLogHandler(storage, root) },
-    );
+    base.push({ meta: FORMS_RESOURCE, handler: makeFormsHandler(storage, root) });
   }
 
   return base;

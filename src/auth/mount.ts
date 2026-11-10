@@ -14,7 +14,7 @@
 
 // deno-lint-ignore no-explicit-any
 import { createEmailProvider } from "../email/providers/mod.ts";
-import { resolveDataDir } from "../forms/config.ts";
+import { resolveDataDir, resolveRuntimeDir } from "../forms/config.ts";
 import type { App } from "fresh";
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalUserStore } from "./user-store.ts";
@@ -25,7 +25,9 @@ import { createProviders } from "./providers/mod.ts";
 import { type User, USER_HEADER } from "./types.ts";
 import { copySocketAddr } from "../security/rate-limit.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
-import { bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
+import { bootstrapRoleGrants, bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
+import { resolveRoleGrants } from "./role-grants.ts";
+import { withRoleSync } from "./sync-roles.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
 import { setGatingAuthz } from "./gating.ts";
@@ -77,10 +79,8 @@ export async function mountDuneAuth(
   const { config, storage } = ctx;
   const authConfig: SiteConfig["auth"] = config.site.auth;
 
-  const adminCfg = config.admin ??
-    { runtime_dir: ".dune/admin" };
   const dataDir = resolveDataDir(config);
-  const runtimeDir = adminCfg.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
 
   const mode = authConfig?.mode ?? "dune";
   if (mode === "external-jwt") {
@@ -117,6 +117,17 @@ export async function mountDuneAuth(
     userStore = await createDbUserStore({ adapter: dbAdapter });
   } else {
     userStore = createLocalUserStore({ storage, usersDir });
+  }
+  // Roles granted or revoked while the app runs (payments, an admin, a
+  // signup flow) reach the authz store at once. The target is read per write:
+  // the authz system below is created after the store. external-jwt reconciles
+  // per request instead, and its user store is read-only.
+  if (mode === "dune") {
+    const plain = userStore;
+    userStore = withRoleSync(
+      plain,
+      () => mountAuthz && mountAdapter ? { authz: mountAuthz, adapter: mountAdapter } : undefined,
+    );
   }
 
   // ── Session manager ─────────────────────────────────────────────────────────
@@ -194,6 +205,12 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
+      logger.error("auth.role_grants_failed", {
+        error: err instanceof Error ? err.message : String(err),
+        effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
+      })
+    );
   } else if (authzStoreCfg === "local") {
     const existingAuthz = ctx.authz as DuneAuthSystem | undefined;
     const existingAdapter = ctx.authzAdapter as AuthzLocalAdapter | undefined;
@@ -214,6 +231,14 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
+    // Idempotent; bootstrap() already did this for its own bundle, a headless
+    // caller's fresh one has not been seeded yet.
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
+      logger.error("auth.role_grants_failed", {
+        error: err instanceof Error ? err.message : String(err),
+        effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
+      })
+    );
 
     if (mode === "dune" && userStoreType !== "session") {
       // Bulk-bootstrap from existing site users' roles[] — idempotent.

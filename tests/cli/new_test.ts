@@ -119,3 +119,17 @@ Deno.test("dune new: .mcp.json invokes main.ts, not a jsr: re-exec", async () =>
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("dune new --headless: plugin islands are registered with registerIsland, not passed as a Builder option (#140)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    await newCommand(dir, { headless: true });
+    const mainTs = await Deno.readTextFile(join(dir, "main.ts"));
+    // Fresh's BuildOptions has no `islandSpecifiers`; the option would be
+    // dropped without an error and no plugin island would be built.
+    assertEquals(/new Builder\(\{[^}]*islandSpecifiers/s.test(mainTs), false);
+    assertStringIncludes(mainTs, "builder.registerIsland(spec)");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

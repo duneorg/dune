@@ -10,6 +10,7 @@ import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { bootstrap } from "../runtime/bootstrap.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
 
 export interface JobsOptions {
   json?: boolean;
@@ -38,7 +39,7 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   }
 
   // Resolve state directory from config
-  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   const jobStateDir = `${runtimeDir}/jobs`;
 
   // Minimal context for state reads — email is a no-op since we won't run handlers
@@ -115,7 +116,7 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
     Deno.exit(1);
   });
 
-  const runtimeDir = ctx.config.admin?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(ctx.config);
   const jobLogger = {
     info: (event: string, data?: Record<string, unknown>) =>
       console.log(`[jobs] ${event}`, data ?? ""),

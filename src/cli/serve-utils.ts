@@ -46,7 +46,9 @@ export function withSecurityHeaders(response: Response): Response {
  * such siblings. Use this helper wherever admin paths get special
  * treatment so all guards share the router's notion of "admin path".
  */
-export function isAdminPath(pathname: string, adminPrefix: string): boolean {
+export function isAdminPath(pathname: string, adminPrefix: string | null | undefined): boolean {
+  // No admin installed (no prefix): nothing is an admin path.
+  if (!adminPrefix) return false;
   return pathname === adminPrefix || pathname.startsWith(`${adminPrefix}/`);
 }
 
