@@ -407,6 +407,13 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Fixed
 
+- **`capabilities.list()` and `contribute()` refuse the string form of a point (#143).** Since typed keys
+  replaced strings, a plugin still calling `list("bar.actions")` or `contribute("bar.actions", fn)` (plain
+  JavaScript or `any`, which the type checker does not catch) got an empty list, or had its item registered under
+  no name, with nothing in the log, and quietly lost its bar buttons or admin pages. Both now throw a `TypeError`
+  that names the fix (the key the plugin that reads the point exports, or `capabilityKey("...")`). `get()` and
+  `provide()` still take a core slot's string name.
+
 - **A live editing session respects page ownership.** An `author` could join the inline-edit
   WebSocket on a page it did not create and type into the shared draft, though a commit of that page
   was refused. Core now applies the same rule at the socket: `admin` and `editor` any page, an
