@@ -418,11 +418,10 @@ app.use((freshCtx) => {
 app.fsRoutes("./routes");
 
 // 6. Build island bundles (plugin islands, e.g. the admin's, + your own in islands/)
-const builder = new Builder({
-  root: "./",
-  islandDir: "./islands",
-  islandSpecifiers: ctx.hooks.plugins().flatMap((p) => p.islandSpecifiers ?? []),
-});
+const builder = new Builder({ root: "./", islandDir: "./islands" });
+for (const spec of ctx.hooks.plugins().flatMap((p) => p.islandSpecifiers ?? [])) {
+  builder.registerIsland(spec);
+}
 const applySnapshot = await builder.build({ mode: "production", snapshot: "memory" });
 applySnapshot(app);
 
