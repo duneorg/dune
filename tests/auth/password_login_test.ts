@@ -46,7 +46,8 @@ async function withSite(
         `auth:\n  mode: dune\n  user_store: ${opts.userStore ?? "local"}\n` +
         (opts.password === false ? "" : "  providers:\n    password:\n      enabled: true\n"),
     );
-    await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
+    // No admin: core loads only the plugins a site lists, and this one lists none.
+    await Deno.writeTextFile(join(root, "config", "system.yaml"), "debug: false\n");
     for (const [path, body] of Object.entries(opts.theme ?? {})) {
       await Deno.mkdir(join(root, "themes", "t", path, ".."), { recursive: true });
       await Deno.writeTextFile(join(root, "themes", "t", path), body);
@@ -348,7 +349,8 @@ Deno.test("through createDuneApp() with the admin off: log in, then /auth/me", S
       join(root, "config", "site.yaml"),
       `title: Test Site\nurl: ${ORIGIN}\nauth:\n  mode: dune\n  providers:\n    password:\n      enabled: true\n`,
     );
-    await Deno.writeTextFile(join(root, "config", "system.yaml"), "admin:\n  enabled: false\n");
+    // No admin: core loads only the plugins a site lists, and this one lists none.
+    await Deno.writeTextFile(join(root, "config", "system.yaml"), "debug: false\n");
     const users = createLocalUserStore({ storage: createStorage({ rootDir: root }), usersDir: "data/users" });
     await users.create({
       email: "ed@example.test",
