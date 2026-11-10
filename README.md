@@ -89,6 +89,8 @@ This snapshots `deno.json` at install time rather than reading it live, so it go
 | `dune content:check` | Check content for broken links, missing templates |
 | `dune users:create <email> --password-prompt` | Create a local-password account (the explicit first admin; `--stdin`, `--generate`, `--username`). `DUNE_ADMIN_EMAIL` + `DUNE_ADMIN_PASSWORD` do the same at boot when no admin exists |
 | `dune users:passwd <email\|username>` | Set or reset a local user's password (prompt, `--stdin` or `--generate`; revokes their sessions) |
+| `dune migrate:config` | Update `config/*.yaml` for 0.36: snake_case keys, the admin's settings into the admin plugin's config, the admin plugin entry in `plugins:` (`--dry-run` first; idempotent) |
+| `dune authz:sign` | Sign existing permission tuple files with `DUNE_AUTHZ_HMAC_SECRET` (`--dry-run`) |
 
 ## Features
 
