@@ -21,18 +21,7 @@ export const DEFAULT_CONFIG: DuneConfig = {
   system: {
     content: {
       dir: "content",
-      markdown: {
-        extra: true,
-        auto_links: true,
-        auto_url_links: true,
-      },
       allow_tsx_format: ["admin"],
-    },
-    cache: {
-      enabled: true,
-      driver: "filesystem",
-      lifetime: 3600,
-      check: "file",
     },
     images: {
       default_quality: 80,
@@ -48,7 +37,6 @@ export const DEFAULT_CONFIG: DuneConfig = {
       orphan_protection: true,
     },
     debug: false,
-    timezone: "UTC",
   },
   theme: {
     name: "default",
@@ -58,12 +46,4 @@ export const DEFAULT_CONFIG: DuneConfig = {
   pluginList: [],
   themeList: [],
   autoDiscoverPlugins: false,
-  admin: {
-    path: "/admin",
-    session_lifetime: 86400,
-    runtime_dir: ".dune/admin",
-    enabled: true,
-    max_revisions: 50,
-    max_upload_mb: 100,
-  },
 };

@@ -24,6 +24,22 @@ export function resolveDataDir(config: DuneConfig): string {
   return config.system?.data_dir ?? DEFAULT_DATA_DIR;
 }
 
+const DEFAULT_RUNTIME_DIR = ".dune/admin";
+
+/**
+ * Machine-local runtime state (job state, revision history, scheduled actions,
+ * staged drafts, search analytics): `system.runtime_dir`, default `.dune/admin`.
+ * The default still carries the admin's name so existing sites keep their state.
+ */
+export function resolveRuntimeDir(config: DuneConfig): string {
+  return config.system?.runtime_dir ?? DEFAULT_RUNTIME_DIR;
+}
+
+/** Revisions kept per page: `system.max_revisions`, default 50 (0 keeps all). */
+export function resolveMaxRevisions(config: DuneConfig): number {
+  return config.system?.max_revisions ?? 50;
+}
+
 /** Compute the effective settings from the loaded config. */
 export function resolveFormsConfig(config: DuneConfig): ResolvedFormsConfig {
   return {

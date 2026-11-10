@@ -121,6 +121,21 @@ esbuild requires explicit subpath entries — a catch-all prefix entry alone is 
 }
 ```
 
+### Types and helpers for a distributed theme
+
+A theme that lives in a site's `themes/` directory can import types from `@dune/core` (the site pins its own core, so it cannot drift). A theme you **publish as a package** should depend on `@dune/theme-api` instead, which has no dependency on core, so the theme does not pull a second copy of core into every site:
+
+```json
+{ "imports": { "@dune/theme-api": "jsr:@dune/theme-api@^1" } }
+```
+
+```tsx
+import type { TemplateProps } from "@dune/theme-api";
+import { formatDate, getSearchUrl, truncate } from "@dune/theme-api"; // paginate, sortPages, groupByYear, getCanonicalUrl, buildPageTitle too
+```
+
+`@dune/core/theme-helpers` no longer exists (removed in 0.36); its helpers are in `@dune/theme-api`. `@dune/core/content/types` is still there for site code.
+
 ---
 
 ## Templates
@@ -149,7 +164,7 @@ export default function PostTemplate({ page, site, nav, children }: TemplateProp
 
 For typed markers, `@dune/core/ui/editable` provides server-only components that render exactly these attributes — `<EditableMarkdown sourcePath={page.sourcePath}>…</EditableMarkdown>` is identical to a hand-written `data-dune-body` wrapper, and `<EditableText field="title" sourcePath={…}>` marks individual frontmatter fields. They ship no JS and imply no editor; editor plugins consume the rendered markers.
 
-Markers never reach anonymous visitors: the response pipeline scrubs all `data-dune-*` attributes from HTML served without a validated editing session, so `data-dune-source` paths stay private. Consequence for themes: never use `data-dune-*` attributes as CSS/JS hooks for public styling — they are absent from public responses (verify markers while logged in as an admin, not in an incognito window).
+Markers never reach anonymous visitors: the response pipeline scrubs all `data-dune-*` attributes from HTML served without a validated editing session, so `data-dune-source` paths stay private. Consequence for themes: never use `data-dune-*` attributes as CSS/JS hooks for public styling — they are absent from public responses (verify markers while signed in as an editor, not in an incognito window).
 
 | Prop | Contents |
 |------|----------|

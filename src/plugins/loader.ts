@@ -38,6 +38,12 @@ import type { DunePlugin, ResponseTransformContext } from "../hooks/types.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import { logger } from "../core/logger.ts";
+import { writeDoctorReport } from "../plugin-api/doctor-report.ts";
+import { automaticAdminTierGrants } from "../auth/automatic-grants.ts";
+import { describeConflict, invalidAdminPrefix } from "../plugin-api/capabilities.ts";
+import { createPluginRuntime } from "../plugin-api/runtime.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
+import { pluginCoreMismatch } from "./core-handshake.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -46,6 +52,20 @@ export interface PluginLoaderOptions {
   storage: StorageAdapter;
   /** Absolute path to the site root directory */
   root: string;
+  /** True under `dune dev`. Passed to plugin factories (default false). */
+  dev?: boolean;
+}
+
+/**
+ * What a plugin factory (a default export that is a function) is given besides
+ * its merged config: facts that exist before plugins load and that a plugin
+ * cannot get from `PluginApi`.
+ */
+export interface PluginFactoryContext {
+  /** Absolute path to the site root directory. */
+  root: string;
+  /** True under `dune dev`. */
+  dev: boolean;
 }
 
 /**
@@ -99,7 +119,7 @@ async function discoverLocalPlugins(
  *  6. Call hooks.registerPlugin(plugin)
  */
 export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
-  const { config, hooks, root, storage } = options;
+  const { config, hooks, root, storage, dev = false } = options;
 
   const configured = config.pluginList ?? [];
   // Auto-discovery is opt-in — loading an arbitrary `.ts` file out of
@@ -125,6 +145,8 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
         ? await materializeHttpsPlugin(entry.src, entry.integrity!, root)
         : resolvePluginUrl(entry.src, root);
       const mod = await import(importUrl); // lockfile-safe: discovery (plugin specifier from site config, handled by plugin discovery subprocess)
+      const mismatch = pluginCoreMismatch(mod, entry.src);
+      if (mismatch) logger.warn("plugins.loader.core_instance_mismatch", { detail: mismatch });
 
       const exported = mod.default;
       if (!exported) {
@@ -140,7 +162,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
           ...(config.plugins[exported.pluginName ?? ""] ?? {}),
           ...(entry.config ?? {}),
         };
-        plugin = await exported(pluginCfg);
+        plugin = await exported(pluginCfg, { root, dev } satisfies PluginFactoryContext);
       } else if (typeof exported === "object") {
         plugin = exported as DunePlugin;
       } else {
@@ -379,6 +401,67 @@ export async function applyResponseTransforms(
 }
 
 /**
+ * Settle every plugin's `setup()` and resolve the capability slots.
+ *
+ * Idempotent: slots that have resolved are not run again, so the app builder,
+ * `dune build` and any other caller that needs to read a slot can call it.
+ * A throwing factory is logged and leaves its slot empty, but two setups the
+ * site cannot sensibly run with stop the boot: an exclusive slot (`editor.session`,
+ * `admin.prefix`) provided by two different plugins, and an `admin.prefix` that
+ * is not a usable path. Both would otherwise change which requests core treats
+ * as the admin's, so a bad value must not quietly mean "no admin".
+ */
+export async function resolveCapabilities(
+  ctx: import("../runtime/bootstrap.ts").BootstrapResult,
+): Promise<void> {
+  // Plugin setup() is fire-and-forget at registration time (see
+  // registry.ts's registerPlugin()), so a plugin's async setup() work
+  // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
+  // here. Capability factories and mount() both read state setup()
+  // initializes, so wait for every plugin's setup() to settle before any of
+  // them run.
+  await ctx.hooks.whenSetupComplete();
+
+  // An exclusive slot provided by two plugins is not something to pick a winner
+  // for: stop the boot, and leave `dune doctor --boot` the report that says why.
+  const conflicts = ctx.capabilityRegistry.conflicts();
+  if (conflicts.length > 0) {
+    await writeDoctorReport(async () => ({
+      providers: ctx.capabilityRegistry.reader.providers(),
+      conflicts,
+      scheduledActions: 0,
+    }));
+    throw new Error(conflicts.map(describeConflict).join("\n"));
+  }
+
+  // Capability slots: every plugin has declared by now, and the infrastructure
+  // a factory may need (history, hooks, storage) exists. A throwing factory is
+  // logged and leaves its slot empty; it never stops the mount.
+  await ctx.capabilityRegistry.resolve({
+    storage: ctx.storage,
+    config: ctx.config,
+    history: ctx.history,
+    hooks: ctx.hooks,
+    services: ctx.pluginServices,
+    dataDir: resolveRuntimeDir(ctx.config),
+    // NOTE: intentionally still the raw config value, not engine.contentDir.
+    // `storage` is dual-purpose (content AND data files), so this pair only
+    // stays correct when content.src is unset. Supporting content.src here
+    // needs separate content/data storage fields; content.src's driving use
+    // case (multisite demo fixtures) has no admin.
+    contentDir: ctx.config.system.content.dir,
+  });
+
+  const badPrefix = invalidAdminPrefix(ctx.capabilityRegistry.reader);
+  if (badPrefix !== null) {
+    throw new Error(
+      `The "admin.prefix" capability provided ${JSON.stringify(badPrefix)}, which is not a usable path: ` +
+        `it must start with "/", must not be "/" and must not end with "/" (for example "/admin").`,
+    );
+  }
+}
+
+/**
  * Resolve the plugins' capability slots, then call every plugin's `mount()`
  * hook in registration order.
  *
@@ -408,46 +491,33 @@ export async function mountPlugins(
   app: import("fresh").App<any>,
   ctx: import("../runtime/bootstrap.ts").BootstrapResult,
 ): Promise<void> {
-  // Plugin setup() is fire-and-forget at registration time (see
-  // registry.ts's registerPlugin()), so a plugin's async setup() work
-  // (e.g. @dune/plugin-admin's auditLogger.init()) may still be in flight
-  // here. Capability factories and mount() both read state setup()
-  // initializes, so wait for every plugin's setup() to settle before any of
-  // them run.
-  await ctx.hooks.whenSetupComplete();
+  await resolveCapabilities(ctx);
 
   const registeredOrder = ctx.hooks.plugins();
 
-  const adminCfg = ctx.config.admin;
 
-  // Capability slots: every plugin has declared by now, and the infrastructure
-  // a factory may need (history, hooks, storage) exists. A throwing factory is
-  // logged and leaves its slot empty; it never stops the mount.
-  await ctx.capabilityRegistry.resolve({
-    storage: ctx.storage,
-    config: ctx.config,
-    history: ctx.history,
-    hooks: ctx.hooks,
-    services: ctx.pluginServices,
-    dataDir: adminCfg?.runtime_dir ?? ".dune/admin",
-    // NOTE: intentionally still the raw config value, not engine.contentDir.
-    // `storage` is dual-purpose (content AND data files), so this pair only
-    // stays correct when content.src is unset. Supporting content.src here
-    // needs separate content/data storage fields; content.src's driving use
-    // case (multisite demo fixtures) has no admin.
-    contentDir: ctx.config.system.content.dir,
+  logger.info("capabilities.resolved", {
+    providers: ctx.capabilityRegistry.reader.providers()
+      .map((p) => `${p.name}=${p.provider}${p.status === "active" || p.kind === "contribution" ? "" : ` (${p.status})`}`)
+      .join(", ") || "none",
   });
+  await writeDoctorReport(async () => ({
+    providers: ctx.capabilityRegistry.reader.providers(),
+    scheduledActions: (await ctx.pluginServices.engines.scheduler.list()).length,
+    automaticGrants: automaticAdminTierGrants(ctx.config),
+  }));
 
   // mount(), registration order (admin last): a plugin's own
   // route-finalizing work (e.g. admin's internal registerPluginPublicRoutes()
   // call) must run after every other plugin's mount()-time middleware and
   // routes already exist — see this function's doc comment.
+  const runtime = createPluginRuntime(ctx);
   for (const plugin of registeredOrder) {
     if (!plugin.mount) continue;
     try {
       await plugin.mount({
         app,
-        bootstrap: ctx,
+        runtime,
         services: ctx.pluginServices,
         capabilities: ctx.capabilities,
       });

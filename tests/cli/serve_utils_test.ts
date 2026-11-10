@@ -184,3 +184,10 @@ Deno.test("servePluginAsset: serves encoded names and rejects encoded traversal"
     await Deno.remove(base, { recursive: true });
   }
 });
+
+Deno.test("isAdminPath: with no admin prefix nothing is an admin path", () => {
+  assertEquals(isAdminPath("/admin", null), false);
+  assertEquals(isAdminPath("/admin/pages", undefined), false);
+  assertEquals(isAdminPath("/", ""), false);
+  assertEquals(isAdminPath("/anything", null), false);
+});

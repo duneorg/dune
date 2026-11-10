@@ -12,19 +12,33 @@
 import {
   describeLegacyKeys,
   describeMovedKeys,
+  findIgnoredKeys,
   findLegacyKeys,
   findMovedKeys,
 } from "./legacy-keys.ts";
 import { parse as parseYaml } from "@std/yaml";
 import { join, normalize, resolve } from "@std/path";
 import { ConfigError } from "../core/errors.ts";
+import { logger } from "../core/logger.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig } from "./types.ts";
 import { DEFAULT_CONFIG } from "./defaults.ts";
 import { validateConfig } from "./validator.ts";
 
+/** Ignored-key warnings already logged, so a reload (dev watch) does not repeat them. */
+const warnedIgnored = new Set<string>();
+
 /**
- * Deep merge two objects.  Arrays are replaced, not concatenated.
+ * Keys whose value an override replaces whole instead of merging into. A mapping
+ * that is a complete answer (`system.role_grants`: which groups hold which
+ * relation) means "exactly this" in an environment overlay; merged key by key,
+ * an overlay `role_grants: {}` could never switch the base's grants off.
+ */
+const REPLACED_KEYS = new Set(["role_grants"]);
+
+/**
+ * Deep merge two objects.  Arrays are replaced, not concatenated, and so are
+ * the values under {@link REPLACED_KEYS}.
  *
  * @param depth  Internal recursion depth guard — callers should not pass this.
  *   Limits recursion to 20 levels to prevent a stack overflow from
@@ -47,6 +61,7 @@ export function deepMerge<T extends Record<string, unknown>>(
     const overVal = override[key];
 
     if (
+      !REPLACED_KEYS.has(key) &&
       overVal !== null &&
       typeof overVal === "object" &&
       !Array.isArray(overVal) &&
@@ -121,6 +136,17 @@ async function loadYamlFile(
           `Config keys changed: ${parts.join("; ")}. ${hints.join(" ")}`,
           path,
         );
+      }
+      for (const k of findIgnoredKeys(kind, parsed)) {
+        const id = `${path}:${k.path}`;
+        if (warnedIgnored.has(id)) continue;
+        warnedIgnored.add(id);
+        logger.warn("config.key.ignored", {
+          file: path,
+          key: k.path,
+          reason: k.to,
+          hint: "Setting it changes nothing; `dune migrate:config` removes it.",
+        });
       }
     }
     return parsed as Record<string, unknown>;
@@ -200,15 +226,6 @@ export interface LoadConfigOptions {
   skipValidation?: boolean;
 }
 
-/** Merge a system.yaml `admin:` block into the top-level `admin` config. */
-function mergeAdminYaml(
-  config: Record<string, unknown>,
-  admin: unknown,
-): Record<string, unknown> {
-  if (!admin || typeof admin !== "object" || Array.isArray(admin)) return config;
-  return deepMerge(config, { admin: admin as Record<string, unknown> });
-}
-
 /**
  * Load and merge configuration from all sources.
  * Returns a fully resolved DuneConfig object.
@@ -276,15 +293,9 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
     config = deepMerge(config, { plugins: pluginCfgsFromSite });
   }
 
-  // system.yaml values go under the "system" key, except `admin:` — that
-  // is DuneConfig.admin (what bootstrap and the admin plugin read), not part
-  // of SystemConfig. Without this promotion `admin.enabled: false` and every
-  // other documented `admin:` key was silently ignored.
-  const { admin: adminFromSystem, ...systemWithoutAdmin } = systemYaml;
-  if (Object.keys(systemWithoutAdmin).length > 0) {
-    config = deepMerge(config, { system: systemWithoutAdmin });
+  if (Object.keys(systemYaml).length > 0) {
+    config = deepMerge(config, { system: systemYaml });
   }
-  config = mergeAdminYaml(config, adminFromSystem);
 
   // --- Layer 3: Environment-specific overrides ---
   const envDir = `config/env/${environment}`;
@@ -296,11 +307,9 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   if (Object.keys(envSiteYaml).length > 0) {
     config = deepMerge(config, { site: envSiteYaml });
   }
-  const { admin: adminFromEnvSystem, ...envSystemWithoutAdmin } = envSystemYaml;
-  if (Object.keys(envSystemWithoutAdmin).length > 0) {
-    config = deepMerge(config, { system: envSystemWithoutAdmin });
+  if (Object.keys(envSystemYaml).length > 0) {
+    config = deepMerge(config, { system: envSystemYaml });
   }
-  config = mergeAdminYaml(config, adminFromEnvSystem);
 
   // --- Layer 4: dune.config.ts ---
   if (!skipConfigTs) {

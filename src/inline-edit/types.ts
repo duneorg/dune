@@ -1,16 +1,17 @@
 /**
  * Inline editing service port.
  *
- * Core defines this interface and consumes it from the admin panel routes
- * (`/api/inline-edit/ws`, the presence endpoint, and the content commit /
- * field-patch endpoints). It does not ship an implementation: a plugin
- * provides one as the `inline-edit` capability (e.g.
- * `jsr:@dune/plugin-inline-edit`), and the endpoints respond 501 when
- * no plugin has filled the slot.
+ * Core owns who may edit: after the site's authentication has run it resolves
+ * the editor (a site user, or whoever the `editor.session` provider signs in),
+ * checks `pages.update` and, for requests that change something, the request's
+ * origin. It then hands the request to the plugin that provides the
+ * `editor.inline` capability (e.g. `jsr:@dune/plugin-inline-edit`) at
+ * `/api/inline-edit/ws` (a WebSocket upgrade) and `/api/inline-edit/*` (plain
+ * requests). Both respond 501 when no plugin has filled the slot.
  *
- * The wire protocol spoken over the WebSocket — and any client-side editor
- * UI — is entirely the providing plugin's concern; core treats both as
- * opaque.
+ * The wire protocol spoken over the WebSocket, the HTTP routes below
+ * `/api/inline-edit/` and any client-side editor UI are entirely the providing
+ * plugin's concern; core treats them as opaque.
  */
 
 // ── Presence ──────────────────────────────────────────────────────────────────
@@ -29,6 +30,47 @@ export interface DocumentPresence {
   editors: ActiveEditor[];
 }
 
+// ── Editor ────────────────────────────────────────────────────────────────────
+
+/**
+ * Who is editing: an authenticated user that core has already checked for
+ * `pages.update`. `source` says where the identity came from.
+ */
+export interface EditorIdentity {
+  id: string;
+  /** Display name: the username, else the name, else the email. */
+  username: string;
+  /** Every role on the user record (admin-tier roles and content-gating tags mixed). */
+  roles: string[];
+  /**
+   * The admin-tier relation this editor holds on the site: `admin` and `editor` may edit any
+   * page, `author` only the pages it created. Read by core from the authz system (what the
+   * user actually holds, through the site's `system.role_grants` or a direct tuple), not
+   * inferred from role names: a group `staff` mapped to `editor` makes its members `editor`,
+   * and an `editor` role mapped down to `author` makes them `author`. A provider applies its
+   * ownership rules to this and not to role names.
+   */
+  relation: "admin" | "editor" | "author";
+  /** `site`: signed in through the site's own login; `session`: through the `editor.session` provider. */
+  source: "site" | "session";
+}
+
+/** What core hands {@link InlineEditManager.handleRequest} besides the request. */
+export interface InlineEditRequestContext {
+  /** The editor, already authenticated and checked for `pages.update`. */
+  editor: EditorIdentity;
+  /**
+   * The path below `/api/inline-edit/`, without a leading slash and still
+   * percent-encoded (`content/pages%2Fabout%2Fdefault.md/commit`).
+   */
+  path: string;
+  /**
+   * Frontmatter of an indexed page, or null when `sourcePath` is not a page of
+   * this site. Lets a handler apply its own ownership rules.
+   */
+  pageFrontmatter(sourcePath: string): Promise<Record<string, unknown> | null>;
+}
+
 // ── Manager ───────────────────────────────────────────────────────────────────
 
 /** Public interface for an inline editing server manager. */
@@ -41,22 +83,14 @@ export interface InlineEditManager {
   handleUpgrade(req: Request, user: { id: string; name: string }): Response;
 
   /**
-   * Flush the live editing state for `sourcePath` to a history revision
-   * and write the committed Markdown back to the `.md` file.
-   * This is the "Save" action triggered by the client.
+   * Handle a plain HTTP request below `/api/inline-edit/` (everything except
+   * the WebSocket upgrade). Core has authenticated the editor, checked
+   * `pages.update` and, for POST, PUT, PATCH and DELETE, that the request is
+   * same-origin; the handler enforces anything page-specific (which page types
+   * and owners this editor may write) and fires the `onPage*` events for what
+   * it writes. Return 404 for a path it does not serve.
    */
-  commit(sourcePath: string, author: string): Promise<void>;
-
-  /**
-   * Patch one or more frontmatter fields on a content file.
-   * Writes through the history engine (creates a revision) and patches the
-   * `.md` file on disk.  Does not touch the Markdown body.
-   */
-  patchFields(
-    sourcePath: string,
-    fields: Record<string, unknown>,
-    author: string,
-  ): Promise<void>;
+  handleRequest(req: Request, ctx: InlineEditRequestContext): Promise<Response>;
 
   /**
    * Return live presence data — which documents have active editing

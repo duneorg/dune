@@ -30,8 +30,10 @@
  * ## Changes in v0.36
  *
  * - `PluginApi.capabilities` / `MountApi.capabilities` — what plugins provide to
- *   core and to each other (`auth.session`, `scheduler.executor`, `inline-edit`,
- *   `editor.content`, and the `admin.pages` / `bar.actions` contribution points).
+ *   core and to each other (`admin.prefix`, `editor.session`, `scheduler.executor`,
+ *   `editor.inline`). Extension points a plugin offers to others (`admin.pages`,
+ *   `admin.routes`, `admin.editor`, `bar.actions`) are typed keys (`capabilityKey`) that
+ *   plugin exports, and are not part of core's contract.
  *   Replaces `DunePlugin.adminServices`, `adminPages`, `adminBarActions` and
  *   `mountEarly`, and the untyped `ctx.adminContext`. See `@dune/core/plugin-api`.
  *
@@ -97,17 +99,15 @@ export const CORE_VERSION: string = denoJson.version;
  */
 export const CORE_INSTANCE: Readonly<Record<never, never>> = Object.freeze({});
 
-export { loadPlugins, loadPluginAdminConfigs, applyResponseTransforms, mountPlugins } from "./loader.ts";
+export {
+  applyResponseTransforms,
+  loadPluginAdminConfigs,
+  loadPlugins,
+  mountPlugins,
+  resolveCapabilities,
+} from "./loader.ts";
 export type { PluginLoaderOptions } from "./loader.ts";
 export type {
-  /** A button contributed to the shared admin bar UI through the `bar.actions` contribution point. */
-  AdminBarAction,
-  /** Context passed to a `bar.actions` contribution. */
-  AdminBarActionContext,
-  /** A custom admin page contributed by a plugin through the `admin.pages` contribution point. */
-  AdminPageRegistration,
-  /** A guarded admin route (any method) contributed through the `admin.routes` contribution point. */
-  AdminRouteRegistration,
   /** A Dune plugin — a plain object (or factory return value) registering hook handlers and optional admin pages, schemas, and static assets. */
   DunePlugin,
   /** Context passed to each hook handler */
@@ -124,8 +124,6 @@ export type {
   ResponseTransformContext,
 } from "../hooks/types.ts";
 export type {
-  /** Plugin-provided replacement for the built-in block editor. Provide it as the `editor.content` capability. */
-  ContentEditorPlugin,
   /** Passed to {@link DunePlugin.mount} — provides everything a plugin needs to register Fresh routes and wire up runtime services. */
   MountApi,
 } from "../hooks/types.ts";

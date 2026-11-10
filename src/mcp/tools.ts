@@ -331,12 +331,7 @@ function makeGetConfigHandler(engine: DuneEngine): ToolHandler {
           supported: config.system.languages?.supported ?? [],
           default: config.system.languages?.default ?? "en",
         },
-        cacheEnabled: config.system.cache?.enabled ?? false,
         debugMode: config.system.debug ?? false,
-      },
-      admin: {
-        path: config.admin?.path ?? "/admin",
-        auditEnabled: config.admin?.audit?.enabled !== false,
       },
       plugins: (config.pluginList ?? []).map((entry) => {
         const e = entry as { src?: string; spec?: string };

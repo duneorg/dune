@@ -88,7 +88,7 @@ There is **no** `email` or `db` field on this context — nothing is injected fo
 
 **`ctx.content` is the same `ContentApi` — `.pages()`, `.page()`, `.search()`, `.taxonomy()` — that `bootstrap.contentApi` exposes**, injected via `hooks.setContentApi()`. It's `undefined`, not a query-capable stub, for the handful of hooks that fire before `bootstrap()` finishes building it: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onSearchRecordsCollect`, `onSearchEngineCreate`. Present for every other live hook (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`, `onRequest`, `onCacheInvalidate`, `onRebuild`, `onThemeSwitch`). **Also `undefined` on the lightweight, standalone `HookRegistry` instances `content:create` and `migrate:*` (with `--fire-hooks`) build outside a full `bootstrap()`** — those never call `setContentApi()` at all. `content:delete` is not in that group; it runs through a real `bootstrap()`, so its `onPageDelete` gets a working `ctx.content`. Always guard with `ctx.content?.` unless you've confirmed your specific hook only ever fires post-bootstrap. `onContentIndexReady`'s `data` (the raw `PageIndex[]`) is still the only thing available during the earliest bootstrap hooks — filter/map that array directly there instead.
 
-`data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onRequest` → `Request` directly (not wrapped); `onPageCreate`/`onPageUpdate` → `{ sourcePath: string, title: string }`; `onPageDelete` → `{ sourcePath: string }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`). Check `src/hooks/types.ts`'s `HookEvent` union and the actual `hooks.fire()` call site for a given event (not just the docs) for its real shape — see the note below on hooks that are declared but never fired.
+`data`'s shape is different per event — some examples: `onConfigLoaded` → `DuneConfig`; `onContentIndexReady` → `PageIndex[]`; `onRequest` → `Request` directly (not wrapped); `onPageCreate` → `{ sourcePath, title, actor? }`; `onPageUpdate`/`onPageDelete` → `{ sourcePath, actor? }`; `onPageMove` → `{ moves: [{ from, to }], actor? }`; `onWorkflowChange` → `{ sourcePath, from, to }` (`WorkflowStatus`). `actor` is the name of the person who made the write, when a person did (an admin, the inline-edit bar); it is absent for CLI and automated writes. Check `src/hooks/types.ts`'s `HookEvent` union and the actual `hooks.fire()` call site for a given event (not just the docs) for its real shape — see the note below on hooks that are declared but never fired.
 
 ---
 
@@ -213,35 +213,33 @@ export default {
 
 `hooks: {}` on the plugin object is still required (`DunePlugin.hooks` isn't optional) even if you register everything dynamically through `setup()` instead.
 
-**4 of 24 declared hook names in the `HookEvent` union are never fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender`, and `onResponse` remain declared but intentionally unimplemented — not overlooked, but genuine design questions with no clean fix:
-
-- `onRouteResolved`/`onPageLoaded` describe a two-phase resolution (route matched to a lightweight `PageIndex`, then the full `Page` loaded) that doesn't exist in the current engine — `engine.resolve()` does both in one step and returns the full `Page` directly. Firing both as documented would mean fabricating a second event from data already in hand, or restructuring `resolve()` into two real phases.
-- `onAfterRender`/`onResponse` need the actual rendered HTML string, but Fresh's `render()` returns a `Response` directly — core never sees the HTML itself. Getting it would mean intercepting and buffering every response body into memory via `response.text()`, killing streaming, as a blanket per-request cost whether or not any plugin is listening.
-
-Both reasons are documented directly on the `HookEvent` type declaration in `src/hooks/types.ts`. Verify a hook is actually live before building on it: `grep -rn '"eventName"' src/ | grep -v hooks/types.ts` in the core repo (and the same in `plugin-admin/`) — if the only hits are the type declaration and the validator's allowlist, it's dead. Confirmed live: `onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRequest`, `onCollectionResolved`, `onBeforeRender`, `onMarkdownProcess`, `onMarkdownProcessed`, `onMediaDiscovered`, `onCacheHit`, `onCacheMiss`, `onCacheInvalidate`, `onApiRequest`, `onApiResponse`, `onRebuild`, `onThemeSwitch`, `onSearchRecordsCollect`, `onSearchEngineCreate`, `onPageCreate`, `onPageUpdate`, `onPageDelete`, `onWorkflowChange`.
+**Every hook in `HookEvent` is fired.** `onRouteResolved`, `onPageLoaded`, `onAfterRender` and `onResponse` used to be declared and never fired; they were removed in 0.36, so registering one is a type error. For the rendered page use `transformResponse` (it sees the finished `Response`); for the template props use `onBeforeRender`. Page-mutation events (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onPageMove`/`onWorkflowChange`) are fired by whoever writes the page, so a plugin that writes pages must fire them itself, naming the person in `actor` when there is one.
 
 ---
 
 ## Admin routes
 
-There is no `onAdminRoutes` hook, and `@dune/core` itself does not export `requirePermission`/`csrfCheck`. You do not need them: a plugin **contributes** its admin routes in `setup()`, and the admin package mounts them behind its own authentication, CSRF check and permission check. Your handler only runs for a request that passed all three. (Contributions are read by whichever admin package is installed; with none, nothing is mounted.)
+There is no `onAdminRoutes` hook, and `@dune/core` itself does not export `requirePermission`/`csrfCheck`. You do not need them: a plugin **contributes** its admin routes in `setup()`, and the admin package mounts them behind its own authentication, CSRF check and permission check. Your handler only runs for a request that passed all three. (Contributions are read by the admin package; with none installed, nothing is mounted.) The admin is not loaded by default: a site runs it only if `jsr:@dune/plugin-admin` is listed under `plugins:`.
 
-There are two supported ways to add admin routes, both through `api.capabilities.contribute`:
+A plugin owns its extension points as **typed keys** (`CapabilityKey<T>`, made with `capabilityKey(name)`), exported next to its types. The admin's are `ADMIN_PAGES`, `ADMIN_ROUTES` and `ADMIN_EDITOR`, imported from `@dune/plugin-admin`; the inline-edit bar's is `BAR_ACTIONS`, from `@dune/plugin-inline-edit`. There is no module augmentation (`declare module`): JSR refuses it in a published package. Key names are prefixed with the plugin that reads them (`admin.*`, `bar.*`); a plugin that does not want the dependency may recreate a key from its name, `capabilityKey<…>("bar.actions")`, since one name is one capability.
 
-### `admin.pages` — authenticated GET pages with a sidebar entry (the normal case)
+There are two supported ways to add admin routes, both through `api.capabilities.contribute` with the admin's keys:
+
+### `ADMIN_PAGES` (`admin.pages`) — authenticated GET pages with a sidebar entry (the normal case)
 
 Each entry adds a route under the admin prefix that's rendered inside the admin shell (sidebar, header) automatically. Auth and the `permission` check are both enforced by the mount code — the handler itself does not need to check anything.
 
 ```ts
 // plugins/my-plugin/mod.ts
 import type { DunePlugin } from "@dune/core";
+import { ADMIN_PAGES } from "@dune/plugin-admin";
 
 export default {
   name: "my-plugin",
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.contribute("admin.pages", {
+    api.capabilities.contribute(ADMIN_PAGES, {
       path: "/my-plugin",              // relative to the admin prefix → /admin/my-plugin
       label: "My Plugin",
       icon: "🧩",
@@ -260,20 +258,21 @@ export default {
 
 `path` is relative to the admin prefix — do not include `/admin` yourself, or you'll register `/admin/admin/my-plugin`. GET only; for anything else use `admin.routes`.
 
-### `admin.routes` — guarded API routes (`POST`/`PUT`/`PATCH`/`DELETE`, or a GET API)
+### `ADMIN_ROUTES` (`admin.routes`) — guarded API routes (`POST`/`PUT`/`PATCH`/`DELETE`, or a GET API)
 
 For a mutation endpoint, or a GET route that is not a sidebar page:
 
 ```ts
 // plugins/my-plugin/mod.ts
 import type { DunePlugin } from "@dune/core";
+import { ADMIN_ROUTES } from "@dune/plugin-admin";
 
 export default {
   name: "my-plugin",
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.contribute("admin.routes", {
+    api.capabilities.contribute(ADMIN_ROUTES, {
       method: "POST",
       path: "/api/my-plugin/action",   // relative to the admin prefix → /admin/api/my-plugin/action
       permission: "config.update",     // required — who may call this route
@@ -291,7 +290,7 @@ export default {
 
 ### Routes registered directly in `mount()` are not behind the admin
 
-A route you register with `app.get()`/`app.post()` in your own `mount()` runs outside the admin's middleware (mounts run in registration order and the admin mounts last), so it has **no** admin authentication, CSRF check or permission check, and the admin's `withGuards()` helper cannot work there (it needs the admin's per-request state). Never put an admin-only operation there; contribute it as `admin.routes`. If your route needs to know who the admin is, ask the `auth.session` capability: keep `api.capabilities` from `setup(api)` and call `capabilities.get("auth.session")?.authenticate(req)` at request time (it returns `{ authenticated, user? }`; with no admin installed it is `undefined`). Headless-mode developers who call `mountDuneAdmin(app, ctx)` themselves and register routes *after* it may wrap those with `withGuards()` from `@dune/plugin-admin/admin/guards`.
+A route you register with `app.get()`/`app.post()` in your own `mount()` runs outside the admin's middleware (mounts run in registration order and the admin mounts last), so it has **no** admin authentication, CSRF check or permission check, and the admin's `withGuards()` helper cannot work there (it needs the admin's per-request state). Never put an admin-only operation there; contribute it as `admin.routes`. If your route needs to know who the admin is, ask the `editor.session` capability: keep `api.capabilities` from `setup(api)` and call `capabilities.get("editor.session")?.authenticate(req)` at request time (it returns `{ authenticated, user? }`; with no admin installed it is `undefined`). Headless-mode developers who call `mountDuneAdmin(app, ctx)` themselves and register routes *after* it may wrap those with `withGuards()` from `@dune/plugin-admin/admin/guards`.
 
 ### `publicRoutes` — declarative public-facing routes
 
@@ -318,7 +317,7 @@ export default {
 
 Registered before Dune's content catch-all, so a `publicRoutes` entry takes priority over a content page at the same path. Handlers get a full Fresh context (`ctx.render()`, islands, middleware) — unlike `mount()`, you don't need the raw `app` reference. These routes are **not** admin-guarded (no permission check, no auth) — that's the tradeoff for being public in the first place; add your own check inside the handler if the route needs one.
 
-**`publicRoutes` and the `admin.*` contributions are wired up differently — `publicRoutes` is `@dune/core`-owned, `admin.pages` and `admin.routes` are read by the admin package.** `bootstrap()` collects every plugin's `publicRoutes` onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` itself registers them as live Fresh routes (`registerPluginPublicRoutes()`, `src/runtime/register-plugin-routes.ts`) — this works in every `createDuneApp()` context: `admin.enabled: false`, no `@dune/plugin-admin` installed at all, `dune mcp:serve`'s lightweight bootstrap, all of it. The admin contributions are different: only the admin package reads them (`capabilities.list("admin.pages")` / `("admin.routes")`), because mounting them means enforcing each route's authentication, CSRF and declared `permission` through the admin's own auth system — something `@dune/core` has no reason to depend on. So they need `admin.enabled !== false` (the default) in the normal `dune serve`/`dune dev` path, or an explicit `mountDuneAdmin(app, ctx)` call in headless mode — skip both and they go dark with no error, while `publicRoutes` keeps working regardless.
+**`publicRoutes` and the `admin.*` contributions are wired up differently — `publicRoutes` is `@dune/core`-owned, `admin.pages` and `admin.routes` are read by the admin package.** `bootstrap()` collects every plugin's `publicRoutes` onto `BootstrapResult.pluginPublicRoutes`, and `createDuneApp()` itself registers them as live Fresh routes (`registerPluginPublicRoutes()`, `src/runtime/register-plugin-routes.ts`) — this works in every `createDuneApp()` context: no `@dune/plugin-admin` installed, `dune mcp:serve`'s lightweight bootstrap, all of it. The admin contributions are different: only the admin package reads them (`capabilities.list(ADMIN_PAGES)` / `(ADMIN_ROUTES)`), because mounting them means enforcing each route's authentication, CSRF and declared `permission` through the admin's own auth system — something `@dune/core` has no reason to depend on. So they need `jsr:@dune/plugin-admin` listed under `plugins:` in the normal `dune serve`/`dune dev` path, or an explicit `mountDuneAdmin(app, ctx)` call in headless mode — skip both and they go dark with no error, while `publicRoutes` keeps working regardless.
 
 Headless-mode developers who call `mountDuneAdmin(app, ctx)` directly (never going through `createDuneApp()`) still get `publicRoutes` too — `mountDuneAdmin()` delegates to the same core `registerPluginPublicRoutes()` function rather than re-implementing it, and calling it twice for the same bootstrap (once from `createDuneApp()`, once from `mountDuneAdmin()` when both happen to run in the same process) is a safe no-op, not a double-registration.
 
@@ -334,11 +333,21 @@ Real values of the `AdminPermission` union (`plugin-admin/src/admin/types.ts`) �
 | `"config.read"` / `"config.update"` | Site config |
 | `"submissions.read"` / `"submissions.delete"` | Form submissions |
 
-Panel access itself is `authz.check({ canThey: "access", onWhat: { type: "app", id: "admin" } })`, not a permission string. There is no `"admin.access"` — that name existed only on the removed `ROLE_PERMISSIONS` table and is now rejected as unknown.
+Panel access itself is `authz.check({ canThey: "access", onWhat: { type: "app", id: "site" } })` (the site resource; it was `app:admin` before 0.36), not a permission string. There is no `"admin.access"` — that name existed only on the removed `ROLE_PERMISSIONS` table and is now rejected as unknown.
 
 There is no `"pages.view"`, `"users.manage"`, or `"plugins.manage"` — use the split create/read/update/delete permissions above.
 
 Use the most restrictive permission that still allows the action.
+
+---
+
+## Writing content from a plugin, and serving the inline editor
+
+**Who is editing.** Core decides, once per request: a signed-in site user, or the user of the `editor.session` provider, who holds `pages.update` by `authz.check()`. A plugin does not re-derive it. For a plugin route outside the admin, read a site user with `getUser(req)` (`@dune/core/auth/types`) or ask `capabilities.get("editor.session")?.authenticate(req)`; for the permission use `services.authz` (it can seed tuples for your own accounts with `seedAdminTuples`; the check itself is `runtime.authz?.check(...)` on `{ type: "app", id: "site" }`).
+
+**Serving the editor.** The `editor.inline` slot is how `@dune/plugin-inline-edit` plugs in. Core owns `/api/inline-edit/*`: it resolves the editor, checks `pages.update` and (for writes) that the request is same-origin, then calls your `InlineEditManager`: `handleUpgrade(req, user)` for the WebSocket and `handleRequest(req, { editor, path, pageFrontmatter })` for every other request below `/api/inline-edit/`. You choose the routes and apply page-specific rules (which file types, whose pages: `editor.roles`, `pageFrontmatter(sourcePath)`); return 404 for a path you do not serve. Fire `onPageUpdate` with `actor: editor.username` after a write.
+
+**Reacting to writes.** Webhooks, search indexing and audit are listeners on the page events, not calls inside a particular route: the admin's content webhooks are a hook handler, so a write from the bar, MCP or the CLI reaches them too. Register yours with `hooks.on("onPageUpdate", ...)` from `mount()` (`runtime.hooks`) and read `actor` from the payload.
 
 ---
 
@@ -368,7 +377,7 @@ Deno.test("my plugin", async () => {
 });
 ```
 
-`h.render(path)` is shorthand for `(await h.fetch(path)).text()` — both only reach the content API, since the harness runs without the admin plugin by default (`disableAdmin: true`). For a full page route (`/home`) or an admin/mount()-registered route, use the Playwright E2E suite against a real server instead — the harness can't reach either.
+`h.render(path)` is shorthand for `(await h.fetch(path)).text()` — both only reach the content API, since the harness loads only the plugins you pass, and the admin is not one unless you list it. For a full page route (`/home`) or an admin/mount()-registered route, use the Playwright E2E suite against a real server instead — the harness can't reach either.
 
 ---
 
@@ -384,7 +393,7 @@ Deno.test("my plugin", async () => {
 
 **`mount()` runs once at startup, after the Fresh `App` is ready.** Register routes and middleware there; don't rely on it for per-request async work — that belongs in the route handlers themselves.
 
-**Hook error handling is not uniform — check the caller before assuming.** `HookRegistry.fire()` itself (`src/hooks/registry.ts`) has no try/catch around handler calls. Whether a throwing hook is contained depends entirely on who calls `fire()`: the admin panel's page CRUD routes (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`) call it as `hooks.fire(...).catch(() => {})` — errors are silently swallowed, not even logged. Startup and engine-lifecycle hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRebuild`, `onThemeSwitch`) are `await`ed directly with no catch — a throwing handler there propagates and can fail bootstrap or a rebuild. Don't assume either behavior; if a hook has a side effect that must succeed or must not silently vanish, handle its own errors explicitly and log them yourself.
+**Hook error handling is not uniform — check the caller before assuming.** `HookRegistry.fire()` itself (`src/hooks/registry.ts`) has no try/catch around handler calls. Whether a throwing hook is contained depends entirely on who calls `fire()`: the admin panel's page CRUD routes (`onPageCreate`/`onPageUpdate`/`onPageDelete`/`onWorkflowChange`) call it through `announcePageEvent()`, which catches a failing handler and logs a console warning; the request never fails because of a hook. Startup and engine-lifecycle hooks (`onConfigLoaded`, `onStorageReady`, `onContentIndexReady`, `onRebuild`, `onThemeSwitch`) are `await`ed directly with no catch — a throwing handler there propagates and can fail bootstrap or a rebuild. Don't assume either behavior; if a hook has a side effect that must succeed or must not silently vanish, handle its own errors explicitly and log them yourself.
 
 **Pin JSR/npm plugin versions.** `src: jsr:@dune/blog` without a version pinned fails validation. Use `^major.minor.patch` at minimum.
 

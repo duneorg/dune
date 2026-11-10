@@ -3,7 +3,6 @@
  */
 
 import type { WorkflowStage, WorkflowTransition } from "../workflow/types.ts";
-import type { MachineTranslationConfig } from "../mt/types.ts";
 import type { FormsConfig } from "./forms-config.ts";
 
 /**
@@ -137,12 +136,6 @@ export interface SiteConfig {
     stages: WorkflowStage[];
     transitions: WorkflowTransition[];
   };
-  /**
-   * Machine translation provider configuration.
-   * When present (and enabled), editors can request automatic translations
-   * from the admin panel.
-   */
-  machine_translation?: MachineTranslationConfig;
   /**
    * XML sitemap generation settings.
    * The sitemap is served at /sitemap.xml.

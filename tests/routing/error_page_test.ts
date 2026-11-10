@@ -29,13 +29,10 @@ const stubConfig: DuneConfig = {
   system: {
     content: {
       dir: "content",
-      markdown: { extra: false, auto_links: false, auto_url_links: false },
     },
-    cache: { enabled: false, driver: "memory", lifetime: 0, check: "none" },
     images: { default_quality: 80, cache_dir: ".cache", allowed_sizes: [] },
     languages: { supported: ["en"], default: "en", include_default_in_url: false },
     debug: false,
-    timezone: "UTC",
   },
   theme: { name: "default", custom: {} },
   themeList: [],

@@ -41,21 +41,6 @@ Deno.test("validator: catches non-array taxonomies", () => {
   assertEquals(errors.some((e) => e.includes("Did you mean")), true);
 });
 
-Deno.test("validator: catches invalid cache.driver", () => {
-  const config = cloneConfig();
-  // @ts-ignore: testing invalid input
-  config.system.cache.driver = "redis";
-  const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("system.cache.driver")), true);
-});
-
-Deno.test("validator: catches negative cache.lifetime", () => {
-  const config = cloneConfig();
-  config.system.cache.lifetime = -1;
-  const errors = validateConfig(config);
-  assertEquals(errors.some((e) => e.includes("system.cache.lifetime")), true);
-});
-
 Deno.test("validator: catches invalid image quality", () => {
   const config = cloneConfig();
   config.system.images.default_quality = 150;

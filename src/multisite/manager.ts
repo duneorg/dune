@@ -3,7 +3,7 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
 import { materializeRemoteIslands } from "../cli/remote-islands.ts";
-import { ADMIN_MOUNT_SPECIFIER } from "../plugins/builtin.ts";
+import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import type { SiteEntry } from "../config/types.ts";
 import type { InitializedSite } from "./types.ts";
 import { logger } from "../core/logger.ts";
@@ -67,26 +67,8 @@ export class MultisiteManager {
       Deno.chdir(duneRoot);
     }
 
-    const adminBuilder = new Builder({
-      root: firstSiteRoot,
-      islandDir: noCrawlDir,
-      routeDir: noCrawlDir,
-    });
-    // Admin island specifiers from @dune/plugin-admin — loaded via non-literal
-    // dynamic import to avoid a publish-time circular dependency with @dune/core.
-    // The specifier constant lives in plugins/builtin.ts where the lockfile
-    // discovery helper also reports it — see that module's doc.
-    const adminMountPkg: string = ADMIN_MOUNT_SPECIFIER;
-    const { getDuneAdminIslands } = await import(adminMountPkg) as { // lockfile-safe: constant from plugins/builtin.ts, reported by lockfile discovery
-      getDuneAdminIslands: () => string[];
-    };
-    // Remote (https://) island specs are materialized as local wrappers —
-    // Fresh's build cache only accepts file paths.
-    for (const spec of await materializeRemoteIslands(getDuneAdminIslands(), firstSiteRoot)) {
-      adminBuilder.registerIsland(spec);
-    }
-    const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });
 
+    const booted: { entry: SiteEntry; siteRoot: string; ctx: Awaited<ReturnType<typeof bootstrap>> }[] = [];
     for (const entry of cfg.sites) {
       // Resolve site root relative to the directory containing sites.yaml
       const siteRoot = isAbsolute(entry.root)
@@ -113,6 +95,35 @@ export class MultisiteManager {
         siteId: entry.id,
       });
 
+      booted.push({ entry, siteRoot, ctx });
+    }
+
+    // Island bundles are package-level, not site-specific, so one snapshot is
+    // shared by every site: the union of the islands the sites' plugins declare
+    // (the admin among them, when a site lists it). Nothing is assumed about
+    // which plugins exist.
+    const islandSpecs = new Set<string>();
+    for (const { ctx } of booted) {
+      for (const plugin of ctx.hooks.plugins()) {
+        for (const spec of plugin.islandSpecifiers ?? []) {
+          if (isValidPluginIslandSpecifier(spec)) islandSpecs.add(spec);
+          else logger.warn("plugin.islandSpecifier.rejected", { spec });
+        }
+      }
+    }
+    const adminBuilder = new Builder({
+      root: firstSiteRoot,
+      islandDir: noCrawlDir,
+      routeDir: noCrawlDir,
+    });
+    // Remote (https://) island specs are materialized as local wrappers —
+    // Fresh's build cache only accepts file paths.
+    for (const spec of await materializeRemoteIslands([...islandSpecs], firstSiteRoot)) {
+      adminBuilder.registerIsland(spec);
+    }
+    const applyAdminSnapshot = await adminBuilder.build({ mode: "production", snapshot: "memory" });
+
+    for (const { entry, siteRoot, ctx } of booted) {
       // Create a per-site Fresh app (admin + content in one handler).
       // Apply the shared admin island snapshot so /_fresh/js/* island bundles
       // are served correctly without rebuilding islands per site.

@@ -253,7 +253,7 @@ Deno.test("AuthzLocalAdapter: indexed lookups stay correct across many tuples an
     await adapter.write([{
       subject: { type: "user", id: `user-${i}` },
       relation: "editor",
-      object: { type: "app", id: "admin" },
+      object: { type: "app", id: "site" },
     }]);
   }
 
@@ -271,12 +271,12 @@ Deno.test("AuthzLocalAdapter: indexed lookups stay correct across many tuples an
   assertEquals(evens.every((s) => Number(s.id.split("-")[1]) % 2 === 0), true);
 
   const editors = await adapter.findSubjects(
-    { type: "app", id: "admin" },
+    { type: "app", id: "site" },
     "editor",
   );
   assertEquals(editors.length, 5);
 
-  // findObjects: user-0 is a member of "member" and "even", and editor of admin.
+  // findObjects: user-0 is a member of "member" and "even", and editor of the site.
   const user0Memberships = await adapter.findObjects({
     type: "user",
     id: "user-0",
@@ -288,7 +288,7 @@ Deno.test("AuthzLocalAdapter: indexed lookups stay correct across many tuples an
     id: "user-0",
   }, "editor");
   assertEquals(user0EditorGrants.length, 1);
-  assertEquals(user0EditorGrants[0].id, "admin");
+  assertEquals(user0EditorGrants[0].id, "site");
 
   // hasTuple: exact subject+relation+object — must not match a near-miss
   // (right subject/object, wrong relation; right subject/relation, wrong object).
@@ -411,7 +411,7 @@ Deno.test("AuthzLocalAdapter: indexes are rebuilt correctly when reloaded from d
   await first.write([{
     subject: { type: "user", id: "henry" },
     relation: "editor",
-    object: { type: "app", id: "admin" },
+    object: { type: "app", id: "site" },
   }]);
 
   // A fresh adapter instance over the same storage — forces the ensureLoaded()
@@ -430,14 +430,14 @@ Deno.test("AuthzLocalAdapter: indexes are rebuilt correctly when reloaded from d
   assertStrictEquals(
     await second.hasTuple({ type: "user", id: "henry" }, "editor", {
       type: "app",
-      id: "admin",
+      id: "site",
     }),
     true,
   );
   assertStrictEquals(
     await second.hasTuple({ type: "user", id: "henry" }, "member", {
       type: "app",
-      id: "admin",
+      id: "site",
     }),
     false,
   );
@@ -667,7 +667,7 @@ Deno.test("bootstrapAdminTuples: grants admin access via 'access' action", async
     await authz.check({
       who: { type: "user", id: "admin-1" },
       canThey: "access",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: { type: "app", id: "site" },
     }),
     true,
   );
@@ -675,7 +675,7 @@ Deno.test("bootstrapAdminTuples: grants admin access via 'access' action", async
     await authz.check({
       who: { type: "user", id: "editor-1" },
       canThey: "access",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: { type: "app", id: "site" },
     }),
     true,
   );
@@ -683,7 +683,7 @@ Deno.test("bootstrapAdminTuples: grants admin access via 'access' action", async
     await authz.check({
       who: { type: "user", id: "author-1" },
       canThey: "access",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: { type: "app", id: "site" },
     }),
     true,
   );
@@ -703,7 +703,7 @@ Deno.test("bootstrapAdminTuples: admin can manage users, editor cannot", async (
       await authz.check({
         who: { type: "user", id: "admin-1" },
         canThey: action,
-        onWhat: { type: "app", id: "admin" },
+        onWhat: { type: "app", id: "site" },
       }),
       true,
       `admin should have ${action}`,
@@ -712,7 +712,7 @@ Deno.test("bootstrapAdminTuples: admin can manage users, editor cannot", async (
       await authz.check({
         who: { type: "user", id: "editor-1" },
         canThey: action,
-        onWhat: { type: "app", id: "admin" },
+        onWhat: { type: "app", id: "site" },
       }),
       false,
       `editor should not have ${action}`,
@@ -747,7 +747,7 @@ Deno.test("bootstrapAdminTuples: unknown user has no admin access", async () => 
     await authz.check({
       who: { type: "user", id: "nobody" },
       canThey: "access",
-      onWhat: { type: "app", id: "admin" },
+      onWhat: { type: "app", id: "site" },
     }),
     false,
   );

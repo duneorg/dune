@@ -16,11 +16,6 @@ export interface SystemConfig {
      * site's own storage boundary is never widened.
      */
     src?: string;
-    markdown: {
-      extra: boolean;
-      auto_links: boolean;
-      auto_url_links: boolean;
-    };
     /**
      * Roles permitted to create or save pages with `format: tsx`.
      * TSX pages execute arbitrary Deno code during SSR and must be treated
@@ -28,12 +23,6 @@ export interface SystemConfig {
      * Set to `[]` to disable TSX content entirely.
      */
     allow_tsx_format?: string[];
-  };
-  cache: {
-    enabled: boolean;
-    driver: "memory" | "filesystem" | "kv";
-    lifetime: number;
-    check: "file" | "hash" | "none";
   };
   images: {
     default_quality: number;
@@ -143,12 +132,6 @@ export interface SystemConfig {
       body?: { weight: number };
       [field: string]: { weight: number } | undefined;
     };
-    /**
-     * Flex Object type names to include in the search index.
-     * Records from these types are indexed alongside content pages.
-     * @example ["posts", "events"]
-     */
-    include_flex?: string[];
     /** Facet definitions for filtering search results. */
     facets?: Array<{
       /** Dot-path into frontmatter, e.g. "taxonomy.category" or "template" */
@@ -242,7 +225,6 @@ export interface SystemConfig {
     level?: "debug" | "info" | "warn" | "error";
   };
   debug: boolean;
-  timezone: string;
   /**
    * Trust the X-Forwarded-For / X-Real-IP request headers when extracting
    * the client IP for rate limiting, account lockout, and audit logging.
@@ -262,6 +244,45 @@ export interface SystemConfig {
    * Replaces `admin.dataDir`.
    */
   data_dir?: string;
+  /**
+   * Machine-local runtime state (ephemeral, gitignored): job state, revision
+   * history, scheduled actions, staged drafts, search analytics, and whatever
+   * an admin plugin keeps. Default: ".dune/admin" (the name predates the move
+   * out of `admin:`; kept so existing sites keep their state). Replaces
+   * `admin.runtime_dir`.
+   */
+  runtime_dir?: string;
+  /**
+   * Which groups hold the admin-tier relations on the site: group name →
+   * `admin` | `editor` | `author`. Group membership comes from a user's
+   * `roles[]`, so a user whose roles include a mapped group gets that relation
+   * (an `editor` may edit any page, an `author` the pages it created).
+   *
+   * Default: `{ admin: admin, editor: editor, author: author }`. Set your own
+   * group onto a relation (`staff: editor`), keep a subset, or `{}` to turn the
+   * group-level grants off. The relations are fixed by the authz schema; this
+   * chooses which group gets which. Accounts an admin plugin seeds itself
+   * (its password accounts) keep their rights regardless.
+   *
+   * In an environment overlay (`config/env/<env>/system.yaml`) `role_grants` replaces the base mapping
+   * instead of merging into it, so one environment can switch the grants off with `{}`.
+   *
+   * Grants no longer configured are revoked at start: every
+   * (group → admin/editor/author) tuple on the site belongs to this setting.
+   *
+   * @example
+   * ```yaml
+   * role_grants:
+   *   staff: editor      # your own group
+   *   editor: author     # a content tier that should only create and edit its own pages
+   * ```
+   */
+  role_grants?: Record<string, "admin" | "editor" | "author">;
+  /**
+   * Revisions kept per page; the oldest is pruned on each save. 0 keeps all.
+   * Default: 50. Replaces `admin.max_revisions`.
+   */
+  max_revisions?: number;
   /**
    * Webhooks. `incoming` lets external systems trigger actions by POSTing to
    * `/api/webhook/incoming` with a token, no admin plugin needed.

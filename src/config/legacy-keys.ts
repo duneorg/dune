@@ -25,31 +25,10 @@ const RULES: Rule[] = [
     parent: ["admin"],
     renames: {
       sessionLifetime: "session_lifetime",
-      runtimeDir: "runtime_dir",
-      maxRevisions: "max_revisions",
       maxUploadMb: "max_upload_mb",
-      authzStore: "authz_store",
     },
   },
   { file: "system", parent: ["admin", "audit"], renames: { logFile: "log_file" } },
-  {
-    file: "system",
-    parent: ["admin", "auth_provider"],
-    renames: {
-      baseDn: "base_dn",
-      usernameAttr: "username_attr",
-      bindDn: "bind_dn",
-      bindPassword: "bind_password",
-      emailAttr: "email_attr",
-      nameAttr: "name_attr",
-      roleMap: "role_map",
-      defaultRole: "default_role",
-      entityId: "entity_id",
-      acsUrl: "acs_url",
-      idpMetadata: "idp_metadata",
-      roleAttr: "role_attr",
-    },
-  },
   {
     file: "site",
     parent: ["auth"],
@@ -72,11 +51,6 @@ const RULES: Rule[] = [
     },
   },
   { file: "site", parent: ["auth", "webhook"], renames: { signatureHeader: "signature_header" } },
-  {
-    file: "site",
-    parent: ["uploads"],
-    renames: { maxSizeMb: "max_size_mb", allowedTypes: "allowed_types", requireAuth: "require_auth" },
-  },
 ];
 
 /**
@@ -92,6 +66,22 @@ interface MovedRule {
 
 const MOVED: MovedRule[] = [
   {
+    file: "site",
+    parent: [],
+    keys: {
+      machine_translation:
+        "the admin plugin's config (`config:` of its entry in plugins:), with api_key and base_url in snake_case; `dune migrate:config` moves it",
+    },
+  },
+  {
+    file: "system",
+    parent: [],
+    keys: {
+      admin:
+        "the admin's settings are the admin plugin's own config now: put them under `config:` of its entry in plugins: (site.yaml); `dune migrate:config` moves them",
+    },
+  },
+  {
     file: "system",
     parent: ["admin"],
     keys: {
@@ -101,6 +91,13 @@ const MOVED: MovedRule[] = [
       incomingWebhooks: "webhooks.incoming in system.yaml",
       data_dir: "data_dir at the top level of system.yaml",
       dataDir: "data_dir at the top level of system.yaml",
+      enabled: "removed: the admin runs only when jsr:@dune/plugin-admin is listed under plugins: in site.yaml (delete this key to run without it)",
+      authz_store: "removed: the admin's authz store is always local",
+      authzStore: "removed: the admin's authz store is always local",
+      runtime_dir: "runtime_dir at the top level of system.yaml",
+      runtimeDir: "runtime_dir at the top level of system.yaml",
+      max_revisions: "max_revisions at the top level of system.yaml",
+      maxRevisions: "max_revisions at the top level of system.yaml",
     },
   },
   {
@@ -109,6 +106,131 @@ const MOVED: MovedRule[] = [
     keys: { smtp: "site.email (one provider for every email the site sends)" },
   },
 ];
+
+/**
+ * Keys that were declared and documented but that nothing ever read. Setting
+ * one changes nothing, so the loader warns and ignores it instead of
+ * refusing to load, and `dune migrate:config` deletes it. (Refusal is kept
+ * for the keys in {@link MOVED}, where ignoring would silently change behaviour.)
+ */
+const IGNORED: MovedRule[] = [
+  {
+    file: "site",
+    parent: [],
+    keys: {
+      uploads: "Dune has no public upload endpoint; use a `file` field in a form (forms/*.yaml)",
+    },
+  },
+  {
+    file: "system",
+    parent: [],
+    keys: {
+      cache: "it never did anything; the rendered-page cache is `page_cache`",
+      timezone: "it never did anything",
+    },
+  },
+  {
+    file: "system",
+    parent: ["content"],
+    keys: { markdown: "the markdown renderer never read these settings" },
+  },
+  {
+    file: "system",
+    parent: ["search"],
+    keys: { include_flex: "it never did anything" },
+  },
+];
+
+/** Keys in {@link IGNORED} present in an already-parsed config file. */
+export function findIgnoredKeys(file: ConfigFileKind, parsed: unknown): MovedKey[] {
+  const found: MovedKey[] = [];
+  const walk = (node: unknown, path: string[]) => {
+    if (node === null || typeof node !== "object" || Array.isArray(node)) return;
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      for (const r of IGNORED) {
+        if (r.file === file && matches(r.parent, path) && key in r.keys) {
+          found.push({ path: [...path, key].join("."), to: r.keys[key] });
+        }
+      }
+      walk(value, [...path, key]);
+    }
+  };
+  walk(parsed, []);
+  return found;
+}
+
+/**
+ * Delete ignored keys, with their nested block, from block-style YAML text.
+ * Comments and everything else stay. Keys it cannot reach (flow style, quoted
+ * keys, list items) stay; callers compare against {@link findIgnoredKeys} on
+ * the result.
+ */
+export function removeIgnoredKeysInText(
+  file: ConfigFileKind,
+  text: string,
+): { text: string; removed: MovedKey[] } {
+  return removeKeysInText(IGNORED, file, text);
+}
+
+/** `admin.enabled` in system.yaml: removed in 0.36 (the admin runs only when its plugin is listed). */
+const ADMIN_ENABLED: MovedRule[] = [{ file: "system", parent: ["admin"], keys: { enabled: "" } }];
+
+/** Delete the `admin.enabled` line from a system.yaml text (comments and the rest are kept). */
+export function removeAdminEnabledInText(text: string): { text: string; removed: boolean } {
+  const r = removeKeysInText(ADMIN_ENABLED, "system", text);
+  return { text: r.text, removed: r.removed.length > 0 };
+}
+
+/** Delete a top-level key and its children from a config file's text (comments elsewhere are kept). */
+export function removeTopLevelKeyInText(
+  file: ConfigFileKind,
+  text: string,
+  key: string,
+): { text: string; removed: boolean } {
+  const r = removeKeysInText([{ file, parent: [], keys: { [key]: "" } }], file, text);
+  return { text: r.text, removed: r.removed.length > 0 };
+}
+
+function removeKeysInText(
+  rules: MovedRule[],
+  file: ConfigFileKind,
+  text: string,
+): { text: string; removed: MovedKey[] } {
+  const removed: MovedKey[] = [];
+  const stack: { indent: number; key: string }[] = [];
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let skipIndent = -1; // inside a removed block: drop lines indented deeper than this
+  for (const line of lines) {
+    const blank = /^\s*(#.*)?$/.test(line);
+    if (skipIndent >= 0) {
+      if (blank) {
+        out.push(line);
+        continue;
+      }
+      const indent = line.match(/^(\s*)/)![1].length;
+      if (indent > skipIndent) continue;
+      skipIndent = -1;
+    }
+    const m = blank ? null : line.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)(.*)$/);
+    if (!m) {
+      out.push(line);
+      continue;
+    }
+    const indent = m[1].length;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const path = stack.map((x) => x.key);
+    const hit = rules.find((r) => r.file === file && matches(r.parent, path) && m[2] in r.keys);
+    if (hit) {
+      removed.push({ path: [...path, m[2]].join("."), to: hit.keys[m[2]] });
+      skipIndent = indent;
+      continue;
+    }
+    stack.push({ indent, key: m[2] });
+    out.push(line);
+  }
+  return { text: out.join("\n"), removed };
+}
 
 /** A removed key and where its setting lives now. */
 export interface MovedKey {

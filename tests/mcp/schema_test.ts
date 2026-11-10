@@ -24,13 +24,13 @@ Deno.test("CONFIG_SCHEMA: has $schema and type=object", () => {
   assertExists(schema.properties);
 });
 
-Deno.test("CONFIG_SCHEMA: includes site, system, theme, plugins, admin properties", () => {
+Deno.test("CONFIG_SCHEMA: includes site, system, theme and plugins properties, and no admin one (the admin plugin's settings are its own)", () => {
   const props = (CONFIG_SCHEMA as { properties: Record<string, unknown> }).properties;
   assertExists(props.site, "schema must have 'site' property");
   assertExists(props.system, "schema must have 'system' property");
   assertExists(props.theme, "schema must have 'theme' property");
   assertExists(props.plugins, "schema must have 'plugins' property");
-  assertExists(props.admin, "schema must have 'admin' property");
+  assertEquals(props.admin, undefined, "the admin: block is gone from the schema");
 });
 
 Deno.test("CONFIG_SCHEMA: site.title is required", () => {

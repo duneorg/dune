@@ -151,7 +151,7 @@ Deno.test("loadConfig: returns defaults when no config files exist", async () =>
     skipValidation: true,
   });
   assertEquals(config.site.title, "Dune Site");
-  assertEquals(config.system.cache.driver, "filesystem");
+  assertEquals(config.system.images.default_quality, 80);
   assertEquals(config.theme.name, "default");
 });
 
@@ -173,7 +173,7 @@ Deno.test("loadConfig: merges site.yaml into site config", async () => {
 
 Deno.test("loadConfig: merges system.yaml into system config", async () => {
   const storage = new MemoryStorage({
-    "config/system.yaml": `debug: true\ncache:\n  enabled: false`,
+    "config/system.yaml": `debug: true\nimages:\n  default_quality: 55`,
   });
   const config = await loadConfig({
     storage,
@@ -182,54 +182,32 @@ Deno.test("loadConfig: merges system.yaml into system config", async () => {
     skipValidation: true,
   });
   assertEquals(config.system.debug, true);
-  assertEquals(config.system.cache.enabled, false);
-  // Non-overridden cache values should remain
-  assertEquals(config.system.cache.driver, "filesystem");
+  assertEquals(config.system.images.default_quality, 55);
+  // Non-overridden values in the same section should remain
+  assertEquals(config.system.images.cache_dir, ".dune/cache/images");
 });
 
-Deno.test("loadConfig: system.yaml `admin:` lands in config.admin, not config.system", async () => {
+Deno.test("loadConfig: a system.yaml `admin:` block is refused and says where the settings went", async () => {
   const storage = new MemoryStorage({
-    "config/system.yaml": `admin:\n  enabled: false\n  max_revisions: 7\ndebug: true`,
+    "config/system.yaml": `admin:\n  max_upload_mb: 7\ndebug: true`,
   });
-  const config = await loadConfig({
-    storage,
-    rootDir: "/tmp/test",
-    skipConfigTs: true,
-    skipValidation: true,
-  });
-  assertEquals(config.admin?.enabled, false);
-  assertEquals(config.admin?.max_revisions, 7);
-  // Unset admin keys keep their defaults
-  assertEquals(config.admin?.path, "/admin");
-  assertEquals((config.system as unknown as Record<string, unknown>).admin, undefined);
-  // The rest of system.yaml is unaffected
-  assertEquals(config.system.debug, true);
+  await assertRejects(
+    () => loadConfig({ storage, rootDir: "/tmp/test", skipConfigTs: true, skipValidation: true }),
+    Error,
+    "plugins:",
+  );
 });
 
-Deno.test("loadConfig: admin stays enabled when system.yaml has no admin block", async () => {
+Deno.test("loadConfig: there is no DuneConfig.admin and no default admin settings", async () => {
   const config = await loadConfig({
     storage: new MemoryStorage({ "config/system.yaml": `debug: true` }),
     rootDir: "/tmp/test",
     skipConfigTs: true,
     skipValidation: true,
   });
-  assertEquals(config.admin?.enabled, true);
-});
-
-Deno.test("loadConfig: env system.yaml `admin:` overrides the base file", async () => {
-  const storage = new MemoryStorage({
-    "config/system.yaml": `admin:\n  enabled: true\n  max_revisions: 7`,
-    "config/env/production/system.yaml": `admin:\n  enabled: false`,
-  });
-  const config = await loadConfig({
-    storage,
-    rootDir: "/tmp/test",
-    env: "production",
-    skipConfigTs: true,
-    skipValidation: true,
-  });
-  assertEquals(config.admin?.enabled, false);
-  assertEquals(config.admin?.max_revisions, 7);
+  assertEquals((config as unknown as Record<string, unknown>).admin, undefined);
+  assertEquals((config.system as unknown as Record<string, unknown>).admin, undefined);
+  assertEquals(config.system.debug, true);
 });
 
 Deno.test("loadConfig: environment-specific overrides", async () => {
@@ -262,4 +240,14 @@ Deno.test("loadConfig: validation catches invalid config", async () => {
     Error,
     "Invalid configuration",
   );
+});
+
+Deno.test("deepMerge: an override of role_grants replaces the mapping instead of merging into it", () => {
+  const base: { system: { role_grants: Record<string, string>; debug: boolean } } = {
+    system: { role_grants: { staff: "editor", editor: "author" }, debug: false },
+  };
+  assertEquals(deepMerge(base, { system: { role_grants: {} } }).system.role_grants, {});
+  assertEquals(deepMerge(base, { system: { role_grants: { boss: "admin" } } }).system.role_grants, { boss: "admin" });
+  // Other nested objects still merge key by key.
+  assertEquals(deepMerge(base, { system: { debug: true } }).system, { role_grants: { staff: "editor", editor: "author" }, debug: true });
 });

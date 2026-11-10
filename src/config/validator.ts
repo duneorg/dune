@@ -8,6 +8,7 @@
  */
 
 import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import { roleGrantProblems } from "../auth/role-grants.ts";
 import {
   assertPinnedThemeSpecifier,
   assertThemeName,
@@ -40,39 +41,8 @@ export function validateConfig(config: DuneConfig): string[] {
   validateThemeList(config.themeList, errors);
   validatePlugins(config.plugins, errors);
   validatePluginList(config.pluginList, errors);
-  validateAdmin(config.admin, errors);
 
   return errors.map(formatError);
-}
-
-// --- Admin validation ---
-
-const ADMIN_PATH_RE = /^\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/;
-
-function validateAdmin(
-  admin: DuneConfig["admin"],
-  errors: ValidationError[],
-): void {
-  if (!admin) return;
-  if (admin.path !== undefined) {
-    if (typeof admin.path !== "string") {
-      errors.push({
-        path: "admin.path",
-        message: "must be a string starting with a leading slash",
-        got: admin.path,
-      });
-    } else if (!ADMIN_PATH_RE.test(admin.path)) {
-      // The middleware uses pathname.startsWith(admin.path) and slices on
-      // its length. Anything that isn't an unambiguous absolute path with
-      // safe characters and no trailing slash will desync that logic and
-      // either lock users out or expose admin routes outside the prefix.
-      errors.push({
-        path: "admin.path",
-        message: 'must start with "/", contain only [a-zA-Z0-9_-] segments, and have no trailing slash (e.g. "/admin", "/cms/admin")',
-        got: admin.path,
-      });
-    }
-  }
 }
 
 // --- Site validation ---
@@ -167,47 +137,6 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
         });
       }
     }
-
-    if (system.content.markdown) {
-      for (const key of ["extra", "auto_links", "auto_url_links"] as const) {
-        if (typeof system.content.markdown[key] !== "boolean") {
-          errors.push({
-            path: `system.content.markdown.${key}`,
-            message: "must be a boolean",
-            got: system.content.markdown[key],
-          });
-        }
-      }
-    }
-  }
-
-  // cache
-  if (system.cache) {
-    const validDrivers = ["memory", "filesystem", "kv"];
-    if (!validDrivers.includes(system.cache.driver)) {
-      errors.push({
-        path: "system.cache.driver",
-        message: `must be one of: ${validDrivers.join(", ")}`,
-        got: system.cache.driver,
-      });
-    }
-
-    if (typeof system.cache.lifetime !== "number" || system.cache.lifetime < 0) {
-      errors.push({
-        path: "system.cache.lifetime",
-        message: "must be a non-negative number (seconds)",
-        got: system.cache.lifetime,
-      });
-    }
-
-    const validChecks = ["file", "hash", "none"];
-    if (!validChecks.includes(system.cache.check)) {
-      errors.push({
-        path: "system.cache.check",
-        message: `must be one of: ${validChecks.join(", ")}`,
-        got: system.cache.check,
-      });
-    }
   }
 
   // images
@@ -273,19 +202,15 @@ function validateSystem(system: SystemConfig, errors: ValidationError[]): void {
     }
   }
 
+  for (const message of roleGrantProblems(system.role_grants)) {
+    errors.push({ path: "system.role_grants", message, got: system.role_grants });
+  }
+
   if (typeof system.debug !== "boolean") {
     errors.push({
       path: "system.debug",
       message: "must be a boolean",
       got: system.debug,
-    });
-  }
-
-  if (typeof system.timezone !== "string") {
-    errors.push({
-      path: "system.timezone",
-      message: "must be a string (e.g., 'UTC', 'America/New_York')",
-      got: system.timezone,
     });
   }
 }

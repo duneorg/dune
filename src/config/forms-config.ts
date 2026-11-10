@@ -14,7 +14,6 @@
  * @module
  */
 
-import type { WebhookNotificationConfig } from "./admin-config.ts";
 
 /** An email sent for each new submission. */
 export interface FormEmailNotificationConfig {
@@ -50,4 +49,23 @@ export interface IncomingWebhookConfig {
   token: string;
   /** Actions this token may trigger. */
   actions: Array<"rebuild" | "purge-cache">;
+}
+
+/** HTTP webhook notification. */
+export interface WebhookNotificationConfig {
+  /** URL to POST the submission JSON to. */
+  url: string;
+  /**
+   * Optional secret used to sign the request body.
+   * Adds X-Dune-Signature: sha256=<hex> header so the receiver can verify authenticity.
+   * Supports "$ENV_VAR" expansion.
+   */
+  secret?: string;
+  /**
+   * Allow delivery to private/loopback/link-local addresses. Defaults to
+   * false. Only set true for documented same-network use cases (e.g. an
+   * internal CI bot at 10.x). Without this opt-in, the SSRF guard refuses
+   * cloud-metadata, container-orchestrator, and intranet targets.
+   */
+  allow_private?: boolean;
 }

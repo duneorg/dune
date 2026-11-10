@@ -40,7 +40,7 @@ async function hasAdminTuple(
   return await adapter.hasTuple(
     { type: "user", id: userId },
     relation,
-    { type: "app", id: "admin" },
+    { type: "app", id: "site" },
   );
 }
 
@@ -102,7 +102,7 @@ Deno.test("users:create sets arbitrary (non-admin-tier) role tags, no authz tupl
   });
 });
 
-Deno.test("users:create syncs the app:admin authz tuple for an admin-tier role", async () => {
+Deno.test("users:create syncs the app:site authz tuple for an admin-tier role", async () => {
   await withTempSite(async (root) => {
     await usersCreateCommand(root, "alice@example.com", {
       roles: ["editor"],

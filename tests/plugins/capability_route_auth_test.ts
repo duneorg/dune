@@ -5,7 +5,7 @@
  * chain when the route is registered. `mountEarly` worked around that by
  * mounting admin middleware first.
  *
- * Now a route that needs to know who the admin is asks the `auth.session`
+ * Now a route that needs to know who the admin is asks the `editor.session`
  * capability at request time, so it works whatever the mount order and without
  * naming the admin plugin or relying on shared request state.
  */
@@ -18,7 +18,7 @@ import { mountPlugins } from "../../src/plugins/loader.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 
 Deno.test(
-  "a plugin mounted before the auth.session provider still identifies the admin in its own route",
+  "a plugin mounted before the editor.session provider still identifies the admin in its own route",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     const root = await Deno.makeTempDir({ prefix: "dune_test_capability_route_auth_" });
@@ -33,7 +33,7 @@ Deno.test(
         hooks: {},
         mount({ app, capabilities }) {
           app.get("/who", async (fc) => {
-            const auth = capabilities.get("auth.session");
+            const auth = capabilities.get("editor.session");
             const result = auth ? await auth.authenticate(fc.req) : null;
             return new Response(result?.authenticated ? result.user?.username ?? "?" : "anonymous");
           });
@@ -46,7 +46,7 @@ Deno.test(
         version: "1.0.0",
         hooks: {},
         setup(api) {
-          api.capabilities.provide("auth.session", () => ({
+          api.capabilities.provide("editor.session", () => ({
             authenticate(req) {
               const name = req.headers.get("x-test-admin");
               return Promise.resolve(
@@ -60,7 +60,7 @@ Deno.test(
       const ctx = await bootstrap(root, {
         plugins: [userPlugin, authProvider],
         // deno-lint-ignore no-explicit-any
-        configOverrides: { admin: { enabled: false } as any },
+        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
@@ -78,7 +78,7 @@ Deno.test(
 );
 
 Deno.test(
-  "without an auth.session provider a plugin route sees every visitor as anonymous",
+  "without an editor.session provider a plugin route sees every visitor as anonymous",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     const root = await Deno.makeTempDir({ prefix: "dune_test_capability_route_auth_none_" });
@@ -92,14 +92,14 @@ Deno.test(
         mount({ app, capabilities }) {
           app.get("/who", (fc) => {
             void fc;
-            return new Response(capabilities.get("auth.session") ? "has-provider" : "no-provider");
+            return new Response(capabilities.get("editor.session") ? "has-provider" : "no-provider");
           });
         },
       };
       const ctx = await bootstrap(root, {
         plugins: [userPlugin],
         // deno-lint-ignore no-explicit-any
-        configOverrides: { admin: { enabled: false } as any },
+        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();

@@ -3,7 +3,7 @@
  * checks, distinct from `dune validate`'s project-correctness checks.
  */
 
-import { assertEquals, assertMatch } from "@std/assert";
+import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { evaluateDenoVersion, runDoctorChecks, searchDegradedFindings } from "../../src/cli/doctor.ts";
 
@@ -195,3 +195,54 @@ Deno.test("searchDegradedFindings: a warning that names the failed engine from t
   assertEquals(finding.message.includes('engine="meilisearch"'), true);
   assertEquals(finding.message.includes("\x1b"), false);
 });
+
+async function bootFixture(report: string | null): Promise<string> {
+  const root = await Deno.makeTempDir({ prefix: "dune_test_doctor_report_" });
+  await Deno.mkdir(join(root, "config"), { recursive: true });
+  await Deno.writeTextFile(join(root, "config", "site.yaml"), "title: Doctor Report Test\n");
+  await Deno.writeTextFile(join(root, "deno.json"), JSON.stringify({ imports: {} }));
+  // Stands in for a booted site: serves, and (like core) writes the capability
+  // report to the file the doctor names.
+  await Deno.writeTextFile(
+    join(root, "main.ts"),
+    `const portFlag = Deno.args.indexOf("--port");\n` +
+      `const port = portFlag >= 0 ? parseInt(Deno.args[portFlag + 1]) : 3000;\n` +
+      (report === null ? "" : `const f = Deno.env.get("DUNE_DOCTOR_REPORT"); if (f) await Deno.writeTextFile(f, ${JSON.stringify(report)});\n`) +
+      `Deno.serve({ port }, () => new Response("ok"));\n`,
+  );
+  return root;
+}
+
+Deno.test(
+  "runDoctorChecks: --boot reads the booted site's capability report",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    // This "site" reports a plugin that provides admin.prefix but no editor.session.
+    const root = await bootFixture(JSON.stringify({
+      providers: [{ name: "admin.prefix", kind: "slot", provider: "half-admin", status: "active" }],
+      scheduledActions: 0,
+    }));
+    try {
+      const findings = await runDoctorChecks(root, { boot: true });
+      const caps = findings.filter((f) => f.category === "capabilities" && f.severity !== "info");
+      assertEquals(caps.map((f) => f.severity), ["error"]);
+      assertStringIncludes(caps[0].message, "editor.session");
+    } finally {
+      await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
+  },
+);
+
+Deno.test(
+  "runDoctorChecks: --boot warns when the site does not report its capabilities",
+  { sanitizeOps: false, sanitizeResources: false },
+  async () => {
+    const root = await bootFixture(null);
+    try {
+      const caps = (await runDoctorChecks(root, { boot: true })).filter((f) => f.category === "capabilities");
+      assertEquals(caps.map((f) => f.severity), ["warning"]);
+    } finally {
+      await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
+  },
+);

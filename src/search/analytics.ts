@@ -20,6 +20,7 @@
 
 import { dirname, join } from "@std/path";
 import type { DuneConfig } from "../config/types.ts";
+import { resolveRuntimeDir } from "../forms/config.ts";
 
 // === Types ===
 
@@ -100,11 +101,11 @@ function normalise(query: string): string {
 
 /**
  * The recorder for a site, or null when `system.search.analytics` is off.
- * The snapshot lives under `admin.runtime_dir` (default `.dune/admin`) in the site root.
+ * The snapshot lives under `system.runtime_dir` (default `.dune/admin`) in the site root.
  */
 export function resolveSearchAnalytics(config: DuneConfig, root: string): SearchAnalytics | null {
   if (config.system?.search?.analytics !== true) return null;
-  const runtimeDir = config.admin?.runtime_dir ?? ".dune/admin";
+  const runtimeDir = resolveRuntimeDir(config);
   return createSearchAnalytics(join(root, runtimeDir, "search-analytics.json"));
 }
 

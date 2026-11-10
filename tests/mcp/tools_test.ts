@@ -76,7 +76,7 @@ function makeEngine(pages: PageIndex[], resolveMap?: Map<string, Page>): DuneEng
     config: {
       site: { title: "Test Site", url: "http://localhost", author: { name: "" }, taxonomies: [], metadata: {}, routes: {}, redirects: {}, description: "" },
       theme: { name: "starter", custom: {} },
-      system: { content: { dir: "content", markdown: { extra: false, auto_links: false, auto_url_links: false } }, debug: false },
+      system: { content: { dir: "content" }, debug: false },
       plugins: {},
       pluginList: [],
     },
