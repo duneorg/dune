@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
@@ -367,4 +367,31 @@ Deno.test("capabilities: a plugin's own slot is provided and read through its ke
   // Another plugin recreates the key from its documented name instead of importing it.
   assertEquals(reg.reader.get(capabilityKey<{ label: string }>("test.editor"))?.label, "alt");
   assertEquals(reg.reader.providers(), [{ name: "test.editor", kind: "slot", provider: "alt", status: "active" }]);
+});
+
+Deno.test("capabilities: list() and contribute() refuse the string form instead of silently ignoring it", () => {
+  const reg = createCapabilityRegistry();
+  // What an unmigrated plugin (plain JavaScript, or `any`) does.
+  // deno-lint-ignore no-explicit-any
+  const reader = reg.reader as any;
+  // deno-lint-ignore no-explicit-any
+  const registrar = reg.registrar("old-plugin") as any;
+  const listErr = assertThrows(() => reader.list("bar.actions"), TypeError);
+  assertStringIncludes(listErr.message, 'capabilities.list() needs a CapabilityKey, got the string "bar.actions"');
+  assertStringIncludes(listErr.message, 'capabilityKey("bar.actions")');
+  const contributeErr = assertThrows(() => registrar.contribute("bar.actions", () => []), TypeError);
+  assertStringIncludes(contributeErr.message, "capabilities.contribute() needs a CapabilityKey");
+  // Nothing was registered under a stray name, and a real key still works.
+  assertEquals(reg.reader.providers(), []);
+  const BAR = capabilityKey<() => string[]>("bar.actions");
+  reg.registrar("new-plugin").contribute(BAR, () => ["x"]);
+  assertEquals(reg.reader.list(BAR).length, 1);
+  assertThrows(() => reader.list(undefined), TypeError);
+});
+
+Deno.test("capabilities: get() and provide() keep taking a core slot's string name", async () => {
+  const reg = createCapabilityRegistry();
+  reg.registrar("admin").provide("editor.session", () => auth("a"));
+  await reg.resolve(ctx);
+  assertExists(reg.reader.get("editor.session"));
 });

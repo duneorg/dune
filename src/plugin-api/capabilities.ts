@@ -262,6 +262,28 @@ function keyName(nameOrKey: string | CapabilityKey<unknown>): string {
   return typeof nameOrKey === "string" ? nameOrKey : nameOrKey.name;
 }
 
+/**
+ * A contribution point is always a plugin's own {@link CapabilityKey}: core
+ * declares none, so a string can only come from a plugin written for the
+ * string-keyed API (or plain JavaScript, which the type checker does not
+ * catch). Accepting it would quietly register under no name at all and the
+ * plugin would lose its buttons or pages with nothing in the log, so refuse it
+ * and say what to do. (`get` and `provide` do take a string: core's own slots
+ * are still named that way.)
+ */
+function contributionKey(method: string, key: unknown): string {
+  if (typeof key === "object" && key !== null && typeof (key as CapabilityKey<unknown>).name === "string") {
+    return (key as CapabilityKey<unknown>).name;
+  }
+  const given = typeof key === "string" ? `the string ${JSON.stringify(key)}` : String(key);
+  throw new TypeError(
+    `capabilities.${method}() needs a CapabilityKey, got ${given}. Use the key the plugin that reads the point ` +
+      `exports (for example BAR_ACTIONS from @dune/plugin-inline-edit), or capabilityKey(${
+        typeof key === "string" ? JSON.stringify(key) : '"the.point.name"'
+      }) from @dune/core/plugin-api.`,
+  );
+}
+
 export function createCapabilityRegistry(): CapabilityRegistry {
   const slots = new Map<string, SlotEntry>();
   const contributions = new Map<string, { provider: string; item: unknown }[]>();
@@ -274,7 +296,7 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       return slot?.status === "active" ? slot.value as never : undefined;
     },
     list(key: CapabilityKey<unknown>) {
-      return (contributions.get(key.name) ?? []).map((c) => c.item) as never;
+      return (contributions.get(contributionKey("list", key)) ?? []).map((c) => c.item) as never;
     },
     providers() {
       const out: CapabilityProvider[] = [];
@@ -313,9 +335,10 @@ export function createCapabilityRegistry(): CapabilityRegistry {
           slots.set(name, { provider, factory, status: "unresolved" });
         },
         contribute(key: CapabilityKey<unknown>, item: unknown) {
-          const list = contributions.get(key.name) ?? [];
+          const name = contributionKey("contribute", key);
+          const list = contributions.get(name) ?? [];
           list.push({ provider, item });
-          contributions.set(key.name, list);
+          contributions.set(name, list);
         },
       };
     },
