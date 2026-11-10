@@ -79,7 +79,7 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   console.log("🏜️  Dune — starting development server...\n");
 
   const ctx = await bootstrap(root, { debug, buildSearch: true });
-  const { engine, collections, taxonomy, search, config, pluginPublicRoutes, hooks } = ctx;
+  const { engine, taxonomy, config, pluginPublicRoutes, hooks } = ctx;
   // For `dune ps` (runtime/instance-registry.ts). Dev ends via signals or a
   // --watch restart rather than a graceful path, so the record is left to the
   // unload handler and, failing that, to readers pruning it.
@@ -125,10 +125,8 @@ export async function devCommand(root: string, options: DevOptions = {}) {
           rebuildTimeout = setTimeout(async () => {
             try {
               const start = performance.now();
+              // engine.rebuild() also refreshes the taxonomy, collections and search (bootstrap).
               await engine.rebuild();
-              taxonomy.rebuild(engine.pages, engine.taxonomyMap);
-              collections.rebuild(engine.pages, engine.taxonomyMap);
-              await search.rebuild(engine.pages);
               const elapsed = (performance.now() - start).toFixed(0);
               console.log(`  🔄 Rebuilt in ${elapsed}ms (${engine.pages.length} pages)`);
               notifyContentReload();

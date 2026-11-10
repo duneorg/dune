@@ -138,6 +138,11 @@ export interface DuneEngine {
   /** Rebuild the content index (for dev mode / after changes) */
   rebuild(): Promise<void>;
   /**
+   * Attach the hook registry after creation, for callers that can only build it
+   * after the engine. From then on the engine fires `onRebuild` and `onThemeSwitch`.
+   */
+  setHooks(hooks: HookRegistry): void;
+  /**
    * List available theme names (subdirectory names under `themesDir`).
    * Used by the admin theme-switcher.
    */
@@ -185,7 +190,9 @@ export async function createDuneEngine(
   options: DuneEngineOptions,
 ): Promise<DuneEngine> {
   const { storage, config, formats } = options;
-  const hooks = options.hooks;
+  // Late-bound: bootstrap() creates the engine before the hook registry exists and attaches it
+  // with setHooks(), so `onRebuild` and `onThemeSwitch` fire in a real server too.
+  let hooks = options.hooks;
   const themesDir = options.themesDir ?? "themes";
   const storageRoot = options.storageRoot;
   const { storage: contentStorage, contentDir } = createContentStorage(
@@ -657,12 +664,25 @@ export async function createDuneEngine(
           logger.debug("index.rebuilt", { indexed: result.indexed, durationMs: result.duration });
         }
 
+        // onRebuild handlers read engine.pages and engine.taxonomyMap (metrics, CDN purge, the
+        // taxonomy/collections/search refresh in bootstrap): they must see the new index, not
+        // the one this rebuild replaced.
+        syncEngineState();
+
         if (hooks) {
           await hooks.fire("onRebuild", {});
         }
       });
     });
     return rebuildChain;
+  }
+
+  /** Copy the closure's index state onto the public engine object. */
+  function syncEngineState(): void {
+    engine.pages = pages;
+    engine.taxonomyMap = taxonomyMap;
+    engine.indexErrors = indexErrors;
+    engine.blueprints = blueprints ?? {};
   }
 
   // Build the engine object
@@ -700,11 +720,11 @@ export async function createDuneEngine(
 
     async rebuild() {
       await rebuild();
-      // Sync closure state after rebuild
-      engine.pages = pages;
-      engine.taxonomyMap = taxonomyMap;
-      engine.indexErrors = indexErrors;
-      engine.blueprints = blueprints ?? {};
+      syncEngineState();
+    },
+
+    setHooks(registry: HookRegistry) {
+      hooks = registry;
     },
 
     getAvailableThemes,

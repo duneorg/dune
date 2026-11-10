@@ -127,6 +127,7 @@ function makeEngine(
     loadPage: (_sourcePath: string) => Promise.reject(new Error("not implemented")),
     serveMedia: (_mediaPath: string) => Promise.resolve(null),
     rebuild: () => Promise.resolve(),
+    setHooks: () => {},
     themeConfig: {},
     getAvailableThemes: () => Promise.resolve([]),
     switchTheme: (_name: string) => Promise.resolve(),

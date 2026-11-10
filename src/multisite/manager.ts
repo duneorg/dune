@@ -308,13 +308,8 @@ export class MultisiteManager {
             rebuildTimeout = setTimeout(async () => {
               try {
                 const start = performance.now();
+                // Also refreshes the taxonomy, collections and search (bootstrap).
                 await ctx.engine.rebuild();
-                ctx.taxonomy.rebuild(ctx.engine.pages, ctx.engine.taxonomyMap);
-                ctx.collections.rebuild(
-                  ctx.engine.pages,
-                  ctx.engine.taxonomyMap,
-                );
-                await ctx.search.rebuild(ctx.engine.pages);
                 const elapsed = (performance.now() - start).toFixed(0);
                 if (debug) {
                   logger.debug("multisite.rebuilt", {

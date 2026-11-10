@@ -354,6 +354,8 @@ export async function bootstrap(
   });
   const capabilityRegistry = createCapabilityRegistry();
   const hooks = createHookRegistry({ config, storage, services: pluginServices, capabilities: capabilityRegistry });
+  // The engine was created before the registry; without this it never fired onRebuild or onThemeSwitch.
+  engine.setHooks(hooks);
 
   // 5a. Pre-registered plugins (e.g. from @dune/testing harness) — registered
   // before loadPlugins() so their hooks participate in the full lifecycle.
@@ -487,6 +489,52 @@ export async function bootstrap(
   if (buildSearch) {
     await search.build();
   }
+
+  // Keep what is derived from the page index in step with it. `engine.rebuild()`
+  // gives the engine a new `pages` array and nothing else holds on to it: the
+  // taxonomy, the collections and the search engines were built over the old
+  // one. Without this, a page the admin, inline editing or a plugin writes at
+  // runtime is missing from them until the process restarts (`dune dev` and the
+  // multisite watcher used to refresh them by hand; a production server never
+  // did).
+  //
+  // The taxonomy and the collections are cheap and refresh before
+  // `engine.rebuild()` returns. Search re-reads every page body, so it refreshes
+  // in the background and is coalesced: a burst of saves costs one extra run,
+  // not one per save, and a save does not wait for it. Each run also collects
+  // the plugins' records again (`onSearchRecordsCollect`), so a record that
+  // appeared or went away (a PDF added to content/) is picked up.
+  let searchRefresh: Promise<void> | null = null;
+  let searchRefreshAgain = false;
+  const refreshSearch = async (): Promise<void> => {
+    try {
+      const fresh = (await hooks.fire<SearchRecordsCollectContext>("onSearchRecordsCollect", { records: [] })).records;
+      // In place: engines hold this array (the built-in one, and those that kept the
+      // `injectedRecords` they were handed at creation).
+      injectedRecords.length = 0;
+      injectedRecords.push(...fresh);
+      await search.rebuild(engine.pages, injectedRecords);
+    } catch (err) {
+      logger.warn("search.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+    }
+  };
+  hooks.on("onRebuild", () => {
+    taxonomy.rebuild(engine.pages, engine.taxonomyMap);
+    collections.rebuild(engine.pages, engine.taxonomyMap);
+    if (!buildSearch) return;
+    if (searchRefresh) {
+      searchRefreshAgain = true;
+      return;
+    }
+    searchRefresh = (async () => {
+      do {
+        searchRefreshAgain = false;
+        await refreshSearch();
+      } while (searchRefreshAgain);
+    })().finally(() => {
+      searchRefresh = null;
+    });
+  });
 
   // 9. Image processing pipeline
   const imageProcessor = createImageProcessor({
