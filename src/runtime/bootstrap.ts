@@ -518,9 +518,19 @@ export async function bootstrap(
       logger.warn("search.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
     }
   };
-  hooks.on("onRebuild", () => {
-    taxonomy.rebuild(engine.pages, engine.taxonomyMap);
-    collections.rebuild(engine.pages, engine.taxonomyMap);
+  // An engine listener, not a hook handler: a plugin's throwing onRebuild handler must not
+  // stop these indexes from following the page index.
+  engine.onRebuilt(() => {
+    try {
+      taxonomy.rebuild(engine.pages, engine.taxonomyMap);
+    } catch (err) {
+      logger.warn("taxonomy.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+    }
+    try {
+      collections.rebuild(engine.pages, engine.taxonomyMap);
+    } catch (err) {
+      logger.warn("collections.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+    }
     if (!buildSearch) return;
     if (searchRefresh) {
       searchRefreshAgain = true;

@@ -152,3 +152,57 @@ Deno.test("a plugin's onRebuild hook fires after engine.rebuild() in a real boot
     ctx.search.close();
   });
 });
+
+Deno.test("a throwing onRebuild handler fails nothing: the rebuild resolves, the indexes refresh, later rebuilds still run", opts, async () => {
+  let calls = 0;
+  const bad: DunePlugin = {
+    name: "bad-rebuild-handler",
+    version: "1.0.0",
+    hooks: {
+      onRebuild: () => {
+        calls++;
+        throw new Error("boom");
+      },
+    } as DunePlugin["hooks"],
+  };
+  await withSite([bad], true, async (ctx, root) => {
+    await addPage(root, "02.first", "zebrafish");
+    await ctx.engine.rebuild(); // used to reject here, and to break every rebuild after it
+    assertEquals(calls, 1);
+    assertEquals(tagPages(ctx), 2, "taxonomy refreshed although the plugin's handler ran first and threw");
+    await eventually(async () => (await ctx.search.search("zebrafish")).length === 1, "search refreshed too");
+
+    await addPage(root, "03.second", "wombat");
+    await ctx.engine.rebuild(); // the chain is not stuck on the earlier failure
+    assertEquals(calls, 2);
+    assertEquals(tagPages(ctx), 3);
+    await eventually(async () => (await ctx.search.search("wombat")).length === 1, "the second page is searchable");
+    ctx.search.close();
+  });
+});
+
+Deno.test("a rebuild that fails rejects its own caller only; the next rebuild runs", opts, async () => {
+  await withSite([], false, async (ctx, root) => {
+    // The router fails once while the rebuild is installing the new index.
+    const router = ctx.engine.router as unknown as { rebuild: (...a: unknown[]) => unknown };
+    const original = router.rebuild.bind(router);
+    let failNext = true;
+    router.rebuild = (...args: unknown[]) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("router went away");
+      }
+      return original(...args);
+    };
+    let rejected = false;
+    await ctx.engine.rebuild().catch(() => {
+      rejected = true;
+    });
+    assertEquals(rejected, true, "the failing rebuild reports its failure to its caller");
+
+    await addPage(root, "02.later", "x");
+    await ctx.engine.rebuild(); // used to be skipped for good (a rejected chain)
+    assertEquals(ctx.engine.pages.length, 2);
+    ctx.search.close();
+  });
+});

@@ -128,6 +128,7 @@ function makeEngine(
     serveMedia: (_mediaPath: string) => Promise.resolve(null),
     rebuild: () => Promise.resolve(),
     setHooks: () => {},
+    onRebuilt: () => {},
     themeConfig: {},
     getAvailableThemes: () => Promise.resolve([]),
     switchTheme: (_name: string) => Promise.resolve(),

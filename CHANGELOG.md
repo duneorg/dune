@@ -430,6 +430,10 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `DuneEngine.setHooks()` attaches the registry. Handlers also see the rebuilt index: `engine.pages` and
   `engine.taxonomyMap` are updated before `onRebuild` fires, not after (the metrics page count and the CDN
   purge list were one rebuild behind).
+  A throwing `onRebuild`/`onThemeSwitch` handler is logged and no longer fails the rebuild, and a failed
+  `engine.rebuild()` rejects only its own caller instead of permanently breaking every later rebuild. The
+  engine's own derived indexes (taxonomy, collections, search) refresh through `DuneEngine.onRebuilt()`
+  listeners that run before plugin hooks, so a faulty plugin handler cannot skip them.
 - **`dune migrate:config` no longer reports an empty `admin:` key in an environment overlay as a block to
   move by hand (#142).** An overlay (`config/env/<env>/system.yaml`) whose whole `admin:` block was
   `enabled: false` kept an empty `admin:` key after `enabled` was removed, and the command exited 1 with
