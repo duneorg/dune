@@ -160,6 +160,18 @@ export async function migrateConfigCommand(
         if (stripped.removed) {
           text = stripped.text;
           parsedBefore = parseYaml(text);
+          // An environment overlay whose whole admin: block was enabled leaves an empty key
+          // behind, which would be reported as a block to move by hand. Nothing is left to
+          // move, so drop it. (In the base file the whole block is moved below.)
+          if (path !== join(root, "config", "system.yaml")) {
+            const left = (parsedBefore as { admin?: unknown } | null)?.admin;
+            const empty = left === null || left === undefined ||
+              (typeof left === "object" && Object.keys(left as object).length === 0);
+            if (empty) {
+              text = removeTopLevelKeyInText("system", text, "admin").text;
+              parsedBefore = parseYaml(text);
+            }
+          }
           changed++;
           console.log(`  ✓ ${rel}: removed admin.enabled`);
           if (!opts.dryRun) await Deno.writeTextFile(path, text);
