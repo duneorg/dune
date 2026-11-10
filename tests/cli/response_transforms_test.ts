@@ -531,55 +531,6 @@ Deno.test("marker scrub: runs after plugin transforms for anonymous requests", a
   assertEquals(await result.text(), `<p>p</p><span>v</span>`);
 });
 
-Deno.test("runPluginResponseTransforms: ctx.barActions carries the bar.actions contributions in order", async () => {
-  const auth = makeAuth({
-    result: { authenticated: true, user: makeUser("admin") },
-  });
-  const barOwner: DunePlugin = {
-    name: "bar-owner",
-    version: "1.0.0",
-    hooks: {},
-    async transformResponse(ctx) {
-      const body = await ctx.response.text();
-      const actions = ctx.barActions.flatMap((fn) => fn({ page: ctx.page, adminPrefix: ctx.adminPrefix }));
-      return new Response(`${body}${actions.map((a) => `[${a.id}]`).join("")}`, {
-        status: ctx.response.status,
-        headers: ctx.response.headers,
-      });
-    },
-  };
-
-  const result = await runPluginResponseTransforms({
-    req: makeReq("/about", SESSION_COOKIE),
-    response: htmlResponse(`<p>p</p>`),
-    plugins: [barOwner],
-    barActions: [
-      () => [{ id: "a:one", label: "One", href: "/1" }],
-      ({ page }) => (page?.template === "post" ? [{ id: "b:two", label: "Two", href: "/2" }] : []),
-    ],
-    auth,
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-
-  assertEquals(await result.text(), `<p>p</p>[a:one][b:two]`);
-});
-
-Deno.test("runPluginResponseTransforms: barActions defaults to empty", async () => {
-  const { plugin, seen } = makeRecordingPlugin();
-  await runPluginResponseTransforms({
-    req: makeReq("/about"),
-    response: htmlResponse(`<p>p</p>`),
-    plugins: [plugin],
-    auth: null,
-    resolve,
-    config,
-    adminPrefix: "/admin",
-  });
-  assertEquals(seen[0].barActions, []);
-});
-
 Deno.test("runPluginResponseTransforms: a provider that declares its cookie name is consulted for that cookie only", async () => {
   const mk = () => makeAuth({ result: { authenticated: true, user: makeUser("admin") } });
   const run = (auth: ReturnType<typeof mk>, cookie: string | undefined) =>
@@ -642,7 +593,6 @@ Deno.test("runPluginResponseTransforms: no admin prefix — /admin is an ordinar
     adminPrefix: null,
   });
   assertEquals(seen.length, 1, "the transform ran: with no admin, /admin/news is content");
-  assertEquals(seen[0].adminPrefix, "");
   assertEquals((await result.text()).includes("news"), true);
 });
 
@@ -660,4 +610,37 @@ Deno.test("runPluginResponseTransforms: an admin prefix still keeps its own path
   });
   assertEquals(seen.length, 0);
   assertStrictEquals(result, original);
+});
+
+Deno.test("runPluginResponseTransforms: ctx.capabilities is the registry's reader, and empty when none is supplied", async () => {
+  const { plugin, seen } = makeRecordingPlugin();
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+  });
+  assertEquals(seen[0].capabilities.get("admin.prefix"), undefined);
+  assertEquals(seen[0].capabilities.providers(), []);
+
+  const reader = {
+    get: (name: string) => (name === "admin.prefix" ? { prefix: "/admin" } : undefined),
+    list: () => [],
+    providers: () => [],
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  await runPluginResponseTransforms({
+    req: makeReq("/about"),
+    response: htmlResponse(`<p>p</p>`),
+    plugins: [plugin],
+    auth: null,
+    resolve,
+    config,
+    adminPrefix: "/admin",
+    capabilities: reader,
+  });
+  assertEquals(seen[1].capabilities.get("admin.prefix")?.prefix, "/admin");
 });

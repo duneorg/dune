@@ -111,12 +111,12 @@ export function registerContentCatchAll(
       plugins: hooks.plugins(),
       auth: getAdminAuth(),
       sessionCookies: getAdminAuth()?.sessionCookies,
-      barActions: ctx.capabilities.list("bar.actions"),
       authz,
       actionToRelations: authzSchema.actionToRelations as Record<string, readonly string[]>,
       resolve: engine.router.resolve,
       config,
       adminPrefix: adminPrefix(),
+      capabilities: ctx.capabilities,
     });
 
   app.all("/*", async (fc) => {
