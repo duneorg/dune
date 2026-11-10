@@ -348,6 +348,28 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
 
 ### Added
 
+- **Password login for the public site (#95).** `POST /auth/login` signs a
+  `provider: "local"` account in with `identifier` (email or username),
+  `password` and an optional `next`, form-encoded or JSON, so a site with
+  `admin.enabled: false` can have logged-in users with passwords (created with
+  `dune users:create`). Opt in with `site.auth.providers.password.enabled: true`;
+  off by default, and unavailable with `user_store: session` (it logs why). The
+  form login answers `303` to `next` (a same-site path only, else `/`) or back to
+  `/auth/login?error=invalid`; the JSON login answers `200 { ok, next }` or
+  `401 { error: "Invalid credentials" }`. Same safety as the admin login: a hash
+  is always verified (against `DUMMY_HASH` for unknown, disabled, non-local or
+  password-less accounts) so every failure is identical in body and timing; ten
+  attempts per IP and ten failures per identifier (unknown ones included) in 15
+  minutes, then `429`; same-origin check; hashes below the current cost are
+  upgraded. The session is the site session (`dune_auth`), separate from the
+  admin's. A theme can render the page with `templates/login.tsx`: it gets a
+  synthetic page whose frontmatter is `{ title, providers, magicLink,
+  passwordLogin, error?, next }` (the pattern of `error.tsx`); without it the
+  built-in page is served, now with the password form. Public surface this
+  freezes: `GET/POST /auth/login`, the field names, `?error=invalid|rate_limited`,
+  the `login` template's frontmatter, and `site.auth.providers.password`.
+  Out of scope: password reset by email, self-service sign-up, 2FA.
+
 - **`onPageMove` hook event (#97).** Fired by whoever renames, renumbers or
   reorders pages, with `PageMovePayload` (`{ moves: [{ from, to }] }`, paths
   relative to the content directory; every page at or below `from` now lives
@@ -486,6 +508,12 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   site called `initFlags()` itself; `bootstrap()` now resolves `system.flags`.
   Declare them in **system.yaml** (the docs said site.yaml, where the key was
   ignored).
+- **The post-login `next` redirect could be an open redirect (#95).** The
+  sanitizer behind the magic-link login accepted `/\evil.example`, which browsers
+  read as `//evil.example`, and control characters. One stricter sanitizer now
+  serves both logins: only a same-site path survives.
+- **The "account already exists" notice on the login page showed HTML-escaped
+  twice.**
 - **The MCP write tools announce page writes (#97).** `write_page`,
   `update_frontmatter` and `delete_page` now fire `onPageCreate` /
   `onPageUpdate` / `onPageDelete` (plugins load once, on the first write), so

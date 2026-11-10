@@ -20,10 +20,12 @@ import type { BootstrapResult } from "../runtime/bootstrap.ts";
 import { createLocalUserStore } from "./user-store.ts";
 import { createSiteAuthMiddleware } from "./middleware.ts";
 import { createSessionManager, createSessionStore } from "../session/mod.ts";
-import { createAuthRoutes } from "./routes.ts";
+import { createAuthRoutes, type RenderJsx } from "./routes.ts";
 import { createProviders } from "./providers/mod.ts";
 import { type User, USER_HEADER } from "./types.ts";
 import { copySocketAddr } from "../security/rate-limit.ts";
+import { LocalRateLimitStore } from "../security/rate-limit-store.ts";
+import { renderLoginPage } from "../routing/login-page.ts";
 import { InMemoryMagicTokenStore } from "./magic-link.ts";
 import { bootstrapRoleGrants, bootstrapRoleTuples, createDuneAuthSystem } from "./authz.ts";
 import { resolveRoleGrants } from "./role-grants.ts";
@@ -324,6 +326,17 @@ export async function mountDuneAuth(
     });
   }
 
+  // ── Password login ──────────────────────────────────────────────────────────
+  const passwordRequested = authConfig?.providers?.password?.enabled === true;
+  const passwordEnabled = passwordRequested && mode === "dune" && userStoreType !== "session";
+  if (passwordRequested && !passwordEnabled) {
+    logger.warn("auth.password.not_available", {
+      reason: mode !== "dune"
+        ? "password login needs auth.mode: dune"
+        : "password login needs persistent user records; user_store: session cannot hold passwords",
+    });
+  }
+
   // ── Routes ─────────────────────────────────────────────────────────────────
   const routes = createAuthRoutes({
     userStore,
@@ -337,6 +350,10 @@ export async function mountDuneAuth(
     sendEmail,
     trustForwardedFor,
     magicTokenStore,
+    passwordLoginEnabled: passwordEnabled,
+    rateLimitStore: passwordEnabled ? new LocalRateLimitStore() : undefined,
+    loginPage: (req, view, renderJsx, status) =>
+      renderLoginPage(ctx.engine, req, view, renderJsx, status, ctx.contentApi),
   });
 
   // ── Register global middleware — populates ctx.state.siteUser ───────────────
@@ -417,10 +434,20 @@ export async function mountDuneAuth(
   // ── Register auth routes ────────────────────────────────────────────────────
 
   // GET /auth/login
+  // Fresh's ctx.render takes no status; wrap it so a themed page can answer 429.
+  const renderJsxFor = (fc: { render: (vnode: never) => Response | Promise<Response> }): RenderJsx =>
+    async (jsx: unknown, status = 200) => {
+      const res = await fc.render(jsx as never);
+      return status === 200 ? res : new Response(res.body, { status, headers: res.headers });
+    };
+
   app.get("/auth/login", (fc) => {
     const siteUser = getSiteUser(fc);
-    return routes.login(fc.req, siteUser);
+    return routes.login(fc.req, siteUser, renderJsxFor(fc));
   });
+
+  // POST /auth/login — password login (404 unless site.auth.providers.password.enabled)
+  app.post("/auth/login", (fc) => routes.passwordLogin(fc.req, renderJsxFor(fc)));
 
   // GET /auth/logout
   app.get("/auth/logout", (fc) => routes.logout(fc.req));
