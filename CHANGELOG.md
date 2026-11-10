@@ -430,6 +430,11 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `DuneEngine.setHooks()` attaches the registry. Handlers also see the rebuilt index: `engine.pages` and
   `engine.taxonomyMap` are updated before `onRebuild` fires, not after (the metrics page count and the CDN
   purge list were one rebuild behind).
+- **`dune migrate:config` no longer reports an empty `admin:` key in an environment overlay as a block to
+  move by hand (#142).** An overlay (`config/env/<env>/system.yaml`) whose whole `admin:` block was
+  `enabled: false` kept an empty `admin:` key after `enabled` was removed, and the command exited 1 with
+  nothing to move. The empty key is dropped; an overlay `admin:` block that still holds settings is still
+  reported.
 
 - **`capabilities.list()` and `contribute()` refuse the string form of a point (#143).** Since typed keys
   replaced strings, a plugin still calling `list("bar.actions")` or `contribute("bar.actions", fn)` (plain
