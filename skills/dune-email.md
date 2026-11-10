@@ -131,7 +131,7 @@ ls .dune/admin/dev-email/
 cat .dune/admin/dev-email/1715598000000-ab12cd.json   # JSON, not HTML
 ```
 
-Or via the admin panel at `/admin/email-preview` (requires `config.read`; both `/admin/api/email-preview` and `/admin/api/email-preview/{id}` 404 outside `DUNE_ENV=dev`).
+Or, with `@dune/plugin-admin` listed under `plugins:`, via the admin panel at `/admin/email-preview` (requires `config.read`; both `/admin/api/email-preview` and `/admin/api/email-preview/{id}` 404 outside `DUNE_ENV=dev`).
 
 ---
 

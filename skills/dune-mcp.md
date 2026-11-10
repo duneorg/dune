@@ -117,7 +117,7 @@ Get taxonomy values with page counts.
 ### `get_config`
 Get site configuration summary (no secrets).
 
-Returns: `site` (title, url, author, taxonomies, feedEnabled, workflowEnabled), `theme` (name, templates, layouts), `system` (contentDir, languages, cacheEnabled, debugMode), `admin` (path, auditEnabled), `plugins` (list of specs).
+Returns: `site` (title, url, author, taxonomies, feedEnabled, workflowEnabled), `theme` (name, templates, layouts), `system` (contentDir, contentSrc, languages, debugMode), `plugins` (list of specs). There is no `admin` entry: the admin is a plugin now, and its settings are its plugin config.
 
 ### `get_runtime_info`
 Live snapshot: page counts (total/published/draft), formats breakdown, top-level route sections, taxonomy summaries (with top values), theme name/version/templates/layouts, `generatedAt`.
@@ -191,13 +191,12 @@ None of the 9 write/scaffold tools are exported from `@dune/core/mcp`'s public m
 | `dune://content/taxonomy` | All taxonomy values with counts |
 | `dune://content/blueprints` | All frontmatter blueprint definitions, inheritance resolved |
 | `dune://content/forms` | All form definitions under `forms/` — read this before `scaffold_form` |
-| `dune://site/audit` | Last 50 admin audit-log entries (empty array if audit logging isn't enabled) |
 
-The last three aren't in the original version of this doc. `dune mcp:serve` registers all 7. A programmatic embedding only gets `forms`/`audit` if it passes `storage` and `root` to `buildResources()` (both optional — omit either and you get 5 resources, not 7, with no error).
+`dune mcp:serve` registers all 6. A programmatic embedding only gets `forms` if it passes `storage` and `root` to `buildResources()` (both optional — omit either and you get 5 resources, with no error). The admin audit trail is the admin plugin's own and is not exposed over MCP.
 
 ## HTTP API — Content Read/Write
 
-These REST endpoints complement the MCP tools (largely superseded by `get_page_source`/`write_page`/etc. above when you're inside an MCP session, but still relevant for non-MCP tooling or CI).
+These REST endpoints belong to `@dune/plugin-admin`, so they exist only on a site that lists it under `plugins:` in `site.yaml`; without it they 404. They complement the MCP tools (largely superseded by `get_page_source`/`write_page`/etc. above when you're inside an MCP session, but still relevant for non-MCP tooling or CI).
 All require authentication; `dev/apply` additionally requires `DUNE_ENV=dev` or `system.debug: true`.
 
 ### `GET /admin/api/page-source?route=/blog/post`
