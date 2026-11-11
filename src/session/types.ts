@@ -46,10 +46,16 @@ export interface SessionStore {
 
   /**
    * Delete all sessions belonging to a user.
-   * Used on password change, explicit "sign out everywhere", and login
-   * (to ensure only one active session per user).
+   * Used on password change and explicit "sign out everywhere".
    */
   deleteByUserId(userId: string): Promise<void>;
+
+  /**
+   * All stored sessions belonging to a user, in no particular order. May
+   * include sessions that have expired but not yet been swept; callers that
+   * need only live ones filter on `expiresAt` (SessionManager does).
+   */
+  listByUserId(userId: string): Promise<Session[]>;
 
   /**
    * Remove expired sessions from the store and return the count deleted.

@@ -230,6 +230,22 @@ Deno.test("RedisSessionStore: deleteByUserId removes all sessions for a user", a
   assertNotEquals(await store.get(s3.id), null);
 });
 
+Deno.test("RedisSessionStore: listByUserId returns only that user's sessions", async () => {
+  const store = createRedisSessionStore({
+    client: new FakeRedisClient(),
+    lifetimeSec: 3600,
+  });
+  const s1 = makeSession({ userId: "alice" });
+  const s2 = makeSession({ userId: "alice" });
+  await store.set(s1);
+  await store.set(s2);
+  await store.set(makeSession({ userId: "bob" }));
+
+  const ids = (await store.listByUserId("alice")).map((s) => s.id).sort();
+  assertEquals(ids, [s1.id, s2.id].sort());
+  assertEquals(await store.listByUserId("nobody"), []);
+});
+
 Deno.test("RedisSessionStore: deleteByUserId also clears the user's set key", async () => {
   const client = new FakeRedisClient();
   const store = createRedisSessionStore({ client, lifetimeSec: 3600 });

@@ -112,6 +112,14 @@ export interface SessionManager {
   revoke(sessionId: string): Promise<void>;
   /** Revoke all sessions for a user. */
   revokeAll(userId: string): Promise<void>;
+  /**
+   * The user's live (unexpired) sessions, newest first. A session's `id` is the
+   * bearer credential in its cookie, so never render it in a page: show a
+   * derived handle and look the session up again server-side to act on it.
+   */
+  listForUser(userId: string): Promise<Session[]>;
+  /** Revoke all of a user's sessions except `keepSessionId` (the caller's own). */
+  revokeOthers(userId: string, keepSessionId: string): Promise<void>;
   /** Clean up expired sessions. */
   cleanup(): Promise<number>;
 }
@@ -145,11 +153,24 @@ export function createSessionManager(store: SessionStore, lifetimeMs: number): S
     await store.deleteByUserId(userId);
   }
 
+  async function listForUser(userId: string): Promise<Session[]> {
+    const now = Date.now();
+    return (await store.listByUserId(userId))
+      .filter((s) => s.expiresAt >= now)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async function revokeOthers(userId: string, keepSessionId: string): Promise<void> {
+    for (const s of await store.listByUserId(userId)) {
+      if (s.id !== keepSessionId) await store.delete(s.id);
+    }
+  }
+
   async function cleanup(): Promise<number> {
     return store.cleanup();
   }
 
-  return { create, get, revoke, revokeAll, cleanup };
+  return { create, get, revoke, revokeAll, listForUser, revokeOthers, cleanup };
 }
 
 async function generateSessionId(): Promise<string> {

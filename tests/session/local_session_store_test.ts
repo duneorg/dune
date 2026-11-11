@@ -118,6 +118,19 @@ Deno.test("LocalSessionStore: deleteByUserId is safe when no sessions exist", as
   await store.deleteByUserId("nobody");
 });
 
+// ── listByUserId ───────────────────────────────────────────────────────────────
+
+Deno.test("LocalSessionStore: listByUserId returns only that user's sessions", async () => {
+  const store = createLocalSessionStore({ storage: createMemoryStorage(), sessionsDir: ".sess", lifetimeMs: 3_600_000 });
+  await store.set(makeSession({ id: "aaaa", userId: "alice" }));
+  await store.set(makeSession({ id: "bbbb", userId: "alice" }));
+  await store.set(makeSession({ id: "cccc", userId: "bob" }));
+
+  const ids = (await store.listByUserId("alice")).map((s) => s.id).sort();
+  assertEquals(ids, ["aaaa", "bbbb"]);
+  assertEquals(await store.listByUserId("nobody"), []);
+});
+
 // ── cleanup ────────────────────────────────────────────────────────────────────
 
 Deno.test("LocalSessionStore: cleanup removes only expired sessions", async () => {

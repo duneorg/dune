@@ -113,12 +113,27 @@ export function createRedisSessionStore(config: RedisSessionStoreConfig): Sessio
     await client.del(userSetKey(userId));
   }
 
+  async function listByUserId(userId: string): Promise<Session[]> {
+    const ids = await client.smembers(userSetKey(userId));
+    const out: Session[] = [];
+    for (const id of ids) {
+      const raw = await client.get(sessionKey(id));
+      if (raw === null) continue;
+      try {
+        out.push(JSON.parse(raw) as Session);
+      } catch {
+        // Skip corrupt entries
+      }
+    }
+    return out;
+  }
+
   async function cleanup(): Promise<number> {
     // Redis handles TTL expiry natively — no manual sweep required.
     return 0;
   }
 
-  return { get, set, delete: del, deleteByUserId, cleanup };
+  return { get, set, delete: del, deleteByUserId, listByUserId, cleanup };
 }
 
 /**

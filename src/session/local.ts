@@ -82,6 +82,26 @@ export function createLocalSessionStore(config: LocalSessionStoreConfig): Sessio
     }
   }
 
+  async function listByUserId(userId: string): Promise<Session[]> {
+    const out: Session[] = [];
+    try {
+      const entries = await storage.list(sessionsDir);
+      for (const entry of entries) {
+        if (entry.isDirectory || !entry.name.endsWith(".json")) continue;
+        try {
+          const data = await storage.read(`${sessionsDir}/${entry.name}`);
+          const session: Session = JSON.parse(new TextDecoder().decode(data));
+          if (session.userId === userId) out.push(session);
+        } catch {
+          // Skip corrupt files
+        }
+      }
+    } catch {
+      // Sessions dir may not exist yet
+    }
+    return out;
+  }
+
   async function cleanup(): Promise<number> {
     let cleaned = 0;
     try {
@@ -110,5 +130,5 @@ export function createLocalSessionStore(config: LocalSessionStoreConfig): Sessio
     return cleaned;
   }
 
-  return { get, set, delete: del, deleteByUserId, cleanup };
+  return { get, set, delete: del, deleteByUserId, listByUserId, cleanup };
 }

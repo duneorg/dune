@@ -11,6 +11,13 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- `SessionManager.listForUser(userId)` and `revokeOthers(userId, keepSessionId)`, backed by a new
+  `SessionStore.listByUserId(userId)` on the local, Deno KV and Redis stores. They let an account page list a user's
+  live sessions and end all but the current one (plugin-admin builds "Sign out other sessions" on this). Custom
+  `SessionStore` implementations must add `listByUserId`. (#155)
+
 ## [0.36.0] — 2026-11-10
 
 Dune 0.36 moves the admin out of core and freezes the plugin and theme contracts as two small
