@@ -357,8 +357,9 @@ where the setting lives now (see `dune migrate:config`, which reports these too)
   `audit.log_file`, `auth_provider`, `content.allow_tsx_format`) **refuses to start**
   instead of silently falling back to defaults; with no such key it logs a warning
   and runs. Refresh a stale `deno.lock` with `dune lockfile:sync`.
-- Programmatic config in `dune.config.ts` is not checked for the old names: an old key
-  there is ignored, so rename it by hand.
+- Programmatic config in `dune.config.ts` gets the same check as the YAML files: an old
+  key in its `site:` or `system:` block is refused at load, naming the new key.
+  `dune migrate:config` cannot rewrite a `.ts` file, so rename it by hand.
 - **`PluginApi` and `MountApi` have a required `services` field.** Plugins receive it,
   so nothing changes for them; code that builds these objects itself (test harnesses,
   mocks) must supply it, and `createPluginServices()` from `@dune/core/plugin-api`
