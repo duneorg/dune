@@ -914,3 +914,62 @@ Deno.test("external-jwt provisioning: a different user's tuples don't affect ano
     false,
   );
 });
+
+// ── Cross-process visibility (dune#153) ──────────────────────────────────────
+
+Deno.test("AuthzLocalAdapter: picks up tuples written and deleted by another process", async () => {
+  const storage = makeStorage();
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 0,
+  });
+  // Server starts with an empty index.
+  assertEquals(await server.size(), 0);
+
+  // A second adapter on the same files stands in for the CLI process.
+  const cli = new AuthzLocalAdapter({ storage, dataDir: "data" });
+  const subject = { type: "user", id: "u1" };
+  const object = { type: "group", id: "admin" };
+  await cli.write([{ subject, relation: "member", object }]);
+
+  assertEquals(await server.hasTuple(subject, "member", object), true);
+  assertEquals((await server.findObjects(subject, "member")).length, 1);
+
+  await cli.delete({ who: subject });
+  assertEquals(await server.hasTuple(subject, "member", object), false);
+  assertEquals(await server.size(), 0);
+});
+
+Deno.test("AuthzLocalAdapter: rescans are throttled", async () => {
+  const storage = makeStorage();
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 60_000,
+  });
+  await server.size();
+  const cli = new AuthzLocalAdapter({ storage, dataDir: "data" });
+  await cli.write([{
+    subject: { type: "user", id: "u1" },
+    relation: "member",
+    object: { type: "group", id: "admin" },
+  }]);
+  assertEquals(await server.size(), 0);
+});
+
+Deno.test("AuthzLocalAdapter: in-process writes survive a rescan", async () => {
+  const storage = makeStorage();
+  const a = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 0,
+  });
+  const [t] = await a.write([{
+    subject: { type: "user", id: "u1" },
+    relation: "member",
+    object: { type: "group", id: "admin" },
+  }]);
+  assertEquals(await a.size(), 1);
+  assertEquals((await a.findTuples({})).map((x) => x.id), [t.id]);
+});
