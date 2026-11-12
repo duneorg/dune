@@ -241,6 +241,22 @@ export interface SiteConfig {
      * "external-jwt" — validate Bearer JWT tokens from an external provider.
      */
     mode?: "dune" | "external-jwt";
+    /**
+     * Site-wide default for page gating: the `roles:` value applied to every
+     * page that neither declares `roles:` nor inherits one from an ancestor.
+     * Same values as page frontmatter (`any` = any logged-in user, a role
+     * name, a list). A page or section opts out with `roles: public`.
+     * `/auth/*` and theme assets are never gated. Unset = pages are public
+     * unless they say otherwise.
+     *
+     * @example Whole site behind login, one public page
+     * ```yaml
+     * site:
+     *   auth:
+     *     default_roles: any
+     * ```
+     */
+    default_roles?: unknown;
     /** OAuth provider credentials. */
     providers?: {
       github?: { client_id: string; client_secret: string };

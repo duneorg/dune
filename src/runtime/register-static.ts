@@ -7,6 +7,12 @@ import {
 } from "../cli/serve-utils.ts";
 import type { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { serveClientBundle } from "../cli/client-bundles.ts";
+import {
+  denialForIndexEntry,
+  mediaDenialResponse,
+  findPagesForContentMediaPath,
+  siteDefaultGate,
+} from "../auth/gating.ts";
 
 type ClientBundles = Awaited<ReturnType<typeof buildPluginClientBundles>>;
 
@@ -93,8 +99,31 @@ export function registerStaticRoutes(
   });
 
   // Legacy co-located content media path.
+  // A file inherits the access rule of the page folder it lives in, exactly as
+  // on the route-based media path (register-middleware.ts): a visitor who may
+  // not see the page may not fetch its audio, images or downloads either.
   app.get("/content-media/*", async (fc) => {
-    const imageResult = await imageHandler(fc.req);
-    return imageResult ?? await routes.mediaHandler(fc.req);
+    const found = findPagesForContentMediaPath(
+      ctx.engine.pages,
+      fc.url.pathname.replace(/^\/content-media\//, ""),
+    );
+    // A file no page owns falls under the site default gate, if there is one.
+    const fallback = found.length === 0
+      ? siteDefaultGate(ctx.engine.site.auth?.default_roles)
+      : null;
+    const owners = fallback ? [fallback] : found;
+    const gated = owners.some((o) => o.gated === true);
+    if (gated) {
+      for (const owner of owners) {
+        const denial = await denialForIndexEntry(fc.req, owner);
+        if (denial) return mediaDenialResponse(fc.req, denial);
+      }
+    }
+    const res = (await imageHandler(fc.req)) ??
+      await routes.mediaHandler(fc.req);
+    if (!gated) return res;
+    const headers = new Headers(res.headers);
+    headers.set("Cache-Control", "private, no-store");
+    return new Response(res.body, { status: res.status, headers });
   });
 }

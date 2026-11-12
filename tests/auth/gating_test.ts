@@ -319,3 +319,101 @@ Deno.test("navigationForRequest: no req keeps only public entries", async () => 
   assertEquals(nav.map((p) => p.route), ["/"]);
   assertEquals(navAll.map((p) => p.route), ["/", "/blog/a"]);
 });
+
+// ── Reserved words, directives and media ownership (#157) ─────────────────────
+
+import {
+  denialForIndexEntry,
+  findPagesForContentMediaPath,
+  mediaDenialResponse,
+  parseRolesDirective,
+  siteDefaultGate,
+} from "../../src/auth/gating.ts";
+
+Deno.test("parseRolesSpec: `any` means any logged-in user", () => {
+  assertEquals(parseRolesSpec("any"), []);
+  assertEquals(parseRolesSpec(" any "), []);
+  assertStrictEquals(checkRoles(makeUser([]), parseRolesSpec("any")!), true);
+  assertStrictEquals(checkRoles(null, parseRolesSpec("any")!), false);
+});
+
+Deno.test("parseRolesSpec: `public` is never a gate", () => {
+  assertStrictEquals(parseRolesSpec("public"), null);
+});
+
+Deno.test("parseRolesDirective: absent, public, gate, malformed", () => {
+  assertEquals(parseRolesDirective(undefined), { kind: "inherit" });
+  assertEquals(parseRolesDirective(null), { kind: "inherit" });
+  assertEquals(parseRolesDirective("public"), { kind: "public" });
+  assertEquals(parseRolesDirective("member"), { kind: "gate", spec: "member" });
+  assertEquals(parseRolesDirective("any"), { kind: "gate", spec: [] });
+  assertEquals(parseRolesDirective([]), { kind: "gate", spec: [] });
+  assertEquals(parseRolesDirective(5), { kind: "inherit" });
+  assertEquals(parseRolesDirective(""), { kind: "inherit" });
+});
+
+Deno.test("findPagesForContentMediaPath: owner is the file's folder, else the nearest ancestor", () => {
+  const pages = [
+    { sourcePath: "05.caux/default.md", gated: true },
+    { sourcePath: "05.caux/default.de.md", gated: true },
+    { sourcePath: "06.history/default.md", gated: false },
+  ];
+  assertEquals(
+    findPagesForContentMediaPath(pages, "05.caux/audio.mp3").length,
+    2,
+  );
+  assertEquals(
+    findPagesForContentMediaPath(pages, "05.caux/files/deep/doc.pdf").length,
+    2,
+  );
+  assertEquals(
+    findPagesForContentMediaPath(pages, "06.history/a%20b.png")[0].sourcePath,
+    "06.history/default.md",
+  );
+  assertEquals(findPagesForContentMediaPath(pages, "logo.png"), []);
+  assertEquals(findPagesForContentMediaPath(pages, "99.none/x.png"), []);
+});
+
+Deno.test("findPagesForContentMediaPath: a replaced page array is looked up afresh", () => {
+  const first = [{ sourcePath: "05.a/default.md", gated: true }];
+  assertEquals(findPagesForContentMediaPath(first, "05.a/x.png").length, 1);
+  // Same array again (cached map) gives the same answer
+  assertEquals(findPagesForContentMediaPath(first, "05.a/x.png").length, 1);
+  // The engine swaps in a new array on re-index; the old cache must not leak
+  const second = [{ sourcePath: "06.b/default.md", gated: false }];
+  assertEquals(findPagesForContentMediaPath(second, "05.a/x.png"), []);
+  assertEquals(findPagesForContentMediaPath(second, "06.b/x.png").length, 1);
+});
+
+Deno.test("siteDefaultGate: a gate for gating defaults, null otherwise", () => {
+  assertEquals(siteDefaultGate("any"), { gated: true, roles: [] });
+  assertEquals(siteDefaultGate("member"), { gated: true, roles: "member" });
+  assertStrictEquals(siteDefaultGate(undefined), null);
+  assertStrictEquals(siteDefaultGate("public"), null);
+  assertStrictEquals(siteDefaultGate(5), null);
+});
+
+Deno.test("mediaDenialResponse: login redirect only for a logged-out document navigation", async () => {
+  const gate = { gated: true, roles: [] as string[] };
+  const nav = new Request("http://x/content-media/05.a/doc.pdf", {
+    headers: { "sec-fetch-dest": "document" },
+  });
+  const img = new Request("http://x/content-media/05.a/pic.png", {
+    headers: { "sec-fetch-dest": "image" },
+  });
+  const bare = new Request("http://x/content-media/05.a/doc.pdf");
+
+  const navDenial = (await denialForIndexEntry(nav, gate))!;
+  assertEquals(navDenial.status, 302);
+  const redirected = mediaDenialResponse(nav, navDenial);
+  assertEquals(redirected.status, 302);
+  assertEquals(
+    redirected.headers.get("location"),
+    "/auth/login?next=%2Fcontent-media%2F05.a%2Fdoc.pdf",
+  );
+
+  assertEquals(mediaDenialResponse(img, (await denialForIndexEntry(img, gate))!).status, 404);
+  assertEquals(mediaDenialResponse(bare, (await denialForIndexEntry(bare, gate))!).status, 404);
+  // A 403 (signed in, wrong role) is never turned into a redirect.
+  assertEquals(mediaDenialResponse(nav, new Response("Forbidden", { status: 403 })).status, 404);
+});

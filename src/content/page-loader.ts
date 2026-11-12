@@ -76,6 +76,12 @@ export async function loadPage(
   const frontmatter = await handler.extractFrontmatter(raw, contentFilePath);
   const rawContent = handler.extractBody(raw, contentFilePath);
 
+  // `frontmatter.roles` is what every request-time gate reads. Make it the
+  // *effective* rule (own, inherited or site default) that the index resolved,
+  // not just what this file declares.
+  if (index.gated) frontmatter.roles = index.roles as typeof frontmatter.roles;
+  else delete frontmatter.roles;
+
   // Compute the URL prefix for co-located media (based on content directory, not page route)
   const contentDirPath = dirname(index.sourcePath); // e.g. "04.blog/01.post"
   const contentDirRoute = dirPathToRoute(contentDirPath); // e.g. "/blog/post"

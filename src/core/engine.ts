@@ -464,6 +464,7 @@ export async function createDuneEngine(
       blueprints,
       facetFields: config.system.search?.facets?.map((f) => f.field),
       templateNames: await discoverThemeTemplateNames(),
+      defaultRoles: config.site.auth?.default_roles,
     });
     pages = result.pages;
     taxonomyMap = result.taxonomyMap;
@@ -679,6 +680,7 @@ export async function createDuneEngine(
           blueprints,
           facetFields: config.system.search?.facets?.map((f) => f.field),
           templateNames: await discoverThemeTemplateNames(),
+          defaultRoles: config.site.auth?.default_roles,
         });
         pages = result.pages;
         taxonomyMap = result.taxonomyMap;

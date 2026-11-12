@@ -294,11 +294,19 @@ export interface PageIndex {
    */
   gated?: boolean;
   /**
-   * Raw `frontmatter.roles` value when the page is gated. Stored at index
-   * time so list/search/nav/media can run the same `parseRolesSpec` +
+   * The *effective* `roles` value when the page is gated: the page's own
+   * `roles:`, else the nearest ancestor's, else `site.auth.default_roles`
+   * (see `applyGatingInheritance`). Stored at index time so
+   * list/search/nav/media can run the same `parseRolesSpec` +
    * `enforceRolesFromRequest` check without loading the page body.
    */
   roles?: unknown;
+  /**
+   * Raw `frontmatter.roles` exactly as the page declares it (absent when it
+   * declares none). Kept so the inheritance pass can be re-run from scratch
+   * whenever any page or the site default changes.
+   */
+  ownRoles?: unknown;
   /** File modification time — for incremental cache invalidation */
   mtime: number;
   /** Hash of frontmatter — for change detection */

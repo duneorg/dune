@@ -9,7 +9,10 @@
  *   roles:                     # AND list — user must have all
  *     all: [member, verified]
  *   roles: []                  # authenticated-only (any logged-in user)
- *   # absent                   # public access — no check performed
+ *   roles: any                 # same as `[]`
+ *   roles: public              # open, even inside a gated section / gated site
+ *   # absent                   # inherit: nearest ancestor's rule, else site.auth.default_roles,
+ *                              # else public (see applyGatingInheritance)
  *
  * When a polizy AuthSystem is wired via `setGatingAuthz()`, role checks go
  * through `authz.check()` for full hierarchy and group membership support.
@@ -116,10 +119,15 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
   // Absent or explicitly null → public
   if (raw === null || raw === undefined) return null;
 
-  // String → single role
+  // String → single role, or one of the two reserved words:
+  //   "any"    → any logged-in user (same as `[]`)
+  //   "public" → explicitly open (never a gate; see parseRolesDirective)
   if (typeof raw === "string") {
     const trimmed = raw.trim();
-    return trimmed.length > 0 ? trimmed : null;
+    if (trimmed.length === 0) return null;
+    if (trimmed === ANY_ROLE) return [];
+    if (trimmed === PUBLIC_ROLE) return null;
+    return trimmed;
   }
 
   // Array → OR list (possibly empty = authenticated-only)
@@ -149,6 +157,41 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
 
   // Unknown shape → public (safe default)
   return null;
+}
+
+/** Reserved `roles:` value: any logged-in user, whatever their roles. */
+export const ANY_ROLE = "any";
+
+/** Reserved `roles:` value: open to everyone, overriding an inherited gate. */
+export const PUBLIC_ROLE = "public";
+
+/**
+ * What a page's own `roles:` value says about gating, once inheritance is in
+ * play:
+ *
+ * - `inherit` — nothing usable declared; take the nearest ancestor's rule,
+ *   then the site default.
+ * - `public`  — explicitly open (`roles: public`); ignores anything above.
+ * - `gate`    — restricted by `spec`.
+ */
+export type RolesDirective =
+  | { kind: "inherit" }
+  | { kind: "public" }
+  | { kind: "gate"; spec: RolesSpec };
+
+/**
+ * Classify a raw `roles` value. Unlike {@link parseRolesSpec} this tells
+ * "absent" (inherit) apart from "explicitly public", and treats a malformed
+ * value as `inherit` rather than public so that a typo cannot open a page
+ * inside a gated section or a gated site.
+ */
+export function parseRolesDirective(raw: unknown): RolesDirective {
+  if (raw === null || raw === undefined) return { kind: "inherit" };
+  if (typeof raw === "string" && raw.trim() === PUBLIC_ROLE) {
+    return { kind: "public" };
+  }
+  const spec = parseRolesSpec(raw);
+  return spec === null ? { kind: "inherit" } : { kind: "gate", spec };
 }
 
 // ── Checking ──────────────────────────────────────────────────────────────────
@@ -358,6 +401,41 @@ export async function canAccessIndexEntry(
   return denied === null;
 }
 
+/**
+ * The denial `req` gets for a gated index entry, or null when it may have it.
+ * The Response is the page-level one from {@link enforceRoles} (302 to login
+ * for an anonymous visitor, 403 otherwise).
+ */
+export async function denialForIndexEntry(
+  req: Request,
+  page: GatedIndexEntry,
+  authzOverride?: DuneAuthSystem | null,
+): Promise<Response | null> {
+  if (page.gated !== true) return null;
+  const spec = parseRolesSpec(page.roles);
+  if (spec === null) return null;
+  return await enforceRolesFromRequest(req, spec, authzOverride);
+}
+
+/**
+ * What a *file* request is told when {@link denialForIndexEntry} denied it.
+ *
+ * A logged-out visitor who navigates straight to a gated file (a clicked PDF
+ * link, `Sec-Fetch-Dest: document`) is sent to the login page, as for a gated
+ * page. Every other denial is a 404, which also does not confirm that the file
+ * exists: subresources (`<img>`, `<audio>`, …) cannot use a login redirect
+ * anyway, and a signed-in visitor without the role learns nothing.
+ */
+export function mediaDenialResponse(req: Request, denial: Response): Response {
+  if (
+    denial.status === 302 &&
+    req.headers.get("sec-fetch-dest") === "document"
+  ) {
+    return denial;
+  }
+  return new Response("Not found", { status: 404 });
+}
+
 /** Keep only the entries `req` is allowed to see, preserving order. */
 export async function filterAccessibleEntries<T extends GatedIndexEntry>(
   req: Request,
@@ -390,6 +468,68 @@ export async function navigationForRequest<
     ? await filterAccessibleEntries(req, navAll)
     : navAll.filter(isPublicIndexEntry);
   return { nav: visible.filter((p) => p.depth === 0), navAll: visible };
+}
+
+/**
+ * Pages that own a co-located file addressed by its content-relative path
+ * (the form `/content-media/<path>` uses, e.g. `05.caux/audio.mp3`).
+ *
+ * Returns every index entry (one per language) of the folder the file lives
+ * in; when that folder has no page of its own, the nearest ancestor folder
+ * that does. Empty when nothing owns the file, which then stays public, the
+ * same as for a media URL with no owner on the route-based path.
+ */
+export function findPagesForContentMediaPath<
+  T extends GatedIndexEntry & { sourcePath: string },
+>(pages: T[], mediaPath: string): T[] {
+  let rel = mediaPath;
+  try {
+    rel = decodeURIComponent(mediaPath);
+  } catch {
+    // Malformed escapes: look up the raw string; serveMedia will 404 anyway.
+  }
+  const byDir = pagesByDir(pages);
+  let dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+  while (dir) {
+    const owners = byDir.get(dir);
+    if (owners) return owners;
+    dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+  }
+  return [];
+}
+
+// Directory → index entries, built once per page array. The engine replaces
+// `engine.pages` with a fresh array on every (re)index, so keying on the array
+// keeps this current without invalidation, and a media request does not walk
+// the whole index.
+const pagesByDirCache = new WeakMap<object, Map<string, unknown[]>>();
+
+function pagesByDir<T extends { sourcePath: string }>(
+  pages: T[],
+): Map<string, T[]> {
+  const cached = pagesByDirCache.get(pages);
+  if (cached) return cached as Map<string, T[]>;
+  const byDir = new Map<string, T[]>();
+  for (const page of pages) {
+    const i = page.sourcePath.lastIndexOf("/");
+    const dir = i < 0 ? "" : page.sourcePath.slice(0, i);
+    const list = byDir.get(dir);
+    if (list) list.push(page);
+    else byDir.set(dir, [page]);
+  }
+  pagesByDirCache.set(pages, byDir);
+  return byDir;
+}
+
+/**
+ * The rule a file with no owning page falls under: the site default
+ * (`site.auth.default_roles`) as a gated entry, or null when the site has no
+ * default gate. Such a file has no page and no ancestor page, so nothing can
+ * have opted it out.
+ */
+export function siteDefaultGate(defaultRoles: unknown): GatedIndexEntry | null {
+  const d = parseRolesDirective(defaultRoles);
+  return d.kind === "gate" ? { gated: true, roles: d.spec } : null;
 }
 
 export function findPageForMediaUrl<T extends GatedIndexEntry & { route: string }>(
