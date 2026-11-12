@@ -8,7 +8,8 @@ import {
 import type { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { serveClientBundle } from "../cli/client-bundles.ts";
 import {
-  canAccessIndexEntry,
+  denialForIndexEntry,
+  mediaDenialResponse,
   findPagesForContentMediaPath,
   siteDefaultGate,
 } from "../auth/gating.ts";
@@ -114,9 +115,8 @@ export function registerStaticRoutes(
     const gated = owners.some((o) => o.gated === true);
     if (gated) {
       for (const owner of owners) {
-        if (!(await canAccessIndexEntry(fc.req, owner))) {
-          return new Response("Not found", { status: 404 });
-        }
+        const denial = await denialForIndexEntry(fc.req, owner);
+        if (denial) return mediaDenialResponse(fc.req, denial);
       }
     }
     const res = (await imageHandler(fc.req)) ??

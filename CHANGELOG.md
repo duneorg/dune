@@ -32,8 +32,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   `any` must rename it, and `roles: [any]` still means that literal role.
 - **Files in a gated page's folder were served to anyone on `/content-media/*`.** The route-based media path
   (`/<page>/file.pdf`) already checked the owning page; the legacy `/content-media/<folder>/<file>` route did
-  not. It now applies the owning page's rule (404 for a visitor who may not see the page, `private, no-store`
-  for gated files), including audio and images. A file with no owning page stays public, unless the site sets `auth.default_roles`, which then gates it too. (#157)
+  not. It now applies the owning page's rule (404 for a visitor who may not see the page, except that a logged-out visitor who opens the file directly in the
+  browser is sent to the login page; `private, no-store` for gated files), including audio and images. A file with no owning page stays public, unless the site sets `auth.default_roles`, which then gates it too. (#157)
 
 ## [0.36.1] — 2026-11-12
 

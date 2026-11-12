@@ -323,7 +323,9 @@ Deno.test("navigationForRequest: no req keeps only public entries", async () => 
 // ── Reserved words, directives and media ownership (#157) ─────────────────────
 
 import {
+  denialForIndexEntry,
   findPagesForContentMediaPath,
+  mediaDenialResponse,
   parseRolesDirective,
   siteDefaultGate,
 } from "../../src/auth/gating.ts";
@@ -389,4 +391,29 @@ Deno.test("siteDefaultGate: a gate for gating defaults, null otherwise", () => {
   assertStrictEquals(siteDefaultGate(undefined), null);
   assertStrictEquals(siteDefaultGate("public"), null);
   assertStrictEquals(siteDefaultGate(5), null);
+});
+
+Deno.test("mediaDenialResponse: login redirect only for a logged-out document navigation", async () => {
+  const gate = { gated: true, roles: [] as string[] };
+  const nav = new Request("http://x/content-media/05.a/doc.pdf", {
+    headers: { "sec-fetch-dest": "document" },
+  });
+  const img = new Request("http://x/content-media/05.a/pic.png", {
+    headers: { "sec-fetch-dest": "image" },
+  });
+  const bare = new Request("http://x/content-media/05.a/doc.pdf");
+
+  const navDenial = (await denialForIndexEntry(nav, gate))!;
+  assertEquals(navDenial.status, 302);
+  const redirected = mediaDenialResponse(nav, navDenial);
+  assertEquals(redirected.status, 302);
+  assertEquals(
+    redirected.headers.get("location"),
+    "/auth/login?next=%2Fcontent-media%2F05.a%2Fdoc.pdf",
+  );
+
+  assertEquals(mediaDenialResponse(img, (await denialForIndexEntry(img, gate))!).status, 404);
+  assertEquals(mediaDenialResponse(bare, (await denialForIndexEntry(bare, gate))!).status, 404);
+  // A 403 (signed in, wrong role) is never turned into a redirect.
+  assertEquals(mediaDenialResponse(nav, new Response("Forbidden", { status: 403 })).status, 404);
 });

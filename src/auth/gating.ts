@@ -401,6 +401,41 @@ export async function canAccessIndexEntry(
   return denied === null;
 }
 
+/**
+ * The denial `req` gets for a gated index entry, or null when it may have it.
+ * The Response is the page-level one from {@link enforceRoles} (302 to login
+ * for an anonymous visitor, 403 otherwise).
+ */
+export async function denialForIndexEntry(
+  req: Request,
+  page: GatedIndexEntry,
+  authzOverride?: DuneAuthSystem | null,
+): Promise<Response | null> {
+  if (page.gated !== true) return null;
+  const spec = parseRolesSpec(page.roles);
+  if (spec === null) return null;
+  return await enforceRolesFromRequest(req, spec, authzOverride);
+}
+
+/**
+ * What a *file* request is told when {@link denialForIndexEntry} denied it.
+ *
+ * A logged-out visitor who navigates straight to a gated file (a clicked PDF
+ * link, `Sec-Fetch-Dest: document`) is sent to the login page, as for a gated
+ * page. Every other denial is a 404, which also does not confirm that the file
+ * exists: subresources (`<img>`, `<audio>`, …) cannot use a login redirect
+ * anyway, and a signed-in visitor without the role learns nothing.
+ */
+export function mediaDenialResponse(req: Request, denial: Response): Response {
+  if (
+    denial.status === 302 &&
+    req.headers.get("sec-fetch-dest") === "document"
+  ) {
+    return denial;
+  }
+  return new Response("Not found", { status: 404 });
+}
+
 /** Keep only the entries `req` is allowed to see, preserving order. */
 export async function filterAccessibleEntries<T extends GatedIndexEntry>(
   req: Request,
