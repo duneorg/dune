@@ -22,15 +22,14 @@ The subpaths whose content moved into `@dune/plugin-api` are gone from the packa
 | `@dune/core/hooks` (`DunePlugin`, `PluginApi`, `MountApi`, hook payloads) | `@dune/plugin-api` |
 | `@dune/core/config` (config types, `Role`) | `@dune/plugin-api` (`DuneConfig`, `SiteConfig`, `Role`, ...) |
 | `@dune/core/inline-edit` (`InlineEditManager`, ...) | `@dune/plugin-api` |
-| `@dune/core/plugin-api` | `@dune/plugin-api` (the package itself) |
 | `@dune/core/content/path-utils` | `@dune/plugin-api`: `parseContentFilename`, `dirPathToRoute`, `isMediaFile` |
 | `@dune/core/content/page-loader` | `@dune/plugin-api`: `getMimeType` |
 | `@dune/core/i18n` | `@dune/plugin-api`: `isRtl` |
-| `@dune/core/auth/authz-schema` | `@dune/plugin-api`: `ADMIN_ROLE_RANK`, `highestAdminRole`, `Role` |
 | `@dune/core/auth/types` | `@dune/plugin-api`: `User`, `Session` |
-| `@dune/core/auth/passwords` | the `passwords` service on the plugin runtime (`PasswordService` in `@dune/plugin-api`) |
 | `@dune/core/auth/user-store-db` | set `auth.user_store: db` in `site.yaml`; core builds the store itself |
 | `@dune/core/auth/authz-adapter-local`, `/auth/authz-adapter-db` | `AuthzService` from `@dune/plugin-api` (the adapters are internal) |
+
+`@dune/core/plugin-api`, `/auth/passwords` and `/auth/authz-schema` stay: they hold core's implementation side (`createPluginServices`, `createCapabilityRegistry`, password hashing, the authz schema) that embedders and test harnesses build on. Plugins take the contract types from `@dune/plugin-api`.
 
 `dune generate plugin` and `dune plugin:new` now write `jsr:@dune/plugin-api` type imports. A plugin that still imports a removed path stops loading on 0.37; swap the import (a type-only swap for almost all of them).
 
