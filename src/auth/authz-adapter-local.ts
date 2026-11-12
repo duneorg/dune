@@ -269,6 +269,12 @@ export class AuthzLocalAdapter {
   private readonly refreshIntervalMs: number;
   /** Tuple file name → tuple id, for every file currently in the index. */
   private readonly fileToId: Map<string, string> = new Map();
+  /**
+   * Files that failed verification → the raw content that was rejected. They
+   * are retried on every rescan (so `authz:sign` can pick them up) but only
+   * logged again if their content changes.
+   */
+  private readonly rejected: Map<string, string> = new Map();
   private lastRefresh = 0;
 
   /**
@@ -309,10 +315,26 @@ export class AuthzLocalAdapter {
   private async scan(): Promise<void> {
     // Only files known before the listing are removal candidates: a tuple
     // written in-process while list() was pending is not in the listing yet.
+    //
+    // Known race: an in-process delete() that lands while this scan's list()
+    // is pending can see the just-revoked tuple's file in the (stale) listing
+    // and re-add it. The next rescan (<= refreshIntervalMs later) removes it
+    // again, since the file is gone from disk by then.
     const known = new Set(this.fileToId.keys());
-    const entries = await this.storage.list(this.permissionsDir);
+    let entries: Awaited<ReturnType<DuneStorage["list"]>>;
+    try {
+      entries = await this.storage.list(this.permissionsDir);
+    } catch (err) {
+      // A vanished directory means every tuple file is gone. Confirmed with
+      // exists() so a transient list() error doesn't wipe the index.
+      if (await this.storage.exists(this.permissionsDir)) throw err;
+      entries = [];
+    }
     const files = entries.filter((e) => e.isFile && e.name.endsWith(".json"));
     const present = new Set(files.map((e) => e.name));
+    for (const name of this.rejected.keys()) {
+      if (!present.has(name)) this.rejected.delete(name);
+    }
 
     // Removed by another process
     for (const [name, id] of [...this.fileToId]) {
@@ -336,13 +358,16 @@ export class AuthzLocalAdapter {
   private async loadFile(e: { name: string; path: string }): Promise<void> {
     try {
       const raw = await this.storage.read(e.path);
-      const tuple = JSON.parse(new TextDecoder().decode(raw)) as SignedTuple;
+      const text = new TextDecoder().decode(raw);
+      const tuple = JSON.parse(text) as SignedTuple;
       if (!tuple.id) return;
 
       // HMAC verification — only when a key is configured
       if (this.hmacKey) {
         const result = await verifyTuple(tuple, this.hmacKey);
         if (result === "invalid") {
+          if (this.rejected.get(e.name) === text) return;
+          this.rejected.set(e.name, text);
           logger.warn("authz.tuple.invalid_hmac", {
             tupleId: tuple.id,
             file: e.name,
@@ -352,6 +377,8 @@ export class AuthzLocalAdapter {
           return;
         }
         if (result === "missing" && this.strictHmac) {
+          if (this.rejected.get(e.name) === text) return;
+          this.rejected.set(e.name, text);
           logger.warn("authz.tuple.unsigned_strict", {
             tupleId: tuple.id,
             file: e.name,
@@ -370,6 +397,7 @@ export class AuthzLocalAdapter {
       this.tuples.set(storedTuple.id, storedTuple);
       this.indexTuple(storedTuple);
       this.fileToId.set(e.name, storedTuple.id);
+      this.rejected.delete(e.name);
     } catch {
       // Skip corrupt files
     }
