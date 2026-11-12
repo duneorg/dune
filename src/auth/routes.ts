@@ -29,6 +29,7 @@ import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit
 import { checkSameOriginCsrf } from "../security/csrf.ts";
 import { logger } from "../core/logger.ts";
 import { sanitizeNext } from "./redirect.ts";
+import { DEFAULT_LOGIN_PATH, resolveLoginPath } from "./gating.ts";
 import { createPasswordLogin, type LoginError } from "./password-login.ts";
 import type { RateLimitStore } from "../security/rate-limit-store.ts";
 
@@ -44,6 +45,12 @@ export interface AuthRoutesConfig {
   userStoreType?: "local" | "session" | "db";
   sendEmail?: (to: string, subject: string, text: string, html: string) => Promise<void>;
   trustForwardedFor?: boolean;
+  /**
+   * `site.auth.login_path`: the site's own login page. When it differs from
+   * `/auth/login`, `GET /auth/login` redirects there (query kept) and failures
+   * that send the visitor back to the login page go there. Default `/auth/login`.
+   */
+  loginPath?: string;
   /**
    * Optional single-use token store for magic links.
    * When provided, each magic link token can only be used once.
@@ -126,11 +133,12 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     rateLimitStore,
     loginPage,
   } = config;
+  const loginPath = resolveLoginPath(config.loginPath);
 
   const passwordLoginActive = passwordLoginEnabled && mode === "dune" && userStoreType !== "session" &&
     rateLimitStore !== undefined;
   const passwordLoginHandler = passwordLoginActive
-    ? createPasswordLogin({ userStore, middleware, rateLimitStore: rateLimitStore!, trustForwardedFor })
+    ? createPasswordLogin({ userStore, middleware, rateLimitStore: rateLimitStore!, trustForwardedFor, loginPath })
     : null;
 
   // ── Login page ─────────────────────────────────────────────────────────────
@@ -141,6 +149,15 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       const url = new URL(req.url);
       const next = sanitizeNext(url.searchParams.get("next"));
       return new Response(null, { status: 302, headers: { Location: next } });
+    }
+    // The site serves its own login page: one login page, so send visitors
+    // there, keeping `next` and `error`. (loginPath is never `/auth/login`
+    // here, so this cannot loop.)
+    if (loginPath !== DEFAULT_LOGIN_PATH) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `${loginPath}${new URL(req.url).search}` },
+      });
     }
 
     if (mode === "external-jwt") {
@@ -627,12 +644,12 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
     const url = new URL(req.url);
     const token = url.searchParams.get("token");
     if (!token) {
-      return loginErrorResponse("Missing token");
+      return loginErrorResponse("Missing token", loginPath);
     }
 
     const result = await verifyMagicToken(token, magicLinkSecret, magicTokenStore);
     if (!result) {
-      return loginErrorResponse("Invalid or expired link — please request a new one");
+      return loginErrorResponse("Invalid or expired link — please request a new one", loginPath);
     }
 
     const { email } = result;
@@ -825,14 +842,14 @@ function magicEmailHtml(link: string): string {
 </div>`.trim();
 }
 
-function loginErrorResponse(message: string): Response {
+function loginErrorResponse(message: string, loginPath: string): Response {
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Login error</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:400px;margin:80px auto;padding:0 16px">
 <h1 style="font-size:1.5rem">Login error</h1>
 <p>${escHtml(message)}</p>
-<p><a href="/auth/login">Try again</a></p>
+<p><a href="${escHtml(loginPath)}">Try again</a></p>
 </body>
 </html>`;
   return new Response(html, {

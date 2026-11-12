@@ -84,6 +84,64 @@ function resolveAuthzForOrigin(
   return null;
 }
 
+/** Where visitors who need to sign in are sent unless `site.auth.login_path` says otherwise. */
+export const DEFAULT_LOGIN_PATH = "/auth/login";
+
+/**
+ * Whether `value` can be used as `site.auth.login_path`: a local absolute path
+ * (one leading `/`, so never `//host` or a URL), made of plain path characters,
+ * with no query, fragment, or `..` segment.
+ */
+export function isValidLoginPath(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^\/(?!\/)[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/.test(value) &&
+    !value.split("/").includes("..");
+}
+
+/**
+ * The effective login path for a configured value: the value (without a
+ * trailing slash, so it matches page routes) when valid, else
+ * the default. (Invalid values are reported by config validation; this keeps a
+ * bad value from ever reaching a redirect.)
+ */
+export function resolveLoginPath(configured: unknown): string {
+  return isValidLoginPath(configured)
+    ? normalizeRoutePath(configured)
+    : DEFAULT_LOGIN_PATH;
+}
+
+/** A path without its trailing slash (`/join/` → `/join`); `/` stays `/`. Page routes have none. */
+export function normalizeRoutePath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") || "/" : path;
+}
+
+const _loginPathByOrigin = new Map<string, string>();
+
+/**
+ * Register a site's login path for gating redirects, keyed by origin like
+ * {@link setGatingAuthz}. Pass `null` to remove it.
+ */
+export function setGatingLoginPath(path: string | null, origin?: string): void {
+  const key = origin ?? "_default";
+  if (path === null) _loginPathByOrigin.delete(key);
+  else _loginPathByOrigin.set(key, resolveLoginPath(path));
+}
+
+/** The login path for a request's site (same origin selection as authz). */
+export function loginPathForRequest(req: Request): string {
+  let origin: string | null = null;
+  try {
+    origin = new URL(req.url).origin;
+  } catch { /* fall through to the single-site fallback */ }
+  if (origin !== null && _loginPathByOrigin.has(origin)) {
+    return _loginPathByOrigin.get(origin)!;
+  }
+  if (_loginPathByOrigin.size === 1) {
+    return _loginPathByOrigin.values().next().value as string;
+  }
+  return DEFAULT_LOGIN_PATH;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -302,7 +360,8 @@ export async function checkRolesAsync(
  *
  * Returns `null` when access is granted.
  * Returns a `Response` when access is denied:
- *   - Unauthenticated user with a spec present → 302 to `/auth/login?next=<url>`
+ *   - Unauthenticated user with a spec present → 302 to the login path
+ *     (`/auth/login` unless `site.auth.login_path` is set) with `?next=<url>`
  *   - Authenticated user with insufficient roles → 403 plain text
  *
  * Uses `authz.check()` when a polizy AuthSystem is configured (wired via
@@ -327,7 +386,7 @@ export async function enforceRoles(
     const next = encodeURIComponent(url.pathname + url.search);
     return new Response(null, {
       status: 302,
-      headers: { Location: `/auth/login?next=${next}` },
+      headers: { Location: `${loginPathForRequest(req)}?next=${next}` },
     });
   }
 

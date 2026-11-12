@@ -32,7 +32,7 @@ import { resolveRoleGrants } from "./role-grants.ts";
 import { withRoleSync } from "./sync-roles.ts";
 import type { DuneAuthSystem } from "./authz.ts";
 import type { AuthzLocalAdapter } from "./authz-adapter-local.ts";
-import { setGatingAuthz } from "./gating.ts";
+import { DEFAULT_LOGIN_PATH, setGatingAuthz, setGatingLoginPath } from "./gating.ts";
 import { loadHmacKeyFromEnv } from "./authz-hmac.ts";
 import { handleWebhook } from "./webhook.ts";
 import { logger } from "../core/logger.ts";
@@ -104,6 +104,10 @@ export async function mountDuneAuth(
   try {
     siteOrigin = new URL(config.site.url).origin;
   } catch { /* ignore */ }
+  // Gating redirects (pages, media) go to the site's own login page when set.
+  // Always register, the default included: with no entry, a site in a multisite
+  // process would fall back to another site's path.
+  setGatingLoginPath(authConfig?.login_path ?? DEFAULT_LOGIN_PATH, siteOrigin);
 
   // ── User store ──────────────────────────────────────────────────────────────
   // data/users/ — shared with @dune/plugin-admin's admin accounts since
@@ -351,6 +355,7 @@ export async function mountDuneAuth(
     trustForwardedFor,
     magicTokenStore,
     passwordLoginEnabled: passwordEnabled,
+    loginPath: authConfig?.login_path,
     rateLimitStore: passwordEnabled ? new LocalRateLimitStore() : undefined,
     loginPage: (req, view, renderJsx, status) =>
       renderLoginPage(ctx.engine, req, view, renderJsx, status, ctx.contentApi),
