@@ -472,7 +472,7 @@ export async function pluginCreateCommand(
  *     - src: "./plugins/${pluginName}/mod.ts"
  */
 
-import type { DunePlugin } from "jsr:@dune/core/plugins";
+import type { DunePlugin } from "jsr:@dune/plugin-api@^1.2.0";
 
 export interface ${toPascalCase(pluginName)}Config {
   // Define your plugin's configuration fields here.

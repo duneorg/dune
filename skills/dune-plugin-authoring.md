@@ -50,7 +50,7 @@ Read it back inside any hook via `ctx.config.plugins["my-plugin"]` (keyed by the
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin } from "@dune/core";
+import type { DunePlugin } from "@dune/plugin-api";
 
 export default {
   name: "my-plugin",
@@ -142,7 +142,7 @@ hooks: {
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin, PluginApi } from "@dune/core";
+import type { DunePlugin, PluginApi } from "@dune/plugin-api";
 import { createEmailClient, createEmailProvider } from "@dune/core/email";
 
 let email: ReturnType<typeof createEmailClient>;
@@ -231,7 +231,7 @@ Each entry adds a route under the admin prefix that's rendered inside the admin 
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin } from "@dune/core";
+import type { DunePlugin } from "@dune/plugin-api";
 import { ADMIN_PAGES } from "@dune/plugin-admin";
 
 export default {
@@ -264,7 +264,7 @@ For a mutation endpoint, or a GET route that is not a sidebar page:
 
 ```ts
 // plugins/my-plugin/mod.ts
-import type { DunePlugin } from "@dune/core";
+import type { DunePlugin } from "@dune/plugin-api";
 import { ADMIN_ROUTES } from "@dune/plugin-admin";
 
 export default {
