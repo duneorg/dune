@@ -257,6 +257,15 @@ export interface SiteConfig {
      * ```
      */
     default_roles?: unknown;
+    /**
+     * Where visitors who must sign in are sent (page gate, gated media,
+     * `GET /auth/login`), for a site that serves its own login or join page.
+     * A local absolute path such as `/join`; default `/auth/login`. The site
+     * provides the page; it posts to `/auth/login` (password), `/auth/magic/*`
+     * and the OAuth routes, which stay mounted. Failures redirect back here
+     * with `?error=`. The page at this path is never gated by `default_roles`.
+     */
+    login_path?: string;
     /** OAuth provider credentials. */
     providers?: {
       github?: { client_id: string; client_secret: string };

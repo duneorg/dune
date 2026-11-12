@@ -9,6 +9,7 @@
 
 import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
 import { roleGrantProblems } from "../auth/role-grants.ts";
+import { isValidLoginPath } from "../auth/gating.ts";
 import {
   assertPinnedThemeSpecifier,
   assertThemeName,
@@ -95,6 +96,15 @@ function validateSite(site: SiteConfig, errors: ValidationError[]): void {
         });
       }
     }
+  }
+
+  const loginPath = (site.auth as { login_path?: unknown } | undefined)?.login_path;
+  if (loginPath !== undefined && !isValidLoginPath(loginPath)) {
+    errors.push({
+      path: "site.auth.login_path",
+      message: "must be a local absolute path such as /join (one leading /, no URL, no query)",
+      got: loginPath,
+    });
   }
 
   if (site.author && typeof site.author !== "object") {

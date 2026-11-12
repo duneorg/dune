@@ -89,6 +89,12 @@ export interface IndexBuilderOptions {
    * out with `roles: public`.
    */
   defaultRoles?: unknown;
+  /**
+   * `site.auth.login_path`. The page served at this route is never gated by
+   * inheritance or the site default (a visitor must be able to reach the page
+   * they are sent to in order to sign in); its own `roles:` still applies.
+   */
+  loginPath?: string;
 }
 
 /** Return type of {@link buildIndex} — the page index, taxonomy map, and build statistics. */
@@ -226,7 +232,7 @@ export async function buildIndex(
 
   // Deduplicate routes: directory-based pages win over flat files.
   const finalPages = deduplicateRoutes(pages);
-  applyGatingInheritance(finalPages, options.defaultRoles);
+  applyGatingInheritance(finalPages, options.defaultRoles, options.loginPath);
 
   const duration = performance.now() - start;
   const homeSlug = siteHome ?? detectHomeSlug(finalPages);
@@ -374,7 +380,7 @@ export async function updateIndex(
 
   // Deduplicate routes: directory-based pages win over flat files.
   const finalPages = deduplicateRoutes(pages);
-  applyGatingInheritance(finalPages, options.defaultRoles);
+  applyGatingInheritance(finalPages, options.defaultRoles, options.loginPath);
 
   const duration = performance.now() - start;
   const homeSlug = siteHome ?? detectHomeSlug(finalPages);
@@ -416,6 +422,9 @@ function isFlatFilePath(sp: string): boolean {
  *   2. the nearest ancestor directory's `roles:`
  *   3. the site default (`site.auth.default_roles`)
  *
+ * The page at `site.auth.login_path` (if any) counts as `roles: public` unless
+ * it declares its own rule.
+ *
  * `roles: public` is an explicit opt-out at any level; it ends the search
  * with "open". A value that is absent or malformed means "keep looking".
  *
@@ -430,6 +439,7 @@ function isFlatFilePath(sp: string): boolean {
 export function applyGatingInheritance(
   pages: PageIndex[],
   defaultRoles: unknown,
+  loginPath?: string,
 ): void {
   const fallback = parseRolesDirective(defaultRoles);
 
@@ -463,6 +473,11 @@ export function applyGatingInheritance(
 
   for (const page of pages) {
     let directive = parseRolesDirective(page.ownRoles);
+
+    // The login page itself is reachable by anyone unless it says otherwise.
+    if (directive.kind === "inherit" && loginPath !== undefined && page.route === loginPath) {
+      directive = { kind: "public" };
+    }
 
     // Walk up from the page's parent folder. Stop at the first decision.
     let dir = page.parentPath;

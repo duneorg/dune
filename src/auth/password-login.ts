@@ -54,6 +54,8 @@ export interface PasswordLoginDeps {
   middleware: SiteAuthMiddleware;
   rateLimitStore: RateLimitStore;
   trustForwardedFor: boolean;
+  /** Where a failed attempt is sent back to (`site.auth.login_path`); default `/auth/login`. */
+  loginPath?: string;
 }
 
 /** What the handler needs to show the login page again (a 429 renders it in place). */
@@ -94,6 +96,7 @@ function json(body: unknown, status: number, headers: Record<string, string> = {
 /** Build the `POST /auth/login` handler. */
 export function createPasswordLogin(deps: PasswordLoginDeps) {
   const { userStore, middleware, rateLimitStore, trustForwardedFor } = deps;
+  const loginPath = deps.loginPath ?? "/auth/login";
 
   const fail = (req: Request, error: LoginError, next: string, render?: RenderLogin): Promise<Response> | Response => {
     const status = error === "rate_limited" ? 429 : 401;
@@ -110,7 +113,7 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
         ? render({ error, next }, 429)
         : new Response("Too many attempts", { status: 429, headers: { "Retry-After": String(PASSWORD_LOGIN_WINDOW_MS / 1000) } });
     }
-    const location = `/auth/login?error=invalid${next && next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}`;
+    const location = `${loginPath}?error=invalid${next && next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}`;
     return new Response(null, { status: 303, headers: { Location: location } });
   };
 
