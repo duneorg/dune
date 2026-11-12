@@ -12,6 +12,7 @@
  *   - .tsx → Fast path: read .frontmatter.yaml sidecar. Fallback: AST extract.
  */
 
+import { dirname } from "@std/path";
 import { isWithinPublishWindow, parseScheduleDate } from "./schedule.ts";
 import { ContentError } from "../core/errors.ts";
 import type { StorageAdapter, StorageEntry } from "../storage/types.ts";
@@ -19,7 +20,8 @@ import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
 import { validateFrontmatter } from "../blueprints/validator.ts";
-import { parseRolesSpec } from "../auth/gating.ts";
+import { parseRolesDirective, parseRolesSpec } from "../auth/gating.ts";
+import type { RolesDirective } from "../auth/gating.ts";
 import {
   calculateDepth,
   dirPathToRoute,
@@ -81,6 +83,12 @@ export interface IndexBuilderOptions {
    * `blog/my-post/post.md` → `/blog/my-post`.
    */
   templateNames?: Set<string>;
+  /**
+   * Site-wide default `roles:` value (`site.auth.default_roles`), applied to
+   * every page that neither declares `roles:` nor inherits one. A page opts
+   * out with `roles: public`.
+   */
+  defaultRoles?: unknown;
 }
 
 /** Return type of {@link buildIndex} — the page index, taxonomy map, and build statistics. */
@@ -218,6 +226,7 @@ export async function buildIndex(
 
   // Deduplicate routes: directory-based pages win over flat files.
   const finalPages = deduplicateRoutes(pages);
+  applyGatingInheritance(finalPages, options.defaultRoles);
 
   const duration = performance.now() - start;
   const homeSlug = siteHome ?? detectHomeSlug(finalPages);
@@ -365,6 +374,7 @@ export async function updateIndex(
 
   // Deduplicate routes: directory-based pages win over flat files.
   const finalPages = deduplicateRoutes(pages);
+  applyGatingInheritance(finalPages, options.defaultRoles);
 
   const duration = performance.now() - start;
   const homeSlug = siteHome ?? detectHomeSlug(finalPages);
@@ -396,6 +406,81 @@ function isFlatFilePath(sp: string): boolean {
   const fn = parts[parts.length - 1];
   const stem = fn.slice(0, fn.lastIndexOf(".") >= 0 ? fn.lastIndexOf(".") : fn.length);
   return /^\d+\./.test(stem);
+}
+
+/**
+ * Resolve each page's effective access rule and write it to `gated` / `roles`.
+ *
+ * Precedence, first match wins:
+ *   1. the page's own `roles:`
+ *   2. the nearest ancestor directory's `roles:`
+ *   3. the site default (`site.auth.default_roles`)
+ *
+ * `roles: public` is an explicit opt-out at any level; it ends the search
+ * with "open". A value that is absent or malformed means "keep looking".
+ *
+ * A directory's rule is the one declared by its page in the same language,
+ * else by its page in another language (a section translated into DE/FR is
+ * not left open because only the EN `default.md` carries `roles:`). Where
+ * languages disagree, a gate beats `public`, so ambiguity fails closed.
+ *
+ * Idempotent: always starts from `ownRoles`, so it can be re-run whenever any
+ * page or the site default changes.
+ */
+export function applyGatingInheritance(
+  pages: PageIndex[],
+  defaultRoles: unknown,
+): void {
+  const fallback = parseRolesDirective(defaultRoles);
+
+  // Directory → the pages that represent it (folder pages, not flat siblings).
+  const byDir = new Map<string, PageIndex[]>();
+  for (const page of pages) {
+    if (isFlatFilePath(page.sourcePath)) continue;
+    const dir = dirname(page.sourcePath);
+    const list = byDir.get(dir);
+    if (list) list.push(page);
+    else byDir.set(dir, [page]);
+  }
+
+  const dirDirective = (dir: string, language: string): RolesDirective => {
+    const group = byDir.get(dir);
+    if (!group) return { kind: "inherit" };
+    const same = group.find((p) => p.language === language);
+    if (same) {
+      const own = parseRolesDirective(same.ownRoles);
+      if (own.kind !== "inherit") return own;
+    }
+    let sawPublic = false;
+    for (const p of group) {
+      if (p === same) continue;
+      const d = parseRolesDirective(p.ownRoles);
+      if (d.kind === "gate") return d;
+      if (d.kind === "public") sawPublic = true;
+    }
+    return sawPublic ? { kind: "public" } : { kind: "inherit" };
+  };
+
+  for (const page of pages) {
+    let directive = parseRolesDirective(page.ownRoles);
+
+    // Walk up from the page's parent folder. Stop at the first decision.
+    let dir = page.parentPath;
+    while (directive.kind === "inherit" && dir) {
+      directive = dirDirective(dir, page.language);
+      const up = dirname(dir);
+      dir = up === "." || up === "" || up === dir ? null : up;
+    }
+    if (directive.kind === "inherit") directive = fallback;
+
+    if (directive.kind === "gate") {
+      page.gated = true;
+      page.roles = directive.spec;
+    } else {
+      page.gated = false;
+      delete page.roles;
+    }
+  }
 }
 
 /**
@@ -528,8 +613,11 @@ function buildPageIndex(
       ? (sourcePath.split("/").slice(0, -1).join("/") || null)
       : getParentPath(sourcePath),
     taxonomy: frontmatter.taxonomy ?? {},
+    // Own declaration only; `applyGatingInheritance` overwrites `gated` and
+    // `roles` with the effective values once every page is indexed.
     gated: parseRolesSpec(frontmatter.roles) !== null,
     roles: frontmatter.roles,
+    ownRoles: frontmatter.roles,
     mtime,
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),

@@ -11,6 +11,29 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **Page gating is inherited, and a site can gate everything by default (#157).** A page's `roles:` now
+  applies to everything beneath it, so gating a section is one line on its top page, not one per page and
+  language. `site.auth.default_roles` (same values as `roles:`, e.g. `any`) gates every page that neither
+  declares nor inherits a rule. The first match wins: the page's own `roles:`, then the nearest ancestor's,
+  then the site default. `roles: public` opts a page or a whole section out of an inherited or default gate.
+  `/auth/*` and theme assets are never gated. A translated page takes the rule of its section from the same
+  language, else from another language, and where the languages disagree a gate beats `public`. A malformed
+  `roles:` value now counts as "not declared" (it inherits) instead of opening the page. `PageIndex.roles`
+  and `gated` hold the effective rule, and `frontmatter.roles` on a loaded page does too; the page's own
+  declaration is kept in the new `PageIndex.ownRoles`.
+
+### Fixed
+
+- **`roles: any` did nothing of the kind.** The docs describe it as "any logged-in user", but it was read as
+  a role literally named `any`, so a signed-in visitor without that role got a 403. It now means any
+  logged-in user (the same as `roles: []`).
+- **Files in a gated page's folder were served to anyone on `/content-media/*`.** The route-based media path
+  (`/<page>/file.pdf`) already checked the owning page; the legacy `/content-media/<folder>/<file>` route did
+  not. It now applies the owning page's rule (404 for a visitor who may not see the page, `private, no-store`
+  for gated files), including audio and images. A file with no owning page stays public. (#157)
+
 ## [0.36.1] — 2026-11-12
 
 ### Fixed

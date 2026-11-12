@@ -7,6 +7,10 @@ import {
 } from "../cli/serve-utils.ts";
 import type { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { serveClientBundle } from "../cli/client-bundles.ts";
+import {
+  canAccessIndexEntry,
+  findPagesForContentMediaPath,
+} from "../auth/gating.ts";
 
 type ClientBundles = Awaited<ReturnType<typeof buildPluginClientBundles>>;
 
@@ -93,8 +97,27 @@ export function registerStaticRoutes(
   });
 
   // Legacy co-located content media path.
+  // A file inherits the access rule of the page folder it lives in, exactly as
+  // on the route-based media path (register-middleware.ts): a visitor who may
+  // not see the page may not fetch its audio, images or downloads either.
   app.get("/content-media/*", async (fc) => {
-    const imageResult = await imageHandler(fc.req);
-    return imageResult ?? await routes.mediaHandler(fc.req);
+    const owners = findPagesForContentMediaPath(
+      ctx.engine.pages,
+      fc.url.pathname.replace(/^\/content-media\//, ""),
+    );
+    const gated = owners.some((o) => o.gated === true);
+    if (gated) {
+      for (const owner of owners) {
+        if (!(await canAccessIndexEntry(fc.req, owner))) {
+          return new Response("Not found", { status: 404 });
+        }
+      }
+    }
+    const res = (await imageHandler(fc.req)) ??
+      await routes.mediaHandler(fc.req);
+    if (!gated) return res;
+    const headers = new Headers(res.headers);
+    headers.set("Cache-Control", "private, no-store");
+    return new Response(res.body, { status: res.status, headers });
   });
 }
