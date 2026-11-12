@@ -11,6 +11,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Fixed
+
+- A running server now sees permission changes made by another process. The local authz adapter built its tuple index once at startup, so a user or role granted with `dune users:create`, `users:grant-role` or `authz:sign` while `dune serve` was running could log in but was refused ("forbidden") until the server restarted, and a `users:revoke-role` did not take effect until then either. The adapter now rescans `data/permissions/` at most once a second and applies added and removed tuple files. (#153)
+
 ## [0.36.0] — 2026-11-10
 
 Dune 0.36 moves the admin out of core and freezes the plugin and theme contracts as two small

@@ -4,9 +4,10 @@
  * Permission tuples are stored as individual JSON files:
  *   {dataDir}/permissions/{uuid}.json
  *
- * An in-memory index is built at construction time by scanning existing files.
- * On restart the index is rebuilt from disk — consistent with Dune's in-memory
- * rebuild pattern (search index, content index, etc.).
+ * An in-memory index is built lazily on first use and re-synchronised with the
+ * directory at most once per second, so tuples written or deleted by another
+ * process (the `dune users:*` CLI against a running server) take effect without
+ * a restart.
  *
  * Beyond the flat `tuples` map (id → tuple), three composite-key indexes —
  * by subject+relation, by object+relation, and by subject+object+relation —
@@ -146,8 +147,11 @@ export class AuthzLocalAdapter {
       dataDir: string;
       hmacKey?: CryptoKey | null;
       strictHmac?: boolean;
+      /** Min ms between directory rescans (default 1000; 0 = every call). */
+      refreshIntervalMs?: number;
     },
   ) {
+    this.refreshIntervalMs = config.refreshIntervalMs ?? 1000;
     this.storage = config.storage;
     this.permissionsDir = `${config.dataDir}/permissions`;
     this.hmacKey = config.hmacKey ?? null;
@@ -259,68 +263,144 @@ export class AuthzLocalAdapter {
     );
   }
 
-  // ── Lazy index load ─────────────────────────────────────────────────────────
+  // ── Index load / refresh ────────────────────────────────────────────────────
 
+  /** Minimum interval between directory rescans (ms). */
+  private readonly refreshIntervalMs: number;
+  /** Tuple file name → tuple id, for every file currently in the index. */
+  private readonly fileToId: Map<string, string> = new Map();
+  /**
+   * Files that failed verification → the raw content that was rejected. They
+   * are retried on every rescan (so `authz:sign` can pick them up) but only
+   * logged again if their content changes.
+   */
+  private readonly rejected: Map<string, string> = new Map();
+  private lastRefresh = 0;
+
+  /**
+   * Bring the in-memory index in line with data/permissions/.
+   *
+   * The first call loads everything. Later calls (throttled to once per
+   * `refreshIntervalMs`, default 1000) rescan the directory so tuples written or deleted by
+   * another process — `dune users:create`, `users:grant-role`, `authz:sign`
+   * run against a live server — take effect without a restart. Tuple files are
+   * immutable once written, so only added/removed file names are processed;
+   * files that failed verification are retried on each rescan so signing them
+   * later picks them up.
+   */
   private ensureLoaded(): Promise<void> {
-    if (this.loaded) return Promise.resolve();
     if (this.loadPromise !== null) return this.loadPromise;
+    if (
+      this.loaded &&
+      Date.now() - this.lastRefresh < this.refreshIntervalMs
+    ) {
+      return Promise.resolve();
+    }
 
-    this.loadPromise = (async () => {
+    const run = (async () => {
       try {
-        const entries = await this.storage.list(this.permissionsDir);
-        await Promise.all(
-          entries
-            .filter((e) => e.isFile && e.name.endsWith(".json"))
-            .map(async (e) => {
-              try {
-                const raw = await this.storage.read(e.path);
-                const tuple = JSON.parse(
-                  new TextDecoder().decode(raw),
-                ) as SignedTuple;
-                if (!tuple.id) return;
-
-                // HMAC verification — only when a key is configured
-                if (this.hmacKey) {
-                  const result = await verifyTuple(tuple, this.hmacKey);
-                  if (result === "invalid") {
-                    logger.warn("authz.tuple.invalid_hmac", {
-                      tupleId: tuple.id,
-                      file: e.name,
-                      reason:
-                        "invalid HMAC — file may have been tampered with. Tuple NOT loaded.",
-                    });
-                    return;
-                  }
-                  if (result === "missing" && this.strictHmac) {
-                    logger.warn("authz.tuple.unsigned_strict", {
-                      tupleId: tuple.id,
-                      file: e.name,
-                      reason:
-                        "unsigned but strict HMAC mode is enabled. Tuple NOT loaded. Run `dune authz:sign` to sign it.",
-                    });
-                    return;
-                  }
-                  // result === "missing" (non-strict): unsigned file, accepted during migration
-                }
-
-                // Strip the hmac field before storing in the in-memory index
-                const { hmac: _hmac, ...stored } = tuple;
-                const storedTuple = stored as PolizyStoredTuple;
-                this.tuples.set(storedTuple.id, storedTuple);
-                this.indexTuple(storedTuple);
-              } catch {
-                // Skip corrupt files
-              }
-            }),
-        );
+        await this.scan();
       } catch {
         // Permissions directory doesn't exist yet — that's fine; writes will create it
       } finally {
         this.loaded = true;
+        this.lastRefresh = Date.now();
+        this.loadPromise = null;
       }
     })();
+    this.loadPromise = run;
+    return run;
+  }
 
-    return this.loadPromise;
+  private async scan(): Promise<void> {
+    // Only files known before the listing are removal candidates: a tuple
+    // written in-process while list() was pending is not in the listing yet.
+    //
+    // Known race: an in-process delete() that lands while this scan's list()
+    // is pending can see the just-revoked tuple's file in the (stale) listing
+    // and re-add it. The next rescan (<= refreshIntervalMs later) removes it
+    // again, since the file is gone from disk by then.
+    const known = new Set(this.fileToId.keys());
+    let entries: Awaited<ReturnType<DuneStorage["list"]>>;
+    try {
+      entries = await this.storage.list(this.permissionsDir);
+    } catch (err) {
+      // A vanished directory means every tuple file is gone. Confirmed with
+      // exists() so a transient list() error doesn't wipe the index.
+      if (await this.storage.exists(this.permissionsDir)) throw err;
+      entries = [];
+    }
+    const files = entries.filter((e) => e.isFile && e.name.endsWith(".json"));
+    const present = new Set(files.map((e) => e.name));
+    for (const name of this.rejected.keys()) {
+      if (!present.has(name)) this.rejected.delete(name);
+    }
+
+    // Removed by another process
+    for (const [name, id] of [...this.fileToId]) {
+      if (present.has(name) || !known.has(name)) continue;
+      const tuple = this.tuples.get(id);
+      if (tuple) {
+        this.tuples.delete(id);
+        this.unindexTuple(tuple);
+      }
+      this.fileToId.delete(name);
+    }
+
+    // New (or previously rejected) files
+    await Promise.all(
+      files
+        .filter((e) => !this.fileToId.has(e.name))
+        .map((e) => this.loadFile(e)),
+    );
+  }
+
+  private async loadFile(e: { name: string; path: string }): Promise<void> {
+    try {
+      const raw = await this.storage.read(e.path);
+      const text = new TextDecoder().decode(raw);
+      const tuple = JSON.parse(text) as SignedTuple;
+      if (!tuple.id) return;
+
+      // HMAC verification — only when a key is configured
+      if (this.hmacKey) {
+        const result = await verifyTuple(tuple, this.hmacKey);
+        if (result === "invalid") {
+          if (this.rejected.get(e.name) === text) return;
+          this.rejected.set(e.name, text);
+          logger.warn("authz.tuple.invalid_hmac", {
+            tupleId: tuple.id,
+            file: e.name,
+            reason:
+              "invalid HMAC — file may have been tampered with. Tuple NOT loaded.",
+          });
+          return;
+        }
+        if (result === "missing" && this.strictHmac) {
+          if (this.rejected.get(e.name) === text) return;
+          this.rejected.set(e.name, text);
+          logger.warn("authz.tuple.unsigned_strict", {
+            tupleId: tuple.id,
+            file: e.name,
+            reason:
+              "unsigned but strict HMAC mode is enabled. Tuple NOT loaded. Run `dune authz:sign` to sign it.",
+          });
+          return;
+        }
+        // result === "missing" (non-strict): unsigned file, accepted during migration
+      }
+
+      // Strip the hmac field before storing in the in-memory index
+      const { hmac: _hmac, ...stored } = tuple;
+      const storedTuple = stored as PolizyStoredTuple;
+      if (this.tuples.has(storedTuple.id)) return; // written in-process meanwhile
+      this.tuples.set(storedTuple.id, storedTuple);
+      this.indexTuple(storedTuple);
+      this.fileToId.set(e.name, storedTuple.id);
+      this.rejected.delete(e.name);
+    } catch {
+      // Skip corrupt files
+    }
   }
 
   // ── StorageAdapter methods ──────────────────────────────────────────────────
@@ -346,6 +426,7 @@ export class AuthzLocalAdapter {
       );
       this.tuples.set(id, stored);
       this.indexTuple(stored);
+      this.fileToId.set(`${id}.json`, id);
       results.push(stored);
     }
     return results;
@@ -365,6 +446,7 @@ export class AuthzLocalAdapter {
           // reloaded — stale permissions are the safe-fail direction here.
           this.tuples.delete(id);
           this.unindexTuple(tuple);
+          this.fileToId.delete(`${id}.json`);
           count++;
         } catch (err) {
           // File already gone is fine — remove from in-memory index so the two
@@ -377,6 +459,7 @@ export class AuthzLocalAdapter {
           if (isGone) {
             this.tuples.delete(id);
             this.unindexTuple(tuple);
+            this.fileToId.delete(`${id}.json`);
             count++;
           } else {
             logger.warn("authz.tuple.delete_failed", {
