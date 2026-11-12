@@ -7,6 +7,7 @@ import {
   enforceRoles,
   isValidLoginPath,
   loginPathForRequest,
+  normalizeRoutePath,
   mediaDenialResponse,
   resolveLoginPath,
   setGatingLoginPath,
@@ -189,4 +190,49 @@ Deno.test("a bad magic link's Try again points at login_path", async () => {
   const res = await routes.magicVerify(new Request("https://example.com/auth/magic/verify"));
   const html = await res.text();
   assertEquals(html.includes('href="/join"'), true);
+});
+
+Deno.test("multisite: a site without login_path never gets another site's path", async () => {
+  const a = "https://a.example";
+  const b = "https://b.example";
+  // mountDuneAuth registers every site, the default included.
+  setGatingLoginPath("/join", a);
+  setGatingLoginPath(DEFAULT_LOGIN_PATH, b);
+  try {
+    assertEquals(loginPathForRequest(new Request(`${a}/x`)), "/join");
+    assertEquals(loginPathForRequest(new Request(`${b}/x`)), "/auth/login");
+    assertEquals(
+      (await enforceRoles(new Request(`${b}/x`), null, []))!.headers.get("location"),
+      "/auth/login?next=%2Fx",
+    );
+  } finally {
+    setGatingLoginPath(null, a);
+    setGatingLoginPath(null, b);
+  }
+});
+
+Deno.test("a trailing slash on login_path is normalized for redirects and the exemption", () => {
+  assertEquals(resolveLoginPath("/join/"), "/join");
+  assertEquals(resolveLoginPath("/"), "/");
+  assertEquals(normalizeRoutePath("/a/b//"), "/a/b");
+
+  const login = page("/join", "01.join/default.md");
+  const other = page("/about", "02.about/default.md");
+  applyGatingInheritance([login, other], "any", "/join/");
+  assertEquals(login.gated, false);
+  assertEquals(other.gated, true);
+});
+
+Deno.test("the login page's translations are exempt too", () => {
+  const en = page("/join", "01.join/default.md");
+  const de = page("/de/join", "01.join/default.de.md");
+  de.language = "de";
+  const sibling = page("/join/faq", "01.join/02.faq/default.md");
+  const other = page("/about", "02.about/default.md");
+  applyGatingInheritance([en, de, sibling, other], "any", "/join");
+  assertEquals(en.gated, false);
+  assertEquals(de.gated, false);
+  // A child page of the login page is an ordinary page: default_roles applies.
+  assertEquals(sibling.gated, true);
+  assertEquals(other.gated, true);
 });

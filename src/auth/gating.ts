@@ -99,12 +99,20 @@ export function isValidLoginPath(value: unknown): value is string {
 }
 
 /**
- * The effective login path for a configured value: the value when valid, else
+ * The effective login path for a configured value: the value (without a
+ * trailing slash, so it matches page routes) when valid, else
  * the default. (Invalid values are reported by config validation; this keeps a
  * bad value from ever reaching a redirect.)
  */
 export function resolveLoginPath(configured: unknown): string {
-  return isValidLoginPath(configured) ? configured : DEFAULT_LOGIN_PATH;
+  return isValidLoginPath(configured)
+    ? normalizeRoutePath(configured)
+    : DEFAULT_LOGIN_PATH;
+}
+
+/** A path without its trailing slash (`/join/` → `/join`); `/` stays `/`. Page routes have none. */
+export function normalizeRoutePath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") || "/" : path;
 }
 
 const _loginPathByOrigin = new Map<string, string>();

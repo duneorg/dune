@@ -19,8 +19,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
   `GET /auth/login` redirects to it, keeping the query, so there is one login page. `POST /auth/login`, the OAuth
   callbacks, magic-link verification and logout stay mounted under `/auth/*`; the custom page posts to them. The
   value must be a local absolute path (one leading `/`, no URL, no query); anything else fails config validation.
-  The page served at `login_path` is never gated by `auth.default_roles` or an ancestor's `roles:` (its own `roles:`
-  still applies), so a gated site cannot loop on its own login page. Default `/auth/login`, unchanged.
+  A trailing slash is ignored (`/join/` is `/join`). The page served at `login_path`, and its translations (the other
+  language files in the same folder), are never gated by `auth.default_roles` or an ancestor's `roles:` (their own
+  `roles:` still applies), so a gated site cannot loop on its own login page. A login page that is a flat file
+  (`01.join.md`) is exempt for its own route only. Default `/auth/login`, unchanged.
 - **Page gating is inherited, and a site can gate everything by default (#157).** A page's `roles:` now
   applies to everything beneath it, so gating a section is one line on its top page, not one per page and
   language. `site.auth.default_roles` (same values as `roles:`, e.g. `any`) gates every page that neither

@@ -20,7 +20,7 @@ import type { ContentFormat, PageFrontmatter, PageIndex } from "./types.ts";
 import type { FormatRegistry } from "./formats/registry.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
 import { validateFrontmatter } from "../blueprints/validator.ts";
-import { parseRolesDirective, parseRolesSpec } from "../auth/gating.ts";
+import { normalizeRoutePath, parseRolesDirective, parseRolesSpec } from "../auth/gating.ts";
 import type { RolesDirective } from "../auth/gating.ts";
 import {
   calculateDepth,
@@ -422,8 +422,8 @@ function isFlatFilePath(sp: string): boolean {
  *   2. the nearest ancestor directory's `roles:`
  *   3. the site default (`site.auth.default_roles`)
  *
- * The page at `site.auth.login_path` (if any) counts as `roles: public` unless
- * it declares its own rule.
+ * The page at `site.auth.login_path` (if any), and its translations, count as
+ * `roles: public` unless they declare their own rule.
  *
  * `roles: public` is an explicit opt-out at any level; it ends the search
  * with "open". A value that is absent or malformed means "keep looking".
@@ -442,6 +442,23 @@ export function applyGatingInheritance(
   loginPath?: string,
 ): void {
   const fallback = parseRolesDirective(defaultRoles);
+
+  // The login page and its translations: every page in a folder whose page
+  // sits at the login route (translations share the folder, not the route).
+  const loginRoute = loginPath === undefined ? null : normalizeRoutePath(loginPath);
+  const loginDirs = new Set<string>();
+  if (loginRoute !== null) {
+    for (const page of pages) {
+      if (!isFlatFilePath(page.sourcePath) && normalizeRoutePath(page.route) === loginRoute) {
+        loginDirs.add(dirname(page.sourcePath));
+      }
+    }
+  }
+  const isLoginPage = (page: PageIndex): boolean =>
+    loginRoute !== null && (
+      normalizeRoutePath(page.route) === loginRoute ||
+      (!isFlatFilePath(page.sourcePath) && loginDirs.has(dirname(page.sourcePath)))
+    );
 
   // Directory → the pages that represent it (folder pages, not flat siblings).
   const byDir = new Map<string, PageIndex[]>();
@@ -475,7 +492,7 @@ export function applyGatingInheritance(
     let directive = parseRolesDirective(page.ownRoles);
 
     // The login page itself is reachable by anyone unless it says otherwise.
-    if (directive.kind === "inherit" && loginPath !== undefined && page.route === loginPath) {
+    if (directive.kind === "inherit" && isLoginPage(page)) {
       directive = { kind: "public" };
     }
 
