@@ -96,6 +96,19 @@ Deno.test("KVSessionStore: deleteByUserId removes all sessions for a user", asyn
   kv.close();
 });
 
+Deno.test("KVSessionStore: listByUserId returns only that user's sessions", async () => {
+  const kv = await Deno.openKv(":memory:");
+  const store = createKVSessionStore({ kv, lifetimeMs: 3600 * 1000 });
+  await store.set(makeSession({ id: "s1aaaa", userId: "alice" }));
+  await store.set(makeSession({ id: "s2bbbb", userId: "alice" }));
+  await store.set(makeSession({ id: "s3cccc", userId: "bob" }));
+
+  const ids = (await store.listByUserId("alice")).map((s) => s.id).sort();
+  assertEquals(ids, ["s1aaaa", "s2bbbb"]);
+  assertEquals(await store.listByUserId("nobody"), []);
+  kv.close();
+});
+
 Deno.test("KVSessionStore: deleteByUserId is safe when no sessions exist", async () => {
   const kv = await Deno.openKv(":memory:");
   const store = createKVSessionStore({ kv, lifetimeMs: 3600 * 1000 });

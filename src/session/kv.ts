@@ -88,10 +88,20 @@ export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore
     await ops.commit();
   }
 
+  async function listByUserId(userId: string): Promise<Session[]> {
+    const out: Session[] = [];
+    for await (const entry of kv.list<boolean>({ prefix: uKey(userId) })) {
+      const sessionId = entry.key[entry.key.length - 1] as string;
+      const result = await kv.get<Session>(sKey(sessionId));
+      if (result.value !== null) out.push(result.value);
+    }
+    return out;
+  }
+
   async function cleanup(): Promise<number> {
     // Deno KV handles TTL expiry natively — no manual sweep required.
     return 0;
   }
 
-  return { get, set, delete: del, deleteByUserId, cleanup };
+  return { get, set, delete: del, deleteByUserId, listByUserId, cleanup };
 }

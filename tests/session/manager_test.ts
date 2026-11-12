@@ -135,6 +135,39 @@ Deno.test("createSessionManager: revokeAll deletes every session for a user, lea
   assertExists(await mgr.get(b1.id));
 });
 
+Deno.test("createSessionManager: listForUser returns the user's live sessions, newest first", async () => {
+  const mgr = makeManager();
+  const first = await mgr.create("user-a", "10.0.0.1");
+  await new Promise((r) => setTimeout(r, 5));
+  const second = await mgr.create("user-a", "10.0.0.2");
+  await mgr.create("user-b");
+
+  const list = await mgr.listForUser("user-a");
+  assertEquals(list.map((x) => x.id), [second.id, first.id]);
+  assertEquals(await mgr.listForUser("nobody"), []);
+});
+
+Deno.test("createSessionManager: listForUser leaves out expired sessions", async () => {
+  const mgr = makeManager(-1000); // sessions are created already expired
+  await mgr.create("user-a");
+  assertEquals(await mgr.listForUser("user-a"), []);
+});
+
+Deno.test("createSessionManager: revokeOthers keeps only the given session and other users' sessions", async () => {
+  const mgr = makeManager();
+  const keep = await mgr.create("user-a");
+  const other1 = await mgr.create("user-a");
+  const other2 = await mgr.create("user-a");
+  const b1 = await mgr.create("user-b");
+
+  await mgr.revokeOthers("user-a", keep.id);
+
+  assertExists(await mgr.get(keep.id));
+  assertEquals(await mgr.get(other1.id), null);
+  assertEquals(await mgr.get(other2.id), null);
+  assertExists(await mgr.get(b1.id));
+});
+
 Deno.test("createSessionManager: cleanup removes expired sessions", async () => {
   const mgr = makeManager(-1000); // already expired
   await mgr.create("user-1");
