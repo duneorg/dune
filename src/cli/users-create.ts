@@ -26,8 +26,10 @@
  * Reuses the same UserStore primitive users-role.ts's grant/revoke-role
  * commands do, and syncs the app:site authz tuple the same way when an
  * admin-tier role (admin/editor/author) is included, so a pre-granted
- * admin-tier role is immediately effective — not just present in roles[]
- * but inert until the user's first login re-syncs it.
+ * admin-tier role is effective at once — not just present in roles[] but
+ * inert until the user's first login re-syncs it. A running `dune serve` picks
+ * the new tuples up on its next permission check (the local authz adapter
+ * rescans data/permissions/ about once a second); no restart is needed.
  *
  * With --password-prompt (or --stdin / --generate) it instead creates a
  * *local-password* account (`provider: "local"`, `--username`, default the

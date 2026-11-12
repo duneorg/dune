@@ -914,3 +914,208 @@ Deno.test("external-jwt provisioning: a different user's tuples don't affect ano
     false,
   );
 });
+
+// ── Cross-process visibility (dune#153) ──────────────────────────────────────
+
+Deno.test("AuthzLocalAdapter: picks up tuples written and deleted by another process", async () => {
+  const storage = makeStorage();
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 0,
+  });
+  // Server starts with an empty index.
+  assertEquals(await server.size(), 0);
+
+  // A second adapter on the same files stands in for the CLI process.
+  const cli = new AuthzLocalAdapter({ storage, dataDir: "data" });
+  const subject = { type: "user", id: "u1" };
+  const object = { type: "group", id: "admin" };
+  await cli.write([{ subject, relation: "member", object }]);
+
+  assertEquals(await server.hasTuple(subject, "member", object), true);
+  assertEquals((await server.findObjects(subject, "member")).length, 1);
+
+  await cli.delete({ who: subject });
+  assertEquals(await server.hasTuple(subject, "member", object), false);
+  assertEquals(await server.size(), 0);
+});
+
+Deno.test("AuthzLocalAdapter: rescans are throttled", async () => {
+  const storage = makeStorage();
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 60_000,
+  });
+  await server.size();
+  const cli = new AuthzLocalAdapter({ storage, dataDir: "data" });
+  await cli.write([{
+    subject: { type: "user", id: "u1" },
+    relation: "member",
+    object: { type: "group", id: "admin" },
+  }]);
+  assertEquals(await server.size(), 0);
+});
+
+Deno.test("AuthzLocalAdapter: in-process writes survive a rescan", async () => {
+  const storage = makeStorage();
+  const a = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 0,
+  });
+  const [t] = await a.write([{
+    subject: { type: "user", id: "u1" },
+    relation: "member",
+    object: { type: "group", id: "admin" },
+  }]);
+  assertEquals(await a.size(), 1);
+  assertEquals((await a.findTuples({})).map((x) => x.id), [t.id]);
+});
+
+// ── Rejected tuple files across rescans (dune#153 review) ────────────────────
+
+/** Run fn while capturing logger output (the default logger writes to console.error). */
+async function captureLog(fn: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => lines.push(args.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.error = orig;
+  }
+  return lines;
+}
+
+Deno.test("AuthzLocalAdapter: unsigned file under strict HMAC loads on a later rescan once signed", async () => {
+  const { signTuple } = await import("../../src/auth/authz-hmac.ts");
+  const key = await makeHmacKey();
+  const storage = makeStorage();
+  const base = {
+    id: "t-late",
+    subject: { type: "user", id: "alice" },
+    relation: "member",
+    object: { type: "group", id: "admins" },
+  };
+  await storage.write("data/permissions/t-late.json", JSON.stringify(base));
+
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    hmacKey: key,
+    strictHmac: true,
+    refreshIntervalMs: 0,
+  });
+  assertEquals(await server.size(), 0);
+
+  // `dune authz:sign` rewrites the file with an hmac.
+  const hmac = await signTuple(base, key);
+  await storage.write(
+    "data/permissions/t-late.json",
+    JSON.stringify({ ...base, hmac }),
+  );
+  assertEquals(await server.size(), 1);
+  assertEquals(
+    await server.hasTuple(base.subject, "member", base.object),
+    true,
+  );
+});
+
+Deno.test("AuthzLocalAdapter: file with an invalid HMAC never loads, and is logged once", async () => {
+  const key = await makeHmacKey();
+  const storage = makeStorage();
+  const tampered = {
+    id: "t-bad",
+    subject: { type: "user", id: "mallory" },
+    relation: "member",
+    object: { type: "group", id: "admins" },
+    hmac: "00".repeat(32),
+  };
+  await storage.write("data/permissions/t-bad.json", JSON.stringify(tampered));
+
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    hmacKey: key,
+    strictHmac: true,
+    refreshIntervalMs: 0,
+  });
+  const lines = await captureLog(async () => {
+    for (let i = 0; i < 4; i++) {
+      assertEquals(await server.size(), 0);
+    }
+  });
+  assertEquals(
+    lines.filter((l) => l.includes("authz.tuple.invalid_hmac")).length,
+    1,
+  );
+  assertEquals(
+    await server.hasTuple(tampered.subject, "member", tampered.object),
+    false,
+  );
+
+  // Changing the file's content re-logs it.
+  await storage.write(
+    "data/permissions/t-bad.json",
+    JSON.stringify({ ...tampered, hmac: "11".repeat(32) }),
+  );
+  const again = await captureLog(async () => {
+    await server.size();
+  });
+  assertEquals(
+    again.filter((l) => l.includes("authz.tuple.invalid_hmac")).length,
+    1,
+  );
+});
+
+Deno.test("AuthzLocalAdapter: unsigned strict-mode file is logged once across rescans", async () => {
+  const key = await makeHmacKey();
+  const storage = makeStorage();
+  await storage.write(
+    "data/permissions/t-u.json",
+    JSON.stringify({
+      id: "t-u",
+      subject: { type: "user", id: "m" },
+      relation: "member",
+      object: { type: "group", id: "g" },
+    }),
+  );
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    hmacKey: key,
+    strictHmac: true,
+    refreshIntervalMs: 0,
+  });
+  const lines = await captureLog(async () => {
+    for (let i = 0; i < 3; i++) await server.size();
+  });
+  assertEquals(
+    lines.filter((l) => l.includes("authz.tuple.unsigned_strict")).length,
+    1,
+  );
+});
+
+Deno.test("AuthzLocalAdapter: removing the permissions directory drops cached grants", async () => {
+  const storage = makeStorage();
+  const server = new AuthzLocalAdapter({
+    storage,
+    dataDir: "data",
+    refreshIntervalMs: 0,
+  });
+  await server.write([{
+    subject: { type: "user", id: "u1" },
+    relation: "member",
+    object: { type: "group", id: "admin" },
+  }]);
+  assertEquals(await server.size(), 1);
+
+  // Directory vanishes: list() throws, exists() is false.
+  for (const e of await storage.list("data/permissions")) {
+    await storage.delete(e.path);
+  }
+  storage.list = () => Promise.reject(new Error("ENOENT"));
+  assertEquals(await server.size(), 0);
+});
