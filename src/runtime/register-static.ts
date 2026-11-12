@@ -10,6 +10,7 @@ import { serveClientBundle } from "../cli/client-bundles.ts";
 import {
   canAccessIndexEntry,
   findPagesForContentMediaPath,
+  siteDefaultGate,
 } from "../auth/gating.ts";
 
 type ClientBundles = Awaited<ReturnType<typeof buildPluginClientBundles>>;
@@ -101,10 +102,15 @@ export function registerStaticRoutes(
   // on the route-based media path (register-middleware.ts): a visitor who may
   // not see the page may not fetch its audio, images or downloads either.
   app.get("/content-media/*", async (fc) => {
-    const owners = findPagesForContentMediaPath(
+    const found = findPagesForContentMediaPath(
       ctx.engine.pages,
       fc.url.pathname.replace(/^\/content-media\//, ""),
     );
+    // A file no page owns falls under the site default gate, if there is one.
+    const fallback = found.length === 0
+      ? siteDefaultGate(ctx.engine.site.auth?.default_roles)
+      : null;
+    const owners = fallback ? [fallback] : found;
     const gated = owners.some((o) => o.gated === true);
     if (gated) {
       for (const owner of owners) {

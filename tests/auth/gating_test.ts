@@ -325,6 +325,7 @@ Deno.test("navigationForRequest: no req keeps only public entries", async () => 
 import {
   findPagesForContentMediaPath,
   parseRolesDirective,
+  siteDefaultGate,
 } from "../../src/auth/gating.ts";
 
 Deno.test("parseRolesSpec: `any` means any logged-in user", () => {
@@ -369,4 +370,23 @@ Deno.test("findPagesForContentMediaPath: owner is the file's folder, else the ne
   );
   assertEquals(findPagesForContentMediaPath(pages, "logo.png"), []);
   assertEquals(findPagesForContentMediaPath(pages, "99.none/x.png"), []);
+});
+
+Deno.test("findPagesForContentMediaPath: a replaced page array is looked up afresh", () => {
+  const first = [{ sourcePath: "05.a/default.md", gated: true }];
+  assertEquals(findPagesForContentMediaPath(first, "05.a/x.png").length, 1);
+  // Same array again (cached map) gives the same answer
+  assertEquals(findPagesForContentMediaPath(first, "05.a/x.png").length, 1);
+  // The engine swaps in a new array on re-index; the old cache must not leak
+  const second = [{ sourcePath: "06.b/default.md", gated: false }];
+  assertEquals(findPagesForContentMediaPath(second, "05.a/x.png"), []);
+  assertEquals(findPagesForContentMediaPath(second, "06.b/x.png").length, 1);
+});
+
+Deno.test("siteDefaultGate: a gate for gating defaults, null otherwise", () => {
+  assertEquals(siteDefaultGate("any"), { gated: true, roles: [] });
+  assertEquals(siteDefaultGate("member"), { gated: true, roles: "member" });
+  assertStrictEquals(siteDefaultGate(undefined), null);
+  assertStrictEquals(siteDefaultGate("public"), null);
+  assertStrictEquals(siteDefaultGate(5), null);
 });

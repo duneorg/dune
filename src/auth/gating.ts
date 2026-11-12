@@ -453,6 +453,27 @@ export function findPagesForContentMediaPath<
   } catch {
     // Malformed escapes: look up the raw string; serveMedia will 404 anyway.
   }
+  const byDir = pagesByDir(pages);
+  let dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+  while (dir) {
+    const owners = byDir.get(dir);
+    if (owners) return owners;
+    dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+  }
+  return [];
+}
+
+// Directory → index entries, built once per page array. The engine replaces
+// `engine.pages` with a fresh array on every (re)index, so keying on the array
+// keeps this current without invalidation, and a media request does not walk
+// the whole index.
+const pagesByDirCache = new WeakMap<object, Map<string, unknown[]>>();
+
+function pagesByDir<T extends { sourcePath: string }>(
+  pages: T[],
+): Map<string, T[]> {
+  const cached = pagesByDirCache.get(pages);
+  if (cached) return cached as Map<string, T[]>;
   const byDir = new Map<string, T[]>();
   for (const page of pages) {
     const i = page.sourcePath.lastIndexOf("/");
@@ -461,13 +482,19 @@ export function findPagesForContentMediaPath<
     if (list) list.push(page);
     else byDir.set(dir, [page]);
   }
-  let dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-  while (dir) {
-    const owners = byDir.get(dir);
-    if (owners) return owners;
-    dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
-  }
-  return [];
+  pagesByDirCache.set(pages, byDir);
+  return byDir;
+}
+
+/**
+ * The rule a file with no owning page falls under: the site default
+ * (`site.auth.default_roles`) as a gated entry, or null when the site has no
+ * default gate. Such a file has no page and no ancestor page, so nothing can
+ * have opted it out.
+ */
+export function siteDefaultGate(defaultRoles: unknown): GatedIndexEntry | null {
+  const d = parseRolesDirective(defaultRoles);
+  return d.kind === "gate" ? { gated: true, roles: d.spec } : null;
 }
 
 export function findPageForMediaUrl<T extends GatedIndexEntry & { route: string }>(
