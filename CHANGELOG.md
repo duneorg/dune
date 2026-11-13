@@ -13,7 +13,12 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Added
 
+- **`DunePlugin.requiresCore`: a plugin can say which core it needs.** A plugin always sets it to `MIN_CORE_VERSION` from `@dune/plugin-api` (the number belongs to the contract version, not to the plugin); on an older core the loader skips the plugin and logs `plugins.load.core_too_old` ("admin needs @dune/core 0.38.0 or later, but this is 0.37.0") instead of letting it fail at runtime on something core does not provide. Absent or unreadable values never block a plugin.
 - **Startup says when the admin panel is on but no admin user exists (#165).** Dune creates no default admin, so on a fresh site the panel loaded and nobody could log in, with nothing saying why; an account made with `dune users:create ... --password-prompt` but no `--role admin` logs in and then gets 403 on every admin page. Boot now logs `bootstrap.no_admin_user` with the command to run (`dune users:create you@example.com --role admin --password-prompt`, or `DUNE_ADMIN_EMAIL` / `DUNE_ADMIN_PASSWORD` for containers). It stays quiet when no admin plugin is loaded (a site may not want one), when an enabled admin exists, and when the config hands out admin-tier roles itself (`role_grants`, OAuth role claims).
+
+### Fixed
+
+- **`dune new`, `dune migrate:config` and the admin-plugin helper now list `plugin-admin@^5`.** 0.37.0 wrote `^4`, which does not match the 0.37-compatible admin (4.x pins core 0.36 and imports the subpaths 0.37 removed), so a new site loaded the old admin and failed. `scripts/headless-smoke.ts` and the tests use `^5` too.
 
 ## [0.37.0] — 2026-11-13
 

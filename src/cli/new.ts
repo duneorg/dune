@@ -20,7 +20,7 @@ taxonomies:
 # Plugins. The admin panel is a plugin like any other: core loads only what is
 # listed here. Remove this entry to run without an admin.
 plugins:
-  - src: jsr:@dune/plugin-admin@^4
+  - src: jsr:@dune/plugin-admin@^5
 `;
 
 const SYSTEM_YAML = `content:
@@ -351,7 +351,7 @@ taxonomies:
 # Plugins. The admin panel is a plugin like any other: core loads only what is
 # listed here. Remove this entry to run without an admin.
 plugins:
-  - src: jsr:@dune/plugin-admin@^4
+  - src: jsr:@dune/plugin-admin@^5
 `;
 
 const HEADLESS_SYSTEM_YAML = `content:
