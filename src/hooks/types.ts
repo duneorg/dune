@@ -282,6 +282,15 @@ export interface DunePlugin {
   version: string;
   /** Human-readable description shown in the admin panel */
   description?: string;
+  /**
+   * The oldest `@dune/core` this plugin runs on. Always set it to
+   * `MIN_CORE_VERSION` from `@dune/plugin-api`: the number belongs to the
+   * contract version the plugin was built against, not to the plugin. On an
+   * older core the loader skips the plugin and logs why, instead of letting it
+   * fail later. (Any version string is accepted, but a plugin has no reason to
+   * invent one.)
+   */
+  requiresCore?: string;
   /** Plugin author — shown in admin panel */
   author?: string;
   /**
