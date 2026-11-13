@@ -80,7 +80,7 @@
     "build": "deno run -A src/cli.ts build",
     "serve": "deno run -A src/cli.ts serve",
     "test": "deno test -A --unstable-kv tests/",
-    "check": "deno lint src/ && deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
+    "check": "deno fmt --check && deno lint src/ && deno check src/**/*.ts && deno run --allow-read scripts/lint-dynamic-imports.ts",
     "check:core-pin-drift": "deno run --allow-net --allow-read scripts/check-core-pin-drift.ts",
     "dune": "deno run -A src/cli.ts"
   },
@@ -88,6 +88,11 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "strict": true
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "proseWrap": "preserve",
+    "exclude": ["deno.lock", "docs/content/", "tests/fixtures/", "**/*.md", ".github/"]
   },
   "lint": {
     "rules": {
