@@ -11,6 +11,33 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+Pairs with `@dune/plugin-api` 1.2. The first-party plugins no longer import `@dune/core`: plugin-admin 5, plugin-inline-edit 3.1, plugin-meilisearch 1.4, plugin-orama 1.1 depend on `@dune/plugin-api` only, so from here a core release does not force a plugin release (`@dune/testing`, which boots core, keeps a core pin).
+
+### Removed — BREAKING
+
+The subpaths whose content moved into `@dune/plugin-api` are gone from the package exports, with no deprecated stand-in. Import from the package instead:
+
+| Removed | Use instead |
+|---|---|
+| `@dune/core/hooks` (`DunePlugin`, `PluginApi`, `MountApi`, hook payloads) | `@dune/plugin-api` |
+| `@dune/core/config` (config types, `Role`) | `@dune/plugin-api` (`DuneConfig`, `SiteConfig`, `Role`, ...) |
+| `@dune/core/inline-edit` (`InlineEditManager`, ...) | `@dune/plugin-api` |
+| `@dune/core/content/path-utils` | `@dune/plugin-api`: `parseContentFilename`, `dirPathToRoute`, `isMediaFile` |
+| `@dune/core/content/page-loader` | `@dune/plugin-api`: `getMimeType` |
+| `@dune/core/i18n` | `@dune/plugin-api`: `isRtl` |
+| `@dune/core/auth/types` | `@dune/plugin-api`: `User`, `Session` |
+| `@dune/core/auth/user-store-db` | set `auth.user_store: db` in `site.yaml`; core builds the store itself |
+| `@dune/core/auth/authz-adapter-local`, `/auth/authz-adapter-db` | `AuthzService` from `@dune/plugin-api` (the adapters are internal) |
+
+`@dune/core/plugin-api`, `/auth/passwords` and `/auth/authz-schema` stay: they hold core's implementation side (`createPluginServices`, `createCapabilityRegistry`, password hashing, the authz schema) that embedders and test harnesses build on. Plugins take the contract types from `@dune/plugin-api`.
+
+`dune generate plugin` and `dune plugin:new` now write `jsr:@dune/plugin-api` type imports. A plugin that still imports a removed path stops loading on 0.37; swap the import (a type-only swap for almost all of them).
+
+### Changed
+
+- `@dune/plugin-api` range is `^1.2.0`. A conformance test runs the package's helpers against core's on the same inputs.
+
+
 ### Added
 
 - **`auth.login_path`: a site can serve its own login page (#159).** Set `auth.login_path: /join` in `site.yaml` and

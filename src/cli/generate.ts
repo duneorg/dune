@@ -99,7 +99,7 @@ export async function generatePlugin(
   const outPath = join(root, "plugins", slug, "index.ts");
   await guardCollision(outPath, root, opts.force ?? false);
 
-  const content = `import type { DunePlugin } from "@dune/core/plugins";
+  const content = `import type { DunePlugin } from "jsr:@dune/plugin-api@^1.2.0";
 
 const plugin: DunePlugin = {
   name: "${slug}",
