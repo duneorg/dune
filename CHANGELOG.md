@@ -11,6 +11,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **`DunePlugin.requiresCore`: a plugin can say which core it needs.** A plugin sets it to `MIN_CORE_VERSION` from `@dune/plugin-api` (or any version string); on an older core the loader skips the plugin and logs `plugins.load.core_too_old` ("admin needs @dune/core 0.38.0 or later, but this is 0.37.0") instead of letting it fail at runtime on something core does not provide. Absent or unreadable values never block a plugin.
+
 ## [0.37.0] — 2026-11-13
 
 Pairs with `@dune/plugin-api` 1.2. The first-party plugins no longer import `@dune/core`: plugin-admin 5, plugin-inline-edit 3.1, plugin-meilisearch 1.4, plugin-orama 1.1 depend on `@dune/plugin-api` only, so from here a core release does not force a plugin release (`@dune/testing`, which boots core, keeps a core pin).

@@ -44,6 +44,8 @@ import { describeConflict, invalidAdminPrefix } from "../plugin-api/capabilities
 import { createPluginRuntime } from "../plugin-api/runtime.ts";
 import { resolveRuntimeDir } from "../forms/config.ts";
 import { pluginCoreMismatch } from "./core-handshake.ts";
+import { coreRequirementProblem } from "./core-requirement.ts";
+import { CORE_VERSION } from "./mod.ts";
 
 /** Options for the plugin loader. */
 export interface PluginLoaderOptions {
@@ -172,6 +174,12 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<void> {
 
       if (!plugin.name || !plugin.version) {
         logger.warn("plugins.loader.missing_name_or_version", { src: entry.src });
+        continue;
+      }
+
+      const tooOld = coreRequirementProblem(plugin, CORE_VERSION);
+      if (tooOld) {
+        logger.error("plugins.load.core_too_old", { src: entry.src, reason: tooOld });
         continue;
       }
 
