@@ -116,7 +116,10 @@ Deno.test("migrate:config deletes keys that were declared and never read", async
 });
 
 Deno.test("migrate:config adds the admin plugin to a site that had the admin by default", async () => {
-  await withSite({ "config/site.yaml": "# my site\ntitle: T\nplugins:\n  - src: ./plugins/mine.ts\n    config:\n      a: 1\ntheme:\n  name: x\n" }, async (root) => {
+  await withSite({
+    "config/site.yaml":
+      "# my site\ntitle: T\nplugins:\n  - src: ./plugins/mine.ts\n    config:\n      a: 1\ntheme:\n  name: x\n",
+  }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
     assertEquals(
@@ -158,13 +161,16 @@ Deno.test("migrate:config removes admin.enabled: false and leaves the site witho
 
 Deno.test("migrate:config --dry-run reports the admin changes and writes nothing", async () => {
   const system = "admin:\n  enabled: true\n";
-  await withSite({ "config/site.yaml": "title: T\n", "config/system.yaml": system }, async (root) => {
-    const out = await quiet(() => migrateConfigCommand(root, { dryRun: true }));
-    assertStringIncludes(out, "removed admin.enabled");
-    assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
-    assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
-  });
+  await withSite(
+    { "config/site.yaml": "title: T\n", "config/system.yaml": system },
+    async (root) => {
+      const out = await quiet(() => migrateConfigCommand(root, { dryRun: true }));
+      assertStringIncludes(out, "removed admin.enabled");
+      assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
+      assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
+      assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
+    },
+  );
 });
 
 Deno.test("migrate:config moves the whole admin: block: settings into the plugin's config, runtime_dir and max_revisions to the top level", async () => {
@@ -175,7 +181,10 @@ Deno.test("migrate:config moves the whole admin: block: settings into the plugin
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "moved the admin's settings into the admin plugin's config");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\nruntime_dir: var/rt\nmax_revisions: 20\n");
+    assertEquals(
+      await Deno.readTextFile(join(root, "config/system.yaml")),
+      "debug: true\nruntime_dir: var/rt\nmax_revisions: 20\n",
+    );
     const site = parseYamlText(await Deno.readTextFile(join(root, "config/site.yaml"))) as {
       plugins: { src: string; config: Record<string, unknown> }[];
     };
@@ -191,33 +200,37 @@ Deno.test("migrate:config moves the whole admin: block: settings into the plugin
 
 Deno.test("migrate:config leaves an admin: block holding keys that belong elsewhere for a manual move", async () => {
   const system = "admin:\n  path: /cms\n  honeypot: x\n";
-  await withSite({ "config/site.yaml": "title: T\n", "config/system.yaml": system }, async (root) => {
-    const origExit = Deno.exit;
-    let code: number | undefined;
-    // deno-lint-ignore no-explicit-any
-    (Deno as any).exit = (c?: number) => {
-      code = c;
-      throw new Error("exit");
-    };
-    let out = "";
-    try {
-      out = await quiet(async () => {
-        try {
-          await migrateConfigCommand(root);
-        } catch { /* exit */ }
-      });
-    } finally {
-      Deno.exit = origExit;
-    }
-    assertEquals(code, 1);
-    assertStringIncludes(out, "admin.honeypot");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
-  });
+  await withSite(
+    { "config/site.yaml": "title: T\n", "config/system.yaml": system },
+    async (root) => {
+      const origExit = Deno.exit;
+      let code: number | undefined;
+      // deno-lint-ignore no-explicit-any
+      (Deno as any).exit = (c?: number) => {
+        code = c;
+        throw new Error("exit");
+      };
+      let out = "";
+      try {
+        out = await quiet(async () => {
+          try {
+            await migrateConfigCommand(root);
+          } catch { /* exit */ }
+        });
+      } finally {
+        Deno.exit = origExit;
+      }
+      assertEquals(code, 1);
+      assertStringIncludes(out, "admin.honeypot");
+      assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
+    },
+  );
 });
 
 Deno.test("migrate:config moves site.machine_translation into the admin plugin's config with snake_case keys", async () => {
   await withSite({
-    "config/site.yaml": "title: T\nmachine_translation:\n  provider: deepl\n  apiKey: $DEEPL_KEY\n  baseUrl: https://mt.example\nforms: {}\n",
+    "config/site.yaml":
+      "title: T\nmachine_translation:\n  provider: deepl\n  apiKey: $DEEPL_KEY\n  baseUrl: https://mt.example\nforms: {}\n",
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "machine_translation");
@@ -227,7 +240,11 @@ Deno.test("migrate:config moves site.machine_translation into the admin plugin's
     };
     assertEquals(site.machine_translation, undefined);
     assertEquals(site.plugins[0].config, {
-      machine_translation: { provider: "deepl", api_key: "$DEEPL_KEY", base_url: "https://mt.example" },
+      machine_translation: {
+        provider: "deepl",
+        api_key: "$DEEPL_KEY",
+        base_url: "https://mt.example",
+      },
     });
     assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
   });
@@ -242,7 +259,10 @@ Deno.test("migrate:config warns when an environment overlay alone switched the a
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "added jsr:@dune/plugin-admin");
     // The warning names the overlay and says what to do about it.
-    assertStringIncludes(out, "config/env/staging/system.yaml set admin.enabled: false for that environment only");
+    assertStringIncludes(
+      out,
+      "config/env/staging/system.yaml set admin.enabled: false for that environment only",
+    );
     assertStringIncludes(out, "plugins: list without the admin");
     // Nothing is left of the overlay's admin: block, so no empty key and no "move by hand" (#142).
     assertEquals(await Deno.readTextFile(join(root, "config/env/staging/system.yaml")), "");
@@ -254,7 +274,8 @@ Deno.test("migrate:config keeps a non-empty admin: block in an overlay and repor
   await withSite({
     "config/site.yaml": "title: T\n",
     "config/system.yaml": "debug: true\n",
-    "config/env/staging/system.yaml": "admin:\n  enabled: false\n  max_upload_mb: 5\ndebug: false\n",
+    "config/env/staging/system.yaml":
+      "admin:\n  enabled: false\n  max_upload_mb: 5\ndebug: false\n",
   }, async (root) => {
     const { code, out } = await runCapturingExit(root);
     assertEquals(code, 1);
@@ -295,37 +316,57 @@ Deno.test("migrate:config keeps runtime_dir, max_revisions and data_dir when the
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
     assertStringIncludes(out, "runtime_dir, max_revisions, data_dir now at the top level");
-    const system = parseYamlText(await Deno.readTextFile(join(root, "config/system.yaml"))) as Record<string, unknown>;
+    const system = parseYamlText(
+      await Deno.readTextFile(join(root, "config/system.yaml")),
+    ) as Record<string, unknown>;
     assertEquals(system.runtime_dir, "var/run");
     assertEquals(system.max_revisions, 5);
     assertEquals(system.data_dir, "mydata");
     assertEquals("admin" in system, false);
     // The admin is not loaded, so its own setting (path) has nowhere to go and is dropped.
-    assertEquals((await Deno.readTextFile(join(root, "config/system.yaml"))).includes("/cms"), false);
-    assertEquals((await Deno.readTextFile(join(root, "config/site.yaml"))).includes("plugin-admin"), false);
+    assertEquals(
+      (await Deno.readTextFile(join(root, "config/system.yaml"))).includes("/cms"),
+      false,
+    );
+    assertEquals(
+      (await Deno.readTextFile(join(root, "config/site.yaml"))).includes("plugin-admin"),
+      false,
+    );
   });
 });
 
 Deno.test("migrate:config leaves a disabled admin: block holding keys that belong elsewhere for a manual move", async () => {
   const system = "admin:\n  enabled: false\n  honeypot: x\n  data_dir: mydata\n";
-  await withSite({ "config/site.yaml": "title: T\n", "config/system.yaml": system }, async (root) => {
-    const { code, out } = await runCapturingExit(root);
-    assertEquals(code, 1);
-    assertStringIncludes(out, "admin.honeypot");
-    // Nothing deleted: data_dir is still in the file, for the human to move.
-    assertEquals((await Deno.readTextFile(join(root, "config/system.yaml"))).includes("data_dir: mydata"), true);
-  });
+  await withSite(
+    { "config/site.yaml": "title: T\n", "config/system.yaml": system },
+    async (root) => {
+      const { code, out } = await runCapturingExit(root);
+      assertEquals(code, 1);
+      assertStringIncludes(out, "admin.honeypot");
+      // Nothing deleted: data_dir is still in the file, for the human to move.
+      assertEquals(
+        (await Deno.readTextFile(join(root, "config/system.yaml"))).includes("data_dir: mydata"),
+        true,
+      );
+    },
+  );
 });
 
 Deno.test("migrate:config does not write a lifted key twice: a different top-level value is a manual move", async () => {
   const system = "runtime_dir: var/run\nadmin:\n  runtime_dir: other\n  path: /cms\n";
-  await withSite({ "config/site.yaml": "title: T\n", "config/system.yaml": system }, async (root) => {
-    const { code, out } = await runCapturingExit(root);
-    assertEquals(code, 1);
-    assertStringIncludes(out, "runtime_dir is also set at the top level of system.yaml with a different value");
-    assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
-    assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
-  });
+  await withSite(
+    { "config/site.yaml": "title: T\n", "config/system.yaml": system },
+    async (root) => {
+      const { code, out } = await runCapturingExit(root);
+      assertEquals(code, 1);
+      assertStringIncludes(
+        out,
+        "runtime_dir is also set at the top level of system.yaml with a different value",
+      );
+      assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
+      assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
+    },
+  );
 });
 
 Deno.test("migrate:config skips a lifted key the top level already has with the same value", async () => {

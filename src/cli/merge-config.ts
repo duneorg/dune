@@ -62,14 +62,10 @@ export async function buildMergedConfig(
   workspaceRoot?: WorkspaceRootInfo,
 ): Promise<Record<string, unknown>> {
   const dune = JSON.parse(await Deno.readTextFile(duneConfigPath));
-  const site = siteConfigPath
-    ? JSON.parse(await Deno.readTextFile(siteConfigPath))
-    : {};
+  const site = siteConfigPath ? JSON.parse(await Deno.readTextFile(siteConfigPath)) : {};
   const root = workspaceRoot?.config ?? {};
   const duneUrl = new URL(`file://${duneConfigPath}`);
-  const siteUrl = siteConfigPath
-    ? new URL(`file://${siteConfigPath}`)
-    : duneUrl;
+  const siteUrl = siteConfigPath ? new URL(`file://${siteConfigPath}`) : duneUrl;
 
   const merged: Record<string, unknown> = {
     imports: {

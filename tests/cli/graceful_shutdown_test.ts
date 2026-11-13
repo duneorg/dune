@@ -29,8 +29,16 @@ Deno.test("inFlight counter: increments on entry and decrements on exit", async 
   // Concurrent requests — both increment before either decrements
   let resolve1!: () => void;
   let resolve2!: () => void;
-  const p1 = wrappedHandler(() => new Promise<void>((r) => { resolve1 = r; }));
-  const p2 = wrappedHandler(() => new Promise<void>((r) => { resolve2 = r; }));
+  const p1 = wrappedHandler(() =>
+    new Promise<void>((r) => {
+      resolve1 = r;
+    })
+  );
+  const p2 = wrappedHandler(() =>
+    new Promise<void>((r) => {
+      resolve2 = r;
+    })
+  );
 
   assertEquals(inFlight, 2);
 
@@ -131,7 +139,9 @@ Deno.test("drainInFlight: waits until inFlight reaches 0", async () => {
   }
 
   // Decrement after a short delay
-  setTimeout(() => { inFlight = 0; }, 150);
+  setTimeout(() => {
+    inFlight = 0;
+  }, 150);
 
   const start = Date.now();
   await drainInFlight(() => inFlight, 5_000);
@@ -162,6 +172,10 @@ Deno.test("drainInFlight: exits after deadline even if inFlight stays positive",
   const elapsed = Date.now() - start;
 
   // Should have exited around the deadline (allow generous upper bound)
-  assertEquals(elapsed >= deadline, true, `Expected to wait at least ${deadline}ms, got ${elapsed}ms`);
+  assertEquals(
+    elapsed >= deadline,
+    true,
+    `Expected to wait at least ${deadline}ms, got ${elapsed}ms`,
+  );
   assertEquals(elapsed < deadline + 500, true, `Deadline overrun: ${elapsed}ms`);
 });

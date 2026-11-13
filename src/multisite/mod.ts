@@ -2,6 +2,6 @@
  * Multisite module public API.
  */
 
-export { MultisiteManager, loadMultisiteConfig } from "./manager.ts";
+export { loadMultisiteConfig, MultisiteManager } from "./manager.ts";
 export type { InitializedSite } from "./types.ts";
-export type { SiteEntry, MultisiteConfig } from "./types.ts";
+export type { MultisiteConfig, SiteEntry } from "./types.ts";

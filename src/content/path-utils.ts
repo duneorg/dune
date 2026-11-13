@@ -22,9 +22,23 @@ const FORMAT_MAP: Record<string, ContentFormat> = {
 
 /** Non-content file extensions (media, metadata, etc.) */
 const MEDIA_EXTENSIONS = new Set([
-  ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg",
-  ".mp4", ".webm", ".ogg", ".mp3", ".wav",
-  ".pdf", ".zip", ".json", ".csv", ".html",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".svg",
+  ".mp4",
+  ".webm",
+  ".ogg",
+  ".mp3",
+  ".wav",
+  ".pdf",
+  ".zip",
+  ".json",
+  ".csv",
+  ".html",
 ]);
 
 /**

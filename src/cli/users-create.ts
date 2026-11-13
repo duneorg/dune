@@ -47,10 +47,7 @@ import { resolveDataDir } from "../forms/config.ts";
 import { resolve } from "@std/path";
 import { loadConfig } from "../config/mod.ts";
 import { createStorage } from "../storage/mod.ts";
-import {
-  createLocalUserStore,
-  DuplicateEmailError,
-} from "../auth/user-store.ts";
+import { createLocalUserStore, DuplicateEmailError } from "../auth/user-store.ts";
 import type { UserStore } from "../auth/user-store.ts";
 import { createDbUserStore } from "../auth/user-store-db.ts";
 import { createDuneAuthSystem } from "../auth/authz.ts";
@@ -207,11 +204,9 @@ export async function usersCreateCommand(
 
     if (dryRun) {
       console.log(
-        `  ~ Would create user ${normalizedEmail} (roles: ${
-          JSON.stringify(roles)
-        }, provider: "${withPassword ? "local" : "invited"}"${
-          withPassword ? `, username: "${username}"` : ""
-        })`,
+        `  ~ Would create user ${normalizedEmail} (roles: ${JSON.stringify(roles)}, provider: "${
+          withPassword ? "local" : "invited"
+        }"${withPassword ? `, username: "${username}"` : ""})`,
       );
       if (adminTierRole) {
         console.log(`  ~ Would sync app:site tuple (none → ${adminTierRole})`);
@@ -246,9 +241,7 @@ export async function usersCreateCommand(
     await syncAdminTuple(ctx, user.id, adminTierRole, user.roles);
 
     console.log(
-      `  ✓ Created ${normalizedEmail}${
-        roles.length ? ` (roles: ${roles.join(", ")})` : ""
-      }`,
+      `  ✓ Created ${normalizedEmail}${roles.length ? ` (roles: ${roles.join(", ")})` : ""}`,
     );
     if (password !== undefined) {
       console.log(`  ✓ Local password set; they can sign in as "${username}".`);

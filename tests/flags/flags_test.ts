@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { flag, initFlags, allFlags } from "../../src/flags/mod.ts";
+import { allFlags, flag, initFlags } from "../../src/flags/mod.ts";
 
 Deno.test("flag: returns false for unknown flag", () => {
   initFlags({});

@@ -225,7 +225,10 @@ export function clientIp(req: Request, opts: ClientIpOptions = {}): string {
 /**
  * Build a 429 Too Many Requests response with a Retry-After header.
  */
-export function rateLimitResponse(retryAfterSeconds: number, message = "Too many requests"): Response {
+export function rateLimitResponse(
+  retryAfterSeconds: number,
+  message = "Too many requests",
+): Response {
   return new Response(message, {
     status: 429,
     headers: {

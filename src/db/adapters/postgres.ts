@@ -42,8 +42,7 @@ export class PostgresAdapter implements DbAdapter {
   }
 
   static async open(url?: string): Promise<PostgresAdapter> {
-    const dbUrl =
-      url ??
+    const dbUrl = url ??
       Deno.env.get("DUNE_DB_URL") ??
       "";
 

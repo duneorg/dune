@@ -5,7 +5,12 @@
 import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createEmailClient } from "../../src/email/client.ts";
 import type { EmailMessage, EmailProvider } from "../../src/email/types.ts";
-import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "../../src/storage/types.ts";
+import type {
+  StorageAdapter,
+  StorageEntry,
+  StorageStat,
+  WatchEvent,
+} from "../../src/storage/types.ts";
 
 // ─── Mock provider ────────────────────────────────────────────────────────────
 
@@ -39,12 +44,18 @@ function mockStorage(files: Record<string, string>): StorageAdapter {
     },
     async delete(_path: string): Promise<void> {},
     async rename(_oldPath: string, _newPath: string): Promise<void> {},
-    async list(_path: string): Promise<StorageEntry[]> { return []; },
-    async listRecursive(_path: string): Promise<StorageEntry[]> { return []; },
+    async list(_path: string): Promise<StorageEntry[]> {
+      return [];
+    },
+    async listRecursive(_path: string): Promise<StorageEntry[]> {
+      return [];
+    },
     async stat(_path: string): Promise<StorageStat> {
       return { size: 0, mtime: 0, isFile: true, isDirectory: false };
     },
-    async getJSON<T>(_key: string): Promise<T | null> { return null; },
+    async getJSON<T>(_key: string): Promise<T | null> {
+      return null;
+    },
     async setJSON<T>(_key: string, _value: T, _ttl?: number): Promise<void> {},
     async deleteJSON(_key: string): Promise<void> {},
     watch(_path: string, _callback: (event: WatchEvent) => void): () => void {
@@ -132,7 +143,12 @@ Deno.test("send({ to, template, data }) uses caller subject when provided", asyn
   const storage = mockStorage({
     "emails/order.email.md": "# Default Subject\n\nOrder confirmed.",
   });
-  const client = createEmailClient({ provider, from: "default@example.com", storage, emailsDir: "emails" });
+  const client = createEmailClient({
+    provider,
+    from: "default@example.com",
+    storage,
+    emailsDir: "emails",
+  });
 
   await client.send({
     to: "buyer@example.com",
@@ -163,7 +179,8 @@ Deno.test("send() without html or template throws clear error", async () => {
   const client = createEmailClient({ provider, from: "default@example.com" });
 
   await assertRejects(
-    () => client.send({ to: "user@example.com", subject: "Hi" } as Parameters<typeof client.send>[0]),
+    () =>
+      client.send({ to: "user@example.com", subject: "Hi" } as Parameters<typeof client.send>[0]),
     Error,
   );
 });
@@ -171,7 +188,12 @@ Deno.test("send() without html or template throws clear error", async () => {
 Deno.test("send() with unknown template name throws clear error", async () => {
   const { provider } = mockProvider();
   const storage = mockStorage({});
-  const client = createEmailClient({ provider, from: "default@example.com", storage, emailsDir: "emails" });
+  const client = createEmailClient({
+    provider,
+    from: "default@example.com",
+    storage,
+    emailsDir: "emails",
+  });
 
   await assertRejects(
     () => client.send({ to: "user@example.com", template: "nonexistent", data: {} }),

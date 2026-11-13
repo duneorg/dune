@@ -22,14 +22,14 @@ import type { ContentApi } from "../content/api.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import { generateSearchPage } from "../search/page.ts";
 import { mediaBodyResponse } from "./media-response.ts";
-import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+import { clientIp, RateLimiter } from "../security/rate-limit.ts";
 import {
   canAccessIndexEntry,
   enforceRolesFromRequest,
   navigationForRequest,
   parseRolesSpec,
 } from "../auth/gating.ts";
-import { logger, generateRequestId } from "../core/logger.ts";
+import { generateRequestId, logger } from "../core/logger.ts";
 import { tracer } from "../tracing/mod.ts";
 import { createTranslator } from "../i18n/translate.ts";
 import { handleFlexRoute } from "./flex-handler.ts";
@@ -39,7 +39,7 @@ import { handleMarkdownPage } from "./content-handler.ts";
 import { resolveTemplateVNode } from "../themes/resolve-template.ts";
 import { splitLanguagePrefix } from "./resolver.ts";
 
-export type { FlexListTemplateProps, FlexDetailTemplateProps } from "./flex-handler.ts";
+export type { FlexDetailTemplateProps, FlexListTemplateProps } from "./flex-handler.ts";
 
 // Per-IP rate limit for public read endpoints (120 req/min).
 const publicRateLimiter = new RateLimiter(120, 60 * 1000);
@@ -52,7 +52,10 @@ export interface DuneRoutes {
   mediaHandler(req: Request): Promise<Response>;
   /** Handles /_dune/* system introspection endpoints. */
   systemHandler(req: Request): Promise<Response>;
-  contentHandler(req: Request, renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>): Promise<Response>;
+  contentHandler(
+    req: Request,
+    renderJsx: (jsx: unknown, status?: number) => Response | Promise<Response>,
+  ): Promise<Response>;
 }
 
 /**
@@ -160,10 +163,12 @@ export function duneRoutes(
       if (langPath === "/search") {
         const ip = clientIp(req);
         if (!publicRateLimiter.check(ip)) {
-          return respond(new Response("Too many requests", {
-            status: 429,
-            headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
-          }));
+          return respond(
+            new Response("Too many requests", {
+              status: 429,
+              headers: { "Retry-After": String(publicRateLimiter.retryAfter(ip)) },
+            }),
+          );
         }
         const q = url.searchParams.get("q") ?? "";
         const sort = url.searchParams.get("sort") === "date" ? "date" : "relevance";
@@ -172,9 +177,7 @@ export function duneRoutes(
         // back-compat with existing theme templates. "all"/absent = no filter.
         const type = url.searchParams.get("type") ??
           url.searchParams.get("facet[subtype]");
-        const filter = type && type !== "all"
-          ? { field: "subtype", value: type }
-          : undefined;
+        const filter = type && type !== "all" ? { field: "subtype", value: type } : undefined;
         const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
         const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
         // Per-site default (system.search.page_size), falling back to 50 —
@@ -184,9 +187,7 @@ export function duneRoutes(
         // Fetch one extra beyond the page size to know if there's a next
         // page, without a separate total-count query (see /api/search for
         // the same trick).
-        const fetched = search
-          ? await search.search(q, 500, { sort, filter, offset: 0 })
-          : [];
+        const fetched = search ? await search.search(q, 500, { sort, filter, offset: 0 }) : [];
         const visible = [];
         for (const r of fetched) {
           if (await canAccessIndexEntry(req, r.page)) visible.push(r);
@@ -200,9 +201,7 @@ export function duneRoutes(
           score: r.score,
           template: r.page.template,
         }));
-        const facetCounts = q && search?.facetCounts
-          ? await search.facetCounts(q, "subtype")
-          : {};
+        const facetCounts = q && search?.facetCounts ? await search.facetCounts(q, "subtype") : {};
 
         const searchTemplate = await engine.themes.loadTemplate("search");
         if (searchTemplate) {
@@ -245,9 +244,11 @@ export function duneRoutes(
           site: engine.site,
           siteUrl: engine.site.url || "",
         });
-        return respond(new Response(html, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        }));
+        return respond(
+          new Response(html, {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        );
       }
       // ─────────────────────────────────────────────────────────────────────
 
@@ -265,7 +266,9 @@ export function duneRoutes(
       // markdown handler, which passes it to the collection engine so it
       // actually slices a different page of items (see collections/engine.ts).
       const pageSegmentMatch = url.pathname.match(/^(.*\/)page:(\d+)\/?$/i);
-      const requestedPage = pageSegmentMatch ? Math.max(1, parseInt(pageSegmentMatch[2], 10) || 1) : 1;
+      const requestedPage = pageSegmentMatch
+        ? Math.max(1, parseInt(pageSegmentMatch[2], 10) || 1)
+        : 1;
       const resolvePathname = pageSegmentMatch ? pageSegmentMatch[1] : url.pathname;
       // ─────────────────────────────────────────────────────────────────────
 
@@ -296,7 +299,9 @@ export function duneRoutes(
 
       // Not found — render 404 through theme (error template → layout → bare)
       if (result.type === "not-found" || !result.page) {
-        return respond(renderErrorPage(engine, url, renderJsx, 404, "Page not found", contentApi, req));
+        return respond(
+          renderErrorPage(engine, url, renderJsx, 404, "Page not found", contentApi, req),
+        );
       }
 
       const page = result.page;
@@ -315,7 +320,19 @@ export function duneRoutes(
         return respond(handleTsxPage(engine, req, url, page, renderJsx, contentApi));
       }
 
-      return respond(handleMarkdownPage(engine, url, page, collections, renderJsx, requestedPage, contentApi, req, hooks));
+      return respond(
+        handleMarkdownPage(
+          engine,
+          url,
+          page,
+          collections,
+          renderJsx,
+          requestedPage,
+          contentApi,
+          req,
+          hooks,
+        ),
+      );
     },
   };
 }

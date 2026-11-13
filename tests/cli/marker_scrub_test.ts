@@ -1,4 +1,8 @@
-import { assert, assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { scrubMarkersFromResponse, stripDuneMarkers } from "../../src/cli/marker-scrub.ts";
 
 Deno.test("stripDuneMarkers: removes marker attributes from tags", () => {

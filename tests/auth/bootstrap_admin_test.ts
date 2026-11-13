@@ -1,7 +1,4 @@
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { ensureAdminFromEnv } from "../../src/auth/bootstrap-admin.ts";
 import { verifyPassword } from "../../src/auth/passwords.ts";
 import { createLocalUserStore } from "../../src/auth/user-store.ts";

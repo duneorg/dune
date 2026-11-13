@@ -8,10 +8,7 @@
  *   - checkRolesAsync: uses authz when wired via setGatingAuthz
  */
 
-import {
-  assertEquals,
-  assertStrictEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { AuthzLocalAdapter } from "../../src/auth/authz-adapter-local.ts";
 import {
   bootstrapAdminTuples,

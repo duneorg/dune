@@ -6,10 +6,7 @@
  * `resolveLatestVersion` option so these tests never touch the network.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import {
   insertPluginEntry,
@@ -223,11 +220,7 @@ Deno.test("plugin:update edits only the version specifiers, byte-for-byte", asyn
       await pluginUpdateCommand(root, undefined, {
         resolveLatestVersion: (_s, pkg) =>
           Promise.resolve(
-            pkg === "plugin-admin"
-              ? "1.2.0"
-              : pkg === "plugin-pdf"
-              ? "1.3.0"
-              : "0.4.0",
+            pkg === "plugin-admin" ? "1.2.0" : pkg === "plugin-pdf" ? "1.3.0" : "0.4.0",
           ),
       });
     } finally {
@@ -242,8 +235,7 @@ Deno.test("plugin:update edits only the version specifiers, byte-for-byte", asyn
 });
 
 Deno.test("rewritePluginSpecifiers ignores commented-out src lines", () => {
-  const raw =
-    `plugins:\n  # - src: "jsr:@a/b@1.0.0"\n  - src: "jsr:@a/b@1.0.0"\n`;
+  const raw = `plugins:\n  # - src: "jsr:@a/b@1.0.0"\n  - src: "jsr:@a/b@1.0.0"\n`;
   assertEquals(
     rewritePluginSpecifiers(
       raw,

@@ -40,7 +40,9 @@ export interface EditorResolverOptions {
 }
 
 /** Display name of a user record: username, else name, else email, else id. */
-function displayName(user: { id: string; username?: string; name?: string; email?: string }): string {
+function displayName(
+  user: { id: string; username?: string; name?: string; email?: string },
+): string {
   return user.username ?? user.name ?? user.email ?? user.id;
 }
 
@@ -52,7 +54,10 @@ function displayName(user: { id: string; username?: string; name?: string; email
  * `author`, whatever their role is called, and an account seeded with a direct
  * tuple holds what the tuple says.
  */
-async function editorRelation(authz: DuneAuthSystem | undefined, userId: string): Promise<GrantRelation | null> {
+async function editorRelation(
+  authz: DuneAuthSystem | undefined,
+  userId: string,
+): Promise<GrantRelation | null> {
   // Fail closed: no authz system means nobody is an editor.
   if (!authz) return null;
   const can = (action: string) =>
@@ -88,7 +93,9 @@ export function createEditorResolver(opts: EditorResolverOptions): EditorResolve
     }
 
     const provider = opts.capabilities.get("editor.session");
-    if (!provider || !hasSessionCookie(req, provider.sessionCookies)) return { ok: false, status: 401 };
+    if (!provider || !hasSessionCookie(req, provider.sessionCookies)) {
+      return { ok: false, status: 401 };
+    }
     const result = await provider.authenticate(req).catch(() => null);
     // deno-lint-ignore no-explicit-any
     const user = (result as any)?.authenticated ? (result as any).user : null;

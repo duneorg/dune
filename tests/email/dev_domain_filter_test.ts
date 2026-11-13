@@ -7,10 +7,7 @@
  * whole message to console.
  */
 
-import {
-  assertEquals,
-  assertInstanceOf,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertInstanceOf } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createEmailProvider } from "../../src/email/providers/mod.ts";
 import { ConsoleEmailProvider } from "../../src/email/providers/console.ts";
 import { ResendEmailProvider } from "../../src/email/providers/resend.ts";

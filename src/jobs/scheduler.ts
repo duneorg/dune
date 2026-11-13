@@ -102,7 +102,9 @@ export class JobScheduler {
       denoCron(
         `dune:${d.name}`,
         d.schedule,
-        async () => { await this.executeJob(d); },
+        async () => {
+          await this.executeJob(d);
+        },
         { signal: ac.signal },
       ).catch((err: unknown) => {
         if (!this.stopped) {
@@ -272,8 +274,7 @@ export function warnIfMultiprocess(jobCount: number, workers: number): void {
     logger.warn("jobs.multiprocess", {
       jobCount,
       workers,
-      reason:
-        "Background jobs are defined but workers > 1. Every worker process will run " +
+      reason: "Background jobs are defined but workers > 1. Every worker process will run " +
         "every job — this causes duplicate execution. Use a single worker process or " +
         "move to a queue-backed job runner (see docs/deployment/jobs).",
     });

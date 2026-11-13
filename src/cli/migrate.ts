@@ -11,7 +11,7 @@
  * with --out) and report a summary of what was imported.
  */
 
-import { join, basename, extname, dirname } from "@std/path";
+import { basename, dirname, extname, join } from "@std/path";
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 import { ensureDir, exists } from "@std/fs";
 import { sanitizeHtml } from "../security/sanitize-html.ts";
@@ -79,7 +79,9 @@ async function createMigrationHooks(root: string, enabled: boolean): Promise<Mig
       try {
         await hooks.fire("onPageCreate", { sourcePath, title });
       } catch (err) {
-        warn(`onPageCreate hook failed for ${sourcePath}: ${err instanceof Error ? err.message : err}`);
+        warn(
+          `onPageCreate hook failed for ${sourcePath}: ${err instanceof Error ? err.message : err}`,
+        );
       }
     },
   };
@@ -91,9 +93,15 @@ interface MigrateResult {
   errors: string[];
 }
 
-function log(msg: string) { console.log(msg); }
-function info(msg: string) { console.log(`  ${msg}`); }
-function warn(msg: string) { console.warn(`  ⚠️  ${msg}`); }
+function log(msg: string) {
+  console.log(msg);
+}
+function info(msg: string) {
+  console.log(`  ${msg}`);
+}
+function warn(msg: string) {
+  console.warn(`  ⚠️  ${msg}`);
+}
 
 /**
  * Return false if a relative path contains any `..` segment or is absolute.
@@ -118,7 +126,7 @@ function slugify(s: string): string {
 /** Convert a filename (no ext) to a human-readable title */
 function titleFromFilename(name: string): string {
   return name
-    .replace(/^\d+\./, "")    // strip numeric prefix
+    .replace(/^\d+\./, "") // strip numeric prefix
     .replace(/[-_]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
@@ -205,7 +213,18 @@ function transformGravFrontmatter(grav: Record<string, unknown>): Record<string,
   const dune: Record<string, unknown> = {};
 
   // Direct mappings
-  for (const key of ["title", "date", "published", "visible", "routable", "slug", "template", "taxonomy"] as const) {
+  for (
+    const key of [
+      "title",
+      "date",
+      "published",
+      "visible",
+      "routable",
+      "slug",
+      "template",
+      "taxonomy",
+    ] as const
+  ) {
     if (grav[key] !== undefined) dune[key] = grav[key];
   }
 
@@ -278,7 +297,10 @@ export async function migrateFromGrav(
   for await (const filePath of walk(gravPages)) {
     const ext = extname(filePath).toLowerCase();
     const rel = filePath.slice(gravPages.length).replace(/^\//, "");
-    if (!isSafePath(rel)) { result.skipped++; continue; }
+    if (!isSafePath(rel)) {
+      result.skipped++;
+      continue;
+    }
 
     if (ext === ".md") {
       try {
@@ -331,7 +353,9 @@ interface WpItem {
 
 /** Minimal XML text-content extractor — no external parser needed */
 function xmlText(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\/${tag}>`, "i"));
+  const m = xml.match(
+    new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\/${tag}>`, "i"),
+  );
   return m ? m[1].trim() : "";
 }
 function parseWxrItems(xml: string): WpItem[] {
@@ -351,7 +375,8 @@ function parseWxrItems(xml: string): WpItem[] {
     // Categories and tags from <category> elements
     const categories: string[] = [];
     const tags: string[] = [];
-    const catRe = /<category[^>]+domain="(category|post_tag)"[^>]*>(?:<!\[CDATA\[)?([^\]<]*?)(?:\]\]>)?<\/category>/gi;
+    const catRe =
+      /<category[^>]+domain="(category|post_tag)"[^>]*>(?:<!\[CDATA\[)?([^\]<]*?)(?:\]\]>)?<\/category>/gi;
     for (const cm of raw.matchAll(catRe)) {
       const domain = cm[1];
       const val = cm[2].trim();
@@ -412,7 +437,9 @@ export async function migrateFromWordPress(
         published: post.status === "publish",
         status: post.status === "publish" ? "published" : "draft",
       };
-      if (post.categories.length) fm.taxonomy = { ...((fm.taxonomy as object) ?? {}), category: post.categories };
+      if (post.categories.length) {
+        fm.taxonomy = { ...((fm.taxonomy as object) ?? {}), category: post.categories };
+      }
       if (post.tags.length) fm.taxonomy = { ...((fm.taxonomy as object) ?? {}), tag: post.tags };
 
       const dest = join(contentDir, "01.blog", folderName, "post.md");
@@ -564,7 +591,10 @@ export async function migrateFromMarkdown(
     for await (const filePath of walk(subSrc)) {
       const ext = extname(filePath).toLowerCase();
       const rel = filePath.slice(subSrc.length).replace(/^\//, "");
-      if (!isSafePath(rel)) { result.skipped++; continue; }
+      if (!isSafePath(rel)) {
+        result.skipped++;
+        continue;
+      }
       if (ext === ".md") {
         try {
           const raw = await Deno.readTextFile(filePath);
@@ -613,7 +643,9 @@ function parseTomlBasic(toml: string): Record<string, unknown> {
       else if (val === "false") val = false;
       else if (!isNaN(Number(val)) && val !== "") val = Number(val);
       else if (val.startsWith("[") && val.endsWith("]")) {
-        val = val.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+        val = val.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(
+          Boolean,
+        );
       }
     }
     fm[key] = val;
@@ -669,7 +701,9 @@ function transformHugoFrontmatter(hugo: Record<string, unknown>): Record<string,
   // Taxonomy — Hugo uses flat tags/categories arrays
   const taxonomy: Record<string, string[]> = {};
   if (Array.isArray(hugo.tags) && hugo.tags.length) taxonomy.tag = hugo.tags as string[];
-  if (Array.isArray(hugo.categories) && hugo.categories.length) taxonomy.category = hugo.categories as string[];
+  if (Array.isArray(hugo.categories) && hugo.categories.length) {
+    taxonomy.category = hugo.categories as string[];
+  }
   if (Object.keys(taxonomy).length) dune.taxonomy = taxonomy;
 
   // Aliases
@@ -712,9 +746,7 @@ export async function migrateFromHugo(
   }
 
   // Hugo content is in <src>/content/
-  const hugoContent = (await exists(join(srcDir, "content")))
-    ? join(srcDir, "content")
-    : srcDir;
+  const hugoContent = (await exists(join(srcDir, "content"))) ? join(srcDir, "content") : srcDir;
 
   const hugoStatic = join(srcDir, "static");
 
@@ -725,7 +757,10 @@ export async function migrateFromHugo(
   for await (const filePath of walk(hugoContent)) {
     const rel = filePath.slice(hugoContent.length).replace(/^\//, "");
     const ext = extname(filePath).toLowerCase();
-    if (!isSafePath(rel)) { result.skipped++; continue; }
+    if (!isSafePath(rel)) {
+      result.skipped++;
+      continue;
+    }
 
     if (ext === ".md") {
       try {

@@ -11,7 +11,10 @@ import { CORE_INSTANCE, CORE_VERSION } from "../../src/plugins/mod.ts";
 
 Deno.test("pluginCoreMismatch: null when the plugin resolved this core instance", () => {
   assertEquals(
-    pluginCoreMismatch({ resolvedCoreSentinel: CORE_INSTANCE, resolvedCoreVersion: CORE_VERSION }, "some-plugin"),
+    pluginCoreMismatch(
+      { resolvedCoreSentinel: CORE_INSTANCE, resolvedCoreVersion: CORE_VERSION },
+      "some-plugin",
+    ),
     null,
   );
 });

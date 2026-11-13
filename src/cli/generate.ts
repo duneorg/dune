@@ -68,9 +68,7 @@ async function guardCollision(
 ): Promise<void> {
   if (await fileExists(filePath)) {
     if (!force) {
-      const rel = filePath.startsWith(root + "/")
-        ? filePath.slice(root.length + 1)
-        : filePath;
+      const rel = filePath.startsWith(root + "/") ? filePath.slice(root.length + 1) : filePath;
       console.error(`  ✗ File already exists: ${rel}`);
       console.error(`    Use --force to overwrite.`);
       Deno.exit(1);
@@ -427,8 +425,7 @@ const GENERATORS: Record<string, string> = {
   "generate:form": "Create a form definition at forms/{name}.yaml",
   "generate:theme": "Scaffold a theme at themes/{name}/",
   "generate:schema": "Create a Flex Object schema at flex-objects/{name}.yaml",
-  "generate:admin-route":
-    "Scaffold an admin API route in src/admin/routes/api/{name}.ts",
+  "generate:admin-route": "Scaffold an admin API route in src/admin/routes/api/{name}.ts",
 };
 
 export function generateList(): void {

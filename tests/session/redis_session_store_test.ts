@@ -9,10 +9,7 @@
  * No prior coverage existed for this store at all before this file.
  */
 
-import {
-  assertEquals,
-  assertNotEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createRedisSessionStore } from "../../src/session/redis.ts";
 import type { RedisClient } from "../../src/session/redis.ts";
 import type { Session } from "../../src/session/types.ts";

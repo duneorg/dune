@@ -8,36 +8,57 @@ import { assertEquals } from "@std/assert";
 import { createStorage } from "../../src/storage/mod.ts";
 import { bootstrapRoleGrants, createDuneAuthSystem } from "../../src/auth/authz.ts";
 import { SITE_RESOURCE } from "../../src/auth/authz-schema.ts";
-import { DEFAULT_ROLE_GRANTS, resolveRoleGrants, roleGrantProblems, type RoleGrants } from "../../src/auth/role-grants.ts";
+import {
+  DEFAULT_ROLE_GRANTS,
+  resolveRoleGrants,
+  roleGrantProblems,
+  type RoleGrants,
+} from "../../src/auth/role-grants.ts";
 import { validateConfig } from "../../src/config/validator.ts";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
 
-async function withAuthz(fn: (t: {
-  grants: (g: RoleGrants) => Promise<void>;
-  holders: (relation: string) => Promise<string[]>;
-  join: (userId: string, group: string) => Promise<void>;
-  canEdit: (userId: string) => Promise<boolean>;
-}) => Promise<void>) {
+async function withAuthz(
+  fn: (t: {
+    grants: (g: RoleGrants) => Promise<void>;
+    holders: (relation: string) => Promise<string[]>;
+    join: (userId: string, group: string) => Promise<void>;
+    canEdit: (userId: string) => Promise<boolean>;
+  }) => Promise<void>,
+) {
   const root = await Deno.makeTempDir({ prefix: "dune_test_role_grants_" });
   try {
-    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, createStorage({ rootDir: root }));
+    const { authz, adapter } = createDuneAuthSystem(
+      { authzStore: "local", dataDir: "data" },
+      createStorage({ rootDir: root }),
+    );
     await fn({
       grants: (g) => bootstrapRoleGrants(authz, adapter, g),
       holders: async (relation) =>
-        (await adapter.findSubjects(SITE_RESOURCE, relation, { subjectType: "group" })).map((s) => s.id).sort(),
+        (await adapter.findSubjects(SITE_RESOURCE, relation, { subjectType: "group" })).map((s) =>
+          s.id
+        ).sort(),
       join: async (userId, group) => {
-        await authz.addMember({ member: { type: "user", id: userId }, group: { type: "group", id: group } });
+        await authz.addMember({
+          member: { type: "user", id: userId },
+          group: { type: "group", id: group },
+        });
       },
       // deno-lint-ignore no-explicit-any
-      canEdit: (id) => authz.check({ who: { type: "user", id }, canThey: "pages.update" as any, onWhat: SITE_RESOURCE }),
+      canEdit: (id) =>
+        authz.check({
+          who: { type: "user", id },
+          canThey: "pages.update" as any,
+          onWhat: SITE_RESOURCE,
+        }),
     });
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 }
 
-const cfg = (system: Record<string, unknown>) => ({ ...DEFAULT_CONFIG, system: { ...DEFAULT_CONFIG.system, ...system } }) as DuneConfig;
+const cfg = (system: Record<string, unknown>) =>
+  ({ ...DEFAULT_CONFIG, system: { ...DEFAULT_CONFIG.system, ...system } }) as DuneConfig;
 
 Deno.test("with nothing configured the three admin-tier groups hold their own relation", async () => {
   assertEquals(resolveRoleGrants(cfg({})), { ...DEFAULT_ROLE_GRANTS });
@@ -72,7 +93,11 @@ Deno.test("remapping gives your own group the relation and takes it from the def
     await grants(resolveRoleGrants(cfg({ role_grants: { staff: "editor" } })));
     assertEquals(await holders("editor"), ["staff"]);
     assertEquals(await canEdit("staff-member"), true);
-    assertEquals(await canEdit("tier-member"), false, "'editor' is a content tier on this site now");
+    assertEquals(
+      await canEdit("tier-member"),
+      false,
+      "'editor' is a content tier on this site now",
+    );
   });
 });
 
@@ -96,5 +121,10 @@ Deno.test("an unknown relation or a non-mapping is a config error, not a silent 
   assertEquals(roleGrantProblems("editor").length, 1);
   const errors = validateConfig(cfg({ role_grants: { staff: "superuser" } }));
   assertEquals(errors.some((e) => e.includes("system.role_grants")), true);
-  assertEquals(validateConfig(cfg({ role_grants: { staff: "editor" } })).some((e) => e.includes("role_grants")), false);
+  assertEquals(
+    validateConfig(cfg({ role_grants: { staff: "editor" } })).some((e) =>
+      e.includes("role_grants")
+    ),
+    false,
+  );
 });

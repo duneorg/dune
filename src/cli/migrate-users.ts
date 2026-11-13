@@ -161,9 +161,7 @@ export async function migrateUsersCommand(
     }
 
     const indexPath = join(byEmailDir, `${encodeURIComponent(email)}.json`);
-    const exists = await Deno.stat(indexPath).then(() => true).catch(() =>
-      false
-    );
+    const exists = await Deno.stat(indexPath).then(() => true).catch(() => false);
     if (exists) {
       indexSkipped++;
     } else if (dryRun) {

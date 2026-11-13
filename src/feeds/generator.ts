@@ -83,7 +83,11 @@ export function generateRss(options: FeedOptions): string {
     `    <description>${escapeXml(description)}</description>`,
     `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml"/>`,
     language ? `    <language>${escapeXml(language)}</language>` : null,
-    author?.name ? `    <managingEditor>${escapeXml(author.email ? `${author.email} (${author.name})` : author.name)}</managingEditor>` : null,
+    author?.name
+      ? `    <managingEditor>${
+        escapeXml(author.email ? `${author.email} (${author.name})` : author.name)
+      }</managingEditor>`
+      : null,
     `    <generator>Dune CMS</generator>`,
   ].filter(Boolean).join("\n");
 
@@ -133,7 +137,9 @@ export function generateAtom(options: FeedOptions): string {
     `  <updated>${toIso8601(latestDate)}</updated>`,
     `  <id>${escapeXml(feedUrl)}</id>`,
     author?.name
-      ? `  <author>\n    <name>${escapeXml(author.name)}</name>${author.email ? `\n    <email>${escapeXml(author.email)}</email>` : ""}\n  </author>`
+      ? `  <author>\n    <name>${escapeXml(author.name)}</name>${
+        author.email ? `\n    <email>${escapeXml(author.email)}</email>` : ""
+      }\n  </author>`
       : null,
     `  <generator>Dune CMS</generator>`,
   ].filter(Boolean).join("\n");

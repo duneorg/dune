@@ -48,9 +48,7 @@ export function generateSearchPage(options: SearchPageOptions): string {
   const base = siteUrl.replace(/\/$/, "");
   const safeQuery = escapeHtml(query);
   const siteName = escapeHtml(site.title);
-  const pageTitle = query
-    ? `Search: ${safeQuery} | ${siteName}`
-    : `Search | ${siteName}`;
+  const pageTitle = query ? `Search: ${safeQuery} | ${siteName}` : `Search | ${siteName}`;
 
   const resultItems = results.map((r) => `
     <li class="search-result">
@@ -121,7 +119,9 @@ export function generateSearchPage(options: SearchPageOptions): string {
   <a href="${escapeHtml(base + "/")}" class="site-link">← ${siteName}</a>
   <div class="search-header">
     <h1>Search</h1>
-    <form action="${escapeHtml(base + "/search")}" method="get" class="search-form" id="search-form">
+    <form action="${
+    escapeHtml(base + "/search")
+  }" method="get" class="search-form" id="search-form">
       <input
         type="search"
         name="q"

@@ -1,7 +1,4 @@
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { duneRoutes } from "../../src/routing/routes.ts";
 import { renderErrorPage } from "../../src/routing/error-page.ts";
 import type { DuneEngine, ResolveResult } from "../../src/core/engine.ts";
@@ -66,7 +63,8 @@ function makeEngine(
       clearCache: () => {},
     } as unknown as DuneEngine["themes"],
     init: () => Promise.resolve(),
-    resolve: resolveOverride ?? ((_route: string) => Promise.resolve({ type: "not-found" as const })),
+    resolve: resolveOverride ??
+      ((_route: string) => Promise.resolve({ type: "not-found" as const })),
     loadPage: (_sourcePath: string) => Promise.reject(new Error("not implemented")),
     serveMedia: (_mediaPath: string) => Promise.resolve(null),
     rebuild: () => Promise.resolve(),

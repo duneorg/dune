@@ -9,7 +9,10 @@ import type { DunePlugin } from "../../src/hooks/types.ts";
 async function site(): Promise<string> {
   const root = await Deno.makeTempDir({ prefix: "dune_test_runtime_" });
   await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-  await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+  await Deno.writeTextFile(
+    join(root, "content", "01.home", "default.md"),
+    "---\ntitle: Home\n---\n\n# Home\n",
+  );
   return root;
 }
 
@@ -35,11 +38,31 @@ Deno.test(
       assertEquals(
         Object.keys(runtime).sort(),
         [
-          "authz", "config", "contentApi", "engine", "flexEngine", "history", "hooks",
-          "jobs", "metrics", "search", "sections", "storage", "submissions",
+          "authz",
+          "config",
+          "contentApi",
+          "engine",
+          "flexEngine",
+          "history",
+          "hooks",
+          "jobs",
+          "metrics",
+          "search",
+          "sections",
+          "storage",
+          "submissions",
         ].sort(),
       );
-      for (const leaked of ["hmacKey", "capabilityRegistry", "pluginServices", "authzAdapter", "formats", "imageHandler"]) {
+      for (
+        const leaked of [
+          "hmacKey",
+          "capabilityRegistry",
+          "pluginServices",
+          "authzAdapter",
+          "formats",
+          "imageHandler",
+        ]
+      ) {
         assert(!(leaked in runtime), `${leaked} must not be reachable from the runtime`);
       }
     } finally {

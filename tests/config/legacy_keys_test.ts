@@ -1,8 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
 import {
-  findLegacyKeys,
   findIgnoredKeys,
+  findLegacyKeys,
   findMovedKeys,
   removeIgnoredKeysInText,
   renameLegacyKeysInText,
@@ -82,7 +82,10 @@ Deno.test("renameLegacyKeysInText: renames keys, keeps comments, order and value
   assertStringIncludes(text, "    userStore: untouched   # plugin-owned, same name elsewhere");
   assertEquals(findLegacyKeys("site", parseYaml(text)), []);
   // same values, only key names differ
-  assertEquals((parseYaml(text) as Record<string, any>).auth.jwt.jwks_url, "https://example.com/jwks");
+  assertEquals(
+    (parseYaml(text) as Record<string, any>).auth.jwt.jwks_url,
+    "https://example.com/jwks",
+  );
 });
 
 Deno.test("renameLegacyKeysInText: idempotent", () => {
@@ -128,18 +131,31 @@ Deno.test("loadConfig accepts the migrated keys", async () => {
 Deno.test("findMovedKeys: the removed forms aliases, admin.data_dir and the smtp block", () => {
   const system = findMovedKeys(
     "system",
-    parseYaml("admin:\n  honeypot: x\n  notifications: {}\n  incoming_webhooks: []\n  data_dir: d\n  dataDir: d\n  enabled: true\n"),
+    parseYaml(
+      "admin:\n  honeypot: x\n  notifications: {}\n  incoming_webhooks: []\n  data_dir: d\n  dataDir: d\n  enabled: true\n",
+    ),
   );
   assertEquals(
     system.map((k) => k.path).sort(),
-    ["admin", "admin.dataDir", "admin.data_dir", "admin.enabled", "admin.honeypot", "admin.incoming_webhooks", "admin.notifications"],
+    [
+      "admin",
+      "admin.dataDir",
+      "admin.data_dir",
+      "admin.enabled",
+      "admin.honeypot",
+      "admin.incoming_webhooks",
+      "admin.notifications",
+    ],
   );
   const site = findMovedKeys(
     "site",
     parseYaml("forms:\n  notifications:\n    email:\n      to: a@b.c\n      smtp: {host: h}\n"),
   );
   assertEquals(site.map((k) => k.path), ["forms.notifications.email.smtp"]);
-  assertEquals(findMovedKeys("system", parseYaml("data_dir: var\nwebhooks:\n  incoming: []\n")), []);
+  assertEquals(
+    findMovedKeys("system", parseYaml("data_dir: var\nwebhooks:\n  incoming: []\n")),
+    [],
+  );
 });
 
 Deno.test("loadConfig refuses a moved key and says where it went", async () => {
@@ -154,8 +170,16 @@ Deno.test("loadConfig refuses a moved key and says where it went", async () => {
 });
 
 Deno.test("admin.enabled and admin.authz_store are removed with a message that says what to do", async () => {
-  const moved = findMovedKeys("system", parseYaml("admin:\n  enabled: true\n  authz_store: local\n  authzStore: local\n"));
-  assertEquals(moved.map((k) => k.path).sort(), ["admin", "admin.authzStore", "admin.authz_store", "admin.enabled"]);
+  const moved = findMovedKeys(
+    "system",
+    parseYaml("admin:\n  enabled: true\n  authz_store: local\n  authzStore: local\n"),
+  );
+  assertEquals(moved.map((k) => k.path).sort(), [
+    "admin",
+    "admin.authzStore",
+    "admin.authz_store",
+    "admin.enabled",
+  ]);
   let message = "";
   try {
     await load({ "config/system.yaml": "admin:\n  enabled: false\n" });
@@ -169,7 +193,9 @@ Deno.test("admin.enabled and admin.authz_store are removed with a message that s
 Deno.test("admin.runtime_dir and admin.max_revisions moved to the top level of system.yaml", async () => {
   const moved = findMovedKeys(
     "system",
-    parseYaml("admin:\n  runtime_dir: x\n  runtimeDir: x\n  max_revisions: 1\n  maxRevisions: 1\n  max_upload_mb: 5\n"),
+    parseYaml(
+      "admin:\n  runtime_dir: x\n  runtimeDir: x\n  max_revisions: 1\n  maxRevisions: 1\n  max_upload_mb: 5\n",
+    ),
   );
   assertEquals(
     moved.map((k) => k.path).sort(),
@@ -207,15 +233,28 @@ Deno.test("findIgnoredKeys: keys that were declared but never read are found", (
 
   const system = findIgnoredKeys(
     "system",
-    parseYaml("cache:\n  enabled: true\ntimezone: UTC\ncontent:\n  markdown:\n    extra: true\nsearch:\n  include_flex: [a]\n"),
+    parseYaml(
+      "cache:\n  enabled: true\ntimezone: UTC\ncontent:\n  markdown:\n    extra: true\nsearch:\n  include_flex: [a]\n",
+    ),
   );
-  assertEquals(system.map((k) => k.path).sort(), ["cache", "content.markdown", "search.include_flex", "timezone"]);
+  assertEquals(system.map((k) => k.path).sort(), [
+    "cache",
+    "content.markdown",
+    "search.include_flex",
+    "timezone",
+  ]);
 });
 
 Deno.test("findIgnoredKeys: the same names elsewhere are left alone", () => {
   // `cache` and `uploads` are only ignored where they were config keys.
-  assertEquals(findIgnoredKeys("site", { cache: { x: 1 }, plugin_configs: { thing: { uploads: 1 } } }), []);
-  assertEquals(findIgnoredKeys("system", { admin: { cache: 1, timezone: "x" }, search: { page_size: 5 } }), []);
+  assertEquals(
+    findIgnoredKeys("site", { cache: { x: 1 }, plugin_configs: { thing: { uploads: 1 } } }),
+    [],
+  );
+  assertEquals(
+    findIgnoredKeys("system", { admin: { cache: 1, timezone: "x" }, search: { page_size: 5 } }),
+    [],
+  );
 });
 
 Deno.test("removeIgnoredKeysInText: deletes the key and its block, keeps everything else", () => {
@@ -239,7 +278,16 @@ Deno.test("removeIgnoredKeysInText: deletes the key and its block, keeps everyth
   assertEquals(r.removed.map((k) => k.path), ["cache", "timezone", "content.markdown"]);
   assertEquals(
     r.text,
-    ["# system", "title: keep", "", "content:", "  allow_tsx_format: true", "search:", "  page_size: 5", ""].join("\n"),
+    [
+      "# system",
+      "title: keep",
+      "",
+      "content:",
+      "  allow_tsx_format: true",
+      "search:",
+      "  page_size: 5",
+      "",
+    ].join("\n"),
   );
   assertEquals(findIgnoredKeys("system", parseYaml(r.text)), []);
 });
@@ -253,13 +301,19 @@ Deno.test("removeIgnoredKeysInText: leaves flow style alone so the caller can re
 
 Deno.test("loadConfig: a site.yaml that still sets uploads loads and ignores it", async () => {
   const storage = new MemoryStorageAdapter();
-  await storage.write("config/site.yaml", new TextEncoder().encode("title: Kept\nuploads:\n  max_size_mb: 5\n"));
+  await storage.write(
+    "config/site.yaml",
+    new TextEncoder().encode("title: Kept\nuploads:\n  max_size_mb: 5\n"),
+  );
   const config = await loadConfig({ storage, rootDir: "/x" });
   assertEquals(config.site.title, "Kept");
 });
 
 Deno.test("loadConfig: system.cache and timezone no longer block a boot", async () => {
   const storage = new MemoryStorageAdapter();
-  await storage.write("config/system.yaml", new TextEncoder().encode("cache:\n  enabled: true\ntimezone: UTC\n"));
+  await storage.write(
+    "config/system.yaml",
+    new TextEncoder().encode("cache:\n  enabled: true\ntimezone: UTC\n"),
+  );
   await loadConfig({ storage, rootDir: "/x" });
 });

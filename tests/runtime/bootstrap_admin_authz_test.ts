@@ -24,7 +24,10 @@ const admin: DunePlugin = {
   version: "1.0.0",
   hooks: {},
   setup(api) {
-    api.capabilities.provide("editor.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
+    api.capabilities.provide(
+      "editor.session",
+      () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }),
+    );
   },
 };
 
@@ -98,7 +101,12 @@ Deno.test(
   "bootstrap(): a plugin that declares authzActions gets the authz system without an admin",
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
-    const needsAuthz: DunePlugin = { name: "needs-authz", version: "1.0.0", hooks: {}, authzActions: { "reports.read": ["admin"] } };
+    const needsAuthz: DunePlugin = {
+      name: "needs-authz",
+      version: "1.0.0",
+      hooks: {},
+      authzActions: { "reports.read": ["admin"] },
+    };
     await withBootstrappedSite(
       "title: Test Site\nurl: http://localhost:3000\n",
       async (ctx) => {

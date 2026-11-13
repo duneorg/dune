@@ -45,7 +45,9 @@ export function automaticAdminTierGrants(config: DuneConfig): AutomaticGrant[] {
         out.push({
           severity: relation === "admin" ? "warning" : "info",
           message: `payments product "${product.id}" gives every buyer the "${role}" role, which ` +
-            `${role === relation ? "is" : `is mapped by system.role_grants to "${relation}" and`} can ${CAN[relation]}. ` +
+            `${
+              role === relation ? "is" : `is mapped by system.role_grants to "${relation}" and`
+            } can ${CAN[relation]}. ` +
             `Intended? If "${role}" is only a content tier here, use another role name` +
             `${role === relation ? "" : " or change role_grants"}.`,
         });
@@ -57,8 +59,13 @@ export function automaticAdminTierGrants(config: DuneConfig): AutomaticGrant[] {
   if (site?.auth?.mode === "external-jwt" && mapped.length > 0) {
     out.push({
       severity: "info",
-      message: `the external-jwt login trusts the token's "${site.auth.jwt?.roles_claim ?? "roles"}" claim: a token that ` +
-        `carries ${mapped.map(([g, r]) => `"${g}" (${r}: ${CAN[r]})`).join(", ")} grants editing rights. ` +
+      message:
+        `the external-jwt login trusts the token's "${
+          site.auth.jwt?.roles_claim ?? "roles"
+        }" claim: a token that ` +
+        `carries ${
+          mapped.map(([g, r]) => `"${g}" (${r}: ${CAN[r]})`).join(", ")
+        } grants editing rights. ` +
         `Make sure the identity provider only issues those to staff.`,
     });
   }

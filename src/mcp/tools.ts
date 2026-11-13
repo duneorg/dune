@@ -42,7 +42,8 @@ const LIST_PAGES_META: McpTool = {
       },
       taxonomy: {
         type: "object",
-        description: "Filter by taxonomy values. Keys are taxonomy names, values are arrays of required values.",
+        description:
+          "Filter by taxonomy values. Keys are taxonomy names, values are arrays of required values.",
         additionalProperties: { type: "array", items: { type: "string" } },
       },
       date_from: {
@@ -282,7 +283,9 @@ function makeGetTaxonomyHandler(engine: DuneEngine): ToolHandler {
 
     const values = engine.taxonomyMap[name];
     if (!values) {
-      return errText(`Taxonomy "${name}" not found. Available: ${Object.keys(engine.taxonomyMap).join(", ")}`);
+      return errText(
+        `Taxonomy "${name}" not found. Available: ${Object.keys(engine.taxonomyMap).join(", ")}`,
+      );
     }
 
     const counts: Record<string, number> = {};
@@ -408,8 +411,7 @@ function makeGetRuntimeInfoHandler(engine: DuneEngine): ToolHandler {
 
 const LIST_TEMPLATES_META: McpTool = {
   name: "list_templates",
-  description:
-    "List all templates and layouts available in the active theme. " +
+  description: "List all templates and layouts available in the active theme. " +
     "Useful for understanding what content types and page structures the site supports.",
   inputSchema: {
     type: "object",
@@ -432,8 +434,7 @@ function makeListTemplatesHandler(engine: DuneEngine): ToolHandler {
 
 const LIST_BLUEPRINTS_META: McpTool = {
   name: "list_blueprints",
-  description:
-    "List all blueprint (frontmatter schema) definitions available in this project. " +
+  description: "List all blueprint (frontmatter schema) definitions available in this project. " +
     "Blueprints define per-template frontmatter schemas. Use this to discover what fields " +
     "a template expects before creating or editing content. " +
     "Returns template name, title, required fields, optional fields, and field types.",

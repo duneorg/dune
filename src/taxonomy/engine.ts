@@ -122,9 +122,7 @@ export function createTaxonomyEngine(
         const taxValues = taxonomyMap[taxonomy];
         if (!taxValues) return []; // Taxonomy doesn't exist → no matches
 
-        const valuesToMatch = Array.isArray(valueOrValues)
-          ? valueOrValues
-          : [valueOrValues];
+        const valuesToMatch = Array.isArray(valueOrValues) ? valueOrValues : [valueOrValues];
 
         // Collect pages matching any of the values for this taxonomy
         const matchingPaths = new Set<string>();

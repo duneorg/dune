@@ -12,7 +12,10 @@ Deno.test("assertOutboundUrlAllowed: rejects non-http(s) schemes", async () => {
 
 Deno.test("assertOutboundUrlAllowed: rejects loopback / link-local / private literals", async () => {
   await assertRejects(() => assertOutboundUrlAllowed("http://127.0.0.1/"), SsrfBlockedError);
-  await assertRejects(() => assertOutboundUrlAllowed("http://169.254.169.254/latest/meta-data"), SsrfBlockedError);
+  await assertRejects(
+    () => assertOutboundUrlAllowed("http://169.254.169.254/latest/meta-data"),
+    SsrfBlockedError,
+  );
   await assertRejects(() => assertOutboundUrlAllowed("http://10.0.0.5/"), SsrfBlockedError);
   await assertRejects(() => assertOutboundUrlAllowed("http://[::1]/"), SsrfBlockedError);
   await assertRejects(() => assertOutboundUrlAllowed("http://localhost/"), SsrfBlockedError);
@@ -34,7 +37,10 @@ Deno.test("assertOutboundUrlAllowed: rejects extended special-use IPv4 ranges", 
 
 Deno.test("assertOutboundUrlAllowed: rejects NAT64, discard, doc, and IPv4-compatible IPv6 literals", async () => {
   // NAT64 well-known prefix
-  await assertRejects(() => assertOutboundUrlAllowed("http://[64:ff9b::169.254.169.254]/"), SsrfBlockedError);
+  await assertRejects(
+    () => assertOutboundUrlAllowed("http://[64:ff9b::169.254.169.254]/"),
+    SsrfBlockedError,
+  );
   // Discard-only range 100::/64
   await assertRejects(() => assertOutboundUrlAllowed("http://[100::1]/"), SsrfBlockedError);
   // Documentation range
@@ -42,7 +48,10 @@ Deno.test("assertOutboundUrlAllowed: rejects NAT64, discard, doc, and IPv4-compa
   // IPv4-compatible (::a.b.c.d) embedding a loopback address
   await assertRejects(() => assertOutboundUrlAllowed("http://[::127.0.0.1]/"), SsrfBlockedError);
   // IPv4-mapped embedding a private address (existing behavior, now via shared path)
-  await assertRejects(() => assertOutboundUrlAllowed("http://[::ffff:10.0.0.1]/"), SsrfBlockedError);
+  await assertRejects(
+    () => assertOutboundUrlAllowed("http://[::ffff:10.0.0.1]/"),
+    SsrfBlockedError,
+  );
 });
 
 Deno.test("assertOutboundUrlAllowed: allows a private literal when opted in", async () => {

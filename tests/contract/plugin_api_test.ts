@@ -31,10 +31,24 @@ import type {
   SearchRecordsCollectContext,
   SearchResult,
 } from "../../src/search/engine.ts";
-import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "../../src/storage/types.ts";
-import type { Submission, SubmissionFile, SubmissionMeta, SubmissionStatus } from "../../src/forms/submissions.ts";
+import type {
+  StorageAdapter,
+  StorageEntry,
+  StorageStat,
+  WatchEvent,
+} from "../../src/storage/types.ts";
+import type {
+  Submission,
+  SubmissionFile,
+  SubmissionMeta,
+  SubmissionStatus,
+} from "../../src/forms/submissions.ts";
 import type { BlueprintField } from "../../src/blueprints/types.ts";
-import type { EditorIdentity, InlineEditManager, InlineEditRequestContext } from "../../src/inline-edit/types.ts";
+import type {
+  EditorIdentity,
+  InlineEditManager,
+  InlineEditRequestContext,
+} from "../../src/inline-edit/types.ts";
 import type { ScheduledAction } from "../../src/workflow/types.ts";
 import type { PluginApp, PluginRouteContext } from "../../src/plugin-api/app.ts";
 import type { PluginServices } from "../../src/plugin-api/services.ts";
@@ -185,7 +199,9 @@ same<AuthenticateResult, P.AuthenticateResult>();
 
 Deno.test("isDuneError behaves the same in the package and in core", () => {
   const err = { code: "ssrf_blocked" };
-  for (const code of ["ssrf_blocked", "body_too_large", "weak_password", "duplicate_email"] as const) {
+  for (
+    const code of ["ssrf_blocked", "body_too_large", "weak_password", "duplicate_email"] as const
+  ) {
     assertEquals(pluginIsDuneError(err, code), coreIsDuneError(err, code));
   }
   assertEquals(pluginIsDuneError(new Error("x"), "ssrf_blocked"), false);

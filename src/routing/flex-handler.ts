@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { h, type ComponentType } from "preact";
+import { type ComponentType, h } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { TemplateComponent } from "../content/types.ts";
 import type { ContentApi } from "../content/api.ts";
@@ -113,7 +113,15 @@ export async function handleFlexRoute(
   }
 
   if (parts.length === 3) {
-    return handleFlexDetail(engine, decodeURIComponent(parts[2]), flex, flexType, schema, baseProps, render);
+    return handleFlexDetail(
+      engine,
+      decodeURIComponent(parts[2]),
+      flex,
+      flexType,
+      schema,
+      baseProps,
+      render,
+    );
   }
 
   return render(h("div", null, "Not found"), 404);
@@ -138,38 +146,64 @@ async function handleFlexList(
 
   if (!template) {
     return render(
-      h("html", null,
-        h("head", null,
+      h(
+        "html",
+        null,
+        h(
+          "head",
+          null,
           h("title", null, schema.title),
           h("meta", { charset: "utf-8" }),
           h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-          h("style", null, "body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:.5rem;text-align:left}th{background:#f5f5f5}a{color:#0066cc}"),
+          h(
+            "style",
+            null,
+            "body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:.5rem;text-align:left}th{background:#f5f5f5}a{color:#0066cc}",
+          ),
         ),
-        h("body", null,
+        h(
+          "body",
+          null,
           h("h1", null, `${schema.icon ?? ""} ${schema.title}`),
           schema.description ? h("p", null, schema.description) : null,
-          records.length === 0
-            ? h("p", null, "No records yet.")
-            : h("table", null,
-                h("thead", null,
-                  h("tr", null, ...Object.keys(schema.fields).slice(0, 4).map((f) =>
-                    h("th", { key: f }, schema.fields[f].label ?? f)
-                  )),
+          records.length === 0 ? h("p", null, "No records yet.") : h(
+            "table",
+            null,
+            h(
+              "thead",
+              null,
+              h(
+                "tr",
+                null,
+                ...Object.keys(schema.fields).slice(0, 4).map((f) =>
+                  h("th", { key: f }, schema.fields[f].label ?? f)
                 ),
-                h("tbody", null, ...records.map((r) =>
-                  h("tr", { key: r._id },
-                    ...Object.keys(schema.fields).slice(0, 4).map((f) =>
-                      h("td", { key: f },
-                        h("a", { href: `/flex/${flexType}/${r._id}` },
-                          f === Object.keys(schema.fields)[0]
-                            ? String(r[f] ?? r._id)
-                            : String(r[f] ?? "")
-                        )
-                      )
-                    )
-                  )
-                )),
               ),
+            ),
+            h(
+              "tbody",
+              null,
+              ...records.map((r) =>
+                h(
+                  "tr",
+                  { key: r._id },
+                  ...Object.keys(schema.fields).slice(0, 4).map((f) =>
+                    h(
+                      "td",
+                      { key: f },
+                      h(
+                        "a",
+                        { href: `/flex/${flexType}/${r._id}` },
+                        f === Object.keys(schema.fields)[0]
+                          ? String(r[f] ?? r._id)
+                          : String(r[f] ?? ""),
+                      ),
+                    )
+                  ),
+                )
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -207,23 +241,35 @@ async function handleFlexDetail(
   if (!template) {
     const title = String((record.name ?? record.title ?? record._id) as string);
     return render(
-      h("html", null,
-        h("head", null,
+      h(
+        "html",
+        null,
+        h(
+          "head",
+          null,
           h("title", null, `${title} — ${schema.title}`),
           h("meta", { charset: "utf-8" }),
           h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-          h("style", null, "body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem}dl{display:grid;grid-template-columns:auto 1fr;gap:.5rem 1rem}dt{font-weight:600;color:#555}dd{margin:0}a{color:#0066cc}"),
+          h(
+            "style",
+            null,
+            "body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem}dl{display:grid;grid-template-columns:auto 1fr;gap:.5rem 1rem}dt{font-weight:600;color:#555}dd{margin:0}a{color:#0066cc}",
+          ),
         ),
-        h("body", null,
+        h(
+          "body",
+          null,
           h("p", null, h("a", { href: `/flex/${flexType}` }, `← All ${schema.title}`)),
           h("h1", null, title),
-          h("dl", null,
+          h(
+            "dl",
+            null,
             ...Object.entries(record)
               .filter(([k]) => !k.startsWith("_"))
               .flatMap(([k, v]) => [
                 h("dt", { key: `dt-${k}` }, schema.fields[k]?.label ?? k),
                 h("dd", { key: `dd-${k}` }, String(Array.isArray(v) ? v.join(", ") : v ?? "")),
-              ])
+              ]),
           ),
         ),
       ),

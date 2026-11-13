@@ -13,7 +13,10 @@ Deno.test("a site with no payments and no external login names nothing", () => {
 });
 
 Deno.test("a payment product that grants a content tier is not mentioned; one that grants an admin-tier role is", () => {
-  const payments = (role: string) => ({ secret_key: "sk", products: [{ id: "pro", name: "Pro", priceId: "p", role }] });
+  const payments = (role: string) => ({
+    secret_key: "sk",
+    products: [{ id: "pro", name: "Pro", priceId: "p", role }],
+  });
   assertEquals(automaticAdminTierGrants(cfg({ payments: payments("member") })), []);
   const author = automaticAdminTierGrants(cfg({ payments: payments("author") }));
   assertEquals(author.length, 1);
@@ -21,18 +24,25 @@ Deno.test("a payment product that grants a content tier is not mentioned; one th
   assertStringIncludes(author[0].message, 'product "pro"');
   assertStringIncludes(author[0].message, "pages they created");
   assertEquals(automaticAdminTierGrants(cfg({ payments: payments("editor") }))[0].severity, "info");
-  assertEquals(automaticAdminTierGrants(cfg({ payments: payments("admin") }))[0].severity, "warning");
+  assertEquals(
+    automaticAdminTierGrants(cfg({ payments: payments("admin") }))[0].severity,
+    "warning",
+  );
 });
 
 Deno.test("products without a configured provider key grant nothing yet", () => {
   assertEquals(
-    automaticAdminTierGrants(cfg({ payments: { products: [{ id: "p", name: "P", priceId: "x", role: "admin" }] } })),
+    automaticAdminTierGrants(
+      cfg({ payments: { products: [{ id: "p", name: "P", priceId: "x", role: "admin" }] } }),
+    ),
     [],
   );
 });
 
 Deno.test("an external-jwt login names its roles claim", () => {
-  const [g] = automaticAdminTierGrants(cfg({ auth: { mode: "external-jwt", jwt: { roles_claim: "groups" } } }));
+  const [g] = automaticAdminTierGrants(
+    cfg({ auth: { mode: "external-jwt", jwt: { roles_claim: "groups" } } }),
+  );
   assertEquals(g.severity, "info");
   assertStringIncludes(g.message, '"groups"');
 });
@@ -49,7 +59,10 @@ Deno.test("doctor lists them as access findings that never fail the run", () => 
 });
 
 Deno.test("the notes follow system.role_grants: a remapped group is named, an unmapped one is not", () => {
-  const payments = (role: string) => ({ secret_key: "sk", products: [{ id: "pro", name: "Pro", priceId: "p", role }] });
+  const payments = (role: string) => ({
+    secret_key: "sk",
+    products: [{ id: "pro", name: "Pro", priceId: "p", role }],
+  });
   const withGrants = (role: string, role_grants: Record<string, string>) =>
     ({ site: { payments: payments(role) }, system: { role_grants } }) as unknown as DuneConfig;
 
@@ -61,7 +74,12 @@ Deno.test("the notes follow system.role_grants: a remapped group is named, an un
   // {} turns it all off, including the external-jwt note.
   assertEquals(automaticAdminTierGrants(withGrants("editor", {})), []);
   assertEquals(
-    automaticAdminTierGrants({ site: { auth: { mode: "external-jwt" } }, system: { role_grants: {} } } as unknown as DuneConfig),
+    automaticAdminTierGrants(
+      {
+        site: { auth: { mode: "external-jwt" } },
+        system: { role_grants: {} },
+      } as unknown as DuneConfig,
+    ),
     [],
   );
 });

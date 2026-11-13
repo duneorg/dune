@@ -7,7 +7,8 @@ import { assertEquals } from "@std/assert";
 import { join, toFileUrl } from "@std/path";
 import { findOwnEsbuildWorkers } from "../../src/cli/esbuild-cleanup.ts";
 
-const ESBUILD = "/Users/x/Library/Caches/deno/npm/registry.npmjs.org/@esbuild/darwin-arm64/0.25.7/bin/esbuild";
+const ESBUILD =
+  "/Users/x/Library/Caches/deno/npm/registry.npmjs.org/@esbuild/darwin-arm64/0.25.7/bin/esbuild";
 
 Deno.test("findOwnEsbuildWorkers: picks only direct esbuild --service children of the given pid", () => {
   const ps = [
@@ -41,7 +42,10 @@ async function waitFor(check: () => Promise<boolean>, what: string): Promise<voi
 }
 
 async function esbuildChildren(ppid: number): Promise<number[]> {
-  const { stdout } = await new Deno.Command("ps", { args: ["-eo", "pid=,ppid=,command="], stdout: "piped" })
+  const { stdout } = await new Deno.Command("ps", {
+    args: ["-eo", "pid=,ppid=,command="],
+    stdout: "piped",
+  })
     .output();
   return findOwnEsbuildWorkers(new TextDecoder().decode(stdout), ppid);
 }
@@ -53,7 +57,8 @@ Deno.test({
   sanitizeResources: false,
   fn: async () => {
     const dir = await Deno.makeTempDir({ prefix: "dune_test_esbuild_watch_" });
-    const cleanupUrl = toFileUrl(join(import.meta.dirname!, "..", "..", "src", "cli", "esbuild-cleanup.ts")).href;
+    const cleanupUrl =
+      toFileUrl(join(import.meta.dirname!, "..", "..", "src", "cli", "esbuild-cleanup.ts")).href;
     let child: Deno.ChildProcess | undefined;
     let log = "";
     try {

@@ -181,7 +181,14 @@ function makeCtx(files: Record<string, string>): RenderContext {
       url: (name: string) => files[name] ?? name,
       get: (name: string) =>
         name in files
-          ? { name, url: files[name], path: name, type: "application/octet-stream", size: 0, meta: {} }
+          ? {
+            name,
+            url: files[name],
+            path: name,
+            type: "application/octet-stream",
+            size: 0,
+            meta: {},
+          }
           : null,
       list: () =>
         Object.entries(files).map(([name, url]) => ({
@@ -280,13 +287,19 @@ Deno.test("resolveMediaRefs: does not double-rewrite images as links", () => {
 Deno.test("resolveMediaRefs: rewrites HTML img src", () => {
   const input = `<img src="photo.jpg" alt="test" style="max-width:100%">`;
   const out = resolveMediaRefs(input, mediaCtx);
-  assertEquals(out, `<img src="/content-media/blog/my-post/photo.jpg" alt="test" style="max-width:100%">`);
+  assertEquals(
+    out,
+    `<img src="/content-media/blog/my-post/photo.jpg" alt="test" style="max-width:100%">`,
+  );
 });
 
 Deno.test("resolveMediaRefs: rewrites HTML img src with attributes before src", () => {
   const input = `<img alt="test" src="photo.jpg" style="max-width:100%">`;
   const out = resolveMediaRefs(input, mediaCtx);
-  assertEquals(out, `<img alt="test" src="/content-media/blog/my-post/photo.jpg" style="max-width:100%">`);
+  assertEquals(
+    out,
+    `<img alt="test" src="/content-media/blog/my-post/photo.jpg" style="max-width:100%">`,
+  );
 });
 
 Deno.test("resolveMediaRefs: leaves absolute HTML img src untouched", () => {
@@ -332,11 +345,14 @@ Deno.test("resolveMediaRefs: handles mixed content", () => {
     "Download the [full report](doc.pdf) or visit [our site](https://example.com).",
   ].join("\n");
   const out = resolveMediaRefs(input, mediaCtx);
-  assertEquals(out, [
-    "See the ![diagram](/content-media/blog/my-post/photo.jpg) above.",
-    "",
-    "Download the [full report](/content-media/blog/my-post/doc.pdf) or visit [our site](https://example.com).",
-  ].join("\n"));
+  assertEquals(
+    out,
+    [
+      "See the ![diagram](/content-media/blog/my-post/photo.jpg) above.",
+      "",
+      "Download the [full report](/content-media/blog/my-post/doc.pdf) or visit [our site](https://example.com).",
+    ].join("\n"),
+  );
 });
 
 Deno.test("TsxHandler: handles nested objects", async () => {

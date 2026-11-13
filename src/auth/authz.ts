@@ -141,8 +141,7 @@ export function createDuneAuthSystem(
     const dataDir = config.dataDir ?? "data";
     if (!config.dataDir) {
       logger.warn("authz.datadir.default", {
-        reason:
-          "createDuneAuthSystem: dataDir not set — defaulting to \"data\" " +
+        reason: 'createDuneAuthSystem: dataDir not set — defaulting to "data" ' +
           "(relative to process CWD). Pass an explicit absolute path to avoid resolving " +
           "permissions to the wrong directory in non-standard server setups.",
       });
@@ -176,7 +175,11 @@ export function createDuneAuthSystem(
  */
 /** Minimal interface required by bootstrap helpers — satisfied by both local and db adapters. */
 export interface AuthzAdapterLike {
-  hasTuple(subject: { type: string; id: string }, relation: string, object: { type: string; id: string }): Promise<boolean>;
+  hasTuple(
+    subject: { type: string; id: string },
+    relation: string,
+    object: { type: string; id: string },
+  ): Promise<boolean>;
 }
 
 /** What {@link bootstrapRoleGrants} needs besides {@link AuthzAdapterLike}: finding who holds a relation. */
@@ -269,9 +272,15 @@ export async function bootstrapRoleGrants(
   grants: RoleGrants = DEFAULT_ROLE_GRANTS,
 ): Promise<void> {
   for (const relation of GRANT_RELATIONS) {
-    for (const subject of await adapter.findSubjects(SITE_RESOURCE, relation, { subjectType: "group" })) {
+    for (
+      const subject of await adapter.findSubjects(SITE_RESOURCE, relation, { subjectType: "group" })
+    ) {
       if (grants[subject.id] !== relation) {
-        await authz.disallowAllMatching({ who: { type: "group", id: subject.id }, was: relation, onWhat: SITE_RESOURCE });
+        await authz.disallowAllMatching({
+          who: { type: "group", id: subject.id },
+          was: relation,
+          onWhat: SITE_RESOURCE,
+        });
       }
     }
   }

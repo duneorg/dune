@@ -30,8 +30,8 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 // ANSI color codes used in text format
 const COLOR: Record<LogLevel, string> = {
   debug: "\x1b[36m", // cyan
-  info: "\x1b[32m",  // green
-  warn: "\x1b[33m",  // yellow
+  info: "\x1b[32m", // green
+  warn: "\x1b[33m", // yellow
   error: "\x1b[31m", // red
 };
 const RESET = "\x1b[0m";
@@ -99,15 +99,17 @@ function makeLogger(opts: LoggerOptions, boundFields: Record<string, unknown>): 
           return str;
         })
         .join(" ");
-      const colored = `${COLOR[level]}${tag}${RESET} ${DIM}${eventPad}${RESET}${pairs ? "  " + pairs : ""}`;
+      const colored = `${COLOR[level]}${tag}${RESET} ${DIM}${eventPad}${RESET}${
+        pairs ? "  " + pairs : ""
+      }`;
       write(colored);
     }
   }
 
   const log: Logger = {
     debug: (event, fields) => emit("debug", event, fields),
-    info:  (event, fields) => emit("info",  event, fields),
-    warn:  (event, fields) => emit("warn",  event, fields),
+    info: (event, fields) => emit("info", event, fields),
+    warn: (event, fields) => emit("warn", event, fields),
     error: (event, fields) => emit("error", event, fields),
 
     child(childFields: Record<string, unknown>): Logger {
@@ -151,8 +153,7 @@ export function createDefaultLogger(fields?: Record<string, unknown>): Logger {
   }
 
   const envLevel = Deno.env.get("DUNE_LOG_LEVEL") as LogLevel | undefined;
-  const level: LogLevel =
-    envLevel && envLevel in LEVEL_ORDER ? envLevel : "info";
+  const level: LogLevel = envLevel && envLevel in LEVEL_ORDER ? envLevel : "info";
 
   return createLogger({ format, level, fields });
 }

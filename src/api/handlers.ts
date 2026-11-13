@@ -27,7 +27,7 @@ import type { FlexEngine } from "../flex/engine.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import type { PageIndex } from "../content/types.ts";
 import { effectiveOrder } from "../content/path-utils.ts";
-import { RateLimiter, clientIp } from "../security/rate-limit.ts";
+import { clientIp, RateLimiter } from "../security/rate-limit.ts";
 import {
   canAccessIndexEntry,
   enforceRolesFromRequest,
@@ -95,10 +95,14 @@ export interface ApiHandlerOptions {
 /**
  * Create the full API request handler.
  */
-export function createApiHandler(options: ApiHandlerOptions): (req: Request) => Promise<Response | null> {
+export function createApiHandler(
+  options: ApiHandlerOptions,
+): (req: Request) => Promise<Response | null> {
   const { engine, collections, taxonomy, search, flex, hooks, analytics } = options;
 
-  const handleApiRequestInner = async function handleApiRequest(req: Request): Promise<Response | null> {
+  const handleApiRequestInner = async function handleApiRequest(
+    req: Request,
+  ): Promise<Response | null> {
     const url = new URL(req.url);
     const path = url.pathname;
 
@@ -120,8 +124,7 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
       // unless the request origin is in cors_origins.
       if (!warnedMissingSiteUrl) {
         logger.warn("api.cors.missing_site_url", {
-          reason:
-            "site.url is missing or invalid — API CORS will refuse cross-origin requests " +
+          reason: "site.url is missing or invalid — API CORS will refuse cross-origin requests " +
             "until `site: { url: https://your-site }` is set in site.yaml " +
             "or specific origins are listed in `site.cors_origins`.",
         });
@@ -129,7 +132,13 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
       }
     }
     const extraOrigins = (engine.site.cors_origins ?? [])
-      .map((o) => { try { return new URL(o).origin; } catch { return null; } })
+      .map((o) => {
+        try {
+          return new URL(o).origin;
+        } catch {
+          return null;
+        }
+      })
       .filter(Boolean) as string[];
     const allowedOrigins = new Set<string>([
       ...(primaryOrigin ? [primaryOrigin] : []),
@@ -188,7 +197,17 @@ export function createApiHandler(options: ApiHandlerOptions): (req: Request) => 
     }
 
     try {
-      const result = await routeApiRequest(path, url, req, engine, collections, taxonomy, search, flex, analytics);
+      const result = await routeApiRequest(
+        path,
+        url,
+        req,
+        engine,
+        collections,
+        taxonomy,
+        search,
+        flex,
+        analytics,
+      );
       if (!result) {
         return jsonResponse({ error: "Not found" }, 404, corsHeaders);
       }
@@ -275,7 +294,14 @@ async function routeApiRequest(
     // and create an unauthenticated CPU-DoS vector. 256 chars is far above
     // any natural search query.
     if (q.length > 256) {
-      return { items: [], total: 0, query: q.slice(0, 256), error: "Query too long", hasMore: false, offset: 0 };
+      return {
+        items: [],
+        total: 0,
+        query: q.slice(0, 256),
+        error: "Query too long",
+        hasMore: false,
+        offset: 0,
+      };
     }
     // Cap and floor the limit. parseInt accepts garbage as NaN, and very
     // large limits force the search engine to allocate huge result arrays.

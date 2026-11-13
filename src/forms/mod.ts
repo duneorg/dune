@@ -36,7 +36,7 @@
  * @module
  */
 
-export { loadForms, loadForm } from "./loader.ts";
+export { loadForm, loadForms } from "./loader.ts";
 export { validateFormSubmission } from "./validator.ts";
 export type {
   Submission,

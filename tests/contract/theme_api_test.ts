@@ -27,14 +27,17 @@ const _page = (p: Page): Theme.Page => p;
 const _index = (p: PageIndex): Theme.PageIndex => p;
 const _translation = (p: PageTranslation): Theme.PageTranslation => p;
 const _collection = (c: Collection): Theme.Collection => c;
-const _frontmatter = (f: import("../../src/content/types.ts").PageFrontmatter): Theme.PageFrontmatter => f;
+const _frontmatter = (
+  f: import("../../src/content/types.ts").PageFrontmatter,
+): Theme.PageFrontmatter => f;
 const _config = (c: TemplateProps["config"]): Theme.TemplateConfig => c;
 const _site = (s: TemplateProps["site"]): Theme.SiteConfig => s;
 const _component = (c: TemplateComponent): Theme.TemplateComponent => c;
 
 // --- package -> core: what a theme hands in -------------------------------
 
-const _themeTemplate: TemplateComponent = (props: Theme.TemplateProps) => props.page.frontmatter.title;
+const _themeTemplate: TemplateComponent = (props: Theme.TemplateProps) =>
+  props.page.frontmatter.title;
 const _themeTemplateWithExtras: TemplateComponent = (
   props: Theme.TemplateProps & { landing?: boolean },
 ) => props.landing;

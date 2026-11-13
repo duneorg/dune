@@ -7,11 +7,7 @@
 
 import { assertEquals } from "@std/assert";
 import * as P from "@dune/plugin-api";
-import {
-  dirPathToRoute,
-  isMediaFile,
-  parseContentFilename,
-} from "../../src/content/path-utils.ts";
+import { dirPathToRoute, isMediaFile, parseContentFilename } from "../../src/content/path-utils.ts";
 import { getMimeType } from "../../src/content/page-loader.ts";
 import { buildPageTitle } from "../../src/content/types.ts";
 import { isRtl } from "../../src/i18n/rtl.ts";

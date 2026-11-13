@@ -8,7 +8,7 @@
  */
 
 import type { JSX } from "preact";
-import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 /** Props for the {@link SearchBar} island component. */
 export interface SearchBarProps {
@@ -162,9 +162,7 @@ export default function SearchBar({
         aria-expanded={open}
         aria-autocomplete="list"
         aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={
-          activeIndex >= 0 ? `dune-search-item-${activeIndex}` : undefined
-        }
+        aria-activedescendant={activeIndex >= 0 ? `dune-search-item-${activeIndex}` : undefined}
         autocomplete="off"
         spellcheck={false}
       />
@@ -186,15 +184,22 @@ export default function SearchBar({
               id={`dune-search-item-${idx}`}
               role="option"
               aria-selected={idx === activeIndex}
-              class={`dune-search-bar__result${idx === activeIndex ? " dune-search-bar__result--active" : ""}`}
-              style={`padding:0.6rem 0.9rem;cursor:pointer;background:${idx === activeIndex ? "#f0f4ff" : "transparent"};border-bottom:${idx < results.length - 1 ? "1px solid #f0f0f0" : "none"}`}
+              class={`dune-search-bar__result${
+                idx === activeIndex ? " dune-search-bar__result--active" : ""
+              }`}
+              style={`padding:0.6rem 0.9rem;cursor:pointer;background:${
+                idx === activeIndex ? "#f0f4ff" : "transparent"
+              };border-bottom:${idx < results.length - 1 ? "1px solid #f0f0f0" : "none"}`}
               onMouseEnter={() => setActiveIndex(idx)}
               onMouseDown={(e) => {
                 e.preventDefault();
                 navigate(result.route);
               }}
             >
-              <div class="dune-search-bar__result-title" style="font-size:0.9rem;font-weight:500;color:#1a202c">
+              <div
+                class="dune-search-bar__result-title"
+                style="font-size:0.9rem;font-weight:500;color:#1a202c"
+              >
                 {result.title}
               </div>
               {result.excerpt && (

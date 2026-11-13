@@ -35,7 +35,10 @@ Deno.test("isWithinPublishWindow: open bounds, publish is inclusive, unpublish i
 });
 
 Deno.test("nextScheduleBoundary: earliest instant strictly after now, across both bounds", () => {
-  const pages = [{ publishAt: T + 100 }, { unpublishAt: T + 50 }, { publishAt: T - 10, unpublishAt: T + 200 }, {}];
+  const pages = [{ publishAt: T + 100 }, { unpublishAt: T + 50 }, {
+    publishAt: T - 10,
+    unpublishAt: T + 200,
+  }, {}];
   assertEquals(nextScheduleBoundary(pages, T), T + 50);
   assertEquals(nextScheduleBoundary(pages, T + 50), T + 100);
   assertEquals(nextScheduleBoundary(pages, T + 200), undefined);

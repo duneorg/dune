@@ -14,7 +14,6 @@
  * @module
  */
 
-
 /** An email sent for each new submission. */
 export interface FormEmailNotificationConfig {
   /** Recipient address(es). A form's own `notifications.email` replaces this. */

@@ -13,7 +13,7 @@
  */
 
 import { createStorage } from "../storage/mod.ts";
-import { loadMigrations, applyMigrations } from "../flex/migrations.ts";
+import { applyMigrations, loadMigrations } from "../flex/migrations.ts";
 import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import { stringify as stringifyYaml } from "@std/yaml";
 
@@ -160,7 +160,9 @@ export async function flexMigrateCommand(
         const { _id, _type: _t, _createdAt, _updatedAt, _schemaVersion, ...userFields } = updated;
         const meta: Record<string, unknown> = { _id, _createdAt, _updatedAt, _schemaVersion };
         const sortedUser = Object.fromEntries(
-          Object.entries(userFields as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
+          Object.entries(userFields as Record<string, unknown>).sort(([a], [b]) =>
+            a.localeCompare(b)
+          ),
         );
         const serialized = stringifyYaml({ ...meta, ...sortedUser }).trimEnd() + "\n";
         await storage.write(recordPath, serialized);
@@ -177,8 +179,12 @@ export async function flexMigrateCommand(
 
   log("");
   if (dryRun) {
-    log(`Dry run complete: ${totalMigrated} record(s) would be migrated, ${totalSkipped} already up to date.`);
+    log(
+      `Dry run complete: ${totalMigrated} record(s) would be migrated, ${totalSkipped} already up to date.`,
+    );
   } else {
-    log(`Migration complete: ${totalMigrated} record(s) migrated, ${totalSkipped} already up to date.`);
+    log(
+      `Migration complete: ${totalMigrated} record(s) migrated, ${totalSkipped} already up to date.`,
+    );
   }
 }

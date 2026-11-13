@@ -5,20 +5,20 @@
  */
 
 export type {
-  /** A workflow stage identifier — built-in or custom */
-  ContentStatus,
   BuiltinStatus,
-  WorkflowStage,
-  WorkflowTransition,
-  WorkflowConfig,
-  /** Scheduled action */
-  ScheduledAction,
-  /** Content revision record */
-  ContentRevision,
   /** Diff between two revisions */
   ContentDiff,
+  /** Content revision record */
+  ContentRevision,
+  /** A workflow stage identifier — built-in or custom */
+  ContentStatus,
+  /** Scheduled action */
+  ScheduledAction,
   /** i18n translation status for a page */
   TranslationStatus,
+  WorkflowConfig,
+  WorkflowStage,
+  WorkflowTransition,
 } from "./types.ts";
 export {
   /** Create a workflow engine. */

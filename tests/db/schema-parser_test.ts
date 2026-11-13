@@ -1,8 +1,5 @@
-import {
-  assertEquals,
-  assertThrows,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parseRawSchema, parseSchemaYaml, modelToTableName } from "../../src/db/schema-parser.ts";
+import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { modelToTableName, parseRawSchema, parseSchemaYaml } from "../../src/db/schema-parser.ts";
 
 // ---------------------------------------------------------------------------
 // modelToTableName
@@ -115,8 +112,7 @@ Deno.test("parseRawSchema: throws on invalid field type", () => {
 
 Deno.test("parseRawSchema: throws on invalid onUpdate", () => {
   assertThrows(
-    () =>
-      parseRawSchema({ model: "Foo", fields: { x: { type: "datetime", onUpdate: "today" } } }),
+    () => parseRawSchema({ model: "Foo", fields: { x: { type: "datetime", onUpdate: "today" } } }),
     Error,
     "onUpdate",
   );

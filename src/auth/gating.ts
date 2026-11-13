@@ -105,9 +105,7 @@ export function isValidLoginPath(value: unknown): value is string {
  * bad value from ever reaching a redirect.)
  */
 export function resolveLoginPath(configured: unknown): string {
-  return isValidLoginPath(configured)
-    ? normalizeRoutePath(configured)
-    : DEFAULT_LOGIN_PATH;
+  return isValidLoginPath(configured) ? normalizeRoutePath(configured) : DEFAULT_LOGIN_PATH;
 }
 
 /** A path without its trailing slash (`/join/` → `/join`); `/` stays `/`. Page routes have none. */
@@ -192,9 +190,7 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
   if (Array.isArray(raw)) {
     // Filter to non-empty strings; preserve the array (even empty) since
     // an empty array means "any authenticated user".
-    const roles = raw.filter((r): r is string =>
-      typeof r === "string" && r.trim().length > 0
-    )
+    const roles = raw.filter((r): r is string => typeof r === "string" && r.trim().length > 0)
       .map((r) => r.trim());
     // Reconstruct to the cleaned list; original empty arrays stay empty.
     return raw.length === 0 ? [] : roles.length > 0 ? roles : null;
@@ -205,9 +201,7 @@ export function parseRolesSpec(raw: unknown): RolesSpec | null {
     const obj = raw as Record<string, unknown>;
     if (Array.isArray(obj.all)) {
       const all = obj.all
-        .filter((r): r is string =>
-          typeof r === "string" && r.trim().length > 0
-        )
+        .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
         .map((r: string) => r.trim());
       return all.length > 0 ? { all } : null;
     }
@@ -308,9 +302,7 @@ export async function checkRolesAsync(
   // (single-site deployments will have exactly one entry).
   const effectiveAuthz = authzOverride !== undefined
     ? authzOverride
-    : (_authzByOrigin.size === 1
-      ? _authzByOrigin.values().next().value as DuneAuthSystem
-      : null);
+    : (_authzByOrigin.size === 1 ? _authzByOrigin.values().next().value as DuneAuthSystem : null);
 
   if (effectiveAuthz === null) {
     // No authz configured — fall back to direct array check
@@ -595,9 +587,7 @@ export function findPageForMediaUrl<T extends GatedIndexEntry & { route: string 
   pages: T[],
   pathname: string,
 ): T | null {
-  const path = pathname.length > 1 && pathname.endsWith("/")
-    ? pathname.slice(0, -1)
-    : pathname;
+  const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
   let best: T | null = null;
   let bestLen = -1;
   for (const page of pages) {

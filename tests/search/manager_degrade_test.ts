@@ -4,10 +4,7 @@
  */
 
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import {
-  createSearchManager,
-  SearchUnavailableError,
-} from "../../src/search/manager.ts";
+import { createSearchManager, SearchUnavailableError } from "../../src/search/manager.ts";
 import type { SearchEngine, SearchResult } from "../../src/search/engine.ts";
 import type { PageIndex } from "../../src/content/types.ts";
 
@@ -54,7 +51,9 @@ function flaky(failures: number, extra: Partial<SearchEngine> = {}) {
 
 Deno.test("build: one failing engine does not abort startup or the others", async () => {
   let builtInBuilt = false;
-  const manager = createSearchManager(stubEngine({ build: () => (builtInBuilt = true, Promise.resolve()) }));
+  const manager = createSearchManager(
+    stubEngine({ build: () => (builtInBuilt = true, Promise.resolve()) }),
+  );
   manager.register("meilisearch", flaky(99).engine);
   manager.setActiveEngine("meilisearch");
 
@@ -70,7 +69,9 @@ Deno.test("build: one failing engine does not abort startup or the others", asyn
 });
 
 Deno.test("search: falls back to the built-in engine while the active one is failed", async () => {
-  const manager = createSearchManager(stubEngine({ search: () => Promise.resolve([hit("/from-builtin")]) }));
+  const manager = createSearchManager(
+    stubEngine({ search: () => Promise.resolve([hit("/from-builtin")]) }),
+  );
   manager.register("meilisearch", flaky(99).engine);
   manager.setActiveEngine("meilisearch");
   await manager.build();
@@ -140,8 +141,13 @@ Deno.test("rebuild: a failure degrades the engine and the retry re-indexes the l
 });
 
 Deno.test("search: a query error on a ready engine falls back for that request without marking it failed", async () => {
-  const manager = createSearchManager(stubEngine({ search: () => Promise.resolve([hit("/from-builtin")]) }));
-  manager.register("meilisearch", stubEngine({ search: () => Promise.reject(new Error("socket closed")) }));
+  const manager = createSearchManager(
+    stubEngine({ search: () => Promise.resolve([hit("/from-builtin")]) }),
+  );
+  manager.register(
+    "meilisearch",
+    stubEngine({ search: () => Promise.reject(new Error("socket closed")) }),
+  );
   manager.setActiveEngine("meilisearch");
   await manager.build();
 
@@ -171,7 +177,9 @@ Deno.test("search: every candidate failing the query is a SearchUnavailableError
 });
 
 Deno.test("search: a lone engine's query error is not disguised as 'unavailable'", async () => {
-  const manager = createSearchManager(stubEngine({ search: () => Promise.reject(new RangeError("bad")) }));
+  const manager = createSearchManager(
+    stubEngine({ search: () => Promise.reject(new RangeError("bad")) }),
+  );
   await manager.build();
   await assertRejects(() => manager.search("x"), RangeError, "bad");
   manager.close();
@@ -185,7 +193,9 @@ Deno.test("search: before build() engines are usable (buildSearch off keeps work
 });
 
 Deno.test("parallel mode queries only usable engines", async () => {
-  const manager = createSearchManager(stubEngine({ search: () => Promise.resolve([hit("/builtin")]) }));
+  const manager = createSearchManager(
+    stubEngine({ search: () => Promise.resolve([hit("/builtin")]) }),
+  );
   const meili = flaky(99, { search: () => Promise.resolve([hit("/meili", 9)]) });
   manager.register("meilisearch", meili.engine);
   manager.setParallelMode(true);

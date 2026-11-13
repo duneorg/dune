@@ -2,7 +2,11 @@
  * Tests for plugin client-entry bundling (DunePlugin.clientEntries).
  */
 
-import { assertEquals, assertNotEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { buildPluginClientBundles, serveClientBundle } from "../../src/cli/client-bundles.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";

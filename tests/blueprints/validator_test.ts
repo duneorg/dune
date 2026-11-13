@@ -6,11 +6,8 @@
  * and the loader's YAML parsing.
  */
 
-import {
-  assertEquals,
-  assertNotEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { validateFrontmatter, resolveBlueprint } from "../../src/blueprints/validator.ts";
+import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { resolveBlueprint, validateFrontmatter } from "../../src/blueprints/validator.ts";
 import { loadBlueprints } from "../../src/blueprints/loader.ts";
 import type {
   BlueprintDefinition,
@@ -48,7 +45,9 @@ function makeBlueprints(
   return result;
 }
 
-function field(overrides: Partial<BlueprintField> & { type: BlueprintField["type"] }): BlueprintField {
+function field(
+  overrides: Partial<BlueprintField> & { type: BlueprintField["type"] },
+): BlueprintField {
   return { label: overrides.type, ...overrides };
 }
 
@@ -57,7 +56,9 @@ function field(overrides: Partial<BlueprintField> & { type: BlueprintField["type
 // ---------------------------------------------------------------------------
 
 Deno.test("validateFrontmatter: returns empty errors when no blueprint for template", () => {
-  const blueprints = makeBlueprints({ post: { fields: { date: field({ type: "date", required: true }) } } });
+  const blueprints = makeBlueprints({
+    post: { fields: { date: field({ type: "date", required: true }) } },
+  });
   const errors = validateFrontmatter(makeFrontmatter(), "other", blueprints);
   assertEquals(errors, []);
 });

@@ -11,20 +11,43 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.
 import { dirname, join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import { createDuneApp } from "../../src/runtime/server.ts";
-import { dataOutputBody, outputSecurityHeaders, parseTemplateOutput } from "../../src/themes/output.ts";
+import {
+  dataOutputBody,
+  outputSecurityHeaders,
+  parseTemplateOutput,
+} from "../../src/themes/output.ts";
 
 // ── parseTemplateOutput / dataOutputBody (pure) ──────────────────────────────
 
 Deno.test("parseTemplateOutput: shorthands resolve to their media types", () => {
-  assertEquals(parseTemplateOutput("fragment"), { kind: "fragment", contentType: "text/html; charset=utf-8", json: false });
-  assertEquals(parseTemplateOutput("json"), { kind: "data", contentType: "application/json; charset=utf-8", json: true });
-  assertEquals(parseTemplateOutput("xml"), { kind: "data", contentType: "application/xml; charset=utf-8", json: false });
-  assertEquals(parseTemplateOutput("text"), { kind: "data", contentType: "text/plain; charset=utf-8", json: false });
+  assertEquals(parseTemplateOutput("fragment"), {
+    kind: "fragment",
+    contentType: "text/html; charset=utf-8",
+    json: false,
+  });
+  assertEquals(parseTemplateOutput("json"), {
+    kind: "data",
+    contentType: "application/json; charset=utf-8",
+    json: true,
+  });
+  assertEquals(parseTemplateOutput("xml"), {
+    kind: "data",
+    contentType: "application/xml; charset=utf-8",
+    json: false,
+  });
+  assertEquals(parseTemplateOutput("text"), {
+    kind: "data",
+    contentType: "text/plain; charset=utf-8",
+    json: false,
+  });
 });
 
 Deno.test("parseTemplateOutput: a plain media type is taken verbatim, with charset only where it belongs", () => {
   assertEquals(parseTemplateOutput("text/csv")?.contentType, "text/csv; charset=utf-8");
-  assertEquals(parseTemplateOutput("application/atom+xml")?.contentType, "application/atom+xml; charset=utf-8");
+  assertEquals(
+    parseTemplateOutput("application/atom+xml")?.contentType,
+    "application/atom+xml; charset=utf-8",
+  );
   assertEquals(parseTemplateOutput("application/pdf")?.contentType, "application/pdf");
   assertEquals(parseTemplateOutput("application/ld+json")?.json, true);
   assertEquals(parseTemplateOutput("text/csv")?.json, false);
@@ -38,8 +61,20 @@ Deno.test("parseTemplateOutput: an explicit text/html is the same as fragment", 
 Deno.test("parseTemplateOutput: invalid values are rejected, including header-injection attempts", () => {
   for (
     const bad of [
-      "", "yaml", "html", "JSON ", "text/csv; charset=x", "text/csv\r\nSet-Cookie: a=b", "text/", "/csv", "a b/c",
-      true, 42, null, undefined, { kind: "json" },
+      "",
+      "yaml",
+      "html",
+      "JSON ",
+      "text/csv; charset=x",
+      "text/csv\r\nSet-Cookie: a=b",
+      "text/",
+      "/csv",
+      "a b/c",
+      true,
+      42,
+      null,
+      undefined,
+      { kind: "json" },
     ]
   ) {
     assertEquals(parseTemplateOutput(bad), null, `should reject ${JSON.stringify(bad)}`);
@@ -54,7 +89,9 @@ Deno.test("dataOutputBody: strings pass through, JSON values serialize, anything
   assertEquals(dataOutputBody([1, 2], json, "t"), "[1,2]");
   assertEquals(dataOutputBody(null, json, "t"), "null");
   assertEquals(dataOutputBody("<r/>", xml, "t"), "<r/>");
-  for (const [v, o] of [[{ a: 1 }, xml], [undefined, json], [undefined, xml], [() => 1, json]] as const) {
+  for (
+    const [v, o] of [[{ a: 1 }, xml], [undefined, json], [undefined, xml], [() => 1, json]] as const
+  ) {
     let threw = false;
     try {
       dataOutputBody(v, o, "tpl");
@@ -71,7 +108,8 @@ Deno.test("dataOutputBody: strings pass through, JSON values serialize, anything
 const P = "/** @jsxImportSource preact */\n";
 
 const FILES: Record<string, string> = {
-  "config/site.yaml": "title: T\nurl: http://localhost:3000\ntheme:\n  name: t\nplugins:\n  - src: ./plugins/stamp.ts\n",
+  "config/site.yaml":
+    "title: T\nurl: http://localhost:3000\ntheme:\n  name: t\nplugins:\n  - src: ./plugins/stamp.ts\n",
   "themes/t/theme.yaml": "name: t\n",
   "themes/t/components/layout.tsx": P +
     `export default function L({children}: any){ return <html><head><title>T</title></head><body><header>CHROME</header>{children}</body></html>; }`,
@@ -79,13 +117,20 @@ const FILES: Record<string, string> = {
     `export default function D(props: any){ const Layout = props.Layout; return <Layout {...props}><main>{props.children}</main></Layout>; }`,
   "themes/t/templates/frag.tsx": P +
     `export const output = "fragment";\nexport default function F(){ return <section id="frag" data-dune-edit="secret"><p>1 &lt; 2 &amp; "q"</p></section>; }`,
-  "themes/t/templates/jsonout.tsx": `export const output = "json";\nexport default function J(props: any){ return { title: props.page.frontmatter.title, note: 'a "quoted" & <tag>' }; }`,
-  "themes/t/templates/xmlout.tsx": `export const output = "xml";\nexport default async function X(){ return '<?xml version="1.0"?><r>&amp; ok</r>'; }`,
-  "themes/t/templates/csvout.tsx": `export const output = "text/csv";\nexport default function C(){ return "a,b\\n1,2\\n"; }`,
-  "themes/t/templates/svgout.tsx": `export const output = "image/svg+xml";\nexport default function S(props: any){ return '<svg xmlns="http://www.w3.org/2000/svg"><text>' + props.page.frontmatter.title + '</text></svg>'; }`,
-  "themes/t/templates/textout.tsx": `export const output = "text";\nexport default function T(){ return "plain <not html> & text"; }`,
-  "themes/t/templates/badxml.tsx": `export const output = "xml";\nexport default function B(){ return { not: "a string" }; }`,
-  "themes/t/templates/badout.tsx": P + `export const output = "yaml";\nexport default function B(){ return <p id="normal">still a page</p>; }`,
+  "themes/t/templates/jsonout.tsx":
+    `export const output = "json";\nexport default function J(props: any){ return { title: props.page.frontmatter.title, note: 'a "quoted" & <tag>' }; }`,
+  "themes/t/templates/xmlout.tsx":
+    `export const output = "xml";\nexport default async function X(){ return '<?xml version="1.0"?><r>&amp; ok</r>'; }`,
+  "themes/t/templates/csvout.tsx":
+    `export const output = "text/csv";\nexport default function C(){ return "a,b\\n1,2\\n"; }`,
+  "themes/t/templates/svgout.tsx":
+    `export const output = "image/svg+xml";\nexport default function S(props: any){ return '<svg xmlns="http://www.w3.org/2000/svg"><text>' + props.page.frontmatter.title + '</text></svg>'; }`,
+  "themes/t/templates/textout.tsx":
+    `export const output = "text";\nexport default function T(){ return "plain <not html> & text"; }`,
+  "themes/t/templates/badxml.tsx":
+    `export const output = "xml";\nexport default function B(){ return { not: "a string" }; }`,
+  "themes/t/templates/badout.tsx": P +
+    `export const output = "yaml";\nexport default function B(){ return <p id="normal">still a page</p>; }`,
   // Stands in for the admin bar: a transformResponse plugin that appends to ANY response body.
   "plugins/stamp.ts": `export default { name: "stamp", version: "1.0.0", hooks: {},
     async transformResponse({ response }: { response: Response }) {
@@ -125,134 +170,179 @@ async function withApp(
 
 const opts = { sanitizeOps: false, sanitizeResources: false };
 
-Deno.test("control: a normal page is a full document and DOES get the plugin transform", opts, async () => {
-  await withApp(false, async (get) => {
-    const body = await (await get("/")).text();
-    assertStringIncludes(body, "<!DOCTYPE html>");
-    assertStringIncludes(body, "CHROME");
-    assertStringIncludes(body, "<!--TRANSFORMED-->");
-  });
-});
+Deno.test(
+  "control: a normal page is a full document and DOES get the plugin transform",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const body = await (await get("/")).text();
+      assertStringIncludes(body, "<!DOCTYPE html>");
+      assertStringIncludes(body, "CHROME");
+      assertStringIncludes(body, "<!--TRANSFORMED-->");
+    });
+  },
+);
 
-Deno.test('output = "fragment": bare HTML, no shell, no injectors, markers scrubbed', opts, async () => {
-  await withApp(false, async (get) => {
-    const res = await get("/frag/");
-    assertEquals(res.status, 200);
-    assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
-    const body = await res.text();
-    // Preact escapes text; the data-dune-edit marker is scrubbed for an anonymous visitor.
-    assertEquals(body, `<section id="frag"><p>1 &lt; 2 &amp; &quot;q&quot;</p></section>`);
-    assertEquals(body.includes("<!--TRANSFORMED-->"), false);
-  });
-});
+Deno.test(
+  'output = "fragment": bare HTML, no shell, no injectors, markers scrubbed',
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const res = await get("/frag/");
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
+      const body = await res.text();
+      // Preact escapes text; the data-dune-edit marker is scrubbed for an anonymous visitor.
+      assertEquals(body, `<section id="frag"><p>1 &lt; 2 &amp; &quot;q&quot;</p></section>`);
+      assertEquals(body.includes("<!--TRANSFORMED-->"), false);
+    });
+  },
+);
 
-Deno.test('output = "json": serialized, not HTML-escaped, right content type, no transform', opts, async () => {
-  await withApp(false, async (get) => {
-    const res = await get("/pricing.json");
-    assertEquals(res.status, 200);
-    assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8");
-    const text = await res.text();
-    assertEquals(JSON.parse(text), { title: "Pricing", note: 'a "quoted" & <tag>' });
-    assertEquals(text.includes("&quot;") || text.includes("&amp;"), false);
-  });
-});
+Deno.test(
+  'output = "json": serialized, not HTML-escaped, right content type, no transform',
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const res = await get("/pricing.json");
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8");
+      const text = await res.text();
+      assertEquals(JSON.parse(text), { title: "Pricing", note: 'a "quoted" & <tag>' });
+      assertEquals(text.includes("&quot;") || text.includes("&amp;"), false);
+    });
+  },
+);
 
-Deno.test('output = "xml" (async template) and "text" and a custom media type pass strings through untouched', opts, async () => {
-  await withApp(false, async (get) => {
-    const xml = await get("/items.xml");
-    assertEquals(xml.headers.get("content-type"), "application/xml; charset=utf-8");
-    assertEquals(await xml.text(), '<?xml version="1.0"?><r>&amp; ok</r>');
+Deno.test(
+  'output = "xml" (async template) and "text" and a custom media type pass strings through untouched',
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const xml = await get("/items.xml");
+      assertEquals(xml.headers.get("content-type"), "application/xml; charset=utf-8");
+      assertEquals(await xml.text(), '<?xml version="1.0"?><r>&amp; ok</r>');
 
-    const csv = await get("/table.csv");
-    assertEquals(csv.headers.get("content-type"), "text/csv; charset=utf-8");
-    assertEquals(await csv.text(), "a,b\n1,2\n");
+      const csv = await get("/table.csv");
+      assertEquals(csv.headers.get("content-type"), "text/csv; charset=utf-8");
+      assertEquals(await csv.text(), "a,b\n1,2\n");
 
-    const txt = await get("/note.txt");
-    assertEquals(txt.headers.get("content-type"), "text/plain; charset=utf-8");
-    assertEquals(await txt.text(), "plain <not html> & text");
-  });
-});
+      const txt = await get("/note.txt");
+      assertEquals(txt.headers.get("content-type"), "text/plain; charset=utf-8");
+      assertEquals(await txt.text(), "plain <not html> & text");
+    });
+  },
+);
 
-Deno.test("bare outputs still get the standard security headers and normal caching", opts, async () => {
-  await withApp(false, async (get) => {
-    for (const path of ["/frag/", "/pricing.json", "/items.xml"]) {
-      const res = await get(path);
-      assertEquals(res.headers.get("x-content-type-options"), "nosniff", path);
-      assertEquals(res.headers.get("x-frame-options"), "SAMEORIGIN", path);
-      const etag = res.headers.get("etag");
-      await res.body?.cancel();
-      assertEquals(typeof etag, "string", `${path} has an ETag`);
-      const again = await get(path, { headers: { "If-None-Match": etag! } });
-      assertEquals(again.status, 304, `${path} revalidates`);
-    }
-  });
-});
-
-Deno.test("a data template that returns the wrong type is a 500, not '[object Object]'", opts, async () => {
-  await withApp(false, async (get) => {
-    const res = await get("/bad.xml");
-    assertEquals(res.status, 500);
-    assertEquals((await res.text()).includes("[object Object]"), false);
-  });
-});
-
-Deno.test("an invalid output value is ignored: the page renders as a normal document", opts, async () => {
-  await withApp(false, async (get) => {
-    const body = await (await get("/badout/")).text();
-    assertStringIncludes(body, `id="normal"`);
-    assertStringIncludes(body, "<!DOCTYPE html>");
-  });
-});
-
-Deno.test("dev mode: bare outputs get no live-reload script, normal pages still do", opts, async () => {
-  await withApp(true, async (get) => {
-    assertStringIncludes(await (await get("/")).text(), "/__dune_reload");
-    for (const path of ["/frag/", "/pricing.json"]) {
-      const body = await (await get(path)).text();
-      assertEquals(body.includes("__dune_reload"), false, path);
-      assertEquals(body.includes("<!--TRANSFORMED-->"), false, path);
-    }
-  });
-});
-
-Deno.test("with the page cache on, bare outputs keep their Content-Type on every request, not just the first", opts, async () => {
-  await withApp(false, async (get) => {
-    const expected: Record<string, string> = {
-      "/pricing.json": "application/json; charset=utf-8",
-      "/items.xml": "application/xml; charset=utf-8",
-      "/note.txt": "text/plain; charset=utf-8",
-      "/table.csv": "text/csv; charset=utf-8", // a custom media type survives the hit too
-      "/frag/": "text/html; charset=utf-8",
-    };
-    for (const [path, type] of Object.entries(expected)) {
-      let firstBody: string | undefined;
-      // Request 1 fills the cache; 2 and 3 are served from it.
-      for (let i = 1; i <= 3; i++) {
+Deno.test(
+  "bare outputs still get the standard security headers and normal caching",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      for (const path of ["/frag/", "/pricing.json", "/items.xml"]) {
         const res = await get(path);
-        assertEquals(res.status, 200, `${path} #${i}`);
-        assertEquals(res.headers.get("content-type"), type, `${path} request #${i}`);
-        assertEquals(res.headers.get("x-content-type-options"), "nosniff", `${path} #${i}`);
-        const body = await res.text();
-        firstBody ??= body;
-        assertEquals(body, firstBody, `${path} #${i} body`);
+        assertEquals(res.headers.get("x-content-type-options"), "nosniff", path);
+        assertEquals(res.headers.get("x-frame-options"), "SAMEORIGIN", path);
+        const etag = res.headers.get("etag");
+        await res.body?.cancel();
+        assertEquals(typeof etag, "string", `${path} has an ETag`);
+        const again = await get(path, { headers: { "If-None-Match": etag! } });
+        assertEquals(again.status, 304, `${path} revalidates`);
       }
-    }
-  }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
-});
+    });
+  },
+);
 
-Deno.test("with the page cache on, a cached JSON body is never served as text/html (stored-XSS shape)", opts, async () => {
-  await withApp(false, async (get) => {
-    for (let i = 1; i <= 3; i++) {
-      const res = await get("/hostile.json");
-      assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8", `request #${i}`);
-      assertStringIncludes(await res.text(), "<script>alert(1)</script>");
-    }
-  }, {
-    "config/system.yaml": "page_cache:\n  enabled: true\n",
-    "themes/t/templates/hostile.tsx": `export const output = "json";\nexport default function H(){ return { note: "<script>alert(1)</script>" }; }`,
-    "content/09.hostile.md": "---\ntitle: H\ntemplate: hostile\nslug: hostile.json\n---\nx\n",
-  });
-});
+Deno.test(
+  "a data template that returns the wrong type is a 500, not '[object Object]'",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const res = await get("/bad.xml");
+      assertEquals(res.status, 500);
+      assertEquals((await res.text()).includes("[object Object]"), false);
+    });
+  },
+);
+
+Deno.test(
+  "an invalid output value is ignored: the page renders as a normal document",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const body = await (await get("/badout/")).text();
+      assertStringIncludes(body, `id="normal"`);
+      assertStringIncludes(body, "<!DOCTYPE html>");
+    });
+  },
+);
+
+Deno.test(
+  "dev mode: bare outputs get no live-reload script, normal pages still do",
+  opts,
+  async () => {
+    await withApp(true, async (get) => {
+      assertStringIncludes(await (await get("/")).text(), "/__dune_reload");
+      for (const path of ["/frag/", "/pricing.json"]) {
+        const body = await (await get(path)).text();
+        assertEquals(body.includes("__dune_reload"), false, path);
+        assertEquals(body.includes("<!--TRANSFORMED-->"), false, path);
+      }
+    });
+  },
+);
+
+Deno.test(
+  "with the page cache on, bare outputs keep their Content-Type on every request, not just the first",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const expected: Record<string, string> = {
+        "/pricing.json": "application/json; charset=utf-8",
+        "/items.xml": "application/xml; charset=utf-8",
+        "/note.txt": "text/plain; charset=utf-8",
+        "/table.csv": "text/csv; charset=utf-8", // a custom media type survives the hit too
+        "/frag/": "text/html; charset=utf-8",
+      };
+      for (const [path, type] of Object.entries(expected)) {
+        let firstBody: string | undefined;
+        // Request 1 fills the cache; 2 and 3 are served from it.
+        for (let i = 1; i <= 3; i++) {
+          const res = await get(path);
+          assertEquals(res.status, 200, `${path} #${i}`);
+          assertEquals(res.headers.get("content-type"), type, `${path} request #${i}`);
+          assertEquals(res.headers.get("x-content-type-options"), "nosniff", `${path} #${i}`);
+          const body = await res.text();
+          firstBody ??= body;
+          assertEquals(body, firstBody, `${path} #${i} body`);
+        }
+      }
+    }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
+  },
+);
+
+Deno.test(
+  "with the page cache on, a cached JSON body is never served as text/html (stored-XSS shape)",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      for (let i = 1; i <= 3; i++) {
+        const res = await get("/hostile.json");
+        assertEquals(
+          res.headers.get("content-type"),
+          "application/json; charset=utf-8",
+          `request #${i}`,
+        );
+        assertStringIncludes(await res.text(), "<script>alert(1)</script>");
+      }
+    }, {
+      "config/system.yaml": "page_cache:\n  enabled: true\n",
+      "themes/t/templates/hostile.tsx":
+        `export const output = "json";\nexport default function H(){ return { note: "<script>alert(1)</script>" }; }`,
+      "content/09.hostile.md": "---\ntitle: H\ntemplate: hostile\nslug: hostile.json\n---\nx\n",
+    });
+  },
+);
 
 // ── interplay with the media branch (HTTP Range / media-link work on main) ──
 //
@@ -263,92 +353,143 @@ Deno.test("with the page cache on, a cached JSON body is never served as text/ht
 
 const MULTILINGUAL: Record<string, string> = {
   "config/system.yaml": "languages:\n  supported: [en, de]\n  default: en\n",
-  "content/03.data.de.md": "---\ntitle: Preise\ntemplate: jsonout\nslug: pricing.json\n---\nKörper\n",
+  "content/03.data.de.md":
+    "---\ntitle: Preise\ntemplate: jsonout\nslug: pricing.json\n---\nKörper\n",
 };
 
-Deno.test("a content-backed /pricing.json reaches the template, not the media branch, with the right Content-Type", opts, async () => {
-  await withApp(false, async (get) => {
-    const res = await get("/pricing.json");
-    assertEquals(res.status, 200);
-    assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8");
-    assertEquals(JSON.parse(await res.text()).title, "Pricing");
-    // Not the media branch's answer: no Accept-Ranges, no media caching header.
-    assertEquals(res.headers.get("accept-ranges"), null);
-  });
-});
+Deno.test(
+  "a content-backed /pricing.json reaches the template, not the media branch, with the right Content-Type",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const res = await get("/pricing.json");
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("content-type"), "application/json; charset=utf-8");
+      assertEquals(JSON.parse(await res.text()).title, "Pricing");
+      // Not the media branch's answer: no Accept-Ranges, no media caching header.
+      assertEquals(res.headers.get("accept-ranges"), null);
+    });
+  },
+);
 
-Deno.test("multilingual site: /pricing.json and /de/pricing.json each serve their own template output as JSON", opts, async () => {
-  await withApp(false, async (get) => {
-    const en = await get("/pricing.json");
-    assertEquals(en.status, 200);
-    assertEquals(en.headers.get("content-type"), "application/json; charset=utf-8");
-    assertEquals(JSON.parse(await en.text()).title, "Pricing");
+Deno.test(
+  "multilingual site: /pricing.json and /de/pricing.json each serve their own template output as JSON",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const en = await get("/pricing.json");
+      assertEquals(en.status, 200);
+      assertEquals(en.headers.get("content-type"), "application/json; charset=utf-8");
+      assertEquals(JSON.parse(await en.text()).title, "Pricing");
 
-    const de = await get("/de/pricing.json");
-    assertEquals(de.status, 200, "the language-prefixed path must fall through the media branch too");
-    assertEquals(de.headers.get("content-type"), "application/json; charset=utf-8");
-    assertEquals(JSON.parse(await de.text()).title, "Preise");
-  }, MULTILINGUAL);
-});
+      const de = await get("/de/pricing.json");
+      assertEquals(
+        de.status,
+        200,
+        "the language-prefixed path must fall through the media branch too",
+      );
+      assertEquals(de.headers.get("content-type"), "application/json; charset=utf-8");
+      assertEquals(JSON.parse(await de.text()).title, "Preise");
+    }, MULTILINGUAL);
+  },
+);
 
-Deno.test("a real co-located .json file in a page folder is still served as media (Range-capable), not as a page", opts, async () => {
-  await withApp(false, async (get) => {
-    const res = await get("/docs/data.json");
-    assertEquals(res.status, 200);
-    assertEquals(await res.text(), '{"colocated":true}');
-    assertEquals(res.headers.get("accept-ranges"), "bytes");
-  }, {
-    "content/09.docs/default.md": "---\ntitle: Docs\n---\nhi\n",
-    "content/09.docs/data.json": '{"colocated":true}',
-  });
-});
+Deno.test(
+  "a real co-located .json file in a page folder is still served as media (Range-capable), not as a page",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const res = await get("/docs/data.json");
+      assertEquals(res.status, 200);
+      assertEquals(await res.text(), '{"colocated":true}');
+      assertEquals(res.headers.get("accept-ranges"), "bytes");
+    }, {
+      "content/09.docs/default.md": "---\ntitle: Docs\n---\nhi\n",
+      "content/09.docs/data.json": '{"colocated":true}',
+    });
+  },
+);
 
-Deno.test("a path that looks like media but matches neither a file nor a page is a plain 404", opts, async () => {
-  await withApp(false, async (get) => {
-    assertEquals((await get("/nothing.json")).status, 404);
-    assertEquals((await get("/de/nothing.json")).status, 404);
-  }, MULTILINGUAL);
-});
-
+Deno.test(
+  "a path that looks like media but matches neither a file nor a page is a plain 404",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      assertEquals((await get("/nothing.json")).status, 404);
+      assertEquals((await get("/de/nothing.json")).status, 404);
+    }, MULTILINGUAL);
+  },
+);
 
 // ── image/svg+xml output is sandboxed like uploaded SVG media ────────────────
 
 Deno.test("outputSecurityHeaders: only image/svg+xml gets the sandbox, whatever the case or parameters", () => {
-  const sandbox = { "Content-Security-Policy": "sandbox allow-scripts allow-popups", "X-Frame-Options": "SAMEORIGIN" };
+  const sandbox = {
+    "Content-Security-Policy": "sandbox allow-scripts allow-popups",
+    "X-Frame-Options": "SAMEORIGIN",
+  };
   assertEquals(outputSecurityHeaders("image/svg+xml"), sandbox);
   assertEquals(outputSecurityHeaders("image/svg+xml; charset=utf-8"), sandbox);
   assertEquals(outputSecurityHeaders("IMAGE/SVG+XML"), sandbox);
-  for (const t of ["text/html; charset=utf-8", "application/json; charset=utf-8", "application/xml; charset=utf-8", "text/plain; charset=utf-8", "text/javascript; charset=utf-8", "image/png"]) {
+  for (
+    const t of [
+      "text/html; charset=utf-8",
+      "application/json; charset=utf-8",
+      "application/xml; charset=utf-8",
+      "text/plain; charset=utf-8",
+      "text/javascript; charset=utf-8",
+      "image/png",
+    ]
+  ) {
     assertEquals(outputSecurityHeaders(t), {}, t);
   }
 });
 
-Deno.test("an image/svg+xml output is served with the sandbox CSP; fragments, JSON and XML are not", opts, async () => {
-  await withApp(false, async (get) => {
-    const svg = await get("/badge.svg");
-    assertEquals(svg.status, 200);
-    assertEquals(svg.headers.get("content-type"), "image/svg+xml; charset=utf-8");
-    assertEquals(svg.headers.get("content-security-policy"), "sandbox allow-scripts allow-popups");
-    assertEquals(svg.headers.get("x-frame-options"), "SAMEORIGIN");
-    assertEquals(svg.headers.get("x-content-type-options"), "nosniff");
-    assertStringIncludes(await svg.text(), "<svg");
-    for (const path of ["/frag/", "/pricing.json", "/items.xml", "/note.txt"]) {
-      const res = await get(path);
-      assertEquals(res.headers.get("content-security-policy"), null, `${path} must stay unsandboxed`);
-      await res.body?.cancel();
-    }
-  });
-});
+Deno.test(
+  "an image/svg+xml output is served with the sandbox CSP; fragments, JSON and XML are not",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      const svg = await get("/badge.svg");
+      assertEquals(svg.status, 200);
+      assertEquals(svg.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+      assertEquals(
+        svg.headers.get("content-security-policy"),
+        "sandbox allow-scripts allow-popups",
+      );
+      assertEquals(svg.headers.get("x-frame-options"), "SAMEORIGIN");
+      assertEquals(svg.headers.get("x-content-type-options"), "nosniff");
+      assertStringIncludes(await svg.text(), "<svg");
+      for (const path of ["/frag/", "/pricing.json", "/items.xml", "/note.txt"]) {
+        const res = await get(path);
+        assertEquals(
+          res.headers.get("content-security-policy"),
+          null,
+          `${path} must stay unsandboxed`,
+        );
+        await res.body?.cancel();
+      }
+    });
+  },
+);
 
-Deno.test("with the page cache on, an SVG output keeps its sandbox on every request, not just the first", opts, async () => {
-  await withApp(false, async (get) => {
-    for (let i = 1; i <= 3; i++) {
-      const res = await get("/badge.svg");
-      assertEquals(res.status, 200, `#${i}`);
-      assertEquals(res.headers.get("content-type"), "image/svg+xml; charset=utf-8", `#${i}`);
-      assertEquals(res.headers.get("content-security-policy"), "sandbox allow-scripts allow-popups", `request #${i} (#1 fills the cache, 2 and 3 are hits)`);
-      assertEquals(res.headers.get("x-frame-options"), "SAMEORIGIN", `#${i}`);
-      await res.body?.cancel();
-    }
-  }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
-});
+Deno.test(
+  "with the page cache on, an SVG output keeps its sandbox on every request, not just the first",
+  opts,
+  async () => {
+    await withApp(false, async (get) => {
+      for (let i = 1; i <= 3; i++) {
+        const res = await get("/badge.svg");
+        assertEquals(res.status, 200, `#${i}`);
+        assertEquals(res.headers.get("content-type"), "image/svg+xml; charset=utf-8", `#${i}`);
+        assertEquals(
+          res.headers.get("content-security-policy"),
+          "sandbox allow-scripts allow-popups",
+          `request #${i} (#1 fills the cache, 2 and 3 are hits)`,
+        );
+        assertEquals(res.headers.get("x-frame-options"), "SAMEORIGIN", `#${i}`);
+        await res.body?.cancel();
+      }
+    }, { "config/system.yaml": "page_cache:\n  enabled: true\n" });
+  },
+);

@@ -161,4 +161,3 @@ export function createImageCache(config: ImageCacheConfig): ImageCache {
 
   return { buildKey, get, set, clear, has };
 }
-

@@ -3,7 +3,11 @@
  * added in the v0.17 audit (F3).
  */
 
-import { assertEquals, assertNotEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertMatch,
+  assertNotEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { computeEtag, etagMatches } from "../../src/cache/etag.ts";
 import type { PageIndex } from "../../src/content/types.ts";
 

@@ -18,10 +18,7 @@
  * elsewhere (tests/runtime/server_test.ts).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import { createDuneApp } from "../../src/runtime/server.ts";

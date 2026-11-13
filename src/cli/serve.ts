@@ -24,12 +24,12 @@ import { Builder } from "jsr:@fresh/core@^2/dev";
 import { logger } from "../core/logger.ts";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
-import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
+import { collectContentIslands, collectThemeIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier } from "../plugins/loader.ts";
 import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
 import { startScheduledActions } from "./serve-utils.ts";
-import { scanJobs, JobScheduler, warnIfMultiprocess } from "../jobs/mod.ts";
+import { JobScheduler, scanJobs, warnIfMultiprocess } from "../jobs/mod.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { createEmailClient, createEmailProvider } from "../email/mod.ts";
 import { checkLockfileStaleness } from "./lockfile.ts";
@@ -62,7 +62,7 @@ export interface ServeOptions {
  */
 function registerSignalHandlers(onShutdown: (signal: string) => void): () => void {
   const sigterm = () => onShutdown("SIGTERM");
-  const sigint  = () => onShutdown("SIGINT");
+  const sigint = () => onShutdown("SIGINT");
 
   Deno.addSignalListener("SIGTERM", sigterm);
   try {
@@ -72,8 +72,12 @@ function registerSignalHandlers(onShutdown: (signal: string) => void): () => voi
   }
 
   return () => {
-    try { Deno.removeSignalListener("SIGTERM", sigterm); } catch { /* ok */ }
-    try { Deno.removeSignalListener("SIGINT",  sigint);  } catch { /* ok */ }
+    try {
+      Deno.removeSignalListener("SIGTERM", sigterm);
+    } catch { /* ok */ }
+    try {
+      Deno.removeSignalListener("SIGINT", sigint);
+    } catch { /* ok */ }
   };
 }
 
@@ -139,7 +143,7 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     if (frozen) {
       console.error(
         `  ✗ deno.lock is incomplete for the current deno.json.\n` +
-        `    Run \`dune lockfile:sync\` and commit the result before deploying.`,
+          `    Run \`dune lockfile:sync\` and commit the result before deploying.`,
       );
       Deno.exit(1);
     }
@@ -158,7 +162,10 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   // The stat() is isolated in its own try/catch so that any error thrown during
   // multi-site initialisation is NOT silently caught and treated as "not multi-site".
   let isMultisite = false;
-  try { await Deno.stat(join(root, "config", "sites.yaml")); isMultisite = true; } catch { /* ok */ }
+  try {
+    await Deno.stat(join(root, "config", "sites.yaml"));
+    isMultisite = true;
+  } catch { /* ok */ }
 
   if (isMultisite) {
     console.log("🏜️  Dune — starting multi-site production server...\n");
@@ -166,7 +173,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
     const manager = new MultisiteManager();
     await manager.init(root, { port, debug, dev: false });
     instance = await registerInstance({
-      mode: "serve", root, title: null, port, version: CORE_VERSION,
+      mode: "serve",
+      root,
+      title: null,
+      port,
+      version: CORE_VERSION,
     });
     console.log(`  🌐 http://localhost:${port} (${manager.siteCount()} sites)\n`);
 
@@ -218,7 +229,11 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   const ctx = await bootstrap(root, { debug, buildSearch: true });
   const { engine, config, pluginPublicRoutes, storage, hooks } = ctx;
   instance = await registerInstance({
-    mode: "serve", root, title: config.site.title ?? null, port, version: CORE_VERSION,
+    mode: "serve",
+    root,
+    title: config.site.title ?? null,
+    port,
+    version: CORE_VERSION,
   });
 
   // Expose the configured runtimeDir to ConsoleEmailProvider so its dev-email
@@ -245,7 +260,8 @@ export async function serveCommand(root: string, options: ServeOptions = {}) {
   };
   const emailCfg = (config as { site?: { email?: Record<string, unknown> } }).site?.email ?? {};
   const emailProvider = createEmailProvider(emailCfg as Parameters<typeof createEmailProvider>[0]);
-  const emailFrom = (emailCfg as { from?: string }).from ?? `noreply@${new URL(config.site.url).hostname}`;
+  const emailFrom = (emailCfg as { from?: string }).from ??
+    `noreply@${new URL(config.site.url).hostname}`;
   const emailClient = createEmailClient({ provider: emailProvider, from: emailFrom, storage });
 
   const jobContext = {

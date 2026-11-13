@@ -1,5 +1,9 @@
-import { assertEquals, assertExists, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildIndex, updateIndex, detectHomeSlug } from "../../src/content/index-builder.ts";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { buildIndex, detectHomeSlug, updateIndex } from "../../src/content/index-builder.ts";
 import { FormatRegistry } from "../../src/content/formats/registry.ts";
 import type { StorageAdapter, StorageEntry, StorageStat } from "../../src/storage/types.ts";
 import type { PageFrontmatter } from "../../src/content/types.ts";
@@ -67,7 +71,9 @@ function makeFailingStorage(): StorageAdapter {
 }
 
 /** A format registry with a simple Markdown handler */
-function makeFormats(frontmatterMap: Map<string, Partial<PageFrontmatter>> = new Map()): FormatRegistry {
+function makeFormats(
+  frontmatterMap: Map<string, Partial<PageFrontmatter>> = new Map(),
+): FormatRegistry {
   const registry = new FormatRegistry();
   registry.register({
     extensions: [".md"],
@@ -189,7 +195,12 @@ Deno.test("buildIndex: media files are skipped (png, jpg, etc)", async () => {
   const storage: StorageAdapter = {
     listRecursive: () =>
       Promise.resolve([
-        { name: "default.md", path: "content/01.home/default.md", isFile: true, isDirectory: false },
+        {
+          name: "default.md",
+          path: "content/01.home/default.md",
+          isFile: true,
+          isDirectory: false,
+        },
         { name: "photo.png", path: "content/01.home/photo.png", isFile: true, isDirectory: false },
         { name: "hero.jpg", path: "content/01.home/hero.jpg", isFile: true, isDirectory: false },
       ]),
@@ -206,7 +217,12 @@ Deno.test("buildIndex: files in _drafts folders are skipped", async () => {
   const storage: StorageAdapter = {
     listRecursive: () =>
       Promise.resolve([
-        { name: "default.md", path: "content/01.home/default.md", isFile: true, isDirectory: false },
+        {
+          name: "default.md",
+          path: "content/01.home/default.md",
+          isFile: true,
+          isDirectory: false,
+        },
         { name: "draft.md", path: "content/_drafts/draft.md", isFile: true, isDirectory: false },
       ]),
     stat: () => Promise.resolve({ size: 100, mtime: 1000, isFile: true, isDirectory: false }),
@@ -223,7 +239,12 @@ Deno.test("buildIndex: valid content extension with no handler adds error and sk
   const storage: StorageAdapter = {
     listRecursive: () =>
       Promise.resolve([
-        { name: "default.mdx", path: "content/01.test/default.mdx", isFile: true, isDirectory: false },
+        {
+          name: "default.mdx",
+          path: "content/01.test/default.mdx",
+          isFile: true,
+          isDirectory: false,
+        },
       ]),
     stat: () => Promise.resolve({ size: 100, mtime: 1000, isFile: true, isDirectory: false }),
     readText: () => Promise.resolve(""),
@@ -243,35 +264,55 @@ Deno.test("buildIndex: valid content extension with no handler adds error and sk
 Deno.test("buildIndex: published=false is preserved on PageIndex", async () => {
   const file = fakeFile("01.hidden", { published: false });
   const fm = new Map([["content/01.hidden/default.md", { title: "Hidden", published: false }]]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertEquals(result.pages[0].published, false);
 });
 
 Deno.test("buildIndex: roles frontmatter sets gated=true on PageIndex", async () => {
   const file = fakeFile("01.members", { roles: "member" });
   const fm = new Map([["content/01.members/default.md", { title: "Members", roles: "member" }]]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertEquals(result.pages[0].gated, true);
 });
 
 Deno.test("buildIndex: page without roles is not gated", async () => {
   const file = fakeFile("01.public", {});
   const fm = new Map([["content/01.public/default.md", { title: "Public" }]]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertEquals(result.pages[0].gated, false);
 });
 
 Deno.test("buildIndex: nav_title falls back to title when absent", async () => {
   const file = fakeFile("01.home", { title: "Home Page" });
   const fm = new Map([["content/01.home/default.md", { title: "Home Page" }]]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertEquals(result.pages[0].navTitle, "Home Page");
 });
 
 Deno.test("buildIndex: nav_title overrides title when present", async () => {
   const file = fakeFile("01.home", { title: "Home Page", nav_title: "Home" });
   const fm = new Map([["content/01.home/default.md", { title: "Home Page", nav_title: "Home" }]]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertEquals(result.pages[0].navTitle, "Home");
 });
 
@@ -280,7 +321,11 @@ Deno.test("buildIndex: taxonomy is indexed in taxonomyMap", async () => {
   const fm = new Map([
     ["content/01.post/default.md", { title: "Post", taxonomy: { tag: ["deno", "typescript"] } }],
   ]);
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats(fm) });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(fm),
+  });
   assertExists(result.taxonomyMap.tag);
   assertExists(result.taxonomyMap.tag["deno"]);
   assertEquals(result.taxonomyMap.tag["deno"].includes("01.post/default.md"), true);
@@ -311,7 +356,11 @@ Deno.test("buildIndex: status field inferred from published when absent", async 
 
 Deno.test("buildIndex: top-level page has depth 0", async () => {
   const file = fakeFile("01.home");
-  const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats: makeFormats() });
+  const result = await buildIndex({
+    storage: makeStorage([file]),
+    contentDir: "content",
+    formats: makeFormats(),
+  });
   assertEquals(result.pages[0].depth, 0);
 });
 
@@ -319,7 +368,12 @@ Deno.test("buildIndex: nested page has correct depth", async () => {
   const storage: StorageAdapter = {
     listRecursive: () =>
       Promise.resolve([
-        { name: "default.md", path: "content/01.blog/01.post/default.md", isFile: true, isDirectory: false },
+        {
+          name: "default.md",
+          path: "content/01.blog/01.post/default.md",
+          isFile: true,
+          isDirectory: false,
+        },
       ]),
     stat: () => Promise.resolve({ size: 100, mtime: 1000, isFile: true, isDirectory: false }),
     readText: () => Promise.resolve("---\ntitle: Post\n---\n"),
@@ -347,7 +401,11 @@ Deno.test("buildIndex: homeSlug uses siteHome config when provided", async () =>
 
 Deno.test("buildIndex: homeSlug auto-detects first ordered top-level page", async () => {
   const files = [fakeFile("01.home"), fakeFile("02.about")];
-  const result = await buildIndex({ storage: makeStorage(files), contentDir: "content", formats: makeFormats() });
+  const result = await buildIndex({
+    storage: makeStorage(files),
+    contentDir: "content",
+    formats: makeFormats(),
+  });
   assertEquals(result.homeSlug, "home");
 });
 
@@ -393,7 +451,12 @@ Deno.test("updateIndex: unchanged file (same mtime) reuses existing entry", asyn
   const callCount = { readText: 0 };
   const storage: StorageAdapter = {
     listRecursive: () =>
-      Promise.resolve([{ name: "default.md", path: "content/01.home/default.md", isFile: true, isDirectory: false }]),
+      Promise.resolve([{
+        name: "default.md",
+        path: "content/01.home/default.md",
+        isFile: true,
+        isDirectory: false,
+      }]),
     stat: () => Promise.resolve({ size: 100, mtime: 1000, isFile: true, isDirectory: false }),
     readText: () => {
       callCount.readText++;
@@ -426,7 +489,12 @@ Deno.test("updateIndex: changed file (different mtime) gets reindexed", async ()
   const updatedFm = new Map([["content/01.home/default.md", { title: "New Title" }]]);
   const storage: StorageAdapter = {
     listRecursive: () =>
-      Promise.resolve([{ name: "default.md", path: "content/01.home/default.md", isFile: true, isDirectory: false }]),
+      Promise.resolve([{
+        name: "default.md",
+        path: "content/01.home/default.md",
+        isFile: true,
+        isDirectory: false,
+      }]),
     stat: () => Promise.resolve({ size: 100, mtime: 2000, isFile: true, isDirectory: false }), // different mtime
     readText: () => Promise.resolve("---\ntitle: New Title\n---\n"),
   } as unknown as StorageAdapter;
@@ -452,7 +520,12 @@ Deno.test("updateIndex: deleted file is removed from result", async () => {
   // Only home remains in directory listing
   const storage: StorageAdapter = {
     listRecursive: () =>
-      Promise.resolve([{ name: "default.md", path: "content/01.home/default.md", isFile: true, isDirectory: false }]),
+      Promise.resolve([{
+        name: "default.md",
+        path: "content/01.home/default.md",
+        isFile: true,
+        isDirectory: false,
+      }]),
     stat: () => Promise.resolve({ size: 100, mtime: 1000, isFile: true, isDirectory: false }),
     readText: () => Promise.resolve("---\ntitle: Home\n---\n"),
   } as unknown as StorageAdapter;
@@ -475,7 +548,9 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
   const fm = new Map<string, Partial<PageFrontmatter>>([
     ["content/01.plain/default.md", { dateModified: "2024-03-05" }],
     ["content/02.datetime/default.md", { dateModified: "2024-03-05T10:00:00Z" }],
-    ["content/03.date-object/default.md", { dateModified: new Date("2024-03-05") as unknown as string }],
+    ["content/03.date-object/default.md", {
+      dateModified: new Date("2024-03-05") as unknown as string,
+    }],
     ["content/04.invalid/default.md", { dateModified: "soon" }],
     ["content/05.absent/default.md", {}],
     ["content/06.feb31/default.md", { dateModified: "2024-02-31" }],
@@ -484,7 +559,16 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
   ]);
   const result = await buildIndex({
     storage: makeStorage(
-      ["01.plain", "02.datetime", "03.date-object", "04.invalid", "05.absent", "06.feb31", "07.nonleap", "08.leap"].map((s) => fakeFile(s)),
+      [
+        "01.plain",
+        "02.datetime",
+        "03.date-object",
+        "04.invalid",
+        "05.absent",
+        "06.feb31",
+        "07.nonleap",
+        "08.leap",
+      ].map((s) => fakeFile(s)),
     ),
     contentDir: "content",
     formats: makeFormats(fm),
@@ -508,7 +592,12 @@ Deno.test("buildIndex: dateModified is normalised to YYYY-MM-DD and ignored when
 
 async function indexWith(fm: Record<string, unknown>) {
   const file = fakeFile("01.timed", fm as Partial<PageFrontmatter>);
-  const formats = makeFormats(new Map([["content/01.timed/default.md", { title: "Timed", ...fm } as Partial<PageFrontmatter>]]));
+  const formats = makeFormats(
+    new Map([[
+      "content/01.timed/default.md",
+      { title: "Timed", ...fm } as Partial<PageFrontmatter>,
+    ]]),
+  );
   const result = await buildIndex({ storage: makeStorage([file]), contentDir: "content", formats });
   return result.pages[0];
 }
@@ -550,11 +639,20 @@ Deno.test("buildIndex: an invalid date is ignored, not fatal", async () => {
 Deno.test("updateIndex: a page with a publish window is re-evaluated even when its mtime is unchanged", async () => {
   const file = fakeFile("01.timed", {});
   const soon = Date.now() + 200;
-  const formats = makeFormats(new Map([["content/01.timed/default.md", { title: "Timed", publish_date: new Date(soon).toISOString() } as Partial<PageFrontmatter>]]));
+  const formats = makeFormats(
+    new Map([[
+      "content/01.timed/default.md",
+      { title: "Timed", publish_date: new Date(soon).toISOString() } as Partial<PageFrontmatter>,
+    ]]),
+  );
   const storage = makeStorage([file]);
   const first = await buildIndex({ storage, contentDir: "content", formats });
   assertEquals(first.pages[0].published, false);
   await new Promise((r) => setTimeout(r, 300));
-  const second = await updateIndex(first.pages, first.taxonomyMap, { storage, contentDir: "content", formats });
+  const second = await updateIndex(first.pages, first.taxonomyMap, {
+    storage,
+    contentDir: "content",
+    formats,
+  });
   assertEquals(second.pages[0].published, true);
 });

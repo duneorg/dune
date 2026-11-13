@@ -29,7 +29,7 @@ async function withTempSite(
   try {
     await fn(root);
   } finally {
-    for (let attempt = 0; ; attempt++) {
+    for (let attempt = 0;; attempt++) {
       try {
         await Deno.remove(root, { recursive: true });
         break;
@@ -135,7 +135,10 @@ Deno.test(
     await withTempSite(async (root) => {
       await hybridSite(root);
       const ctx = await bootstrap(root, {});
-      ctx.capabilityRegistry.registrar("test-admin").provide("admin.prefix", () => ({ prefix: "/cms" }));
+      ctx.capabilityRegistry.registrar("test-admin").provide(
+        "admin.prefix",
+        () => ({ prefix: "/cms" }),
+      );
       await buildStatic(root, ctx, { ...ssgOpts, hybrid: true });
 
       const routes = JSON.parse(await Deno.readTextFile(join(root, "dist", "_routes.json")));

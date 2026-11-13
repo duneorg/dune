@@ -53,7 +53,9 @@ Deno.test("notifier: webhook override replaces the URL but keeps the secret", as
 
 Deno.test("notifier: a failing channel never throws to the submitter", async () => {
   const config = structuredClone(DEFAULT_CONFIG) as unknown as DuneConfig;
-  config.site.forms = { notifications: { email: { to: "a@b.c" }, webhook: { url: "https://a.example/h" } } };
+  config.site.forms = {
+    notifications: { email: { to: "a@b.c" }, webhook: { url: "https://a.example/h" } },
+  };
   const notifier = createSubmissionNotifier(config, resolveFormsConfig(config), {
     emailProvider: { send: () => Promise.reject(new Error("smtp down")) },
     sendWebhook: () => Promise.reject(new Error("502")),

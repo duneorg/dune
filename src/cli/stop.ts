@@ -21,7 +21,13 @@
  * @module
  */
 
-import { type DuneInstance, findDuneInstances, MissingPermissionError, readProcessTable, runCommand } from "./instances.ts";
+import {
+  type DuneInstance,
+  findDuneInstances,
+  MissingPermissionError,
+  readProcessTable,
+  runCommand,
+} from "./instances.ts";
 import { formatInstance } from "./ps.ts";
 
 // ── Signalling ───────────────────────────────────────────────────────────────
@@ -60,7 +66,9 @@ async function alivePids(pids: number[]): Promise<number[]> {
   if (pids.length === 0) return [];
   const out = await runCommand("ps", ["-o", "pid=", "-p", pids.join(",")]);
   if (!out) return [];
-  const alive = new Set(out.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)));
+  const alive = new Set(
+    out.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)),
+  );
   return pids.filter((p) => alive.has(p));
 }
 
@@ -131,19 +139,29 @@ export async function stopInstances(
   const toSignal = targets.filter((p) => !protectedPids.has(p));
   const expected = new Map<number, string | undefined>();
   for (const inst of instances) for (const p of inst.pids) expected.set(p, inst.startTimes[p]);
-  const sink = { changed: new Set<number>(), denied: new Set<number>(), needsPermission: new Set<number>() };
+  const sink = {
+    changed: new Set<number>(),
+    denied: new Set<number>(),
+    needsPermission: new Set<number>(),
+  };
 
   await signalVerified(toSignal, expected, "SIGTERM", sink);
-  const signalled = toSignal.filter((p) => !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p));
+  const signalled = toSignal.filter((p) =>
+    !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p)
+  );
   const afterTerm = await waitUntilGone(signalled, timeoutMs);
 
   let survivors = afterTerm;
   let killed: number[] = [];
   if (opts.force && afterTerm.length > 0) {
     await signalVerified(afterTerm, expected, "SIGKILL", sink);
-    const sent = afterTerm.filter((p) => !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p));
+    const sent = afterTerm.filter((p) =>
+      !sink.changed.has(p) && !sink.denied.has(p) && !sink.needsPermission.has(p)
+    );
     const left = await waitUntilGone(sent, killTimeoutMs);
-    survivors = afterTerm.filter((p) => left.includes(p) || sink.denied.has(p) || sink.needsPermission.has(p));
+    survivors = afterTerm.filter((p) =>
+      left.includes(p) || sink.denied.has(p) || sink.needsPermission.has(p)
+    );
     killed = sent.filter((p) => !left.includes(p));
   }
   const gone = new Set(signalled.filter((p) => !survivors.includes(p)));
@@ -209,16 +227,23 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** Pure: pick the instances `opts` asks for out of `all`, or explain why none. */
 export function selectInstances(all: DuneInstance[], opts: StopOptions): Selection {
-  const chosen = [opts.pid !== undefined, opts.port !== undefined, opts.idle === true, opts.all === true]
-    .filter(Boolean).length;
+  const chosen =
+    [opts.pid !== undefined, opts.port !== undefined, opts.idle === true, opts.all === true]
+      .filter(Boolean).length;
   if (chosen === 0) return { ok: false, message: STOP_USAGE, exitCode: 2 };
   if (chosen > 1) {
-    return { ok: false, message: `Choose one target: a pid, --port, --idle or --all.\n\n${STOP_USAGE}`, exitCode: 2 };
+    return {
+      ok: false,
+      message: `Choose one target: a pid, --port, --idle or --all.\n\n${STOP_USAGE}`,
+      exitCode: 2,
+    };
   }
 
   const unconfirmedNote = (found: DuneInstance[]): string[] =>
     found.some((i) => !i.confirmed)
-      ? ["Not confirmed as a dune site: no config/site.yaml was found for it. It matches dune by its command line only."]
+      ? [
+        "Not confirmed as a dune site: no config/site.yaml was found for it. It matches dune by its command line only.",
+      ]
       : [];
 
   if (opts.pid !== undefined) {
@@ -226,7 +251,11 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
     if (typeof pid === "string") return { ok: false, message: pid, exitCode: 2 };
     const found = all.filter((i) => i.pids.includes(pid));
     if (found.length === 0) {
-      return { ok: false, message: `No dune instance of yours has a process with pid ${pid}. \`dune ps\` lists them.`, exitCode: 1 };
+      return {
+        ok: false,
+        message: `No dune instance of yours has a process with pid ${pid}. \`dune ps\` lists them.`,
+        exitCode: 1,
+      };
     }
     return { ok: true, instances: found, label: "", notes: unconfirmedNote(found) };
   }
@@ -236,7 +265,11 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
     if (typeof port === "string") return { ok: false, message: port, exitCode: 2 };
     const found = all.filter((i) => i.ports.includes(port));
     if (found.length === 0) {
-      return { ok: false, message: `No dune instance of yours is listening on port ${port}. \`dune ps\` lists them.`, exitCode: 1 };
+      return {
+        ok: false,
+        message: `No dune instance of yours is listening on port ${port}. \`dune ps\` lists them.`,
+        exitCode: 1,
+      };
     }
     return { ok: true, instances: found, label: "", notes: unconfirmedNote(found) };
   }
@@ -247,26 +280,39 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
   const skippedUnconfirmed = all.length - confirmed.length;
   if (skippedUnconfirmed > 0) {
     notes.push(
-      `${plural(skippedUnconfirmed, "process that only looks", "processes that only look")} like dune by its command line ` +
-        `(no config/site.yaml found) ${skippedUnconfirmed === 1 ? "was" : "were"} left out; stop ${skippedUnconfirmed === 1 ? "it" : "them"} by pid if intended.`,
+      `${
+        plural(skippedUnconfirmed, "process that only looks", "processes that only look")
+      } like dune by its command line ` +
+        `(no config/site.yaml found) ${skippedUnconfirmed === 1 ? "was" : "were"} left out; stop ${
+          skippedUnconfirmed === 1 ? "it" : "them"
+        } by pid if intended.`,
     );
   }
 
   if (opts.idle) {
-    const notServing = confirmed.filter((i) => i.portStatus === "not-listening" || i.responsive === "not-responding");
-    const mature = notServing.filter((i) => i.ageSeconds === null || i.ageSeconds >= IDLE_MIN_AGE_SECONDS);
+    const notServing = confirmed.filter((i) =>
+      i.portStatus === "not-listening" || i.responsive === "not-responding"
+    );
+    const mature = notServing.filter((i) =>
+      i.ageSeconds === null || i.ageSeconds >= IDLE_MIN_AGE_SECONDS
+    );
     const young = notServing.length - mature.length;
     if (young > 0) {
       notes.push(
-        `${plural(young, "instance", "instances")} not serving yet ${young === 1 ? "was" : "were"} left out because ` +
-          `${young === 1 ? "it is" : "they are"} under ${IDLE_MIN_AGE_SECONDS / 60} minutes old and may still be starting.`,
+        `${plural(young, "instance", "instances")} not serving yet ${
+          young === 1 ? "was" : "were"
+        } left out because ` +
+          `${young === 1 ? "it is" : "they are"} under ${
+            IDLE_MIN_AGE_SECONDS / 60
+          } minutes old and may still be starting.`,
       );
     }
     const unknown = confirmed.filter((i) => i.portStatus === "unknown").length;
     if (mature.length === 0 && unknown > 0) {
       return {
         ok: false,
-        message: "Can't tell which instances are idle: `lsof` isn't available, so no instance can be shown as not listening.",
+        message:
+          "Can't tell which instances are idle: `lsof` isn't available, so no instance can be shown as not listening.",
         exitCode: 1,
       };
     }
@@ -274,7 +320,13 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
       const why = [...notes].map((n) => `\n  ${n}`).join("");
       return {
         ok: false,
-        message: `No idle instances: ${confirmed.length === 0 ? "none of the running instances is a confirmed dune site" : `all ${confirmed.length} confirmed running instance${confirmed.length === 1 ? " is" : "s are"} listening and responding`}.${why}`,
+        message: `No idle instances: ${
+          confirmed.length === 0
+            ? "none of the running instances is a confirmed dune site"
+            : `all ${confirmed.length} confirmed running instance${
+              confirmed.length === 1 ? " is" : "s are"
+            } listening and responding`
+        }.${why}`,
         exitCode: 0,
       };
     }
@@ -284,7 +336,9 @@ export function selectInstances(all: DuneInstance[], opts: StopOptions): Selecti
   if (confirmed.length === 0) {
     return {
       ok: false,
-      message: `None of the running instances is a confirmed dune site.${notes.map((n) => `\n  ${n}`).join("")}`,
+      message: `None of the running instances is a confirmed dune site.${
+        notes.map((n) => `\n  ${n}`).join("")
+      }`,
       exitCode: 0,
     };
   }
@@ -344,16 +398,22 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
 
   const { instances, label, notes } = selection;
   log("");
-  for (const inst of instances) for (const line of formatInstance(inst, { fullCommand: true })) log(line);
+  for (const inst of instances) {
+    for (const line of formatInstance(inst, { fullCommand: true })) log(line);
+  }
   for (const note of notes) log(`  Note: ${note}`);
   if (notes.length > 0) log("");
 
   const procCount = new Set(instances.flatMap((i) => i.pids)).size;
-  const question = `Stop ${instances.length} ${label}instance${instances.length === 1 ? "" : "s"} (${procCount} process${procCount === 1 ? "" : "es"})?`;
+  const question = `Stop ${instances.length} ${label}instance${
+    instances.length === 1 ? "" : "s"
+  } (${procCount} process${procCount === 1 ? "" : "es"})?`;
   if (!opts.yes) {
     const interactive = (deps.isInteractive ?? (() => Deno.stdin.isTerminal()))();
     if (!interactive) {
-      log(`  Not stopping: ${question} needs confirmation, and this isn't a terminal. Re-run with --yes.`);
+      log(
+        `  Not stopping: ${question} needs confirmation, and this isn't a terminal. Re-run with --yes.`,
+      );
       Deno.exitCode = 1;
       return;
     }
@@ -370,24 +430,40 @@ export async function stopCommand(opts: StopOptions = {}, deps: StopDeps = {}): 
     log(`  Left alone (this command's own process and its parents): ${result.skipped.join(", ")}`);
   }
   if (result.changed.length > 0) {
-    log(`  Not signalled (already exited, or the pid now belongs to a different process): ${result.changed.join(", ")}`);
+    log(
+      `  Not signalled (already exited, or the pid now belongs to a different process): ${
+        result.changed.join(", ")
+      }`,
+    );
   }
   if (result.denied.length > 0) {
     log(`  Not permitted (owned by another user): ${result.denied.join(", ")}`);
     Deno.exitCode = 1;
   }
   if (result.needsPermission.length > 0) {
-    log(`  Not allowed by Deno's permissions (re-run with --allow-run, or -A): ${result.needsPermission.join(", ")}`);
+    log(
+      `  Not allowed by Deno's permissions (re-run with --allow-run, or -A): ${
+        result.needsPermission.join(", ")
+      }`,
+    );
     Deno.exitCode = 1;
   }
   if (result.killed.length > 0) {
-    log(`  ${result.killed.length} did not exit on SIGTERM and were killed (SIGKILL): ${result.killed.join(", ")}`);
+    log(
+      `  ${result.killed.length} did not exit on SIGTERM and were killed (SIGKILL): ${
+        result.killed.join(", ")
+      }`,
+    );
   }
   if (result.survivors.length > 0) {
     if (opts.force) {
       log(`  Could not stop (still running even after SIGKILL): ${result.survivors.join(", ")}`);
     } else {
-      log(`  Still running (ignored SIGTERM): ${result.survivors.join(", ")}\n  Re-run with --force to SIGKILL them.`);
+      log(
+        `  Still running (ignored SIGTERM): ${
+          result.survivors.join(", ")
+        }\n  Re-run with --force to SIGKILL them.`,
+      );
     }
     Deno.exitCode = 1;
   }

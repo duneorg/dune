@@ -56,17 +56,21 @@ async function withSite(
 
 const opts = { sanitizeOps: false, sanitizeResources: false };
 
-Deno.test("TSX page with no layout: frontmatter is wrapped in the theme's components/layout.tsx", opts, async () => {
-  await withSite({
-    "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
-    "content/01.page/default.tsx": tsxPage(""),
-  }, async (get) => {
-    const body = await get("/page/");
-    assertStringIncludes(body, `<header id="chrome">THEME-LAYOUT</header>`);
-    assertStringIncludes(body, `<main id="page-body">hello</main>`);
-    assertStringIncludes(body, "<title>TSX Page");
-  });
-});
+Deno.test(
+  "TSX page with no layout: frontmatter is wrapped in the theme's components/layout.tsx",
+  opts,
+  async () => {
+    await withSite({
+      "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
+      "content/01.page/default.tsx": tsxPage(""),
+    }, async (get) => {
+      const body = await get("/page/");
+      assertStringIncludes(body, `<header id="chrome">THEME-LAYOUT</header>`);
+      assertStringIncludes(body, `<main id="page-body">hello</main>`);
+      assertStringIncludes(body, "<title>TSX Page");
+    });
+  },
+);
 
 Deno.test('TSX page with layout: "default" gets the same standard theme layout', opts, async () => {
   await withSite({
@@ -88,29 +92,37 @@ Deno.test("TSX page with layout: false is not wrapped", opts, async () => {
   });
 });
 
-Deno.test("TSX page with a named layout loads components/<name>.tsx, not the standard layout", opts, async () => {
-  await withSite({
-    "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
-    "themes/t/components/landing.tsx": layoutSrc("LANDING-LAYOUT"),
-    "content/01.page/default.tsx": tsxPage(`, layout: "landing"`),
-  }, async (get) => {
-    const body = await get("/page/");
-    assertStringIncludes(body, "LANDING-LAYOUT");
-    assertEquals(body.includes("THEME-LAYOUT"), false);
-  });
-});
+Deno.test(
+  "TSX page with a named layout loads components/<name>.tsx, not the standard layout",
+  opts,
+  async () => {
+    await withSite({
+      "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
+      "themes/t/components/landing.tsx": layoutSrc("LANDING-LAYOUT"),
+      "content/01.page/default.tsx": tsxPage(`, layout: "landing"`),
+    }, async (get) => {
+      const body = await get("/page/");
+      assertStringIncludes(body, "LANDING-LAYOUT");
+      assertEquals(body.includes("THEME-LAYOUT"), false);
+    });
+  },
+);
 
-Deno.test("a theme's literal components/default.tsx still takes precedence for TSX pages", opts, async () => {
-  await withSite({
-    "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
-    "themes/t/components/default.tsx": layoutSrc("TSX-DEFAULT-LAYOUT"),
-    "content/01.page/default.tsx": tsxPage(""),
-  }, async (get) => {
-    const body = await get("/page/");
-    assertStringIncludes(body, "TSX-DEFAULT-LAYOUT");
-    assertEquals(body.includes("THEME-LAYOUT"), false);
-  });
-});
+Deno.test(
+  "a theme's literal components/default.tsx still takes precedence for TSX pages",
+  opts,
+  async () => {
+    await withSite({
+      "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
+      "themes/t/components/default.tsx": layoutSrc("TSX-DEFAULT-LAYOUT"),
+      "content/01.page/default.tsx": tsxPage(""),
+    }, async (get) => {
+      const body = await get("/page/");
+      assertStringIncludes(body, "TSX-DEFAULT-LAYOUT");
+      assertEquals(body.includes("THEME-LAYOUT"), false);
+    });
+  },
+);
 
 Deno.test("a theme with no layout at all still serves the TSX page, unwrapped", opts, async () => {
   await withSite({
@@ -120,18 +132,22 @@ Deno.test("a theme with no layout at all still serves the TSX page, unwrapped", 
   });
 });
 
-Deno.test("handler pages that call ctx.render() own the whole page: never wrapped", opts, async () => {
-  await withSite({
-    "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
-    "content/01.page/default.tsx": `
+Deno.test(
+  "handler pages that call ctx.render() own the whole page: never wrapped",
+  opts,
+  async () => {
+    await withSite({
+      "themes/t/components/layout.tsx": layoutSrc("THEME-LAYOUT"),
+      "content/01.page/default.tsx": `
 /** @jsxImportSource preact */
 export const frontmatter = { title: "Handler Page", published: true, visible: true };
 export const handler = { GET(_req, ctx) { return ctx.render({}); } };
 export default function P() { return <main id="page-body">from handler</main>; }
 `,
-  }, async (get) => {
-    const body = await get("/page/");
-    assertStringIncludes(body, `<main id="page-body">from handler</main>`);
-    assertEquals(body.includes("THEME-LAYOUT"), false);
-  });
-});
+    }, async (get) => {
+      const body = await get("/page/");
+      assertStringIncludes(body, `<main id="page-body">from handler</main>`);
+      assertEquals(body.includes("THEME-LAYOUT"), false);
+    });
+  },
+);

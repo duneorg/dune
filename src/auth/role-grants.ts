@@ -45,7 +45,9 @@ export function roleGrantProblems(value: unknown): string[] {
   for (const [group, relation] of Object.entries(value)) {
     if (group.trim() === "") problems.push("group names must not be empty");
     if (!GRANT_RELATIONS.includes(relation as GrantRelation)) {
-      problems.push(`"${group}": ${JSON.stringify(relation)} is not a relation; use admin, editor or author`);
+      problems.push(
+        `"${group}": ${JSON.stringify(relation)} is not a relation; use admin, editor or author`,
+      );
     }
   }
   return problems;

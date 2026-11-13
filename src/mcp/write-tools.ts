@@ -29,16 +29,13 @@ import type { McpTool, McpToolResult, ToolHandler } from "./server.ts";
 import type { ToolRegistration } from "./tools.ts";
 import type { HookRegistry } from "../hooks/types.ts";
 import {
+  generateForm,
+  type GenerateOptions,
   generatePlugin,
   generateRoute,
-  generateForm,
   generateTheme,
-  type GenerateOptions,
 } from "../cli/generate.ts";
-import {
-  assertHttpsPluginIntegrity,
-  assertPinnedPluginSpecifier,
-} from "../plugins/reference.ts";
+import { assertHttpsPluginIntegrity, assertPinnedPluginSpecifier } from "../plugins/reference.ts";
 
 export interface WriteToolDeps {
   engine: DuneEngine;
@@ -71,11 +68,16 @@ async function firePageEvent(
   // Events carry the path relative to the content directory, as the engine and
   // the admin routes report it.
   const prefix = `${deps.contentDir}/`;
-  const sourcePath = storagePath.startsWith(prefix) ? storagePath.slice(prefix.length) : storagePath;
+  const sourcePath = storagePath.startsWith(prefix)
+    ? storagePath.slice(prefix.length)
+    : storagePath;
   try {
     const hooks = await deps.hooks();
     if (!hooks) return;
-    await hooks.fire(event, event === "onPageCreate" ? { sourcePath, title: title ?? "" } : { sourcePath });
+    await hooks.fire(
+      event,
+      event === "onPageCreate" ? { sourcePath, title: title ?? "" } : { sourcePath },
+    );
   } catch (e) {
     console.error(`[mcp] ${event} hook failed for ${sourcePath}: ${e}`);
   }
@@ -188,11 +190,14 @@ const WRITE_PAGE_META: McpTool = {
   name: "write_page",
   description:
     "Write or overwrite a content file. Provide path relative to the content directory " +
-    "(e.g. \"blog/hello.md\") and the full file content including frontmatter.",
+    '(e.g. "blog/hello.md") and the full file content including frontmatter.',
   inputSchema: {
     type: "object",
     properties: {
-      path: { type: "string", description: "File path relative to content dir, e.g. blog/hello.md" },
+      path: {
+        type: "string",
+        description: "File path relative to content dir, e.g. blog/hello.md",
+      },
       content: { type: "string", description: "Full file content (frontmatter + body)" },
     },
     required: ["path", "content"],
@@ -211,12 +216,15 @@ function makeWritePageHandler(deps: WriteToolDeps): ToolHandler {
     try {
       const existed = await deps.storage.exists(storagePath);
       await deps.storage.write(storagePath, new TextEncoder().encode(content));
-      await firePageEvent(deps, existed ? "onPageUpdate" : "onPageCreate", storagePath, titleOf(content));
+      await firePageEvent(
+        deps,
+        existed ? "onPageUpdate" : "onPageCreate",
+        storagePath,
+        titleOf(content),
+      );
       const warning = checkFrontmatterSyntax(content);
       return ok(
-        warning
-          ? `Written: ${storagePath}\n⚠️  Warning: ${warning}`
-          : `Written: ${storagePath}`,
+        warning ? `Written: ${storagePath}\n⚠️  Warning: ${warning}` : `Written: ${storagePath}`,
       );
     } catch (e) {
       return err(`Failed to write ${path}: ${e}`);
@@ -228,12 +236,16 @@ function makeWritePageHandler(deps: WriteToolDeps): ToolHandler {
 
 const DELETE_PAGE_META: McpTool = {
   name: "delete_page",
-  description: "Delete a content file by route (e.g. \"/blog/hello\") or by path relative to the content dir.",
+  description:
+    'Delete a content file by route (e.g. "/blog/hello") or by path relative to the content dir.',
   inputSchema: {
     type: "object",
     properties: {
       route: { type: "string", description: "Page route, e.g. /blog/hello (preferred)" },
-      path: { type: "string", description: "File path relative to content dir (alternative to route)" },
+      path: {
+        type: "string",
+        description: "File path relative to content dir (alternative to route)",
+      },
     },
     required: [],
   },
@@ -270,8 +282,7 @@ function makeDeletePageHandler(deps: WriteToolDeps): ToolHandler {
 
 const UPDATE_FRONTMATTER_META: McpTool = {
   name: "update_frontmatter",
-  description:
-    "Merge frontmatter field updates into an existing content page. " +
+  description: "Merge frontmatter field updates into an existing content page. " +
     "Existing fields not mentioned in updates are preserved. " +
     "Pass null as a value to remove a field. " +
     "Use 'path' (relative to content dir) for pages created in the same session " +
@@ -279,9 +290,19 @@ const UPDATE_FRONTMATTER_META: McpTool = {
   inputSchema: {
     type: "object",
     properties: {
-      route: { type: "string", description: "Page route, e.g. /blog/hello (preferred for existing pages)" },
-      path: { type: "string", description: "File path relative to content dir, e.g. blog/hello.md (use for newly written pages)" },
-      updates: { type: "object", description: "Frontmatter fields to set or remove (null = remove)" },
+      route: {
+        type: "string",
+        description: "Page route, e.g. /blog/hello (preferred for existing pages)",
+      },
+      path: {
+        type: "string",
+        description:
+          "File path relative to content dir, e.g. blog/hello.md (use for newly written pages)",
+      },
+      updates: {
+        type: "object",
+        description: "Frontmatter fields to set or remove (null = remove)",
+      },
     },
     required: ["updates"],
   },
@@ -301,9 +322,11 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
     } else if (args.route) {
       const route = String(args.route);
       storagePath = routeToSourcePath(deps.engine, route);
-      if (!storagePath) return err(
-        `No page found at route "${route}". If this page was just created, use 'path' instead of 'route'.`,
-      );
+      if (!storagePath) {
+        return err(
+          `No page found at route "${route}". If this page was just created, use 'path' instead of 'route'.`,
+        );
+      }
     } else {
       return err("Provide either 'route' or 'path'");
     }
@@ -342,8 +365,7 @@ function makeUpdateFrontmatterHandler(deps: WriteToolDeps): ToolHandler {
 
 const UPDATE_CONFIG_META: McpTool = {
   name: "update_config",
-  description:
-    "Shallow-merge top-level fields into site.yaml. " +
+  description: "Shallow-merge top-level fields into site.yaml. " +
     "Pass an object whose top-level keys are the site.yaml sections to update. " +
     "Nested keys are deep-merged. Use get_config to read current values first.",
   inputSchema: {
@@ -358,7 +380,10 @@ const UPDATE_CONFIG_META: McpTool = {
   },
 };
 
-function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
   const result = { ...base };
   for (const [key, value] of Object.entries(patch)) {
     if (
@@ -406,8 +431,7 @@ function makeUpdateConfigHandler(deps: WriteToolDeps): ToolHandler {
 
 const INSTALL_PLUGIN_META: McpTool = {
   name: "install_plugin",
-  description:
-    "Add a plugin specifier to the plugins list in site.yaml. " +
+  description: "Add a plugin specifier to the plugins list in site.yaml. " +
     "The specifier may be a local path (./plugins/my-plugin/index.ts) or " +
     "a remote specifier naming a version, exact or a ^/~ range (jsr:@scope/plugin@1.0.0, npm:plugin-name@^1.2.3). " +
     "https: specifiers require integrity (sha256:<64 hex> or SRI sha256-<base64>).",
@@ -428,9 +452,7 @@ function makeInstallPluginHandler(deps: WriteToolDeps): ToolHandler {
   return async (args) => {
     const src = String(args.src ?? "").trim();
     if (!src) return err("src is required");
-    const integrity = args.integrity !== undefined
-      ? String(args.integrity).trim()
-      : undefined;
+    const integrity = args.integrity !== undefined ? String(args.integrity).trim() : undefined;
     try {
       assertPinnedPluginSpecifier(src);
       assertHttpsPluginIntegrity(src, integrity || undefined);
@@ -450,7 +472,9 @@ function makeInstallPluginHandler(deps: WriteToolDeps): ToolHandler {
 
       // Check for duplicate
       const alreadyInstalled = plugins.some(
-        (p) => (typeof p === "string" && p === src) || (typeof p === "object" && (p as { src?: string }).src === src),
+        (p) =>
+          (typeof p === "string" && p === src) ||
+          (typeof p === "object" && (p as { src?: string }).src === src),
       );
       if (alreadyInstalled) return ok(`Plugin already installed: ${src}`);
 
@@ -469,8 +493,7 @@ function makeInstallPluginHandler(deps: WriteToolDeps): ToolHandler {
 
 const SCAFFOLD_PLUGIN_META: McpTool = {
   name: "scaffold_plugin",
-  description:
-    "Generate a new plugin scaffold at plugins/{name}/index.ts. " +
+  description: "Generate a new plugin scaffold at plugins/{name}/index.ts. " +
     "Lists existing plugins first so you can avoid name collisions.",
   inputSchema: {
     type: "object",
@@ -483,9 +506,8 @@ const SCAFFOLD_PLUGIN_META: McpTool = {
 
 const SCAFFOLD_ROUTE_META: McpTool = {
   name: "scaffold_route",
-  description:
-    "Create a new content page at content/{path}.md with starter frontmatter. " +
-    "Pass the route path without the content prefix, e.g. \"blog/hello-world\".",
+  description: "Create a new content page at content/{path}.md with starter frontmatter. " +
+    'Pass the route path without the content prefix, e.g. "blog/hello-world".',
   inputSchema: {
     type: "object",
     properties: {
@@ -545,14 +567,14 @@ function makeScaffoldHandler(
 
 export function buildWriteTools(deps: WriteToolDeps): ToolRegistration[] {
   return [
-    { meta: WRITE_PAGE_META,         handler: makeWritePageHandler(deps) },
-    { meta: DELETE_PAGE_META,        handler: makeDeletePageHandler(deps) },
+    { meta: WRITE_PAGE_META, handler: makeWritePageHandler(deps) },
+    { meta: DELETE_PAGE_META, handler: makeDeletePageHandler(deps) },
     { meta: UPDATE_FRONTMATTER_META, handler: makeUpdateFrontmatterHandler(deps) },
-    { meta: UPDATE_CONFIG_META,      handler: makeUpdateConfigHandler(deps) },
-    { meta: INSTALL_PLUGIN_META,     handler: makeInstallPluginHandler(deps) },
-    { meta: SCAFFOLD_PLUGIN_META,    handler: makeScaffoldHandler(generatePlugin, deps) },
-    { meta: SCAFFOLD_ROUTE_META,     handler: makeScaffoldHandler(generateRoute, deps) },
-    { meta: SCAFFOLD_FORM_META,      handler: makeScaffoldHandler(generateForm, deps) },
-    { meta: SCAFFOLD_THEME_META,     handler: makeScaffoldHandler(generateTheme, deps) },
+    { meta: UPDATE_CONFIG_META, handler: makeUpdateConfigHandler(deps) },
+    { meta: INSTALL_PLUGIN_META, handler: makeInstallPluginHandler(deps) },
+    { meta: SCAFFOLD_PLUGIN_META, handler: makeScaffoldHandler(generatePlugin, deps) },
+    { meta: SCAFFOLD_ROUTE_META, handler: makeScaffoldHandler(generateRoute, deps) },
+    { meta: SCAFFOLD_FORM_META, handler: makeScaffoldHandler(generateForm, deps) },
+    { meta: SCAFFOLD_THEME_META, handler: makeScaffoldHandler(generateTheme, deps) },
   ];
 }

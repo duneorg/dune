@@ -152,7 +152,10 @@ export interface SiteConfig {
      * Overrides the depth-based default (depth 0 → daily, 1 → weekly, 2+ → monthly).
      * @example { "/": "hourly", "/blog": "daily" }
      */
-    changefreq?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
+    changefreq?: Record<
+      string,
+      "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never"
+    >;
   };
   /**
    * CDN cache invalidation configuration.

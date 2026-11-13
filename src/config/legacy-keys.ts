@@ -19,7 +19,11 @@ interface Rule {
 const RULES: Rule[] = [
   { file: "system", parent: ["content"], renames: { allowTsxFormat: "allow_tsx_format" } },
   { file: "system", parent: ["search"], renames: { customFields: "custom_fields" } },
-  { file: "system", parent: ["metrics"], renames: { slowQueryThresholdMs: "slow_query_threshold_ms" } },
+  {
+    file: "system",
+    parent: ["metrics"],
+    renames: { slowQueryThresholdMs: "slow_query_threshold_ms" },
+  },
   {
     file: "system",
     parent: ["admin"],
@@ -32,7 +36,11 @@ const RULES: Rule[] = [
   {
     file: "site",
     parent: ["auth"],
-    renames: { sessionLifetime: "session_lifetime", userStore: "user_store", authzStore: "authz_store" },
+    renames: {
+      sessionLifetime: "session_lifetime",
+      userStore: "user_store",
+      authzStore: "authz_store",
+    },
   },
   { file: "site", parent: ["auth", "providers"], renames: { magicLink: "magic_link" } },
   {
@@ -91,7 +99,8 @@ const MOVED: MovedRule[] = [
       incomingWebhooks: "webhooks.incoming in system.yaml",
       data_dir: "data_dir at the top level of system.yaml",
       dataDir: "data_dir at the top level of system.yaml",
-      enabled: "removed: the admin runs only when jsr:@dune/plugin-admin is listed under plugins: in site.yaml (delete this key to run without it)",
+      enabled:
+        "removed: the admin runs only when jsr:@dune/plugin-admin is listed under plugins: in site.yaml (delete this key to run without it)",
       authz_store: "removed: the admin's authz store is always local",
       authzStore: "removed: the admin's authz store is always local",
       runtime_dir: "runtime_dir at the top level of system.yaml",

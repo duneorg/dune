@@ -16,7 +16,7 @@ import { join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
-import { collectThemeIslands, collectContentIslands } from "../themes/loader.ts";
+import { collectContentIslands, collectThemeIslands } from "../themes/loader.ts";
 import { isValidPluginIslandSpecifier, resolveCapabilities } from "../plugins/loader.ts";
 import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 import { materializeRemoteIslands } from "./remote-islands.ts";
@@ -61,7 +61,10 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   // ── Multi-site detection ────────────────────────────────────────────────────
   let isMultisite = false;
-  try { await Deno.stat(join(root, "config", "sites.yaml")); isMultisite = true; } catch { /* ok */ }
+  try {
+    await Deno.stat(join(root, "config", "sites.yaml"));
+    isMultisite = true;
+  } catch { /* ok */ }
 
   if (isMultisite) {
     console.log("🏜️  Dune — starting multi-site dev server...\n");
@@ -84,7 +87,11 @@ export async function devCommand(root: string, options: DevOptions = {}) {
   // --watch restart rather than a graceful path, so the record is left to the
   // unload handler and, failing that, to readers pruning it.
   await registerInstance({
-    mode: "dev", root, title: config.site.title ?? null, port, version: CORE_VERSION,
+    mode: "dev",
+    root,
+    title: config.site.title ?? null,
+    port,
+    version: CORE_VERSION,
   });
   // Slots resolve once every plugin's setup() has settled; the banner needs
   // `admin.prefix` before the app (and mountPlugins) exists.
@@ -109,8 +116,14 @@ export async function devCommand(root: string, options: DevOptions = {}) {
 
   try {
     const watchPaths: string[] = [contentDir];
-    try { await Deno.stat(themesDir); watchPaths.push(themesDir); } catch { /* no themes dir */ }
-    try { await Deno.stat(flexObjectsDir); watchPaths.push(flexObjectsDir); } catch { /* no flex-objects dir yet */ }
+    try {
+      await Deno.stat(themesDir);
+      watchPaths.push(themesDir);
+    } catch { /* no themes dir */ }
+    try {
+      await Deno.stat(flexObjectsDir);
+      watchPaths.push(flexObjectsDir);
+    } catch { /* no flex-objects dir yet */ }
 
     const watcher = Deno.watchFs(watchPaths);
     console.log(`  👀 Watching: ${watchPaths.join(", ")}`);
@@ -166,7 +179,9 @@ export async function devCommand(root: string, options: DevOptions = {}) {
     ...hooks.plugins().flatMap((p) =>
       (p.islandSpecifiers ?? []).filter((s) => {
         if (!isValidPluginIslandSpecifier(s)) {
-          console.warn(`[dune] plugin islandSpecifier rejected (invalid path): ${JSON.stringify(s)}`);
+          console.warn(
+            `[dune] plugin islandSpecifier rejected (invalid path): ${JSON.stringify(s)}`,
+          );
           return false;
         }
         return true;

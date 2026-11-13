@@ -11,7 +11,9 @@
 import type { TemplateProps } from "../../../../src/content/types.ts";
 import StaticLayout from "../components/layout.tsx";
 
-export default function DefaultTemplate({ page, site, config, pathname, Layout, children }: TemplateProps & { Layout?: any }) {
+export default function DefaultTemplate(
+  { page, site, config, pathname, Layout, children }: TemplateProps & { Layout?: any },
+) {
   const LayoutComponent = Layout ?? StaticLayout;
   return (
     <LayoutComponent page={page} site={site} config={config} pathname={pathname}>

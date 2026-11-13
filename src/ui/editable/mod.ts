@@ -50,7 +50,7 @@
  * @since 0.19.0
  */
 
-import { h, type ComponentChildren, type JSX } from "preact";
+import { type ComponentChildren, h, type JSX } from "preact";
 
 /** Common props shared by all marker components. */
 export interface EditableMarkerProps {

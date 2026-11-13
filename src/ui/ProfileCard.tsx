@@ -29,22 +29,24 @@ export default function ProfileCard({ user, className }: ProfileCardProps): JSX.
   return (
     <div class={`dune-profile-card${className ? ` ${className}` : ""}`}>
       <div class="dune-profile-card__header">
-        {user.avatarUrl ? (
-          <img
-            class="dune-profile-card__avatar"
-            src={user.avatarUrl}
-            alt={displayName}
-            width={48}
-            height={48}
-          />
-        ) : (
-          <div
-            class="dune-profile-card__avatar-placeholder"
-            aria-hidden="true"
-          >
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-        )}
+        {user.avatarUrl
+          ? (
+            <img
+              class="dune-profile-card__avatar"
+              src={user.avatarUrl}
+              alt={displayName}
+              width={48}
+              height={48}
+            />
+          )
+          : (
+            <div
+              class="dune-profile-card__avatar-placeholder"
+              aria-hidden="true"
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
         <div class="dune-profile-card__identity">
           <div class="dune-profile-card__name">{displayName}</div>
           <div class="dune-profile-card__email">{user.email}</div>

@@ -109,7 +109,10 @@ Deno.test("migrate:entrypoint: idempotent — re-running an already-migrated sit
 Deno.test("migrate:entrypoint: refuses to overwrite a hand-edited main.ts", async () => {
   const dir = await makeLegacySite();
   try {
-    await Deno.writeTextFile(join(dir, "main.ts"), "// a customized entrypoint\nconsole.log('hi');\n");
+    await Deno.writeTextFile(
+      join(dir, "main.ts"),
+      "// a customized entrypoint\nconsole.log('hi');\n",
+    );
     const result = await migrateEntrypointCommand(dir);
     assertEquals(result.migrated, false);
     assertEquals(typeof result.refusedReason, "string");
@@ -150,7 +153,8 @@ Deno.test("migrate:entrypoint: preserves custom flags on old task commands (regr
         tasks: {
           dev: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli dev --port 8080",
           build: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli build",
-          serve: "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli serve --port 8080 --frozen",
+          serve:
+            "deno run -A --config=deno.json jsr:@dune/core@^0.28/cli serve --port 8080 --frozen",
         },
       }),
     );
@@ -172,7 +176,13 @@ Deno.test("migrate:entrypoint: rewrites .mcp.json when present", async () => {
     await Deno.writeTextFile(
       join(dir, ".mcp.json"),
       JSON.stringify({
-        mcpServers: { dune: { command: "deno", args: ["run", "-A", "jsr:@dune/core/cli", "mcp:serve"], cwd: "." } },
+        mcpServers: {
+          dune: {
+            command: "deno",
+            args: ["run", "-A", "jsr:@dune/core/cli", "mcp:serve"],
+            cwd: ".",
+          },
+        },
       }),
     );
     const result = await migrateEntrypointCommand(dir);
@@ -208,7 +218,8 @@ async function makeSiteWithVersionedTasks(
 Deno.test("migrate:entrypoint: moves every other versioned-CLI task onto main.ts, keeping flags and args", async () => {
   const dir = await makeSiteWithVersionedTasks({
     validate: "deno run -A jsr:@dune/core@0.35.0/cli validate",
-    "content:list": "deno run --allow-read --allow-env jsr:@dune/core@^0.35/cli content:list --json",
+    "content:list":
+      "deno run --allow-read --allow-env jsr:@dune/core@^0.35/cli content:list --json",
     lint: "deno lint",
   });
   try {
@@ -217,7 +228,10 @@ Deno.test("migrate:entrypoint: moves every other versioned-CLI task onto main.ts
 
     const { tasks } = JSON.parse(await Deno.readTextFile(join(dir, "deno.json")));
     assertEquals(tasks.validate, "deno run -A main.ts validate");
-    assertEquals(tasks["content:list"], "deno run --allow-read --allow-env main.ts content:list --json");
+    assertEquals(
+      tasks["content:list"],
+      "deno run --allow-read --allow-env main.ts content:list --json",
+    );
     assertEquals(tasks.lint, "deno lint");
     assertEquals(Object.values(tasks).some((t) => String(t).includes("jsr:@dune/core")), false);
   } finally {

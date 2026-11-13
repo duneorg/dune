@@ -11,7 +11,7 @@
  * Default lifetime: 15 minutes.
  */
 
-import { encodeBase64Url, decodeBase64Url } from "@std/encoding/base64url";
+import { decodeBase64Url, encodeBase64Url } from "@std/encoding/base64url";
 import { encodeHex } from "@std/encoding/hex";
 import { crypto as stdCrypto } from "@std/crypto";
 import { timingSafeEqualStrings } from "../security/timing-safe.ts";

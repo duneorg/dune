@@ -105,9 +105,7 @@ export function applyMigrations(
   migrations: FlexMigration[],
   targetVersion: number,
 ): { record: Record<string, unknown>; migrated: boolean } {
-  const currentVersion = typeof record._schemaVersion === "number"
-    ? record._schemaVersion
-    : 0;
+  const currentVersion = typeof record._schemaVersion === "number" ? record._schemaVersion : 0;
 
   if (currentVersion >= targetVersion || migrations.length === 0) {
     // Ensure _schemaVersion is present even when nothing runs.

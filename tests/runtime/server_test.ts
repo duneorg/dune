@@ -14,13 +14,10 @@
  * harness (createDuneApp() has no lighter-weight seam for either).
  */
 
+import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  assertEquals,
-  assertStrictEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  assertInlineEditWsOrigin,
   assertInlineEditSameOrigin,
+  assertInlineEditWsOrigin,
   isIndexedInlineEditPath,
   isSafeInlineEditPath,
   stripUserHeader,
@@ -43,12 +40,18 @@ Deno.test("assertInlineEditSameOrigin: a write from the same origin passes", () 
 });
 
 Deno.test("assertInlineEditSameOrigin: a write from another origin is refused", () => {
-  assertEquals(assertInlineEditSameOrigin(req("PATCH", { origin: "https://evil.test" }))?.status, 403);
+  assertEquals(
+    assertInlineEditSameOrigin(req("PATCH", { origin: "https://evil.test" }))?.status,
+    403,
+  );
 });
 
 Deno.test("assertInlineEditSameOrigin: a write without Origin passes only when the browser says same-origin", () => {
   assertEquals(assertInlineEditSameOrigin(req("POST"))?.status, 403);
-  assertEquals(assertInlineEditSameOrigin(req("POST", { "sec-fetch-site": "cross-site" }))?.status, 403);
+  assertEquals(
+    assertInlineEditSameOrigin(req("POST", { "sec-fetch-site": "cross-site" }))?.status,
+    403,
+  );
   assertEquals(assertInlineEditSameOrigin(req("POST", { "sec-fetch-site": "same-origin" })), null);
 });
 

@@ -48,7 +48,9 @@ function makeFormats(): FormatRegistry {
   return registry;
 }
 
-function makePage(overrides: Partial<PageIndex> & { title: string; sourcePath: string }): PageIndex {
+function makePage(
+  overrides: Partial<PageIndex> & { title: string; sourcePath: string },
+): PageIndex {
   return {
     route: "/" + overrides.sourcePath.replace(/\/default\.md$/, "").replace(/^\d+\./, ""),
     language: "en",
@@ -110,8 +112,16 @@ Deno.test("resolveFacetValue: returns string array for array value", () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("facet filtering: template filter reduces results", async () => {
-  const postPage = makePage({ title: "A Post", sourcePath: "01.post/default.md", template: "post" });
-  const pagePage = makePage({ title: "A Page", sourcePath: "02.page/default.md", template: "page" });
+  const postPage = makePage({
+    title: "A Post",
+    sourcePath: "01.post/default.md",
+    template: "post",
+  });
+  const pagePage = makePage({
+    title: "A Page",
+    sourcePath: "02.page/default.md",
+    template: "page",
+  });
 
   const engine = createSearchEngine({
     pages: [postPage, pagePage],

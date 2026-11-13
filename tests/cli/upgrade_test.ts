@@ -20,7 +20,10 @@ Deno.test("rewriteCoreRefs: moves the import, its subpaths and the CLI specifier
   assertEquals(changes.length, 4);
   assertEquals(updated.includes("0.34.13"), false);
   assertEquals(updated.includes('"@dune/core": "jsr:@dune/core@0.35.1"'), true);
-  assertEquals(updated.includes('"@dune/core/ui/editable": "jsr:@dune/core@0.35.1/ui/editable"'), true);
+  assertEquals(
+    updated.includes('"@dune/core/ui/editable": "jsr:@dune/core@0.35.1/ui/editable"'),
+    true,
+  );
   assertEquals(updated.includes("jsr:@dune/core@0.35.1/cli serve --env-file"), true);
   // Other packages are untouched.
   assertEquals(updated.includes("jsr:@dune/plugin-pdf@1.3.1"), true);

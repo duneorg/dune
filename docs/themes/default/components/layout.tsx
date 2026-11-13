@@ -12,63 +12,95 @@ interface LayoutProps {
 type NavItem = { href: string; label: string; children?: Array<{ href: string; label: string }> };
 
 const sections: NavItem[] = [
-  { href: "/getting-started", label: "Getting Started", children: [
-    { href: "/getting-started/installation", label: "Installation" },
-    { href: "/getting-started/quickstart", label: "Quickstart" },
-    { href: "/getting-started/project-structure", label: "Project Structure" },
-    { href: "/getting-started/migration", label: "Migration" },
-  ]},
-  { href: "/content", label: "Content", children: [
-    { href: "/content/markdown", label: "Markdown Pages" },
-    { href: "/content/tsx-pages", label: "TSX Pages" },
-    { href: "/content/mdx-content", label: "MDX Content" },
-    { href: "/content/frontmatter", label: "Frontmatter" },
-    { href: "/content/collections", label: "Collections" },
-    { href: "/content/taxonomies", label: "Taxonomies" },
-    { href: "/content/media", label: "Media" },
-    { href: "/content/i18n", label: "Multilingual" },
-    { href: "/content/workflow", label: "Workflow" },
-    { href: "/content/machine-translation", label: "Machine Translation" },
-    { href: "/content/page-builder", label: "Page Builder" },
-  ]},
-  { href: "/configuration", label: "Configuration", children: [
-    { href: "/configuration/site-config", label: "Site Config" },
-    { href: "/configuration/system-config", label: "System Config" },
-    { href: "/configuration/programmatic-config", label: "Programmatic Config" },
-  ]},
-  { href: "/themes", label: "Themes", children: [
-    { href: "/themes/templates", label: "Templates" },
-    { href: "/themes/inheritance", label: "Inheritance" },
-    { href: "/themes/creating-a-theme", label: "Creating a Theme" },
-    { href: "/themes/preview-and-marketplace", label: "Preview & Marketplace" },
-    { href: "/themes/islands", label: "Islands" },
-  ]},
-  { href: "/deployment", label: "Deployment", children: [
-    { href: "/deployment/deno-deploy", label: "Deno Deploy" },
-    { href: "/deployment/traditional-server", label: "Traditional Server" },
-    { href: "/deployment/sitemap", label: "Sitemap" },
-    { href: "/deployment/feeds", label: "RSS & Atom Feeds" },
-    { href: "/deployment/static", label: "Static Site Generation" },
-    { href: "/deployment/caching", label: "HTTP Caching" },
-  ]},
-  { href: "/extending", label: "Extending", children: [
-    { href: "/extending/hooks", label: "Hooks" },
-    { href: "/extending/format-handlers", label: "Format Handlers" },
-    { href: "/extending/plugins", label: "Plugins" },
-  ]},
-  { href: "/reference", label: "Reference", children: [
-    { href: "/reference/cli", label: "CLI Commands" },
-    { href: "/reference/api", label: "REST API" },
-    { href: "/reference/config-schema", label: "Config Schema" },
-    { href: "/reference/search", label: "Search" },
-    { href: "/reference/stability", label: "API Stability" },
-  ]},
-  { href: "/administration", label: "Administration", children: [
-    { href: "/administration/audit-log", label: "Audit Log" },
-    { href: "/administration/performance", label: "Performance" },
-    { href: "/administration/auth-providers", label: "Auth Providers" },
-    { href: "/administration/marketplace", label: "Marketplace" },
-  ]},
+  {
+    href: "/getting-started",
+    label: "Getting Started",
+    children: [
+      { href: "/getting-started/installation", label: "Installation" },
+      { href: "/getting-started/quickstart", label: "Quickstart" },
+      { href: "/getting-started/project-structure", label: "Project Structure" },
+      { href: "/getting-started/migration", label: "Migration" },
+    ],
+  },
+  {
+    href: "/content",
+    label: "Content",
+    children: [
+      { href: "/content/markdown", label: "Markdown Pages" },
+      { href: "/content/tsx-pages", label: "TSX Pages" },
+      { href: "/content/mdx-content", label: "MDX Content" },
+      { href: "/content/frontmatter", label: "Frontmatter" },
+      { href: "/content/collections", label: "Collections" },
+      { href: "/content/taxonomies", label: "Taxonomies" },
+      { href: "/content/media", label: "Media" },
+      { href: "/content/i18n", label: "Multilingual" },
+      { href: "/content/workflow", label: "Workflow" },
+      { href: "/content/machine-translation", label: "Machine Translation" },
+      { href: "/content/page-builder", label: "Page Builder" },
+    ],
+  },
+  {
+    href: "/configuration",
+    label: "Configuration",
+    children: [
+      { href: "/configuration/site-config", label: "Site Config" },
+      { href: "/configuration/system-config", label: "System Config" },
+      { href: "/configuration/programmatic-config", label: "Programmatic Config" },
+    ],
+  },
+  {
+    href: "/themes",
+    label: "Themes",
+    children: [
+      { href: "/themes/templates", label: "Templates" },
+      { href: "/themes/inheritance", label: "Inheritance" },
+      { href: "/themes/creating-a-theme", label: "Creating a Theme" },
+      { href: "/themes/preview-and-marketplace", label: "Preview & Marketplace" },
+      { href: "/themes/islands", label: "Islands" },
+    ],
+  },
+  {
+    href: "/deployment",
+    label: "Deployment",
+    children: [
+      { href: "/deployment/deno-deploy", label: "Deno Deploy" },
+      { href: "/deployment/traditional-server", label: "Traditional Server" },
+      { href: "/deployment/sitemap", label: "Sitemap" },
+      { href: "/deployment/feeds", label: "RSS & Atom Feeds" },
+      { href: "/deployment/static", label: "Static Site Generation" },
+      { href: "/deployment/caching", label: "HTTP Caching" },
+    ],
+  },
+  {
+    href: "/extending",
+    label: "Extending",
+    children: [
+      { href: "/extending/hooks", label: "Hooks" },
+      { href: "/extending/format-handlers", label: "Format Handlers" },
+      { href: "/extending/plugins", label: "Plugins" },
+    ],
+  },
+  {
+    href: "/reference",
+    label: "Reference",
+    children: [
+      { href: "/reference/cli", label: "CLI Commands" },
+      { href: "/reference/api", label: "REST API" },
+      { href: "/reference/config-schema", label: "Config Schema" },
+      { href: "/reference/search", label: "Search" },
+      { href: "/reference/stability", label: "API Stability" },
+    ],
+  },
+  {
+    href: "/administration",
+    label: "Administration",
+    children: [
+      { href: "/administration/audit-log", label: "Audit Log" },
+      { href: "/administration/performance", label: "Performance" },
+      { href: "/administration/auth-providers", label: "Auth Providers" },
+      { href: "/administration/marketplace", label: "Marketplace" },
+    ],
+  },
   { href: "/flex-objects", label: "Flex Objects" },
   { href: "/forms", label: "Forms" },
   { href: "/webhooks", label: "Webhooks" },
@@ -126,7 +158,11 @@ export default function Layout({ page, pageTitle, site, config, pathname, childr
                     {sectionActive && s.children && s.children.length > 0 && (
                       <div class="nav-children">
                         {s.children.map((c) => (
-                          <a key={c.href} href={c.href} class={currentPath === c.href ? "active" : ""}>
+                          <a
+                            key={c.href}
+                            href={c.href}
+                            class={currentPath === c.href ? "active" : ""}
+                          >
                             {c.label}
                           </a>
                         ))}
@@ -148,7 +184,9 @@ export default function Layout({ page, pageTitle, site, config, pathname, childr
           <a href="https://github.com/duneorg/dune" target="_blank" rel="noopener">GitHub</a>
         </footer>
 
-        <script dangerouslySetInnerHTML={{ __html: `
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
           (function() {
             var input = document.getElementById('docs-search');
             var results = document.getElementById('search-results');
@@ -198,7 +236,9 @@ export default function Layout({ page, pageTitle, site, config, pathname, childr
               return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
             }
           })();
-        `}} />
+        `,
+          }}
+        />
       </body>
     </html>
   );

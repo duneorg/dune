@@ -6,7 +6,7 @@
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
-import type { ContentRevision, ContentDiff } from "../workflow/types.ts";
+import type { ContentDiff, ContentRevision } from "../workflow/types.ts";
 import { computeDiff } from "./diff.ts";
 
 /** Options for {@link createHistoryEngine}. */
@@ -31,7 +31,11 @@ export interface HistoryEngine {
   /** Compute diff between two revisions */
   diff(sourcePath: string, fromRev: number, toRev: number): Promise<ContentDiff | null>;
   /** Compute diff between a revision and current content */
-  diffWithCurrent(sourcePath: string, revisionNumber: number, currentContent: string): Promise<ContentDiff | null>;
+  diffWithCurrent(
+    sourcePath: string,
+    revisionNumber: number,
+    currentContent: string,
+  ): Promise<ContentDiff | null>;
   /** Get total revision count for a page */
   getRevisionCount(sourcePath: string): Promise<number>;
 }

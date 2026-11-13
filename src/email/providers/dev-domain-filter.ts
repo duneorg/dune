@@ -62,7 +62,9 @@ export class DevDomainFilterEmailProvider implements EmailProvider {
     if (disallowed.length > 0) {
       console.warn(
         `[Dune Email] DUNE_ENV=dev — recipient(s) outside DUNE_EMAIL_DEV_ALLOWED_DOMAINS ` +
-          `(${disallowed.join(", ")}) — redirecting entire message to console instead of sending for real.`,
+          `(${
+            disallowed.join(", ")
+          }) — redirecting entire message to console instead of sending for real.`,
       );
       return this.fallbackProvider.send(message);
     }

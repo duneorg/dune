@@ -43,20 +43,20 @@ export type {
   DuneEngine,
   /** @since 0.1.0 */
   DuneEngineOptions,
-  /** @since 0.1.0 */
-  ResolveResult,
   /** @since 0.2.0 */
   MediaResponse,
+  /** @since 0.1.0 */
+  ResolveResult,
 } from "./core/engine.ts";
 
 export {
-  /** @since 0.1.0 */
-  DuneError,
   ConfigError,
   ContentError,
+  /** @since 0.1.0 */
+  DuneError,
+  RouteError,
   StorageError,
   TemplateError,
-  RouteError,
 } from "./core/errors.ts";
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -88,26 +88,14 @@ export type {
   /** @since 0.1.0 */
   SiteConfig,
   SystemConfig,
-  ThemeConfig,
   /** @since 0.36.0 */
   TemplateConfig,
+  ThemeConfig,
 } from "./config/types.ts";
 
 // ── Content ────────────────────────────────────────────────────────────────
 
 export type {
-  /** @since 0.1.0 */
-  ContentFormat,
-  /** @since 0.1.0 */
-  Page,
-  /** @since 0.1.0 */
-  PageIndex,
-  /** @since 0.1.0 */
-  PageFrontmatter,
-  /** @since 0.1.0 */
-  MediaFile,
-  /** Helper for resolving co-located media from within .tsx content pages */
-  MediaHelper,
   /** @since 0.1.0 */
   Collection,
   /** Declarative collection definition (lives in page frontmatter) */
@@ -115,17 +103,29 @@ export type {
   /** Collection source — where to pull pages from */
   CollectionSource,
   /** @since 0.1.0 */
+  ContentFormat,
+  /** Content format handler interface — adding new formats is just registering a new handler. */
+  ContentFormatHandler,
+  /** Props passed to .tsx content pages (the component IS the content) */
+  ContentPageProps,
+  /** @since 0.1.0 */
+  MediaFile,
+  /** Helper for resolving co-located media from within .tsx content pages */
+  MediaHelper,
+  /** @since 0.1.0 */
+  Page,
+  /** @since 0.1.0 */
+  PageFrontmatter,
+  /** @since 0.1.0 */
+  PageIndex,
+  /** @since 0.25.0 */
+  PageTranslation,
+  /** Render context passed to format handlers at request time */
+  RenderContext,
+  /** @since 0.1.0 */
   TemplateComponent,
   /** @since 0.1.0 */
   TemplateProps,
-  /** @since 0.25.0 */
-  PageTranslation,
-  /** Props passed to .tsx content pages (the component IS the content) */
-  ContentPageProps,
-  /** Render context passed to format handlers at request time */
-  RenderContext,
-  /** Content format handler interface — adding new formats is just registering a new handler. */
-  ContentFormatHandler,
 } from "./content/types.ts";
 
 export { FormatRegistry } from "./content/formats/registry.ts";
@@ -134,7 +134,10 @@ export { TsxHandler } from "./content/formats/tsx.ts";
 export { MdxHandler } from "./content/formats/mdx.ts";
 export type { MdxHandlerOptions } from "./content/formats/mdx.ts";
 export { createMdxComponentRegistry } from "./content/formats/mdx-components.ts";
-export type { MdxComponentRegistry, MdxSanitizeExtension } from "./content/formats/mdx-components.ts";
+export type {
+  MdxComponentRegistry,
+  MdxSanitizeExtension,
+} from "./content/formats/mdx-components.ts";
 export { buildIndex, updateIndex } from "./content/index-builder.ts";
 export type { BuildResult, TaxonomyMap } from "./content/index-builder.ts";
 export {
@@ -145,18 +148,14 @@ export {
 // ── Routing ────────────────────────────────────────────────────────────────
 
 export { createRouteResolver } from "./routing/resolver.ts";
-export type {
-  RouteMatch,
-  RouteResolver,
-  RouteResolverOptions,
-} from "./routing/resolver.ts";
+export type { RouteMatch, RouteResolver, RouteResolverOptions } from "./routing/resolver.ts";
 export { duneRoutes } from "./routing/routes.ts";
 
 // ── Themes ─────────────────────────────────────────────────────────────────
 
 export { createThemeLoader } from "./themes/loader.ts";
 export type { ThemeLoader } from "./themes/loader.ts";
-export type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./themes/types.ts";
+export type { LoadedTemplate, ResolvedTheme, ThemeManifest } from "./themes/types.ts";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -173,6 +172,14 @@ export type { TaxonomyEngine } from "./taxonomy/engine.ts";
 export { createHookRegistry } from "./hooks/registry.ts";
 export type {
   /**
+   * Plugin definition interface.
+   * Implement this to create a Dune plugin.
+   * @since 0.1.0
+   */
+  DunePlugin,
+  /** @since 0.1.0 */
+  HookContext,
+  /**
    * All lifecycle event names a plugin can subscribe to.
    * This union type is frozen — new events will be added in minor versions,
    * existing events will never be removed or renamed before v2.0.
@@ -181,21 +188,13 @@ export type {
   HookEvent,
   /** @since 0.1.0 */
   HookHandler,
-  /** @since 0.1.0 */
-  HookContext,
-  /**
-   * Plugin definition interface.
-   * Implement this to create a Dune plugin.
-   * @since 0.1.0
-   */
-  DunePlugin,
+  /** Hook registry interface */
+  HookRegistry,
   /**
    * API surface available to plugins during setup().
    * @since 0.1.0
    */
   PluginApi,
-  /** Hook registry interface */
-  HookRegistry,
 } from "./hooks/types.ts";
 
 // ── Feature Flags ──────────────────────────────────────────────────────────
@@ -205,7 +204,7 @@ export type {
  * Returns `false` for unknown flags.
  * @since 0.10.0
  */
-export { flag, initFlags, allFlags } from "./flags/mod.ts";
+export { allFlags, flag, initFlags } from "./flags/mod.ts";
 
 // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -216,24 +215,24 @@ export type { SearchEngine, SearchResult } from "./search/engine.ts";
 
 export { createImageProcessor } from "./images/processor.ts";
 export type {
-  ImageProcessor,
-  ImageProcessingOptions,
-  ImageOutputFormat,
   ImageFit,
-  ProcessedImage,
+  ImageOutputFormat,
+  ImageProcessingOptions,
+  ImageProcessor,
   ImageProcessorConfig,
+  ProcessedImage,
 } from "./images/processor.ts";
 export {
   /** Create an image cache backed by the storage adapter. */
   createImageCache,
 } from "./images/cache.ts";
 export type {
+  /** A cached processed image retrieved via {@link ImageCache.get}. */
+  CachedImage,
   /** Persistent cache for processed images — avoids re-processing the same source+options. Obtain via {@link createImageCache}. */
   ImageCache,
   /** Options for {@link createImageCache}. */
   ImageCacheConfig,
-  /** A cached processed image retrieved via {@link ImageCache.get}. */
-  CachedImage,
 } from "./images/cache.ts";
 export { createImageHandler } from "./images/handler.ts";
 export type { ImageHandler, ImageHandlerOptions } from "./images/handler.ts";
@@ -248,10 +247,10 @@ export type { WorkflowEngine, WorkflowEngineConfig } from "./workflow/engine.ts"
 export { createScheduler } from "./workflow/scheduler.ts";
 export type { Scheduler, SchedulerConfig } from "./workflow/scheduler.ts";
 export type {
+  ContentDiff,
+  ContentRevision,
   ContentStatus,
   ScheduledAction,
-  ContentRevision,
-  ContentDiff,
   TranslationStatus,
 } from "./workflow/types.ts";
 
@@ -259,7 +258,7 @@ export type {
 
 export { createHistoryEngine } from "./history/engine.ts";
 export type { HistoryEngine, HistoryEngineConfig, RecordInput } from "./history/engine.ts";
-export { computeDiff, applyPatch } from "./history/diff.ts";
+export { applyPatch, computeDiff } from "./history/diff.ts";
 
 // ── Visual Page Builder (v0.6) ─────────────────────────────────────────────
 
@@ -282,29 +281,29 @@ export type {
   SectionInstance,
 } from "./sections/types.ts";
 export {
+  /** Server-side HTML renderer for an array of SectionInstances. @since 0.6.0 */
+  renderSections,
   /** Registry of all available section types. @since 0.6.0 */
   SectionRegistry,
   /** Shared singleton section registry. @since 0.6.0 */
   sectionRegistry,
-  /** Server-side HTML renderer for an array of SectionInstances. @since 0.6.0 */
-  renderSections,
 } from "./sections/mod.ts";
 
 // ── Multisite ─────────────────────────────────────────────────────────────────
 
 export {
-  /** Multi-site manager for serving multiple sites from one process. @since 0.6.0 */
-  MultisiteManager,
   /** Load multisite config from sites.yaml. @since 0.6.0 */
   loadMultisiteConfig,
+  /** Multi-site manager for serving multiple sites from one process. @since 0.6.0 */
+  MultisiteManager,
 } from "./multisite/mod.ts";
 export type {
   /** @since 0.6.0 */
   InitializedSite,
   /** @since 0.6.0 */
-  SiteEntry,
-  /** @since 0.6.0 */
   MultisiteConfig,
+  /** @since 0.6.0 */
+  SiteEntry,
 } from "./multisite/mod.ts";
 
 // ── Authorization (polizy) ─────────────────────────────────────────────────
@@ -312,14 +311,14 @@ export type {
 export {
   /** Flat-file implementation of the polizy StorageAdapter. @since 1.0.0 */
   AuthzLocalAdapter,
-  /** Create a Dune AuthSystem backed by the configured storage tier. @since 1.0.0 */
-  createDuneAuthSystem,
-  /** Bootstrap permission tuples from existing User roles[]. @since 1.0.0 */
-  bootstrapRoleTuples,
   /** Bootstrap permission tuples for existing admin User records (@dune/plugin-admin). @since 1.0.0 */
   bootstrapAdminTuples,
   /** Grant the admin-tier roles their relation on SITE_RESOURCE at group level. @since 0.36.0 */
   bootstrapRoleGrants,
+  /** Bootstrap permission tuples from existing User roles[]. @since 1.0.0 */
+  bootstrapRoleTuples,
+  /** Create a Dune AuthSystem backed by the configured storage tier. @since 1.0.0 */
+  createDuneAuthSystem,
 } from "./auth/authz.ts";
 export {
   /** Group → relation grants on the site: defaults, resolution from `system.role_grants`. @since 0.36.0 */
@@ -338,12 +337,12 @@ export {
   SITE_RESOURCE,
 } from "./auth/authz-schema.ts";
 export type {
-  /** The Dune-configured AuthSystem type. @since 1.0.0 */
-  DuneAuthSystem,
-  /** Return type of createDuneAuthSystem(). @since 1.0.0 */
-  DuneAuthBundle,
   /** Config for createDuneAuthSystem(). @since 1.0.0 */
   AuthzConfig,
+  /** Return type of createDuneAuthSystem(). @since 1.0.0 */
+  DuneAuthBundle,
+  /** The Dune-configured AuthSystem type. @since 1.0.0 */
+  DuneAuthSystem,
   /** The Dune polizy schema type. @since 1.0.0 */
   DuneAuthzSchema,
 } from "./auth/authz.ts";

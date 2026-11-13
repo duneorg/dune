@@ -2,10 +2,7 @@
  * Tests for `dune users:passwd` — set/reset a local user's password.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { usersPasswdCommand } from "../../src/cli/users-passwd.ts";
 import { createLocalUserStore } from "../../src/auth/user-store.ts";
 import { verifyPassword } from "../../src/auth/passwords.ts";
@@ -217,9 +214,7 @@ Deno.test("users:passwd rejects --stdin together with --generate", async () => {
   await withTempSite(async (root) => {
     await seedLocalUser(root);
     const code = await quiet(() =>
-      withMockedExit(() =>
-        usersPasswdCommand(root, "admin", { stdin: true, generate: true })
-      )
+      withMockedExit(() => usersPasswdCommand(root, "admin", { stdin: true, generate: true }))
     );
     assertEquals(code, 1);
   });

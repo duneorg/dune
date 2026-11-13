@@ -5,14 +5,11 @@
  * using stub DuneEngine and SearchEngine objects.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { buildTools } from "../../src/mcp/tools.ts";
 import type { DuneEngine } from "../../src/core/engine.ts";
-import type { PageIndex, Page } from "../../src/content/types.ts";
+import type { Page, PageIndex } from "../../src/content/types.ts";
 
 // ---------------------------------------------------------------------------
 // Stubs
@@ -74,13 +71,31 @@ function makeEngine(pages: PageIndex[], resolveMap?: Map<string, Page>): DuneEng
     pages,
     taxonomyMap: {},
     config: {
-      site: { title: "Test Site", url: "http://localhost", author: { name: "" }, taxonomies: [], metadata: {}, routes: {}, redirects: {}, description: "" },
+      site: {
+        title: "Test Site",
+        url: "http://localhost",
+        author: { name: "" },
+        taxonomies: [],
+        metadata: {},
+        routes: {},
+        redirects: {},
+        description: "",
+      },
       theme: { name: "starter", custom: {} },
       system: { content: { dir: "content" }, debug: false },
       plugins: {},
       pluginList: [],
     },
-    site: { title: "Test Site", url: "http://localhost", author: { name: "" }, taxonomies: [], metadata: {}, routes: {}, redirects: {}, description: "" },
+    site: {
+      title: "Test Site",
+      url: "http://localhost",
+      author: { name: "" },
+      taxonomies: [],
+      metadata: {},
+      routes: {},
+      redirects: {},
+      description: "",
+    },
     blueprints: {},
     storage: {
       async read(path: string): Promise<Uint8Array> {
@@ -112,12 +127,17 @@ function makeEngine(pages: PageIndex[], resolveMap?: Map<string, Page>): DuneEng
       }
       return { type: "not-found" };
     },
-    loadPage: async () => { throw new Error("not implemented"); },
+    loadPage: async () => {
+      throw new Error("not implemented");
+    },
     serveMedia: async () => null,
     rebuild: async () => {},
     getAvailableThemes: async () => [],
     switchTheme: async () => {},
-    createPreviewTheme: async () => ({ theme: { manifest: { name: "starter" }, templateNames: [], layoutNames: [] } }) as unknown as DuneEngine["themes"],
+    createPreviewTheme: async () =>
+      ({
+        theme: { manifest: { name: "starter" }, templateNames: [], layoutNames: [] },
+      }) as unknown as DuneEngine["themes"],
     setPluginTemplateDirs: () => {},
     init: async () => {},
   } as unknown as DuneEngine;
@@ -176,8 +196,9 @@ Deno.test("list_pages: filters by published status", async () => {
 });
 
 Deno.test("list_pages: respects limit and offset", async () => {
-  const pages = Array.from({ length: 10 }, (_, i) =>
-    makePageIndex({ route: `/${i}`, sourcePath: `${i}/default.md` })
+  const pages = Array.from(
+    { length: 10 },
+    (_, i) => makePageIndex({ route: `/${i}`, sourcePath: `${i}/default.md` }),
   );
   const engine = makeEngine(pages);
   const tools = buildTools({ engine, search: null });
@@ -197,7 +218,7 @@ Deno.test("list_pages: respects limit and offset", async () => {
 
 Deno.test("get_page: returns page data for known route", async () => {
   const page = makeFullPage({ route: "/", frontmatter: { title: "Home", published: true } });
-  const engine = makeEngine([], new Map([["/"  , page]]));
+  const engine = makeEngine([], new Map([["/", page]]));
   const tools = buildTools({ engine, search: null });
   const getPage = tools.find((t) => t.meta.name === "get_page")!;
 
@@ -221,7 +242,7 @@ Deno.test("get_page: returns isError for unknown route", async () => {
 
 Deno.test("get_page: skips html when include_html=false", async () => {
   const page = makeFullPage();
-  const engine = makeEngine([], new Map([["/"  , page]]));
+  const engine = makeEngine([], new Map([["/", page]]));
   const tools = buildTools({ engine, search: null });
   const getPage = tools.find((t) => t.meta.name === "get_page")!;
 

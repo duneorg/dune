@@ -66,9 +66,12 @@ export const configCommands = {
     });
 
     if (Object.keys(config.plugins).length > 0) {
-      printSection("Plugins", Object.fromEntries(
-        Object.keys(config.plugins).map((k) => [k, "enabled"]),
-      ));
+      printSection(
+        "Plugins",
+        Object.fromEntries(
+          Object.keys(config.plugins).map((k) => [k, "enabled"]),
+        ),
+      );
     }
   },
 

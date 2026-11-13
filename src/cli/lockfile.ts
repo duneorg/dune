@@ -84,7 +84,9 @@ async function collectRegistrySpecifiers(absRoot: string): Promise<string[]> {
         const list = record[listKey];
         if (!Array.isArray(list)) continue;
         for (const entry of list) {
-          const src = entry && typeof entry === "object" ? (entry as Record<string, unknown>).src : undefined;
+          const src = entry && typeof entry === "object"
+            ? (entry as Record<string, unknown>).src
+            : undefined;
           if (isRegistrySpecifier(src)) specifiers.push(src);
         }
       }
@@ -454,17 +456,17 @@ function explainInconsistency(diffs: Record<string, SectionDiff>, rawError?: str
   if (blockedEntries.length > 0) {
     return (
       `The lockfile can't be safely updated additively — one or more of the entries left ` +
-        `unchanged below is required to change for the result to be consistent:\n` +
-        blockedEntries.join("\n") +
-        `\n\nRerun with --upgrade for one of these (the report above lists their exact keys) to apply it.` +
-        rawErrorBlock
+      `unchanged below is required to change for the result to be consistent:\n` +
+      blockedEntries.join("\n") +
+      `\n\nRerun with --upgrade for one of these (the report above lists their exact keys) to apply it.` +
+      rawErrorBlock
     );
   }
   return (
     `The lockfile can't be safely updated additively, and no blocked entries explain why — ` +
-      `this likely indicates a gap in the merge algorithm rather than something fixable with ` +
-      `--upgrade. Please report it with the project's current deno.lock and deno.json.` +
-      rawErrorBlock
+    `this likely indicates a gap in the merge algorithm rather than something fixable with ` +
+    `--upgrade. Please report it with the project's current deno.lock and deno.json.` +
+    rawErrorBlock
   );
 }
 
@@ -580,7 +582,11 @@ function countAll(diffs: Record<string, SectionDiff>, field: keyof SectionDiff):
   return Object.values(diffs).reduce((n, d) => n + d[field].length, 0);
 }
 
-function printSectionEntries(diffs: Record<string, SectionDiff>, field: keyof SectionDiff, marker: string) {
+function printSectionEntries(
+  diffs: Record<string, SectionDiff>,
+  field: keyof SectionDiff,
+  marker: string,
+) {
   for (const [section, diff] of Object.entries(diffs)) {
     for (const key of diff[field]) {
       console.log(`    ${marker} [${section}] ${key}`);
@@ -612,7 +618,10 @@ export interface LockfileCheckOptions {
  * silently destroys that work. There's no way to tell the two cases
  * apart from here, so this command does not touch the file at all.
  */
-export async function lockfileCheckCommand(root: string, opts: LockfileCheckOptions = {}): Promise<void> {
+export async function lockfileCheckCommand(
+  root: string,
+  opts: LockfileCheckOptions = {},
+): Promise<void> {
   const { status } = await computeLockfileSync(root, new Set());
 
   const added = countAll(status.diffs, "added");
@@ -635,7 +644,9 @@ export async function lockfileCheckCommand(root: string, opts: LockfileCheckOpti
 
   if (added > 0) {
     console.log(
-      `${status.lockfilePath} is missing ${added} entr${added === 1 ? "y" : "ies"} needed by the current plugin/dependency set:`,
+      `${status.lockfilePath} is missing ${added} entr${
+        added === 1 ? "y" : "ies"
+      } needed by the current plugin/dependency set:`,
     );
     printSectionEntries(status.diffs, "added", "+");
   } else {
@@ -648,7 +659,9 @@ export async function lockfileCheckCommand(root: string, opts: LockfileCheckOpti
     console.log(`\n  Run "dune lockfile:sync" to add ${added === 1 ? "it" : "them"}.`);
   } else if (blocked > 0) {
     console.log(
-      `\n  (${blocked} already-pinned entr${blocked === 1 ? "y" : "ies"} could resolve to a newer version — ` +
+      `\n  (${blocked} already-pinned entr${
+        blocked === 1 ? "y" : "ies"
+      } could resolve to a newer version — ` +
         `run "dune lockfile:sync --upgrade <specifier>" to apply intentionally.)`,
     );
   }
@@ -668,7 +681,10 @@ export interface LockfileSyncOptions {
  * and exits non-zero instead — if the merge wouldn't be self-consistent,
  * rather than silently producing a lockfile that fails `--frozen` later.
  */
-export async function lockfileSyncCommand(root: string, opts: LockfileSyncOptions = {}): Promise<void> {
+export async function lockfileSyncCommand(
+  root: string,
+  opts: LockfileSyncOptions = {},
+): Promise<void> {
   const upgradeKeys = new Set(opts.upgrade ?? []);
   const { status, merged } = await computeLockfileSync(root, upgradeKeys);
 
@@ -683,7 +699,9 @@ export async function lockfileSyncCommand(root: string, opts: LockfileSyncOption
         }),
       );
     } else {
-      console.log(`${status.lockfilePath}: refusing to write — the merge would not be self-consistent.\n`);
+      console.log(
+        `${status.lockfilePath}: refusing to write — the merge would not be self-consistent.\n`,
+      );
       console.log(explainInconsistency(status.diffs, status.inconsistencyError));
     }
     Deno.exit(1);
@@ -701,7 +719,9 @@ export async function lockfileSyncCommand(root: string, opts: LockfileSyncOption
   }
 
   console.log(`${status.lockfilePath}:`);
-  console.log(`  +${added} added, ~${upgraded} upgraded, ${blocked} left unchanged (already pinned)`);
+  console.log(
+    `  +${added} added, ~${upgraded} upgraded, ${blocked} left unchanged (already pinned)`,
+  );
   printSectionEntries(status.diffs, "added", "+");
   printSectionEntries(status.diffs, "upgraded", "~");
 

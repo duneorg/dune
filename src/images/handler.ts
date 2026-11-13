@@ -26,7 +26,13 @@ export interface ImageHandlerOptions {
 
 /** Image file extensions that the processor can handle */
 const PROCESSABLE_EXTENSIONS = new Set([
-  "jpg", "jpeg", "png", "webp", "avif", "gif", "tiff",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "avif",
+  "gif",
+  "tiff",
 ]);
 
 /** Handler function returned by {@link createImageHandler} — returns a Response for image requests, null to fall through. */
@@ -125,4 +131,3 @@ export function createImageHandler(options: ImageHandlerOptions): ImageHandler {
     });
   };
 }
-

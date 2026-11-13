@@ -1,10 +1,14 @@
-import { assertEquals, assertExists, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { loadPage, getMimeType } from "../../src/content/page-loader.ts";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { getMimeType, loadPage } from "../../src/content/page-loader.ts";
 import { FormatRegistry } from "../../src/content/formats/registry.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";
 import type { StorageAdapter, StorageEntry } from "../../src/storage/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
-import type { PageIndex, Page, PageFrontmatter } from "../../src/content/types.ts";
+import type { Page, PageFrontmatter, PageIndex } from "../../src/content/types.ts";
 
 // ---------------------------------------------------------------------------
 // Stubs
@@ -237,7 +241,9 @@ Deno.test("loadPage: throws ContentError when content file missing", async () =>
 
 Deno.test("html(): calls format handler renderToHtml", async () => {
   const index = makeIndex({ sourcePath: "01.home/default.md" });
-  const storage = makeStorage({ "content/01.home/default.md": "---\ntitle: Test\n---\n\nHello world" });
+  const storage = makeStorage({
+    "content/01.home/default.md": "---\ntitle: Test\n---\n\nHello world",
+  });
   const page = await loadPage(index, {
     storage,
     contentDir: "content",
@@ -257,7 +263,10 @@ Deno.test("html(): returns empty string for TSX format pages", async () => {
   const registry = new FormatRegistry();
   registry.register({
     extensions: [".tsx"],
-    extractFrontmatter: () => Promise.resolve({ title: "TSX Page", published: true, visible: true, taxonomy: {} } as PageFrontmatter),
+    extractFrontmatter: () =>
+      Promise.resolve(
+        { title: "TSX Page", published: true, visible: true, taxonomy: {} } as PageFrontmatter,
+      ),
     extractBody: () => null,
     renderToHtml: () => Promise.resolve("<div>TSX</div>"),
   });
@@ -323,10 +332,32 @@ Deno.test("summary(): falls back to frontmatter title when no body", async () =>
 // ---------------------------------------------------------------------------
 
 Deno.test("children(): returns direct children sorted by order", async () => {
-  const parentIndex = makeIndex({ sourcePath: "01.blog/default.md", route: "/blog", depth: 0, parentPath: null });
-  const child1 = makeIndex({ sourcePath: "01.blog/02.second/default.md", route: "/blog/second", depth: 1, parentPath: "01.blog", order: 2 });
-  const child2 = makeIndex({ sourcePath: "01.blog/01.first/default.md", route: "/blog/first", depth: 1, parentPath: "01.blog", order: 1 });
-  const unrelated = makeIndex({ sourcePath: "02.about/default.md", route: "/about", depth: 0, parentPath: null });
+  const parentIndex = makeIndex({
+    sourcePath: "01.blog/default.md",
+    route: "/blog",
+    depth: 0,
+    parentPath: null,
+  });
+  const child1 = makeIndex({
+    sourcePath: "01.blog/02.second/default.md",
+    route: "/blog/second",
+    depth: 1,
+    parentPath: "01.blog",
+    order: 2,
+  });
+  const child2 = makeIndex({
+    sourcePath: "01.blog/01.first/default.md",
+    route: "/blog/first",
+    depth: 1,
+    parentPath: "01.blog",
+    order: 1,
+  });
+  const unrelated = makeIndex({
+    sourcePath: "02.about/default.md",
+    route: "/about",
+    depth: 0,
+    parentPath: null,
+  });
 
   const allPages = [parentIndex, child1, child2, unrelated];
   const storage = makeStorage({
@@ -338,13 +369,18 @@ Deno.test("children(): returns direct children sorted by order", async () => {
   // Build stub pages for loadPage — navTitle must match the actual sourcePath
   // child1 = 02.second (order 2), child2 = 01.first (order 1)
   const stubSecondPage: Page = {
-    sourcePath: child1.sourcePath,   // "01.blog/02.second/default.md"
+    sourcePath: child1.sourcePath, // "01.blog/02.second/default.md"
     route: child1.route,
     language: "en",
     format: "md",
     template: "default",
     navTitle: "Second",
-    frontmatter: { title: "Second", published: true, visible: true, taxonomy: {} } as PageFrontmatter,
+    frontmatter: {
+      title: "Second",
+      published: true,
+      visible: true,
+      taxonomy: {},
+    } as PageFrontmatter,
     rawContent: null,
     html: () => Promise.resolve(""),
     component: () => Promise.resolve(null),
@@ -359,7 +395,13 @@ Deno.test("children(): returns direct children sorted by order", async () => {
     siblings: () => Promise.resolve([]),
     summary: () => Promise.resolve(""),
   };
-  const stubFirstPage: Page = { ...stubSecondPage, sourcePath: child2.sourcePath, route: child2.route, navTitle: "First", order: 1 };
+  const stubFirstPage: Page = {
+    ...stubSecondPage,
+    sourcePath: child2.sourcePath,
+    route: child2.route,
+    navTitle: "First",
+    order: 1,
+  };
 
   const loadPageFn = makeLoadPage([stubSecondPage, stubFirstPage]);
 
@@ -384,9 +426,27 @@ Deno.test("children(): returns direct children sorted by order", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("siblings(): returns pages with same parentPath, excluding self", async () => {
-  const sib1 = makeIndex({ sourcePath: "01.blog/01.post-a/default.md", route: "/blog/post-a", depth: 1, parentPath: "01.blog", order: 1 });
-  const sib2 = makeIndex({ sourcePath: "01.blog/02.post-b/default.md", route: "/blog/post-b", depth: 1, parentPath: "01.blog", order: 2 });
-  const other = makeIndex({ sourcePath: "02.news/01.item/default.md", route: "/news/item", depth: 1, parentPath: "02.news", order: 1 });
+  const sib1 = makeIndex({
+    sourcePath: "01.blog/01.post-a/default.md",
+    route: "/blog/post-a",
+    depth: 1,
+    parentPath: "01.blog",
+    order: 1,
+  });
+  const sib2 = makeIndex({
+    sourcePath: "01.blog/02.post-b/default.md",
+    route: "/blog/post-b",
+    depth: 1,
+    parentPath: "01.blog",
+    order: 2,
+  });
+  const other = makeIndex({
+    sourcePath: "02.news/01.item/default.md",
+    route: "/news/item",
+    depth: 1,
+    parentPath: "02.news",
+    order: 1,
+  });
 
   const storage = makeStorage({ "content/01.blog/01.post-a/default.md": "---\ntitle: A\n---\n" });
 
@@ -397,7 +457,12 @@ Deno.test("siblings(): returns pages with same parentPath, excluding self", asyn
     format: "md",
     template: "default",
     navTitle: "Post B",
-    frontmatter: { title: "Post B", published: true, visible: true, taxonomy: {} } as PageFrontmatter,
+    frontmatter: {
+      title: "Post B",
+      published: true,
+      visible: true,
+      taxonomy: {},
+    } as PageFrontmatter,
     rawContent: null,
     html: () => Promise.resolve(""),
     component: () => Promise.resolve(null),
@@ -432,8 +497,18 @@ Deno.test("siblings(): returns pages with same parentPath, excluding self", asyn
 // ---------------------------------------------------------------------------
 
 Deno.test("parent(): resolves parent page from parentPath", async () => {
-  const parentIndex = makeIndex({ sourcePath: "01.blog/default.md", route: "/blog", depth: 0, parentPath: null });
-  const childIndex = makeIndex({ sourcePath: "01.blog/01.post/default.md", route: "/blog/post", depth: 1, parentPath: "01.blog" });
+  const parentIndex = makeIndex({
+    sourcePath: "01.blog/default.md",
+    route: "/blog",
+    depth: 0,
+    parentPath: null,
+  });
+  const childIndex = makeIndex({
+    sourcePath: "01.blog/01.post/default.md",
+    route: "/blog/post",
+    depth: 1,
+    parentPath: "01.blog",
+  });
 
   const storage = makeStorage({ "content/01.blog/01.post/default.md": "---\ntitle: Post\n---\n" });
 
@@ -503,7 +578,10 @@ Deno.test("html(): is cached — renderToHtml called only once", async () => {
   const registry = new FormatRegistry();
   registry.register({
     extensions: [".md"],
-    extractFrontmatter: () => Promise.resolve({ title: "T", published: true, visible: true, taxonomy: {} } as PageFrontmatter),
+    extractFrontmatter: () =>
+      Promise.resolve(
+        { title: "T", published: true, visible: true, taxonomy: {} } as PageFrontmatter,
+      ),
     extractBody: () => "Body",
     renderToHtml: async () => {
       callCount++;

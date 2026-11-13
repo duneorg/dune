@@ -8,7 +8,7 @@
  */
 
 import type { JSX } from "preact";
-import { useState, useEffect, useCallback } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 
 /** Props for the {@link CommentSection} island component. */
 export interface CommentSectionProps {
@@ -114,12 +114,8 @@ export default function CommentSection({ pageRoute, className }: CommentSectionP
       <h2 class="dune-comment-section__heading">Comments</h2>
 
       {/* Comment list */}
-      {loading && (
-        <p class="dune-comment-section__loading" aria-live="polite">Loading comments…</p>
-      )}
-      {!loading && error && (
-        <p class="dune-comment-section__error" role="alert">{error}</p>
-      )}
+      {loading && <p class="dune-comment-section__loading" aria-live="polite">Loading comments…</p>}
+      {!loading && error && <p class="dune-comment-section__error" role="alert">{error}</p>}
       {!loading && !error && comments.length === 0 && (
         <p class="dune-comment-section__empty">No comments yet. Be the first!</p>
       )}

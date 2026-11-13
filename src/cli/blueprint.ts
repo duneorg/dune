@@ -124,10 +124,14 @@ export const blueprintCommands = {
     if (!bp) {
       const available = Object.keys(blueprints);
       if (options.json) {
-        console.log(JSON.stringify({
-          error: `Blueprint "${template}" not found`,
-          available,
-        }, null, 2));
+        console.log(JSON.stringify(
+          {
+            error: `Blueprint "${template}" not found`,
+            available,
+          },
+          null,
+          2,
+        ));
       } else {
         console.error(`  ✗ Blueprint "${template}" not found`);
         if (available.length > 0) {
@@ -235,7 +239,13 @@ export const blueprintCommands = {
         } catch (err) {
           const msg = `YAML parse error: ${err instanceof Error ? err.message : String(err)}`;
           if (options.json) {
-            console.log(JSON.stringify({ valid: false, errors: [{ field: "(frontmatter)", message: msg }] }, null, 2));
+            console.log(
+              JSON.stringify(
+                { valid: false, errors: [{ field: "(frontmatter)", message: msg }] },
+                null,
+                2,
+              ),
+            );
           } else {
             console.error(`  ✗ ${msg}`);
           }
@@ -280,12 +290,16 @@ export const blueprintCommands = {
     const relPath = absPath.replace(root + "/", "");
 
     if (options.json) {
-      console.log(JSON.stringify({
-        valid: errors.length === 0,
-        file: relPath,
-        template,
-        errors: errors.map((e) => ({ field: e.field, message: e.message })),
-      }, null, 2));
+      console.log(JSON.stringify(
+        {
+          valid: errors.length === 0,
+          file: relPath,
+          template,
+          errors: errors.map((e) => ({ field: e.field, message: e.message })),
+        },
+        null,
+        2,
+      ));
       if (errors.length > 0) Deno.exit(1);
       return;
     }

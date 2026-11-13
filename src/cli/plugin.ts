@@ -23,10 +23,7 @@ import { createStorage } from "../storage/mod.ts";
 import { loadConfig } from "../config/mod.ts";
 import { loadPluginAdminConfigs, loadPlugins } from "../plugins/loader.ts";
 import { createHookRegistry } from "../hooks/registry.ts";
-import {
-  assertHttpsPluginIntegrity,
-  assertPinnedPluginSpecifier,
-} from "../plugins/reference.ts";
+import { assertHttpsPluginIntegrity, assertPinnedPluginSpecifier } from "../plugins/reference.ts";
 import type { PluginEntry } from "../config/types.ts";
 
 // ─── plugin:list ──────────────────────────────────────────────────────────────
@@ -86,9 +83,7 @@ const isComment = (l: string) => l.trimStart().startsWith("#");
 
 /** Locate the top-level `plugins:` block-sequence in site.yaml lines. */
 function findPluginsBlock(lines: string[]): PluginsBlock | null {
-  const keyLine = lines.findIndex((l) =>
-    /^plugins:[ \t]*(\[\s*\][ \t]*)?(#.*)?\r?$/.test(l)
-  );
+  const keyLine = lines.findIndex((l) => /^plugins:[ \t]*(\[\s*\][ \t]*)?(#.*)?\r?$/.test(l));
   if (keyLine === -1) return null;
 
   // Block ends at the next top-level key (indent 0, not a `- ` item).
@@ -172,8 +167,7 @@ export function insertPluginEntry(
 
   const indent = block?.itemIndent ?? "  ";
   const q = block?.quote ?? '"';
-  const quoted = (v: string) =>
-    q === '"' ? JSON.stringify(v) : `'${v.replaceAll("'", "''")}'`;
+  const quoted = (v: string) => q === '"' ? JSON.stringify(v) : `'${v.replaceAll("'", "''")}'`;
   const newLines = [`${indent}- src: ${quoted(entry.src)}`];
   if (entry.integrity) {
     newLines.push(`${indent}  integrity: ${quoted(entry.integrity)}`);
@@ -187,9 +181,7 @@ export function insertPluginEntry(
   if (/^plugins:[ \t]*\[\s*\]/.test(lines[block.keyLine])) {
     lines[block.keyLine] = "plugins:";
   }
-  const at = block.items.length > 0
-    ? block.items[block.items.length - 1].end
-    : block.keyLine + 1;
+  const at = block.items.length > 0 ? block.items[block.items.length - 1].end : block.keyLine + 1;
   lines.splice(at, 0, ...newLines);
   return lines.join(eol);
 }
@@ -271,18 +263,14 @@ export async function pluginInstallCommand(
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(parsed.plugins)
-    ? parsed.plugins as PluginEntry[]
-    : [];
+  const existing = Array.isArray(parsed.plugins) ? parsed.plugins as PluginEntry[] : [];
 
   if (existing.some((e) => e.src === src)) {
     console.log(`Plugin "${src}" is already listed in site.yaml.`);
     return;
   }
 
-  const entry: PluginEntry = options.integrity
-    ? { src, integrity: options.integrity }
-    : { src };
+  const entry: PluginEntry = options.integrity ? { src, integrity: options.integrity } : { src };
   existing.push(entry);
   parsed.plugins = existing;
 
@@ -392,9 +380,7 @@ export async function pluginRemoveCommand(
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(parsed.plugins)
-    ? parsed.plugins as PluginEntry[]
-    : [];
+  const existing = Array.isArray(parsed.plugins) ? parsed.plugins as PluginEntry[] : [];
 
   const before = existing.length;
   const removeIdx = new Set<number>();
@@ -667,9 +653,7 @@ export async function pluginSearchCommand(
     Deno.exit(1);
   }
 
-  const url = `https://jsr.io/api/packages?query=${
-    encodeURIComponent(query)
-  }&limit=20`;
+  const url = `https://jsr.io/api/packages?query=${encodeURIComponent(query)}&limit=20`;
 
   interface JsrPackage {
     name: string;
@@ -784,9 +768,7 @@ export async function pluginUpdateCommand(
   }
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
-  const plugins = Array.isArray(parsed.plugins)
-    ? parsed.plugins as PluginEntry[]
-    : [];
+  const plugins = Array.isArray(parsed.plugins) ? parsed.plugins as PluginEntry[] : [];
 
   // Filter to JSR plugins (and optionally by name)
   const jsrPlugins = plugins.filter((p) => {
@@ -861,9 +843,7 @@ export async function pluginUpdateCommand(
     const applied = (reparsed.plugins ?? []).filter((p) =>
       [...replacements.values()].includes(p.src)
     ).length;
-    const expected = jsrPlugins.filter((p) =>
-      replacements.has(p.src)
-    ).length;
+    const expected = jsrPlugins.filter((p) => replacements.has(p.src)).length;
     if (applied !== expected) {
       console.error(
         "\nCould not update the version specifiers in config/site.yaml in place " +
@@ -873,9 +853,7 @@ export async function pluginUpdateCommand(
     }
     await Deno.writeTextFile(siteYamlPath, edited);
     console.log(
-      `\n✓ Updated ${updated} plugin${
-        updated !== 1 ? "s" : ""
-      } in config/site.yaml.`,
+      `\n✓ Updated ${updated} plugin${updated !== 1 ? "s" : ""} in config/site.yaml.`,
     );
     console.log(`  Run "dune dev" to apply updates.`);
   } else {

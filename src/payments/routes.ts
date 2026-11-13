@@ -128,9 +128,7 @@ export function createPaymentRoutes(
     try {
       result = await manager.portal(user, customerId);
     } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : "Portal session failed";
+      const message = err instanceof Error ? err.message : "Portal session failed";
       return Response.json({ error: message }, { status: 400 });
     }
 

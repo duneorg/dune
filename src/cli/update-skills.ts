@@ -10,7 +10,7 @@
  *   dune update:skills --force   # overwrite even unchanged files
  */
 
-import { join, resolve, dirname, fromFileUrl } from "@std/path";
+import { dirname, fromFileUrl, join, resolve } from "@std/path";
 
 export interface UpdateSkillsOptions {
   /** Overwrite existing files even when content is unchanged */
@@ -94,7 +94,9 @@ export async function copySkillFiles(
           } else if (opts.debug) {
             console.log(`  ─  .claude/skills/${entry.name} (unchanged)`);
           }
-        } catch { failed++; }
+        } catch {
+          failed++;
+        }
       }
     } catch {
       if (opts.debug) console.warn(`  ⚠️  Skills directory not found: ${pkgSkillsDir}`);

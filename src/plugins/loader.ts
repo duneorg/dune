@@ -330,9 +330,7 @@ async function materializeHttpsPlugin(
     res = await safeFetch(src);
   } catch (err) {
     throw new Error(
-      `Failed to fetch https: plugin "${src}": ${
-        err instanceof Error ? err.message : err
-      }`,
+      `Failed to fetch https: plugin "${src}": ${err instanceof Error ? err.message : err}`,
     );
   }
   if (!res.ok) {
@@ -455,7 +453,9 @@ export async function resolveCapabilities(
   const badPrefix = invalidAdminPrefix(ctx.capabilityRegistry.reader);
   if (badPrefix !== null) {
     throw new Error(
-      `The "admin.prefix" capability provided ${JSON.stringify(badPrefix)}, which is not a usable path: ` +
+      `The "admin.prefix" capability provided ${
+        JSON.stringify(badPrefix)
+      }, which is not a usable path: ` +
         `it must start with "/", must not be "/" and must not end with "/" (for example "/admin").`,
     );
   }
@@ -493,10 +493,13 @@ export async function mountPlugins(
 
   const registeredOrder = ctx.hooks.plugins();
 
-
   logger.info("capabilities.resolved", {
     providers: ctx.capabilityRegistry.reader.providers()
-      .map((p) => `${p.name}=${p.provider}${p.status === "active" || p.kind === "contribution" ? "" : ` (${p.status})`}`)
+      .map((p) =>
+        `${p.name}=${p.provider}${
+          p.status === "active" || p.kind === "contribution" ? "" : ` (${p.status})`
+        }`
+      )
       .join(", ") || "none",
   });
   await writeDoctorReport(async () => ({

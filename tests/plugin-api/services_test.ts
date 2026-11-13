@@ -11,7 +11,8 @@ import { DuplicateEmailError } from "../../src/auth/user-store.ts";
 import { WeakPasswordError } from "../../src/auth/passwords.ts";
 
 const config = () => structuredClone(DEFAULT_CONFIG) as unknown as DuneConfig;
-const services = () => createPluginServices({ config: config(), storage: new MemoryStorageAdapter() });
+const services = () =>
+  createPluginServices({ config: config(), storage: new MemoryStorageAdapter() });
 
 Deno.test("errors carry a stable code and isDuneError matches on it", () => {
   assertEquals(isDuneError(new BodyTooLargeError(10), "body_too_large"), true);
@@ -27,10 +28,17 @@ Deno.test("errors carry a stable code and isDuneError matches on it", () => {
 
 Deno.test("security service: sanitising, password policy, body limits", () => {
   const { security } = services();
-  assertEquals(security.sanitizeHtml('<p>hi</p><script>alert(1)</script>').includes("script"), false);
+  assertEquals(
+    security.sanitizeHtml("<p>hi</p><script>alert(1)</script>").includes("script"),
+    false,
+  );
   assertEquals(security.checkPasswordStrength("short").ok, false);
   assertEquals(security.checkPasswordStrength("a-long-enough-passphrase").ok, true);
-  const big = new Request("http://x/", { method: "POST", headers: { "content-length": "100" }, body: "x".repeat(100) });
+  const big = new Request("http://x/", {
+    method: "POST",
+    headers: { "content-length": "100" },
+    body: "x".repeat(100),
+  });
   assertEquals(security.checkBodySize(big, 10)?.status, 413);
   assertEquals(security.parseUserYaml("a: 1"), { a: 1 });
 });
@@ -55,7 +63,10 @@ Deno.test("rate limit service: a limiter blocks after its budget", () => {
 
 Deno.test("session service: a manager over the configured (local) backend creates, reads and revokes", async () => {
   const { sessions } = services();
-  const mgr = await sessions.createManager({ sessionsDir: ".dune/admin/sessions", lifetimeMs: 60_000 });
+  const mgr = await sessions.createManager({
+    sessionsDir: ".dune/admin/sessions",
+    lifetimeMs: 60_000,
+  });
   const s = await mgr.create("user-1", "1.2.3.4");
   assertEquals((await mgr.get(s.id))?.userId, "user-1");
   await mgr.revokeAll("user-1");
@@ -65,7 +76,13 @@ Deno.test("session service: a manager over the configured (local) backend create
 Deno.test("user service: local store creates users and reports duplicates by code", async () => {
   const { users } = services();
   const store = users.createLocalStore({ usersDir: "data/users" });
-  await store.create({ email: "a@b.c", username: "a", provider: "local", roles: ["admin"], passwordHash: "x" });
+  await store.create({
+    email: "a@b.c",
+    username: "a",
+    provider: "local",
+    roles: ["admin"],
+    passwordHash: "x",
+  });
   const err = await assertRejects(() =>
     store.create({ email: "a@b.c", username: "b", provider: "local", roles: [], passwordHash: "x" })
   );
@@ -78,7 +95,12 @@ Deno.test("the hook registry hands plugins the services in setup()", () => {
   const provided = createPluginServices({ config: cfg, storage });
   let seen: unknown;
   const hooks = createHookRegistry({ config: cfg, storage, services: provided });
-  hooks.registerPlugin({ name: "p", version: "1", hooks: {}, setup: (api) => void (seen = api.services) });
+  hooks.registerPlugin({
+    name: "p",
+    version: "1",
+    hooks: {},
+    setup: (api) => void (seen = api.services),
+  });
   assertEquals(seen === provided, true);
 
   // without an explicit services option the registry builds its own
@@ -119,7 +141,11 @@ Deno.test("blueprints service: has/resolve/validate follow the loaded blueprints
   assertEquals(bp.resolve("nope"), null);
   assertEquals(Object.keys(bp.resolve("post")!.fields).sort(), ["author", "title"]);
   assertEquals(bp.validate({} as never, "nope"), []);
-  assertEquals(bp.validate({} as never, "post").length > 0, true, "missing required inherited field");
+  assertEquals(
+    bp.validate({} as never, "post").length > 0,
+    true,
+    "missing required inherited field",
+  );
   assertEquals(bp.validate({ title: "x" } as never, "post"), []);
 });
 
@@ -149,7 +175,11 @@ Deno.test("search analytics: off by default, on with system.search.analytics, an
     analytics.record({ query: "deno", resultCount: 2, timestamp: 1 });
     analytics.record({ query: "stripe", resultCount: 0, timestamp: 2 });
     await analytics.flush();
-    const on = createPluginServices({ config: cfg, storage: new MemoryStorageAdapter(), searchAnalytics: analytics });
+    const on = createPluginServices({
+      config: cfg,
+      storage: new MemoryStorageAdapter(),
+      searchAnalytics: analytics,
+    });
     assertEquals(on.search.analytics.enabled, true);
     const summary = await on.search.analytics.summarize();
     assertEquals(summary.totalSearches, 2);

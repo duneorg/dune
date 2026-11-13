@@ -102,7 +102,9 @@ export async function addCommand(
       await lockfileSyncCommand(root, {});
       console.log(`\n  Commit deno.lock along with deno.json before deploying.\n`);
     } catch {
-      console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile:sync\` manually before deploying.\n`);
+      console.log(
+        `  ⚠  Lockfile sync failed — run \`dune lockfile:sync\` manually before deploying.\n`,
+      );
     }
   }
 
@@ -197,7 +199,10 @@ async function installPackageSkills(
       const npmPackages = info.npmPackages as Record<string, { dir?: string }> | undefined;
       if (npmPackages) {
         for (const [, meta] of Object.entries(npmPackages)) {
-          if (meta.dir) { pkgDir = meta.dir; break; }
+          if (meta.dir) {
+            pkgDir = meta.dir;
+            break;
+          }
         }
       }
     }

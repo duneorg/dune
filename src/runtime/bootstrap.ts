@@ -6,7 +6,11 @@
  */
 
 import { createPluginServices } from "../plugin-api/create-services.ts";
-import { type CapabilityReader, type CapabilityRegistry, createCapabilityRegistry } from "../plugin-api/capabilities.ts";
+import {
+  type CapabilityReader,
+  type CapabilityRegistry,
+  createCapabilityRegistry,
+} from "../plugin-api/capabilities.ts";
 import type { PluginServices } from "../plugin-api/services.ts";
 import { resolveDataDir, resolveMaxRevisions, resolveRuntimeDir } from "../forms/config.ts";
 import { startupStep } from "./startup-step.ts";
@@ -21,10 +25,7 @@ import { createDuneEngine } from "../core/engine.ts";
 import { createCollectionEngine } from "../collections/engine.ts";
 import { createTaxonomyEngine } from "../taxonomy/engine.ts";
 import { createSearchEngine, loadPageBodyText } from "../search/engine.ts";
-import type {
-  SearchEngineCreateContext,
-  SearchRecordsCollectContext,
-} from "../search/engine.ts";
+import type { SearchEngineCreateContext, SearchRecordsCollectContext } from "../search/engine.ts";
 import { createSearchManager } from "../search/manager.ts";
 import { searchOptionsFromConfig } from "../search/config.ts";
 import { initFlags } from "../flags/mod.ts";
@@ -53,14 +54,14 @@ import { sectionRegistry } from "../sections/registry.ts";
 import type { SectionRegistry } from "../sections/registry.ts";
 import { createCdnProvider } from "../cdn/providers/mod.ts";
 import { CdnManager } from "../cdn/manager.ts";
-import { createContentApi, type ContentApi } from "../content/api.ts";
+import { type ContentApi, createContentApi } from "../content/api.ts";
 import { resolve, toFileUrl } from "@std/path";
 import { initLogger, logger } from "../core/logger.ts";
 import { resolveSessionPrefix } from "../session/prefix.ts";
 import type { DuneEngine } from "../core/engine.ts";
 import type { CollectionEngine } from "../collections/engine.ts";
 import type { TaxonomyEngine } from "../taxonomy/engine.ts";
-import type { HookRegistry, DunePlugin } from "../hooks/types.ts";
+import type { DunePlugin, HookRegistry } from "../hooks/types.ts";
 import type { ImageHandler } from "../images/handler.ts";
 import type { ImageProcessor } from "../images/processor.ts";
 import type { ImageCache } from "../images/cache.ts";
@@ -215,7 +216,6 @@ export interface BootstrapOptions {
   configOverrides?: Partial<DuneConfig>;
 }
 
-
 /**
  * Bootstrap the full Dune engine from a root directory.
  */
@@ -223,8 +223,7 @@ export async function bootstrap(
   root: string,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
-  const { debug = false, buildSearch = false, sharedThemesDir, basePath, dev = false } =
-    options;
+  const { debug = false, buildSearch = false, sharedThemesDir, basePath, dev = false } = options;
   // Only resolve to an absolute path when not using an injected storage —
   // the harness passes a synthetic root that doesn't exist on disk.
   if (!options.storage) {
@@ -312,8 +311,7 @@ export async function bootstrap(
       } else {
         logger.warn("mdx.components.invalid", {
           path: mdxComponentsPath,
-          message:
-            "default export must be a plain object — MDX components not loaded",
+          message: "default export must be a plain object — MDX components not loaded",
         });
         mdxHandler = new MdxHandler();
       }
@@ -344,7 +342,9 @@ export async function bootstrap(
   // The authz system is created further down; plugins reach it only through
   // services.authz, so the getter resolves it at call time.
   const searchAnalytics = resolveSearchAnalytics(config, root);
-  let authzForServices: { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
+  let authzForServices:
+    | { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter }
+    | undefined;
   const pluginServices = createPluginServices({
     config,
     storage,
@@ -353,7 +353,12 @@ export async function bootstrap(
     getAuthz: () => authzForServices,
   });
   const capabilityRegistry = createCapabilityRegistry();
-  const hooks = createHookRegistry({ config, storage, services: pluginServices, capabilities: capabilityRegistry });
+  const hooks = createHookRegistry({
+    config,
+    storage,
+    services: pluginServices,
+    capabilities: capabilityRegistry,
+  });
   // The engine was created before the registry; without this it never fired onRebuild or onThemeSwitch.
   engine.setHooks(hooks);
 
@@ -369,15 +374,17 @@ export async function bootstrap(
   // import and register each plugin so their hooks are in place before
   // the lifecycle events fire.
   await loadPluginAdminConfigs(config, storage, resolveDataDir(config));
-  await startupStep("Failed to load plugins", () => loadPlugins({ config, hooks, storage, root, dev }));
+  await startupStep(
+    "Failed to load plugins",
+    () => loadPlugins({ config, hooks, storage, root, dev }),
+  );
 
   // Collect plugin asset dirs, template dirs, and public routes.
   // pluginAdminPages are no longer aggregated here — @dune/plugin-admin's
   // mount() reads them from hooks.plugins() and stores them on AdminContext.pluginPages.
   const pluginAssetDirs = new Map<string, string>();
   const pluginTemplateDirs: string[] = [];
-  const pluginPublicRoutes:
-    import("../hooks/types.ts").PublicRouteRegistration[] = [];
+  const pluginPublicRoutes: import("../hooks/types.ts").PublicRouteRegistration[] = [];
   // Plugin-contributed authz actions — collected here (after every plugin's
   // setup() has run) so buildDuneAuthzSchema() below can merge them in
   // before the site's authz system is created. First declaration wins on a
@@ -508,14 +515,18 @@ export async function bootstrap(
   let searchRefreshAgain = false;
   const refreshSearch = async (): Promise<void> => {
     try {
-      const fresh = (await hooks.fire<SearchRecordsCollectContext>("onSearchRecordsCollect", { records: [] })).records;
+      const fresh =
+        (await hooks.fire<SearchRecordsCollectContext>("onSearchRecordsCollect", { records: [] }))
+          .records;
       // In place: engines hold this array (the built-in one, and those that kept the
       // `injectedRecords` they were handed at creation).
       injectedRecords.length = 0;
       injectedRecords.push(...fresh);
       await search.rebuild(engine.pages, injectedRecords);
     } catch (err) {
-      logger.warn("search.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+      logger.warn("search.refresh_failed", {
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   };
   // An engine listener, not a hook handler: a plugin's throwing onRebuild handler must not
@@ -524,12 +535,16 @@ export async function bootstrap(
     try {
       taxonomy.rebuild(engine.pages, engine.taxonomyMap);
     } catch (err) {
-      logger.warn("taxonomy.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+      logger.warn("taxonomy.refresh_failed", {
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
     try {
       collections.rebuild(engine.pages, engine.taxonomyMap);
     } catch (err) {
-      logger.warn("collections.refresh_failed", { reason: err instanceof Error ? err.message : String(err) });
+      logger.warn("collections.refresh_failed", {
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
     if (!buildSearch) return;
     if (searchRefresh) {
@@ -595,7 +610,9 @@ export async function bootstrap(
   // Plugins register, and so declare, before this point; settle async setup()
   // first so a declaration made after an await is seen too.
   await hooks.whenSetupComplete();
-  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) => p.name === "editor.session");
+  const hasSessionProvider = capabilityRegistry.reader.providers().some((p) =>
+    p.name === "editor.session"
+  );
   const hasAuthzActions = Object.keys(pluginAuthzActions).length > 0;
   const hasSiteAuth = !!config.site.auth;
   if (hasSessionProvider || hasAuthzActions || hasSiteAuth) {
@@ -671,7 +688,8 @@ export async function bootstrap(
   // listing it can tell why the panel is gone.
   if (!capabilityRegistry.reader.providers().some((p) => p.name === "admin.prefix")) {
     logger.info("bootstrap.no_admin", {
-      hint: "No plugin provides the admin panel. List jsr:@dune/plugin-admin under plugins: in config/site.yaml to run it (`dune migrate:config` adds it).",
+      hint:
+        "No plugin provides the admin panel. List jsr:@dune/plugin-admin under plugins: in config/site.yaml to run it (`dune migrate:config` adds it).",
     });
   }
 
@@ -709,7 +727,10 @@ export async function bootstrap(
         const routes = engine.pages.map((p) => p.route);
         await cdnManager.purgeRoutes(routes);
         if (config.system.debug) {
-          logger.debug("cdn.purge.completed", { routes: routes.length, provider: cdnProvider.name });
+          logger.debug("cdn.purge.completed", {
+            routes: routes.length,
+            provider: cdnProvider.name,
+          });
         }
       } catch (err) {
         logger.warn("cdn.purge.failed", { reason: String(err) });

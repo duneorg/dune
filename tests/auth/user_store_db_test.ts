@@ -7,10 +7,7 @@
  * No prior coverage existed for this tier at all before this file.
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { SQLiteAdapter } from "../../src/db/adapters/sqlite.ts";
 import { createDbUserStore } from "../../src/auth/user-store-db.ts";
 import { DuplicateEmailError } from "../../src/auth/user-store.ts";

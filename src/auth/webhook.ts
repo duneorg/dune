@@ -92,7 +92,9 @@ async function verifyClerk(req: Request, secret: string): Promise<Uint8Array | n
     // Decode base64 to hex for comparison
     try {
       const raw = atob(b64);
-      const hex = Array.from(raw).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+      const hex = Array.from(raw).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(
+        "",
+      );
       if (timingSafeEqualStrings(expected, hex)) return body;
     } catch { /* invalid base64 */ }
   }
@@ -217,7 +219,12 @@ export async function handleWebhook(req: Request, deps: WebhookHandlerDeps): Pro
       break;
     case "auth0":
       // Auth0 Management API sends x-auth0-timestamp (Unix seconds).
-      body = await verifyHubSignature(req, config.secret, "x-hub-signature-256", "x-auth0-timestamp");
+      body = await verifyHubSignature(
+        req,
+        config.secret,
+        "x-hub-signature-256",
+        "x-auth0-timestamp",
+      );
       break;
     case "generic":
       // Generic provider: timestamp header required by default (M6: reject when absent
@@ -251,12 +258,11 @@ export async function handleWebhook(req: Request, deps: WebhookHandlerDeps): Pro
     });
   }
 
-  const parsedEvent =
-    config.provider === "clerk"
-      ? parseClerkEvent(payload)
-      : config.provider === "auth0"
-      ? parseAuth0Event(payload)
-      : parseGenericEvent(payload);
+  const parsedEvent = config.provider === "clerk"
+    ? parseClerkEvent(payload)
+    : config.provider === "auth0"
+    ? parseAuth0Event(payload)
+    : parseGenericEvent(payload);
 
   // ── Event dispatch ──────────────────────────────────────────────────────────
   if (parsedEvent.type === "user.deleted") {

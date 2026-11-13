@@ -14,8 +14,7 @@ Deno.test("co-located media is served at the language-prefixed path too", opts, 
   const root = await Deno.makeTempDir({ prefix: "dune_test_medialang_" });
   try {
     const files: Record<string, string | Uint8Array> = {
-      "config/site.yaml":
-        "title: T\nurl: http://localhost:3000\ntheme:\n  name: t\n",
+      "config/site.yaml": "title: T\nurl: http://localhost:3000\ntheme:\n  name: t\n",
       "themes/t/theme.yaml": "name: t\n",
       "themes/t/templates/default.tsx":
         "/** @jsxImportSource preact */\nexport default function T({ children }) { return <html><body>{children}</body></html>; }\n",
@@ -35,8 +34,7 @@ Deno.test("co-located media is served at the language-prefixed path too", opts, 
     const ctx = await bootstrap(root, {});
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     const handler = app.handler();
-    const get = (p: string) =>
-      handler(new Request(`http://localhost:3000${p}`), {} as never);
+    const get = (p: string) => handler(new Request(`http://localhost:3000${p}`), {} as never);
 
     const plain = await get("/docs/doc.pdf");
     assertEquals(plain.status, 200);

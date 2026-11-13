@@ -60,7 +60,13 @@ export function limitedBody(
   stream: ReadableStream<Uint8Array> | null,
   maxBytes: number,
 ): ReadableStream<Uint8Array> {
-  if (!stream) return new ReadableStream({ start(c) { c.close(); } });
+  if (!stream) {
+    return new ReadableStream({
+      start(c) {
+        c.close();
+      },
+    });
+  }
 
   let total = 0;
   return stream.pipeThrough(

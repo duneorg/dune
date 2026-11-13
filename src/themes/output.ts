@@ -79,15 +79,23 @@ export function parseTemplateOutput(value: unknown): TemplateOutput | null {
  * For JSON, any other defined value is `JSON.stringify`'d. Anything else is a
  * template bug and throws, so it surfaces as a 500 instead of `[object Object]`.
  */
-export function dataOutputBody(result: unknown, output: TemplateOutput, templateName: string): string {
+export function dataOutputBody(
+  result: unknown,
+  output: TemplateOutput,
+  templateName: string,
+): string {
   if (typeof result === "string") return result;
   if (output.json && result !== undefined) {
     const json = JSON.stringify(result);
     if (json !== undefined) return json;
   }
   throw new Error(
-    `Template "${templateName}" declares output "${output.contentType.split(";")[0]}" and must return a string` +
-      `${output.json ? " or a JSON-serializable value" : ""}, got ${result === null ? "null" : typeof result}`,
+    `Template "${templateName}" declares output "${
+      output.contentType.split(";")[0]
+    }" and must return a string` +
+      `${output.json ? " or a JSON-serializable value" : ""}, got ${
+        result === null ? "null" : typeof result
+      }`,
   );
 }
 

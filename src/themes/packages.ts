@@ -3,10 +3,7 @@
  */
 
 import type { ThemePackageEntry } from "../config/types.ts";
-import {
-  normalizeThemeSpecifier,
-  resolveThemePackageRoot,
-} from "./reference.ts";
+import { normalizeThemeSpecifier, resolveThemePackageRoot } from "./reference.ts";
 
 /** Resolved theme package locations keyed by logical name and by specifier. */
 export interface ThemePackageIndex {

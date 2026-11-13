@@ -27,12 +27,7 @@
  */
 
 import { StorageError } from "../core/errors.ts";
-import type {
-  StorageAdapter,
-  StorageEntry,
-  StorageStat,
-  WatchEvent,
-} from "./types.ts";
+import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "./types.ts";
 
 interface FileMeta {
   mtime: number;

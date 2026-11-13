@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { h, type ComponentType, type VNode } from "preact";
+import { type ComponentType, h, type VNode } from "preact";
 import { render as renderToString } from "preact-render-to-string";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page } from "../content/types.ts";
@@ -53,19 +53,25 @@ export async function handleMarkdownPage(
         templateName,
         themeName: engine.config?.theme?.name,
         sourcePath: page.sourcePath,
-        reason:
-          "Rendering a bare unstyled fallback instead. Check theme.name in " +
+        reason: "Rendering a bare unstyled fallback instead. Check theme.name in " +
           "config/site.yaml and that a matching directory exists under themes/.",
       });
     }
     const html = await page.html();
     return render(
-      h("html", null,
-        h("head", null,
+      h(
+        "html",
+        null,
+        h(
+          "head",
+          null,
           h("title", null, buildPageTitle(page, engine.site.title)),
           h("meta", { charset: "utf-8" }),
           h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-          h("style", null, `
+          h(
+            "style",
+            null,
+            `
             body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #333; }
             h1 { margin-bottom: 0.5rem; }
             pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; }
@@ -76,13 +82,16 @@ export async function handleMarkdownPage(
             th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
             th { background: #f5f5f5; }
             nav a { margin-right: 1rem; }
-          `),
-        ),
-        h("body", null,
-          h("nav", null,
-            h("a", { href: "/" }, engine.site.title),
+          `,
           ),
-          h("article", null,
+        ),
+        h(
+          "body",
+          null,
+          h("nav", null, h("a", { href: "/" }, engine.site.title)),
+          h(
+            "article",
+            null,
             h("h1", null, page.frontmatter.title),
             h("div", { dangerouslySetInnerHTML: { __html: html } }),
           ),
@@ -105,7 +114,14 @@ export async function handleMarkdownPage(
   } else {
     html = await page.html();
     if (supportedLangs.length > 1) {
-      html = rewriteInternalLinks(html, pageLang, defaultLang, includeDefaultInUrl, supportedLangs, page.media);
+      html = rewriteInternalLinks(
+        html,
+        pageLang,
+        defaultLang,
+        includeDefaultInUrl,
+        supportedLangs,
+        page.media,
+      );
     }
   }
   const htmlContent = h("div", { dangerouslySetInnerHTML: { __html: html } });
@@ -167,7 +183,10 @@ export async function handleMarkdownPage(
     }
     return markBareResponse(
       new Response(body, {
-        headers: { "Content-Type": output.contentType, ...outputSecurityHeaders(output.contentType) },
+        headers: {
+          "Content-Type": output.contentType,
+          ...outputSecurityHeaders(output.contentType),
+        },
       }),
     );
   }

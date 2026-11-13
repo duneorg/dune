@@ -3,7 +3,7 @@
  */
 
 import type { BootstrapResult } from "../runtime/bootstrap.ts";
-export type { SiteEntry, MultisiteConfig } from "../config/types.ts";
+export type { MultisiteConfig, SiteEntry } from "../config/types.ts";
 
 /** A single bootstrapped site within a {@link MultisiteManager}. */
 export interface InitializedSite {

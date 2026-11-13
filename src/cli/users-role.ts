@@ -171,9 +171,7 @@ async function changeRole(
     // replaces any other admin-tier role, matching withRole()'s semantics
     // in @dune/plugin-admin. Non-admin-tier tags (e.g. a future public-site
     // membership tag coexisting on the same account) are preserved.
-    const previousRole = [...ADMIN_TIER_ROLES].find((r) =>
-      user.roles.includes(r)
-    );
+    const previousRole = [...ADMIN_TIER_ROLES].find((r) => user.roles.includes(r));
     const nonAdminTierTags = user.roles.filter((r) => !ADMIN_TIER_ROLES.has(r));
     const newRoles = grant ? [role, ...nonAdminTierTags] : nonAdminTierTags;
     const newRole = grant ? role : undefined;
@@ -185,9 +183,9 @@ async function changeRole(
         } — would update`,
       );
       console.log(
-        `  ~ ${email}: would sync app:site tuple (${
-          previousRole ?? "none"
-        } → ${newRole ?? "none"})`,
+        `  ~ ${email}: would sync app:site tuple (${previousRole ?? "none"} → ${
+          newRole ?? "none"
+        })`,
       );
       return;
     }
@@ -196,9 +194,7 @@ async function changeRole(
     await syncAdminTuple(ctx, user.id, previousRole, newRole, newRoles);
 
     console.log(
-      grant
-        ? `  ✓ ${email}: granted role "${role}"`
-        : `  ✓ ${email}: revoked role "${role}"`,
+      grant ? `  ✓ ${email}: granted role "${role}"` : `  ✓ ${email}: revoked role "${role}"`,
     );
   } finally {
     await ctx.closeDb();

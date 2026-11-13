@@ -3,17 +3,8 @@ import type { BootstrapResult } from "./bootstrap.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
 import { SITEMAP_XSL } from "../sitemap/stylesheet.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
-import {
-  generateRss,
-  generateAtom,
-  type FeedItem,
-  type FeedOptions,
-} from "../feeds/generator.ts";
-import {
-  maybeCompress,
-  withSecurityHeaders,
-  renderErrorPage,
-} from "../cli/serve-utils.ts";
+import { type FeedItem, type FeedOptions, generateAtom, generateRss } from "../feeds/generator.ts";
+import { maybeCompress, renderErrorPage, withSecurityHeaders } from "../cli/serve-utils.ts";
 import { serveStagedPreview } from "../staging/preview.ts";
 
 export interface FeedRouteOptions {
@@ -161,18 +152,20 @@ export async function registerFeeds(
         "Content-Type": "text/xsl; charset=utf-8",
         "Cache-Control": dev ? "no-cache" : "public, max-age=86400",
       },
-    })
-  );
+    }));
 
   if (feedEnabled) {
     app.get("/feed.xml", async (fc) => {
       if (!dev && rssFeed) {
-        return await maybeCompress(fc.req, new Response(rssFeed, {
-          headers: {
-            "Content-Type": "application/rss+xml; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, must-revalidate",
-          },
-        }));
+        return await maybeCompress(
+          fc.req,
+          new Response(rssFeed, {
+            headers: {
+              "Content-Type": "application/rss+xml; charset=utf-8",
+              "Cache-Control": "public, max-age=3600, must-revalidate",
+            },
+          }),
+        );
       }
       const items = await buildFeedItems();
       const siteBase = config.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
@@ -188,18 +181,24 @@ export async function registerFeeds(
           : undefined,
       };
       return new Response(generateRss(opts), {
-        headers: { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "application/rss+xml; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
       });
     });
 
     app.get("/atom.xml", async (fc) => {
       if (!dev && atomFeed) {
-        return await maybeCompress(fc.req, new Response(atomFeed, {
-          headers: {
-            "Content-Type": "application/atom+xml; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, must-revalidate",
-          },
-        }));
+        return await maybeCompress(
+          fc.req,
+          new Response(atomFeed, {
+            headers: {
+              "Content-Type": "application/atom+xml; charset=utf-8",
+              "Cache-Control": "public, max-age=3600, must-revalidate",
+            },
+          }),
+        );
       }
       const items = await buildFeedItems();
       const siteBase = config.site.url?.replace(/\/$/, "") || `http://localhost:${port}`;
@@ -215,7 +214,10 @@ export async function registerFeeds(
           : undefined,
       };
       return new Response(generateAtom(opts), {
-        headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "application/atom+xml; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
       });
     });
   }
@@ -234,7 +236,7 @@ export async function registerFeeds(
           sseClients.add(ctrl);
           ctrl.enqueue(new TextEncoder().encode(": connected\n\n"));
         },
-        cancel() { /* client disconnected */ },
+        cancel() {/* client disconnected */},
       });
       return new Response(body, {
         headers: {

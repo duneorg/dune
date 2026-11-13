@@ -4,12 +4,12 @@
 
 // Types
 export type {
-  ContentFormat,
-  ContentFormatHandler,
-  ContentPageProps,
   Collection,
   CollectionDefinition,
   CollectionSource,
+  ContentFormat,
+  ContentFormatHandler,
+  ContentPageProps,
   MediaFile,
   MediaHelper,
   Page,
@@ -27,27 +27,19 @@ export { TsxHandler } from "./formats/tsx.ts";
 
 // Path utilities
 export {
-  parseFolderName,
-  parseContentFilename,
-  sourcePathToRoute,
   calculateDepth,
   getParentPath,
   isContentFile,
-  isMediaFile,
-  isMetadataFile,
   isInDraftsFolder,
   isInModuleFolder,
+  isMediaFile,
+  isMetadataFile,
+  parseContentFilename,
+  parseFolderName,
+  sourcePathToRoute,
 } from "./path-utils.ts";
-export type { FolderInfo, FileInfo } from "./path-utils.ts";
+export type { FileInfo, FolderInfo } from "./path-utils.ts";
 
 // Index builder
-export {
-  buildIndex,
-  updateIndex,
-} from "./index-builder.ts";
-export type {
-  IndexBuilderOptions,
-  BuildResult,
-  IndexError,
-  TaxonomyMap,
-} from "./index-builder.ts";
+export { buildIndex, updateIndex } from "./index-builder.ts";
+export type { BuildResult, IndexBuilderOptions, IndexError, TaxonomyMap } from "./index-builder.ts";

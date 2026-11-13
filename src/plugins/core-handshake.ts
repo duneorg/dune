@@ -19,7 +19,10 @@ import { CORE_INSTANCE, CORE_VERSION } from "./mod.ts";
  * null when unified or when the plugin predates the handshake (it exports no
  * `resolvedCoreSentinel`).
  */
-export function pluginCoreMismatch(pluginModule: Record<string, unknown>, pluginName: string): string | null {
+export function pluginCoreMismatch(
+  pluginModule: Record<string, unknown>,
+  pluginName: string,
+): string | null {
   if (!("resolvedCoreSentinel" in pluginModule)) return null;
   if (pluginModule.resolvedCoreSentinel === CORE_INSTANCE) return null;
   const theirs = typeof pluginModule.resolvedCoreVersion === "string"

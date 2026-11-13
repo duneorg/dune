@@ -62,7 +62,10 @@ Deno.test("generateRss: includes atom:link self-reference", () => {
 });
 
 Deno.test("generateRss: renders one <item> per feed item", () => {
-  const items = [makeItem({ title: "Post A" }), makeItem({ title: "Post B", link: "https://example.com/b", guid: "https://example.com/b" })];
+  const items = [
+    makeItem({ title: "Post A" }),
+    makeItem({ title: "Post B", link: "https://example.com/b", guid: "https://example.com/b" }),
+  ];
   const xml = generateRss(makeOptions({ items }));
 
   assertStringIncludes(xml, "<title>Post A</title>");
@@ -79,7 +82,9 @@ Deno.test("generateRss: item contains link, guid, description", () => {
 });
 
 Deno.test("generateRss: item pubDate is RFC-822 format", () => {
-  const xml = generateRss(makeOptions({ items: [makeItem({ pubDate: new Date("2026-01-15T12:00:00Z") })] }));
+  const xml = generateRss(
+    makeOptions({ items: [makeItem({ pubDate: new Date("2026-01-15T12:00:00Z") })] }),
+  );
 
   // RFC-822: "Thu, 15 Jan 2026 12:00:00 +0000"
   assertStringIncludes(xml, "<pubDate>");
@@ -134,7 +139,10 @@ Deno.test("generateAtom: includes feed metadata", () => {
 });
 
 Deno.test("generateAtom: renders one <entry> per feed item", () => {
-  const items = [makeItem({ title: "Alpha" }), makeItem({ title: "Beta", link: "https://example.com/beta", guid: "https://example.com/beta" })];
+  const items = [
+    makeItem({ title: "Alpha" }),
+    makeItem({ title: "Beta", link: "https://example.com/beta", guid: "https://example.com/beta" }),
+  ];
   const xml = generateAtom(makeOptions({ items }));
 
   assertStringIncludes(xml, "<title>Alpha</title>");
@@ -152,7 +160,9 @@ Deno.test("generateAtom: entry contains id, updated, content", () => {
 });
 
 Deno.test("generateAtom: entry updated date is ISO-8601", () => {
-  const xml = generateAtom(makeOptions({ items: [makeItem({ pubDate: new Date("2026-01-15T12:00:00Z") })] }));
+  const xml = generateAtom(
+    makeOptions({ items: [makeItem({ pubDate: new Date("2026-01-15T12:00:00Z") })] }),
+  );
 
   assertStringIncludes(xml, "<updated>2026-01-15T12:00:00.000Z</updated>");
 });
@@ -160,7 +170,11 @@ Deno.test("generateAtom: entry updated date is ISO-8601", () => {
 Deno.test("generateAtom: feed updated reflects most recent item date", () => {
   const items = [
     makeItem({ pubDate: new Date("2026-03-01T00:00:00Z") }),
-    makeItem({ pubDate: new Date("2026-01-15T00:00:00Z"), link: "https://example.com/old", guid: "https://example.com/old" }),
+    makeItem({
+      pubDate: new Date("2026-01-15T00:00:00Z"),
+      link: "https://example.com/old",
+      guid: "https://example.com/old",
+    }),
   ];
   const xml = generateAtom(makeOptions({ items }));
 

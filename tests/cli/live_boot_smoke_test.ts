@@ -19,10 +19,7 @@
  * extends to that path too without needing a duplicate.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 
 const TSX_PAGE = `
@@ -136,9 +133,7 @@ Deno.test(
       if (!response) {
         throw new Error(
           `dune dev never served a response within ${BOOT_TIMEOUT_MS}ms ` +
-            `(process ${
-              exited ? `exited with code ${exitCode}` : "still running"
-            }).\n` +
+            `(process ${exited ? `exited with code ${exitCode}` : "still running"}).\n` +
             `--- captured output ---\n${output}`,
         );
       }

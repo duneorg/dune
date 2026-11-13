@@ -7,8 +7,8 @@ import {
   enforceRoles,
   isValidLoginPath,
   loginPathForRequest,
-  normalizeRoutePath,
   mediaDenialResponse,
+  normalizeRoutePath,
   resolveLoginPath,
   setGatingLoginPath,
 } from "../../src/auth/gating.ts";
@@ -28,8 +28,21 @@ Deno.test("isValidLoginPath: local absolute paths only", () => {
   }
   for (
     const bad of [
-      "", "join", "//evil.com", "//evil.com/x", "https://evil.com", "/join?x=1", "/join#x", "/a/../b",
-      "/..", "/a b", "/a\\b", "/a\nb", 5, null, undefined,
+      "",
+      "join",
+      "//evil.com",
+      "//evil.com/x",
+      "https://evil.com",
+      "/join?x=1",
+      "/join#x",
+      "/a/../b",
+      "/..",
+      "/a b",
+      "/a\\b",
+      "/a\nb",
+      5,
+      null,
+      undefined,
     ]
   ) {
     assertStrictEquals(isValidLoginPath(bad), false, String(bad));
@@ -158,7 +171,10 @@ async function harness(loginPath?: string) {
 
 Deno.test("GET /auth/login redirects to login_path, keeping the query", async () => {
   const routes = await harness("/join");
-  const res = await routes.login(new Request("https://example.com/auth/login?next=%2Fa&error=invalid"), null);
+  const res = await routes.login(
+    new Request("https://example.com/auth/login?next=%2Fa&error=invalid"),
+    null,
+  );
   assertEquals(res.status, 302);
   assertEquals(res.headers.get("location"), "/join?next=%2Fa&error=invalid");
 });
@@ -177,7 +193,10 @@ Deno.test("a failed password login goes back to login_path", async () => {
   const res = await routes.passwordLogin(
     new Request("https://example.com/auth/login", {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://example.com" },
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://example.com",
+      },
       body: form,
     }),
   );

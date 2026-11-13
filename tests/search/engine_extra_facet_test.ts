@@ -100,7 +100,7 @@ Deno.test("extra: multiple declared fields extracted", async () => {
 Deno.test("extra: undeclared fields not present in extra", async () => {
   const { pages } = await buildTestIndex(
     { "content/articles/a.md": `---\nslug: a\ntitle: A\nsubtype: artikel\nauthor: Max\n---` },
-    ["subtype"],  // only subtype declared
+    ["subtype"], // only subtype declared
   );
   assertEquals(Object.keys(pages[0].extra ?? {}), ["subtype"]);
 });
@@ -123,7 +123,10 @@ Deno.test("extra: field missing from frontmatter → not included in extra", asy
 
 Deno.test("extra: dot-path field resolved correctly", async () => {
   const { pages } = await buildTestIndex(
-    { "content/articles/a.md": `---\nslug: a\ntitle: A\ntaxonomy:\n  category:\n    - news\n    - tech\n---` },
+    {
+      "content/articles/a.md":
+        `---\nslug: a\ntitle: A\ntaxonomy:\n  category:\n    - news\n    - tech\n---`,
+    },
     ["taxonomy.category"],
   );
   assertEquals(pages[0].extra?.["taxonomy.category"], ["news", "tech"]);

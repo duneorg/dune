@@ -28,8 +28,7 @@ import { resolveCheckoutRoot } from "./dev-link.ts";
 // map` (the previous version of this regex) required "not" twice
 // unconditionally and never actually matched the short form despite this
 // comment always having claimed it did.
-const IMPORT_MAP_RE =
-  /Import "([^"]+)" not (?:a dependency and not )?in import map/;
+const IMPORT_MAP_RE = /Import "([^"]+)" not (?:a dependency and not )?in import map/;
 
 export function isImportMapError(err: unknown): err is Error {
   return err instanceof Error && IMPORT_MAP_RE.test(err.message);

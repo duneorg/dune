@@ -105,7 +105,9 @@ async function buildStaticCommand(root: string, options: BuildOptions): Promise<
 
   if (!json) {
     console.log(`🏜️  Dune — building static site → ${outDir}/\n`);
-    if (incremental) console.log("  📦 Incremental mode active (use --no-incremental to force full rebuild)\n");
+    if (incremental) {
+      console.log("  📦 Incremental mode active (use --no-incremental to force full rebuild)\n");
+    }
   }
 
   const bootstrapStart = performance.now();

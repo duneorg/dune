@@ -1,9 +1,16 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { capabilityFindings } from "../../src/cli/doctor.ts";
-import { DOCTOR_REPORT_ENV, type DoctorReport, writeDoctorReport } from "../../src/plugin-api/doctor-report.ts";
+import {
+  DOCTOR_REPORT_ENV,
+  type DoctorReport,
+  writeDoctorReport,
+} from "../../src/plugin-api/doctor-report.ts";
 
-const slot = (name: string, provider: string, status: "active" | "declined" | "failed" = "active") =>
-  ({ name, kind: "slot" as const, provider, status });
+const slot = (
+  name: string,
+  provider: string,
+  status: "active" | "declined" | "failed" = "active",
+) => ({ name, kind: "slot" as const, provider, status });
 
 const healthy: DoctorReport = {
   providers: [
@@ -23,7 +30,10 @@ Deno.test("doctor: a healthy admin site lists its providers and has no problems"
 });
 
 Deno.test("doctor: a plugin that provides admin.prefix but no editor.session is half an admin, an error", () => {
-  const findings = capabilityFindings({ providers: [slot("admin.prefix", "half-admin")], scheduledActions: 0 });
+  const findings = capabilityFindings({
+    providers: [slot("admin.prefix", "half-admin")],
+    scheduledActions: 0,
+  });
   const errors = findings.filter((f) => f.severity === "error");
   assertEquals(errors.length, 1);
   assertStringIncludes(errors[0].message, "half-admin");
@@ -35,7 +45,10 @@ Deno.test("doctor: a site with no admin at all has nothing to report", () => {
 });
 
 Deno.test("doctor: an editor.session provider without admin.prefix is not called an admin", () => {
-  const findings = capabilityFindings({ providers: [slot("editor.session", "sso-only")], scheduledActions: 0 });
+  const findings = capabilityFindings({
+    providers: [slot("editor.session", "sso-only")],
+    scheduledActions: 0,
+  });
   assertEquals(findings.filter((f) => f.severity === "error"), []);
 });
 
@@ -44,14 +57,21 @@ Deno.test("doctor: a provider whose factory threw is an error even when another 
     { providers: [slot("editor.session", "my-admin", "failed")], scheduledActions: 0 },
   );
   const errors = findings.filter((f) => f.severity === "error");
-  assertEquals(errors.length, 1, "a failed provider alone is one error: nothing here claims to be an admin");
+  assertEquals(
+    errors.length,
+    1,
+    "a failed provider alone is one error: nothing here claims to be an admin",
+  );
   assertStringIncludes(errors[0].message, "my-admin");
   assertStringIncludes(errors[0].message, "capabilities.provider_failed");
 });
 
 Deno.test("doctor: an admin whose editor.session failed is reported as the failure and as missing", () => {
   const findings = capabilityFindings(
-    { providers: [slot("admin.prefix", "my-admin"), slot("editor.session", "my-admin", "failed")], scheduledActions: 0 },
+    {
+      providers: [slot("admin.prefix", "my-admin"), slot("editor.session", "my-admin", "failed")],
+      scheduledActions: 0,
+    },
   );
   assertEquals(findings.filter((f) => f.severity === "error").length, 2);
 });

@@ -75,7 +75,9 @@ function parseApiBlock(
 
   // auth
   if (raw.auth === undefined) {
-    throw new Error(`${sourceHint}: api block must specify "auth" (one of: ${VALID_AUTH_MODES.join(", ")})`);
+    throw new Error(
+      `${sourceHint}: api block must specify "auth" (one of: ${VALID_AUTH_MODES.join(", ")})`,
+    );
   }
   if (typeof raw.auth !== "string" || !(VALID_AUTH_MODES as readonly string[]).includes(raw.auth)) {
     throw new Error(
@@ -96,7 +98,9 @@ function parseApiBlock(
     for (const m of raw.methods as unknown[]) {
       if (typeof m !== "string" || !(VALID_API_METHODS as string[]).includes(m)) {
         throw new Error(
-          `${sourceHint}: api.methods contains invalid value "${m}". Valid: ${VALID_API_METHODS.join(", ")}`,
+          `${sourceHint}: api.methods contains invalid value "${m}". Valid: ${
+            VALID_API_METHODS.join(", ")
+          }`,
         );
       }
       methods.push(m as ApiMethod);
@@ -287,9 +291,7 @@ export function parseRawSchema(raw: unknown, sourceHint = "<unknown>"): DbSchema
     const fieldNames = new Set(fields.map((f) => f.name));
     const autoFieldNames = new Set(
       fields
-        .filter((f) =>
-          f.type === "datetime" && (f.default === "now" || f.onUpdate === "now")
-        )
+        .filter((f) => f.type === "datetime" && (f.default === "now" || f.onUpdate === "now"))
         .map((f) => f.name),
     );
     api = parseApiBlock(r.api as RawApiBlock, sourceHint, fieldNames, autoFieldNames);

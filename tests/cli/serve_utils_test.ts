@@ -68,7 +68,8 @@ Deno.test("injectBasePath: prefixes root-relative href/src/action", async () => 
 });
 
 Deno.test("injectBasePath: leaves absolute and protocol-relative URLs untouched", async () => {
-  const html = '<a href="https://example.com/x">abs</a><a href="//cdn.example.com/x">proto-relative</a>' +
+  const html =
+    '<a href="https://example.com/x">abs</a><a href="//cdn.example.com/x">proto-relative</a>' +
     '<a href="mailto:hi@example.com">mail</a>';
   const res = injectBasePath(htmlResponse(html), "/papermod");
   assertEquals(await bodyOf(res), html);
@@ -88,7 +89,9 @@ Deno.test("injectBasePath: normalizes a trailing slash on basePath", async () =>
 // === serveStaticFile / servePluginAsset: percent-encoded paths ===
 
 /** A site root with static files (incl. spaces/non-ASCII names) and a secret outside static/. */
-async function makeStaticRoot(): Promise<{ root: string; shared: string; cleanup: () => Promise<void> }> {
+async function makeStaticRoot(): Promise<
+  { root: string; shared: string; cleanup: () => Promise<void> }
+> {
   const base = await Deno.makeTempDir();
   const root = `${base}/site`;
   const shared = `${base}/shared-themes`;
@@ -112,7 +115,8 @@ Deno.test("serveStaticFile: serves files whose names need percent-encoding", asy
     assertEquals(await (await serveStaticFile(root, "/static/plain.txt"))!.text(), "plain");
     assertEquals(await (await serveStaticFile(root, "/static/My%20File.pdf"))!.text(), "spaced");
     assertEquals(
-      await (await serveStaticFile(root, "/static/docs/Litt%C3%A9rature%20%26%20Suisse.txt"))!.text(),
+      await (await serveStaticFile(root, "/static/docs/Litt%C3%A9rature%20%26%20Suisse.txt"))!
+        .text(),
       "unicode",
     );
     assertEquals(
@@ -128,7 +132,10 @@ Deno.test("serveStaticFile: decodes exactly once (double-encoded input is a lite
   const { root, cleanup } = await makeStaticRoot();
   try {
     // "%25" decodes to "%", which is then NOT decoded again: this addresses "100%25.txt"
-    assertEquals(await (await serveStaticFile(root, "/static/100%2525.txt"))!.text(), "literal percent sequence");
+    assertEquals(
+      await (await serveStaticFile(root, "/static/100%2525.txt"))!.text(),
+      "literal percent sequence",
+    );
     // ...so a double-encoded traversal is just a nonexistent literal file name
     assertEquals(await serveStaticFile(root, "/static/%252e%252e%252fsecret.txt"), null);
   } finally {
@@ -160,7 +167,9 @@ Deno.test("serveStaticFile: rejects encoded traversal, NUL, backslash and malfor
     }
     // a legitimate shared theme asset still resolves
     assertEquals(
-      await (await serveStaticFile(root, "/themes/other/static/ok.css", false, { sharedThemesDir: shared }))!.text(),
+      await (await serveStaticFile(root, "/themes/other/static/ok.css", false, {
+        sharedThemesDir: shared,
+      }))!.text(),
       "shared",
     );
   } finally {
@@ -176,8 +185,17 @@ Deno.test("servePluginAsset: serves encoded names and rejects encoded traversal"
     await Deno.writeTextFile(`${assets}/my asset.js`, "asset");
     await Deno.writeTextFile(`${base}/secret.txt`, "SECRET");
     const dirs = new Map([["demo", assets]]);
-    assertEquals(await (await servePluginAsset(dirs, "/plugins/demo/my%20asset.js"))!.text(), "asset");
-    for (const p of ["/plugins/demo/%2e%2e/secret.txt", "/plugins/demo/..%2fsecret.txt", "/plugins/demo/%E0%A4%A"]) {
+    assertEquals(
+      await (await servePluginAsset(dirs, "/plugins/demo/my%20asset.js"))!.text(),
+      "asset",
+    );
+    for (
+      const p of [
+        "/plugins/demo/%2e%2e/secret.txt",
+        "/plugins/demo/..%2fsecret.txt",
+        "/plugins/demo/%E0%A4%A",
+      ]
+    ) {
       assertEquals(await servePluginAsset(dirs, p), null, p);
     }
   } finally {

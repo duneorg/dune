@@ -252,7 +252,10 @@ function buildApi(ctx: ContentContext): ContentApi {
     if (!page.published || !page.termPageFor) continue;
     for (const [vocab, value] of Object.entries(page.termPageFor)) {
       let inner = termPageMap.get(vocab);
-      if (!inner) { inner = new Map(); termPageMap.set(vocab, inner); }
+      if (!inner) {
+        inner = new Map();
+        termPageMap.set(vocab, inner);
+      }
       inner.set(value, page.route);
     }
   }

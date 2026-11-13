@@ -5,10 +5,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { join, resolve } from "@std/path";
 import { parseCliOptions } from "../../src/cli/args.ts";
-import {
-  resolveSiteRoot,
-  SiteResolutionError,
-} from "../../src/cli/resolve-site.ts";
+import { resolveSiteRoot, SiteResolutionError } from "../../src/cli/resolve-site.ts";
 import { usersPasswdCommand } from "../../src/cli/users-passwd.ts";
 import { createLocalUserStore } from "../../src/auth/user-store.ts";
 import { verifyPassword } from "../../src/auth/passwords.ts";

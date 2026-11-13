@@ -10,10 +10,7 @@
  * wiring plugin.hooks → hooks firing.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { loadPlugins } from "../../src/plugins/loader.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";

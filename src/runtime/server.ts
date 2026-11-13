@@ -297,9 +297,7 @@ export async function createDuneApp(
     const CONCURRENCY = 8;
     for (let i = 0; i < toWarm.length; i += CONCURRENCY) {
       await Promise.all(
-        toWarm.slice(i, i + CONCURRENCY).map((r) =>
-          engine.resolve(r).catch(() => {})
-        ),
+        toWarm.slice(i, i + CONCURRENCY).map((r) => engine.resolve(r).catch(() => {})),
       );
     }
   }
@@ -464,7 +462,9 @@ export async function createDuneApp(
 
     const resolved = await resolveEditor(fc.req);
     if (!resolved.ok) {
-      return new Response(resolved.status === 401 ? "Unauthorized" : "Forbidden", { status: resolved.status });
+      return new Response(resolved.status === 401 ? "Unauthorized" : "Forbidden", {
+        status: resolved.status,
+      });
     }
     const { editor } = resolved;
     // An author edits only the pages they created, as at commit.

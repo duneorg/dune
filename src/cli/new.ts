@@ -546,7 +546,10 @@ import {
 } from "./entrypoint-template.ts";
 import { warnIfUnregisteredWorkspaceMember } from "./workspace-member-check.ts";
 
-export async function newCommand(dir: string, options: { headless?: boolean; verify?: boolean } = {}) {
+export async function newCommand(
+  dir: string,
+  options: { headless?: boolean; verify?: boolean } = {},
+) {
   if (options.headless) {
     return _newHeadlessCommand(dir, { verify: options.verify });
   }
@@ -674,7 +677,9 @@ async function _newHeadlessCommand(dir: string, options: { verify?: boolean } = 
   console.log(`    You own:       routes/, islands/, static/`);
   console.log(`\n  Next steps:`);
   console.log(`    cd ${dir}`);
-  console.log(`    dune users:create you@example.com --role admin --password-prompt   (your first admin)`);
+  console.log(
+    `    dune users:create you@example.com --role admin --password-prompt   (your first admin)`,
+  );
   console.log(`    deno task dev`);
   console.log(`\n  Admin panel: http://localhost:3000/admin (Dune creates no default admin)\n`);
 

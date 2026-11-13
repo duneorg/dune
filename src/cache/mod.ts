@@ -7,5 +7,5 @@ export type { PageCache, PageCacheEntry, PageCacheOptions, PageCacheStats } from
 
 export { computeEtag, etagMatches } from "./etag.ts";
 
-export { resolvePolicy, buildCacheControl } from "./policy.ts";
-export type { HttpCacheRule, ResolvedCachePolicy, CachePolicyDefaults } from "./policy.ts";
+export { buildCacheControl, resolvePolicy } from "./policy.ts";
+export type { CachePolicyDefaults, HttpCacheRule, ResolvedCachePolicy } from "./policy.ts";

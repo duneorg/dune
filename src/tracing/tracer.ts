@@ -144,7 +144,10 @@ function createActiveTracer(config: TracingConfig): Tracer {
   // current behaviour is safe (no security impact, only observability accuracy).
   let currentTraceId: string | null = null;
 
-  function createSpanObject(name: string, attrs: Record<string, string | number | boolean>): SpanData {
+  function createSpanObject(
+    name: string,
+    attrs: Record<string, string | number | boolean>,
+  ): SpanData {
     return {
       traceId: randomHex(16),
       spanId: randomHex(8),

@@ -5,10 +5,7 @@
  * via a test harness rather than spawning a subprocess.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { McpServer } from "../../src/mcp/server.ts";
 import type { McpToolResult } from "../../src/mcp/server.ts";

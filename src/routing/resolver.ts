@@ -176,18 +176,14 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
         options.site.routes[normalized];
       if (aliasTarget) {
         const aliasRoute = normalizeRoute(aliasTarget);
-        const aliasPage = isMultilingual
-          ? findPage(aliasRoute, lang)
-          : routeMap.get(aliasRoute);
+        const aliasPage = isMultilingual ? findPage(aliasRoute, lang) : routeMap.get(aliasRoute);
         if (aliasPage) {
           return { type: "page", page: aliasPage };
         }
       }
 
       // 4. Direct route match
-      const directMatch = isMultilingual
-        ? findPage(route, lang)
-        : routeMap.get(route);
+      const directMatch = isMultilingual ? findPage(route, lang) : routeMap.get(route);
       if (directMatch) {
         return { type: "page", page: directMatch };
       }
@@ -214,8 +210,8 @@ export function createRouteResolver(options: RouteResolverOptions): RouteResolve
       //    Only activates when the dashed equivalent exists in the route map.
       if (route.includes("+") || route.includes("%2b")) {
         const dashed = route
-          .replace(/%2b/g, "-")   // percent-encoded +
-          .replace(/\+/g, "-")    // literal +
+          .replace(/%2b/g, "-") // percent-encoded +
+          .replace(/\+/g, "-") // literal +
           .replace(/-{2,}/g, "-");
         // Try both slash forms — the legacy URL may carry a trailing slash that
         // doesn't match the canonical route key.
@@ -337,4 +333,3 @@ function normalizeRoute(route: string): string {
 
   return normalized;
 }
-

@@ -108,7 +108,9 @@ export async function buildPluginClientBundles(
   opts: { root: string; dev: boolean },
 ): Promise<Map<string, ClientBundle>> {
   const bundles = new Map<string, ClientBundle>();
-  const withEntries = plugins.filter((p) => p.clientEntries && Object.keys(p.clientEntries).length > 0);
+  const withEntries = plugins.filter((p) =>
+    p.clientEntries && Object.keys(p.clientEntries).length > 0
+  );
   if (withEntries.length === 0) return bundles;
 
   const cacheDir = join(opts.root, ".dune", "client-bundles");

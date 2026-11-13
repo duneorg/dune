@@ -48,10 +48,14 @@ export async function contentDeleteCommand(
 
   if (!options.dryRun && !options.confirm) {
     if (options.json) {
-      console.log(JSON.stringify({
-        error: "Deletion requires --confirm or --dry-run flag",
-        route: routePath,
-      }, null, 2));
+      console.log(JSON.stringify(
+        {
+          error: "Deletion requires --confirm or --dry-run flag",
+          route: routePath,
+        },
+        null,
+        2,
+      ));
     } else {
       console.error("  ✗ Deletion requires --confirm or --dry-run to prevent accidents");
       console.error(`    dune content:delete ${routePath} --dry-run`);
@@ -158,14 +162,18 @@ export async function contentDeleteCommand(
   // Dry run — just report
   if (options.dryRun) {
     if (options.json) {
-      console.log(JSON.stringify({
-        dryRun: true,
-        route: normalised,
-        wouldDelete: [
-          relPath,
-          ...(dirWouldBeEmpty ? [dirname(relPath) + "/"] : []),
-        ],
-      }, null, 2));
+      console.log(JSON.stringify(
+        {
+          dryRun: true,
+          route: normalised,
+          wouldDelete: [
+            relPath,
+            ...(dirWouldBeEmpty ? [dirname(relPath) + "/"] : []),
+          ],
+        },
+        null,
+        2,
+      ));
     } else {
       console.log(`🏜️  Dune — content delete (dry run)\n`);
       console.log(`  Would delete: ${relPath}`);
@@ -204,11 +212,15 @@ export async function contentDeleteCommand(
   }
 
   if (options.json) {
-    console.log(JSON.stringify({
-      deleted: true,
-      route: normalised,
-      files: deleted,
-    }, null, 2));
+    console.log(JSON.stringify(
+      {
+        deleted: true,
+        route: normalised,
+        files: deleted,
+      },
+      null,
+      2,
+    ));
     return;
   }
 

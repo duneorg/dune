@@ -40,9 +40,7 @@ export async function themeListCommand(root: string): Promise<void> {
 
   const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
   const theme = parsed.theme as { name?: string; src?: string } | undefined;
-  const packages = Array.isArray(parsed.themes)
-    ? parsed.themes as ThemePackageEntry[]
-    : [];
+  const packages = Array.isArray(parsed.themes) ? parsed.themes as ThemePackageEntry[] : [];
 
   console.log("\nTheme packages:\n");
   if (packages.length === 0) {
@@ -138,9 +136,7 @@ export async function themeInstallCommand(
   }
 
   const site = (parseYaml(siteRaw) ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(site.themes)
-    ? site.themes as ThemePackageEntry[]
-    : [];
+  const existing = Array.isArray(site.themes) ? site.themes as ThemePackageEntry[] : [];
 
   // A theme can declare `parent: {name}` in theme.yaml to inherit
   // templates/locales it doesn't define itself. The loader resolves that
@@ -371,14 +367,11 @@ export async function themeRemoveCommand(
   }
 
   const siteYamlPath = join(root, "config", "site.yaml");
-  const site =
-    (parseYaml(await Deno.readTextFile(siteYamlPath)) ?? {}) as Record<
-      string,
-      unknown
-    >;
-  const existing = Array.isArray(site.themes)
-    ? site.themes as ThemePackageEntry[]
-    : [];
+  const site = (parseYaml(await Deno.readTextFile(siteYamlPath)) ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const existing = Array.isArray(site.themes) ? site.themes as ThemePackageEntry[] : [];
   const filtered = existing.filter((e) => e.name !== name);
   if (filtered.length === existing.length) {
     console.log(`Theme "${name}" is not in the themes: registry.`);

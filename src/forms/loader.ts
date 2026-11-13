@@ -12,7 +12,15 @@ import { logger } from "../core/logger.ts";
 
 /** Valid form field types. */
 const VALID_TYPES = new Set<FormFieldType>([
-  "text", "email", "tel", "textarea", "number", "select", "checkbox", "file", "hidden",
+  "text",
+  "email",
+  "tel",
+  "textarea",
+  "number",
+  "select",
+  "checkbox",
+  "file",
+  "hidden",
 ]);
 
 /**
@@ -114,7 +122,10 @@ function parseFormYaml(
 
   // Parse per-form notification overrides
   let notifications: FormDefinition["notifications"];
-  if (data.notifications && typeof data.notifications === "object" && !Array.isArray(data.notifications)) {
+  if (
+    data.notifications && typeof data.notifications === "object" &&
+    !Array.isArray(data.notifications)
+  ) {
     const n = data.notifications as Record<string, unknown>;
     notifications = {};
     if (typeof n.email === "string") notifications.email = n.email;

@@ -38,7 +38,9 @@ export function createBunnyProvider(config: BunnyConfig): CdnProvider {
           if (!resp.ok) {
             const text = await resp.text().catch(() => "");
             errors.push(
-              `BunnyCDN purge failed for ${url}: HTTP ${resp.status}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+              `BunnyCDN purge failed for ${url}: HTTP ${resp.status}${
+                text ? ` — ${text.slice(0, 200)}` : ""
+              }`,
             );
           } else {
             await resp.body?.cancel();

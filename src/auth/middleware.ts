@@ -90,9 +90,9 @@ export function createSiteAuthMiddleware(config: SiteAuthMiddlewareConfig): Site
 
     // IP binding (same logic as admin middleware)
     if (session.ip && trustForwardedFor) {
-      const requestIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim()
-        ?? req.headers.get("x-real-ip")
-        ?? undefined;
+      const requestIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
+        req.headers.get("x-real-ip") ??
+        undefined;
       if (requestIp && requestIp !== session.ip) return null;
     }
 

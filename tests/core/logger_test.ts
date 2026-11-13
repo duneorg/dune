@@ -6,11 +6,7 @@
  * logger singleton.
  */
 
-import {
-  assertEquals,
-  assertMatch,
-  assert,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { createLogger, generateRequestId } from "../../src/core/logger.ts";
 

@@ -198,7 +198,11 @@ Deno.test("generateSitemap: excludes pages whose route starts with excluded pref
   const pages = [
     makePage({ route: "/home" }),
     makePage({ route: "/private/doc", sourcePath: "02.private/01.doc/default.md", depth: 1 }),
-    makePage({ route: "/private/doc/sub", sourcePath: "02.private/01.doc/01.sub/default.md", depth: 2 }),
+    makePage({
+      route: "/private/doc/sub",
+      sourcePath: "02.private/01.doc/01.sub/default.md",
+      depth: 2,
+    }),
   ];
   const xml = generateSitemap(pages, { siteUrl: "https://example.com", exclude: ["/private"] });
 
@@ -318,7 +322,12 @@ Deno.test("generateSitemap: image:image entry emitted when coverImage is set", (
   const xml = generateSitemap(pages, { siteUrl: "https://example.com" });
 
   assertEquals(xml.includes("<image:image>"), true);
-  assertEquals(xml.includes("<image:loc>https://example.com/content-media/02.blog/01.post/cover.jpg</image:loc>"), true);
+  assertEquals(
+    xml.includes(
+      "<image:loc>https://example.com/content-media/02.blog/01.post/cover.jpg</image:loc>",
+    ),
+    true,
+  );
   assertEquals(xml.includes('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'), true);
 });
 
@@ -382,11 +391,20 @@ Deno.test("generateSitemap: flat-file pages with self-referential parentPath do 
 
 Deno.test("generateSitemap: lastmod prefers dateModified over mtime", () => {
   const pages = [
-    makePage({ route: "/edited", dateModified: "2020-01-02", mtime: new Date("2025-06-15").getTime() }),
-    makePage({ route: "/untouched", sourcePath: "02.untouched/default.md", mtime: new Date("2025-06-15").getTime() }),
+    makePage({
+      route: "/edited",
+      dateModified: "2020-01-02",
+      mtime: new Date("2025-06-15").getTime(),
+    }),
+    makePage({
+      route: "/untouched",
+      sourcePath: "02.untouched/default.md",
+      mtime: new Date("2025-06-15").getTime(),
+    }),
   ];
   const xml = generateSitemap(pages, "https://example.com");
-  const entry = (route: string) => xml.split("<url>").find((u) => u.includes(`<loc>https://example.com${route}</loc>`))!;
+  const entry = (route: string) =>
+    xml.split("<url>").find((u) => u.includes(`<loc>https://example.com${route}</loc>`))!;
 
   assertEquals(entry("/edited").includes("<lastmod>2020-01-02</lastmod>"), true);
   assertEquals(entry("/untouched").includes("<lastmod>2025-06-15</lastmod>"), true);
@@ -395,9 +413,8 @@ Deno.test("generateSitemap: lastmod prefers dateModified over mtime", () => {
 // ── Unpublished-ancestor exclusion ────────────────────────────────────────────
 
 const locs = (xml: string): string[] =>
-  [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) =>
-    m[1].replace("https://example.com", "")
-  ).sort();
+  [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1].replace("https://example.com", ""))
+    .sort();
 
 Deno.test("generateSitemap: excludes descendants of an unpublished section, at any depth", () => {
   const pages = [

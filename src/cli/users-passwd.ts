@@ -39,11 +39,7 @@ import { createDbUserStore } from "../auth/user-store-db.ts";
 import { changePassword, WeakPasswordError } from "../auth/passwords.ts";
 import { createDbAdapter } from "../db/adapters/mod.ts";
 import type { DbAdapter } from "../db/types.ts";
-import {
-  createSessionManager,
-  createSessionStore,
-  resolveSessionPrefix,
-} from "../session/mod.ts";
+import { createSessionManager, createSessionStore, resolveSessionPrefix } from "../session/mod.ts";
 import { acquirePassword, PasswordInputError } from "./password-input.ts";
 import type { PasswordInputOptions } from "./password-input.ts";
 import { resolveRuntimeDir } from "../forms/config.ts";
@@ -89,9 +85,7 @@ async function openContext(root: string, siteId?: string): Promise<Context> {
   // auth/mount.ts and plugin-admin's createSessionManager); revoke both.
   const sessionCfg = config.system?.session_store;
   const redisUrl = sessionCfg?.url
-    ? (sessionCfg.url.startsWith("$")
-      ? Deno.env.get(sessionCfg.url.slice(1))
-      : sessionCfg.url)
+    ? (sessionCfg.url.startsWith("$") ? Deno.env.get(sessionCfg.url.slice(1)) : sessionCfg.url)
     : undefined;
   const prefix = resolveSessionPrefix(sessionCfg?.prefix, siteId);
   const lifetimeMs = 24 * 60 * 60 * 1000; // irrelevant for deletion

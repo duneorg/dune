@@ -56,8 +56,13 @@ function harness(
     storage,
     config,
     forms: resolved,
-    submissions: createSubmissionManager({ storage, submissionsDir: `${resolved.dataDir}/submissions` }),
-    notifier: { dispatch: (submission, overrides) => void h.notified.push({ submission, overrides }) },
+    submissions: createSubmissionManager({
+      storage,
+      submissionsDir: `${resolved.dataDir}/submissions`,
+    }),
+    notifier: {
+      dispatch: (submission, overrides) => void h.notified.push({ submission, overrides }),
+    },
     hooks: {
       fire: (event: HookEvent, data: unknown) => {
         h.fired.push({ event, data });
@@ -91,7 +96,10 @@ Deno.test("schema: served for an enabled form, 404 for unknown or disabled (same
   const paused = await handleFormSchema(h.rt, "paused");
   assertEquals(missing.status, 404);
   assertEquals(paused.status, 404);
-  assertEquals((await paused.text()).replace("paused", "X"), (await missing.text()).replace("nope", "X"));
+  assertEquals(
+    (await paused.text()).replace("paused", "X"),
+    (await missing.text()).replace("nope", "X"),
+  );
 });
 
 Deno.test("schema: honeypot name follows forms.honeypot", async () => {
@@ -103,7 +111,11 @@ Deno.test("schema: honeypot name follows forms.honeypot", async () => {
 
 Deno.test("submit: stores under <data_dir>/submissions/<form>, notifies, fires onFormSubmit", async () => {
   const h = harness((c) => (c.system.data_dir = "records"));
-  const res = await handleFormSubmission(h.rt, postJson("/api/forms/contact", { name: "A", message: "hi" }), "contact");
+  const res = await handleFormSubmission(
+    h.rt,
+    postJson("/api/forms/contact", { name: "A", message: "hi" }),
+    "contact",
+  );
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { ok: true });
 
@@ -116,10 +128,18 @@ Deno.test("submit: stores under <data_dir>/submissions/<form>, notifies, fires o
 
 Deno.test("submit: per-form notification overrides are passed through", async () => {
   const h = harness(undefined, {
-    contact: `${FORM}\nnotifications:\n  email: sales@example.com\n  webhook: https://hooks.example.com/x`,
+    contact:
+      `${FORM}\nnotifications:\n  email: sales@example.com\n  webhook: https://hooks.example.com/x`,
   });
-  await handleFormSubmission(h.rt, postJson("/api/forms/contact", { name: "A", message: "hi" }), "contact");
-  assertEquals(h.notified[0].overrides, { emailTo: "sales@example.com", webhookUrl: "https://hooks.example.com/x" });
+  await handleFormSubmission(
+    h.rt,
+    postJson("/api/forms/contact", { name: "A", message: "hi" }),
+    "contact",
+  );
+  assertEquals(h.notified[0].overrides, {
+    emailTo: "sales@example.com",
+    webhookUrl: "https://hooks.example.com/x",
+  });
 });
 
 Deno.test("submit: form-encoded post redirects to a same-origin success_url", async () => {
@@ -215,7 +235,11 @@ Deno.test("submit: honeypot is swallowed with a success response and not stored"
 
 Deno.test("submit: invalid input is a 422 for JSON clients and stores nothing", async () => {
   const h = harness();
-  const res = await handleFormSubmission(h.rt, postJson("/api/forms/contact", { name: "" }), "contact");
+  const res = await handleFormSubmission(
+    h.rt,
+    postJson("/api/forms/contact", { name: "" }),
+    "contact",
+  );
   assertEquals(res.status, 422);
   assertEquals((await h.rt.submissions.list("contact")).length, 0);
   assertEquals(h.fired.length, 0);
@@ -229,7 +253,10 @@ Deno.test("submit: unknown form is 404, disabled form is 403", async () => {
 
 Deno.test("submit: a declared body over the cap is rejected before parsing (413)", async () => {
   const h = harness();
-  const req = post("/api/forms/contact", "{}", { ...JSON_HEADERS, "content-length": String(60 * 1024 * 1024) });
+  const req = post("/api/forms/contact", "{}", {
+    ...JSON_HEADERS,
+    "content-length": String(60 * 1024 * 1024),
+  });
   assertEquals((await handleFormSubmission(h.rt, req, "contact")).status, 413);
 });
 
@@ -278,7 +305,11 @@ Deno.test("submit: uploads with disallowed extensions are skipped, allowed ones 
   fd.set("message", "hi");
   fd.append("a", new File(["x"], "ok.pdf", { type: "application/pdf" }));
   fd.append("b", new File(["x"], "run.exe", { type: "application/octet-stream" }));
-  const res = await handleFormSubmission(h.rt, post("/api/forms/contact", fd, { accept: "application/json" }), "contact");
+  const res = await handleFormSubmission(
+    h.rt,
+    post("/api/forms/contact", fd, { accept: "application/json" }),
+    "contact",
+  );
   assertEquals(res.status, 200);
   const [sub] = await h.rt.submissions.list("contact");
   assertEquals(sub.files?.map((f) => f.name), ["ok.pdf"]);
@@ -297,7 +328,9 @@ Deno.test("webhook: 501 when none configured", async () => {
 });
 
 Deno.test("webhook: 401 for a missing or wrong token", async () => {
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "secret", actions: ["rebuild"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = { incoming: [{ token: "secret", actions: ["rebuild"] }] }));
   assertEquals((await handleIncomingWebhook(h.rt, hook(null))).status, 401);
   assertEquals((await handleIncomingWebhook(h.rt, hook("secre"))).status, 401);
   assertEquals((await handleIncomingWebhook(h.rt, hook("secret!"))).status, 401);
@@ -305,18 +338,27 @@ Deno.test("webhook: 401 for a missing or wrong token", async () => {
 });
 
 Deno.test("webhook: token may come in the body; runs permitted actions and fires onSystemAction", async () => {
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "secret", actions: ["rebuild", "purge-cache"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = {
+    incoming: [{ token: "secret", actions: ["rebuild", "purge-cache"] }],
+  }));
   const res = await handleIncomingWebhook(h.rt, hook(null, { token: "secret" }));
   assertEquals(res.status, 200);
   assertEquals((await res.json()).executed, ["rebuild", "purge-cache"]);
   assertEquals(h.rebuilds, 1);
   assertEquals(h.purges, 1);
-  assertEquals(h.fired.map((f) => (f.data as { action: string }).action), ["rebuild", "purge-cache"]);
+  assertEquals(h.fired.map((f) => (f.data as { action: string }).action), [
+    "rebuild",
+    "purge-cache",
+  ]);
   assertEquals(h.fired.every((f) => f.event === "onSystemAction"), true);
 });
 
 Deno.test("webhook: a request can only narrow, never widen, the token's actions", async () => {
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "secret", actions: ["purge-cache"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = { incoming: [{ token: "secret", actions: ["purge-cache"] }] }));
   const res = await handleIncomingWebhook(h.rt, hook("secret", { actions: ["rebuild"] }));
   assertEquals(res.status, 400);
   assertEquals(h.rebuilds, 0);
@@ -325,7 +367,11 @@ Deno.test("webhook: a request can only narrow, never widen, the token's actions"
 Deno.test("webhook: $ENV tokens are expanded", async () => {
   Deno.env.set("DUNE_TEST_WEBHOOK_TOKEN", "from-env");
   try {
-    const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "$DUNE_TEST_WEBHOOK_TOKEN", actions: ["rebuild"] }] }));
+    const h = harness((
+      c,
+    ) => (c.system.webhooks = {
+      incoming: [{ token: "$DUNE_TEST_WEBHOOK_TOKEN", actions: ["rebuild"] }],
+    }));
     assertEquals((await handleIncomingWebhook(h.rt, hook("from-env"))).status, 200);
     assertEquals((await handleIncomingWebhook(h.rt, hook("$DUNE_TEST_WEBHOOK_TOKEN"))).status, 401);
   } finally {
@@ -335,7 +381,11 @@ Deno.test("webhook: $ENV tokens are expanded", async () => {
 
 Deno.test("webhook: a $ENV token whose variable is unset matches nothing, not its own name", async () => {
   Deno.env.delete("DUNE_TEST_WEBHOOK_UNSET");
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "$DUNE_TEST_WEBHOOK_UNSET", actions: ["rebuild"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = {
+    incoming: [{ token: "$DUNE_TEST_WEBHOOK_UNSET", actions: ["rebuild"] }],
+  }));
   assertEquals((await handleIncomingWebhook(h.rt, hook("$DUNE_TEST_WEBHOOK_UNSET"))).status, 401);
   assertEquals((await handleIncomingWebhook(h.rt, hook("DUNE_TEST_WEBHOOK_UNSET"))).status, 401);
   Deno.env.set("DUNE_TEST_WEBHOOK_UNSET", "");
@@ -348,13 +398,17 @@ Deno.test("webhook: a $ENV token whose variable is unset matches nothing, not it
 });
 
 Deno.test("webhook: an oversized body is rejected before parsing (413)", async () => {
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "t", actions: ["rebuild"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = { incoming: [{ token: "t", actions: ["rebuild"] }] }));
   const req = post("/api/webhook/incoming", "{}", { "content-length": String(2 * 1024 * 1024) });
   assertEquals((await handleIncomingWebhook(h.rt, req)).status, 413);
 });
 
 Deno.test("webhook: a failing action is a fixed 500 that never leaks the error", async () => {
-  const h = harness((c) => (c.system.webhooks = { incoming: [{ token: "t", actions: ["purge-cache"] }] }));
+  const h = harness((
+    c,
+  ) => (c.system.webhooks = { incoming: [{ token: "t", actions: ["purge-cache"] }] }));
   h.rt.imageCache = { clear: () => Promise.reject(new Error("db password is hunter2")) };
   const res = await handleIncomingWebhook(h.rt, hook("t"));
   assertEquals(res.status, 500);

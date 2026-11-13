@@ -15,7 +15,13 @@ export async function resolveCollectionForPage(
   requestedPage = 1,
 ): Promise<Collection | undefined> {
   if (!page.frontmatter.collection) return undefined;
-  return await resolveDefinition(page.frontmatter.collection, page, collections, engine, requestedPage);
+  return await resolveDefinition(
+    page.frontmatter.collection,
+    page,
+    collections,
+    engine,
+    requestedPage,
+  );
 }
 
 /**

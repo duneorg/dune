@@ -3,10 +3,7 @@
  * `dune dev`/`dune serve`.
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { loadEnvFile, parseEnvFileArg } from "../../src/cli/env-file.ts";
 
 // ── parseEnvFileArg ────────────────────────────────────────────────────────────

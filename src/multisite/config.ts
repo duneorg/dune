@@ -80,7 +80,5 @@ export function resolveSiteEntryRoot(
   installRoot: string,
   entry: SiteEntry,
 ): string {
-  return isAbsolute(entry.root)
-    ? entry.root
-    : resolve(join(installRoot, "config"), entry.root);
+  return isAbsolute(entry.root) ? entry.root : resolve(join(installRoot, "config"), entry.root);
 }

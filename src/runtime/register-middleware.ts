@@ -21,17 +21,9 @@ import { hasSessionCookie } from "../cli/admin-bar-inject.ts";
 import type { EditorResolver } from "../auth/editor.ts";
 import { getUser } from "../auth/types.ts";
 import { runPluginResponseTransforms } from "../cli/response-transforms.ts";
-import {
-  buildCacheControl,
-  computeEtag,
-  etagMatches,
-  resolvePolicy,
-} from "../cache/mod.ts";
+import { buildCacheControl, computeEtag, etagMatches, resolvePolicy } from "../cache/mod.ts";
 import { isRtl } from "../i18n/rtl.ts";
-import {
-  canAccessIndexEntry,
-  findPageForMediaUrl,
-} from "../auth/gating.ts";
+import { canAccessIndexEntry, findPageForMediaUrl } from "../auth/gating.ts";
 
 type RenderJsx = (jsx: unknown, status?: number) => Promise<Response>;
 
@@ -165,9 +157,7 @@ export function registerContentCatchAll(
           } else {
             const headers: Record<string, string> = {
               "Content-Type": media.contentType,
-              "Cache-Control": owner?.gated
-                ? "private, no-store"
-                : "public, max-age=3600",
+              "Cache-Control": owner?.gated ? "private, no-store" : "public, max-age=3600",
               "X-Content-Type-Options": "nosniff",
             };
             // Sandbox HTML/SVG media so user-uploaded content can't read
@@ -176,8 +166,7 @@ export function registerContentCatchAll(
               media.contentType.includes("text/html") ||
               media.contentType.includes("image/svg+xml")
             ) {
-              headers["Content-Security-Policy"] =
-                "sandbox allow-scripts allow-popups";
+              headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups";
               headers["X-Frame-Options"] = "SAMEORIGIN";
             }
             response = mediaBodyResponse(req, media, headers);
@@ -197,9 +186,7 @@ export function registerContentCatchAll(
 
       if (!dev) {
         const pageIndex = engine.pages.find((p) => p.route === url.pathname);
-        const etag = pageIndex
-          ? await computeEtag(pageIndex, transformFingerprint)
-          : null;
+        const etag = pageIndex ? await computeEtag(pageIndex, transformFingerprint) : null;
         const policy = resolvePolicy(url.pathname, cacheRules, cacheDefaults);
         const ccValue = buildCacheControl(policy);
 

@@ -140,7 +140,11 @@ async function loadYamlFile(
         path,
       );
     }
-    const kind = path.endsWith("/site.yaml") ? "site" : path.endsWith("/system.yaml") ? "system" : null;
+    const kind = path.endsWith("/site.yaml")
+      ? "site"
+      : path.endsWith("/system.yaml")
+      ? "system"
+      : null;
     if (kind) {
       assertNoChangedKeys(kind, parsed, path);
       for (const k of findIgnoredKeys(kind, parsed)) {
@@ -261,7 +265,7 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   // top-level rather than nested under "site".
   const themeFromSite = siteYaml.theme;
   const themeListFromSite = siteYaml.themes;
-  const pluginListFromSite = siteYaml.plugins;    // PluginEntry[]
+  const pluginListFromSite = siteYaml.plugins; // PluginEntry[]
   const pluginCfgsFromSite = siteYaml.plugin_configs; // Record<name, config>
   const autoDiscoverFromSite = siteYaml.auto_discover_plugins; // boolean
   const siteWithoutTop = { ...siteYaml };
@@ -295,7 +299,10 @@ export async function loadConfig(options: LoadConfigOptions): Promise<DuneConfig
   }
 
   // Explicit per-plugin config overrides (Record<name, Record<k,v>>)
-  if (pluginCfgsFromSite && typeof pluginCfgsFromSite === "object" && !Array.isArray(pluginCfgsFromSite)) {
+  if (
+    pluginCfgsFromSite && typeof pluginCfgsFromSite === "object" &&
+    !Array.isArray(pluginCfgsFromSite)
+  ) {
     config = deepMerge(config, { plugins: pluginCfgsFromSite });
   }
 

@@ -80,7 +80,19 @@ Deno.test("planSiteEntrypoint: no main.ts, or an edited one, means normal CLI", 
 Deno.test("planSiteEntrypoint: machine/install commands and flags are never deferred", async () => {
   const dir = await makeSite();
   try {
-    for (const cmd of ["new", "ps", "stop", "dev:link", "upgrade", "lockfile:sync", "migrate:entrypoint", "--help", "--version"]) {
+    for (
+      const cmd of [
+        "new",
+        "ps",
+        "stop",
+        "dev:link",
+        "upgrade",
+        "lockfile:sync",
+        "migrate:entrypoint",
+        "--help",
+        "--version",
+      ]
+    ) {
       assertEquals(await planSiteEntrypoint([cmd, "--root", dir], noEnv), null, cmd);
     }
     assertEquals(await planSiteEntrypoint([], noEnv), null);

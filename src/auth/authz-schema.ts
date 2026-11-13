@@ -90,19 +90,19 @@ export const DUNE_BASE_AUTHZ_ACTIONS = {
   // Sole built-in definition — nothing else mirrors this (see the module doc above).
   //
   "pages.create": ["admin", "editor", "author"],
-  "pages.read":   ["admin", "editor", "author"],
+  "pages.read": ["admin", "editor", "author"],
   "pages.update": ["admin", "editor", "author"],
   "pages.delete": ["admin"],
   "media.upload": ["admin", "editor", "author"],
-  "media.read":   ["admin", "editor", "author"],
+  "media.read": ["admin", "editor", "author"],
   "media.delete": ["admin", "editor"],
   "users.create": ["admin"],
-  "users.read":   ["admin"],
+  "users.read": ["admin"],
   "users.update": ["admin"],
   "users.delete": ["admin"],
-  "config.read":   ["admin", "editor"],
+  "config.read": ["admin", "editor"],
   "config.update": ["admin"],
-  "submissions.read":   ["admin", "editor", "author"],
+  "submissions.read": ["admin", "editor", "author"],
   "submissions.delete": ["admin"],
 } as const satisfies Record<string, readonly AuthzRelation[]>;
 

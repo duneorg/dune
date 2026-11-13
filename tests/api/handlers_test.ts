@@ -115,14 +115,13 @@ function makeEngine(
       getNavigation: (_lang?: string) =>
         pages.filter((p) => p.visible && p.published && p.routable && !p.isModule),
       getTopNavigation: (_lang?: string) =>
-        pages.filter((p) =>
-          p.visible && p.published && p.routable && !p.isModule && p.depth === 0
-        ),
+        pages.filter((p) => p.visible && p.published && p.routable && !p.isModule && p.depth === 0),
       resolve: (_pathname: string) => ({ type: "not-found" as const }),
     } as unknown as DuneEngine["router"],
     themes: {} as unknown as DuneEngine["themes"],
     init: () => Promise.resolve(),
-    resolve: resolveOverride ?? ((_route: string) => Promise.resolve({ type: "not-found" as const })),
+    resolve: resolveOverride ??
+      ((_route: string) => Promise.resolve({ type: "not-found" as const })),
     loadPage: (_sourcePath: string) => Promise.reject(new Error("not implemented")),
     serveMedia: (_mediaPath: string) => Promise.resolve(null),
     rebuild: () => Promise.resolve(),
@@ -215,8 +214,15 @@ Deno.test("createApiHandler GET /api/pages: returns published+routable pages", a
 });
 
 Deno.test("createApiHandler GET /api/pages: pagination with limit and offset", async () => {
-  const pages = Array.from({ length: 5 }, (_, i) =>
-    makePageIndex({ sourcePath: `0${i + 1}.page/default.md`, route: `/page-${i + 1}`, order: i + 1 }));
+  const pages = Array.from(
+    { length: 5 },
+    (_, i) =>
+      makePageIndex({
+        sourcePath: `0${i + 1}.page/default.md`,
+        route: `/page-${i + 1}`,
+        order: i + 1,
+      }),
+  );
   const handler = makeHandler(pages);
 
   const res = await handler(new Request("http://localhost/api/pages?limit=2&offset=2"));
@@ -230,8 +236,16 @@ Deno.test("createApiHandler GET /api/pages: pagination with limit and offset", a
 Deno.test("createApiHandler GET /api/pages: template filter returns only matching pages", async () => {
   const pages = [
     makePageIndex({ sourcePath: "01.home/default.md", route: "/", template: "default" }),
-    makePageIndex({ sourcePath: "02.blog/01.post-a/default.md", route: "/blog/post-a", template: "post" }),
-    makePageIndex({ sourcePath: "02.blog/02.post-b/default.md", route: "/blog/post-b", template: "post" }),
+    makePageIndex({
+      sourcePath: "02.blog/01.post-a/default.md",
+      route: "/blog/post-a",
+      template: "post",
+    }),
+    makePageIndex({
+      sourcePath: "02.blog/02.post-b/default.md",
+      route: "/blog/post-b",
+      template: "post",
+    }),
   ];
   const handler = makeHandler(pages);
 
@@ -250,11 +264,24 @@ Deno.test("createApiHandler GET /api/pages/*: returns page JSON with html for kn
     frontmatter: { title: "Hello World", date: "2024-01-15" },
     html: () => Promise.resolve("<h1>Hello World</h1>"),
     media: [
-      { name: "cover.jpg", path: "02.blog/01.hello/cover.jpg", type: "image/jpeg", size: 1024, meta: {}, url: "/content-media/02.blog/01.hello/cover.jpg" },
+      {
+        name: "cover.jpg",
+        path: "02.blog/01.hello/cover.jpg",
+        type: "image/jpeg",
+        size: 1024,
+        meta: {},
+        url: "/content-media/02.blog/01.hello/cover.jpg",
+      },
     ],
   });
-  const handler = makeHandler([], {}, (route) =>
-    Promise.resolve(route === "/blog/hello" ? { type: "page" as const, page } : { type: "not-found" as const }));
+  const handler = makeHandler(
+    [],
+    {},
+    (route) =>
+      Promise.resolve(
+        route === "/blog/hello" ? { type: "page" as const, page } : { type: "not-found" as const },
+      ),
+  );
 
   const res = await handler(new Request("http://localhost/api/pages/blog/hello"));
   assertEquals(res!.status, 200);
@@ -287,8 +314,16 @@ Deno.test("createApiHandler GET /api/taxonomy/:name: returns value counts for kn
   // The taxonomy engine counts published pages present in the index, so the
   // referenced source paths must exist as pages.
   const pages = [
-    makePageIndex({ sourcePath: "02.blog/01.post-a/default.md", route: "/blog/post-a", taxonomy: { tag: ["deno", "typescript"] } }),
-    makePageIndex({ sourcePath: "02.blog/02.post-b/default.md", route: "/blog/post-b", taxonomy: { tag: ["deno"] } }),
+    makePageIndex({
+      sourcePath: "02.blog/01.post-a/default.md",
+      route: "/blog/post-a",
+      taxonomy: { tag: ["deno", "typescript"] },
+    }),
+    makePageIndex({
+      sourcePath: "02.blog/02.post-b/default.md",
+      route: "/blog/post-b",
+      taxonomy: { tag: ["deno"] },
+    }),
   ];
   const handler = makeHandler(pages, taxonomyMap);
 
@@ -341,7 +376,11 @@ function makeHandlerWithSearch(
 ): (req: Request) => Promise<Response | null> {
   const engine = makeEngine([]);
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const collections = createCollectionEngine({
+    pages: [],
+    taxonomyMap: {},
+    loadPage: engine.loadPage,
+  });
   return createApiHandler({ engine, collections, taxonomy, search, analytics });
 }
 
@@ -351,7 +390,8 @@ Deno.test("createApiHandler GET /api/search: records the query and result count 
     record: (e: SearchAnalyticsEntry) => {
       recorded.push(e);
     },
-    summarize: () => Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
+    summarize: () =>
+      Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
     flush: () => Promise.resolve(),
   } as SearchAnalytics;
   const handler = makeHandlerWithSearch(makeFakeSearchEngine(3), analytics);
@@ -364,8 +404,12 @@ Deno.test("createApiHandler GET /api/search: records the query and result count 
 
 Deno.test("createApiHandler GET /api/search: a blank query is not recorded", async () => {
   const recorded: SearchAnalyticsEntry[] = [];
-  const analytics = { record: (e: SearchAnalyticsEntry) => void recorded.push(e) } as unknown as SearchAnalytics;
-  await makeHandlerWithSearch(makeFakeSearchEngine(2), analytics)(new Request("http://localhost/api/search?q=%20%20"));
+  const analytics = {
+    record: (e: SearchAnalyticsEntry) => void recorded.push(e),
+  } as unknown as SearchAnalytics;
+  await makeHandlerWithSearch(makeFakeSearchEngine(2), analytics)(
+    new Request("http://localhost/api/search?q=%20%20"),
+  );
   assertEquals(recorded.length, 0);
 });
 
@@ -411,14 +455,22 @@ Deno.test("createApiHandler GET /api/search: hasMore is true when more results e
 
 Deno.test("createApiHandler GET /api/search: offset pages through results without gaps", async () => {
   const handler = makeHandlerWithSearch(makeFakeSearchEngine(25));
-  const page1 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=0")))!.json();
-  const page2 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=10")))!.json();
-  const page3 = await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=20")))!.json();
+  const page1 =
+    await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=0")))!
+      .json();
+  const page2 =
+    await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=10")))!
+      .json();
+  const page3 =
+    await (await handler(new Request("http://localhost/api/search?q=test&limit=10&offset=20")))!
+      .json();
   assertEquals(page1.hasMore, true);
   assertEquals(page2.hasMore, true);
   assertEquals(page3.hasMore, false);
   assertEquals(page3.items.length, 5);
-  const allRoutes = [...page1.items, ...page2.items, ...page3.items].map((i: { route: string }) => i.route);
+  const allRoutes = [...page1.items, ...page2.items, ...page3.items].map((i: { route: string }) =>
+    i.route
+  );
   assertEquals(new Set(allRoutes).size, 25); // no duplicates
 });
 
@@ -432,9 +484,16 @@ Deno.test("createApiHandler GET /api/search: default limit is 20 when site confi
 
 Deno.test("createApiHandler GET /api/search: default limit honors system.search.page_size", async () => {
   const engine = makeEngine([]);
-  engine.config = { ...engine.config, system: { ...engine.config.system, search: { page_size: 5 } } };
+  engine.config = {
+    ...engine.config,
+    system: { ...engine.config.system, search: { page_size: 5 } },
+  };
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const collections = createCollectionEngine({
+    pages: [],
+    taxonomyMap: {},
+    loadPage: engine.loadPage,
+  });
   const handler = createApiHandler({
     engine,
     collections,
@@ -449,9 +508,16 @@ Deno.test("createApiHandler GET /api/search: default limit honors system.search.
 
 Deno.test("createApiHandler GET /api/search: client-supplied limit overrides site default", async () => {
   const engine = makeEngine([]);
-  engine.config = { ...engine.config, system: { ...engine.config.system, search: { page_size: 5 } } };
+  engine.config = {
+    ...engine.config,
+    system: { ...engine.config.system, search: { page_size: 5 } },
+  };
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const collections = createCollectionEngine({
+    pages: [],
+    taxonomyMap: {},
+    loadPage: engine.loadPage,
+  });
   const handler = createApiHandler({
     engine,
     collections,
@@ -496,7 +562,11 @@ Deno.test("createApiHandler: fires onApiRequest with the incoming request", asyn
 
   const engine = makeEngine([], {});
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const collections = createCollectionEngine({
+    pages: [],
+    taxonomyMap: {},
+    loadPage: engine.loadPage,
+  });
   const handler = createApiHandler({ engine, collections, taxonomy, search: stubSearch, hooks });
 
   await handler(new Request("http://localhost/api/nav"));
@@ -519,7 +589,11 @@ Deno.test("createApiHandler: fires onApiResponse and honors setData to replace t
 
   const engine = makeEngine([], {});
   const taxonomy = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const collections = createCollectionEngine({ pages: [], taxonomyMap: {}, loadPage: engine.loadPage });
+  const collections = createCollectionEngine({
+    pages: [],
+    taxonomyMap: {},
+    loadPage: engine.loadPage,
+  });
   const handler = createApiHandler({ engine, collections, taxonomy, search: stubSearch, hooks });
 
   const res = await handler(new Request("http://localhost/api/nav"));

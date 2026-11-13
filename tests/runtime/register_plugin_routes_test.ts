@@ -242,12 +242,14 @@ Deno.test(
       ],
     };
     await withTestApp([plugin], async (handler) => {
-      for (const path of [
-        "/api/pages/hijack",
-        "/api/search/hijack",
-        "/api/inline-edit/hijack",
-        "/auth/hijack",
-      ]) {
+      for (
+        const path of [
+          "/api/pages/hijack",
+          "/api/search/hijack",
+          "/api/inline-edit/hijack",
+          "/auth/hijack",
+        ]
+      ) {
         const res = await handler(new Request(`http://localhost${path}`));
         assertEquals(res.status !== 200, true);
       }
@@ -346,7 +348,8 @@ Deno.test(
       await Deno.writeTextFile(
         join(root, "content", "01.home", "default.md"),
         "---\ntitle: Home\n---\n\n# Home\n",
-      );      const ctx = await bootstrap(root, { plugins: [plugin] });
+      );
+      const ctx = await bootstrap(root, { plugins: [plugin] });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
       registerPluginPublicRoutes(app, ctx, { adminPrefix: "/admin" });

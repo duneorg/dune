@@ -9,11 +9,17 @@ import { join } from "@std/path";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 
-async function withSite(plugins: DunePlugin[], fn: (ctx: Awaited<ReturnType<typeof bootstrap>>) => void) {
+async function withSite(
+  plugins: DunePlugin[],
+  fn: (ctx: Awaited<ReturnType<typeof bootstrap>>) => void,
+) {
   const root = await Deno.makeTempDir({ prefix: "dune_test_authz_provider_" });
   try {
     await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-    await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\nHi\n");
+    await Deno.writeTextFile(
+      join(root, "content", "01.home", "default.md"),
+      "---\ntitle: Home\n---\n\nHi\n",
+    );
     // deno-lint-ignore no-explicit-any
     fn(await bootstrap(root, { plugins }));
   } finally {

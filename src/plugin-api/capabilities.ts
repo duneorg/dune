@@ -148,7 +148,9 @@ export interface CapabilityContext {
 }
 
 /** Slot factory: may be async. Returning `undefined` declines the slot. */
-export type CapabilityFactory<T> = (ctx: CapabilityContext) => T | undefined | Promise<T | undefined>;
+export type CapabilityFactory<T> = (
+  ctx: CapabilityContext,
+) => T | undefined | Promise<T | undefined>;
 
 // ── Plugin-facing API ────────────────────────────────────────────────────────
 
@@ -272,7 +274,10 @@ function keyName(nameOrKey: string | CapabilityKey<unknown>): string {
  * are still named that way.)
  */
 function contributionKey(method: string, key: unknown): string {
-  if (typeof key === "object" && key !== null && typeof (key as CapabilityKey<unknown>).name === "string") {
+  if (
+    typeof key === "object" && key !== null &&
+    typeof (key as CapabilityKey<unknown>).name === "string"
+  ) {
     return (key as CapabilityKey<unknown>).name;
   }
   const given = typeof key === "string" ? `the string ${JSON.stringify(key)}` : String(key);
@@ -300,9 +305,13 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     },
     providers() {
       const out: CapabilityProvider[] = [];
-      for (const [name, s] of slots) out.push({ name, kind: "slot", provider: s.provider, status: s.status });
+      for (const [name, s] of slots) {
+        out.push({ name, kind: "slot", provider: s.provider, status: s.status });
+      }
       for (const [name, list] of contributions) {
-        for (const c of list) out.push({ name, kind: "contribution", provider: c.provider, status: "active" });
+        for (const c of list) {
+          out.push({ name, kind: "contribution", provider: c.provider, status: "active" });
+        }
       }
       return out;
     },
@@ -323,11 +332,18 @@ export function createCapabilityRegistry(): CapabilityRegistry {
             const c = conflicts.get(name) ?? { capability: name, providers: [previous.provider] };
             if (!c.providers.includes(provider)) c.providers.push(provider);
             conflicts.set(name, c);
-            logger.error("capabilities.slot_conflict", { capability: name, providers: c.providers.join(", ") });
+            logger.error("capabilities.slot_conflict", {
+              capability: name,
+              providers: c.providers.join(", "),
+            });
             return;
           }
           if (previous) {
-            logger.warn("capabilities.slot_replaced", { capability: name, replaced: previous.provider, by: provider });
+            logger.warn("capabilities.slot_replaced", {
+              capability: name,
+              replaced: previous.provider,
+              by: provider,
+            });
             // Delete first so the winning entry takes its place at the end of the order.
             slots.delete(name);
           }

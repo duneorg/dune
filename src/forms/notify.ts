@@ -21,7 +21,10 @@ function envExpand(value: string): string {
 }
 
 function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(
+    /"/g,
+    "&quot;",
+  );
 }
 
 /** Subject, plain-text and HTML bodies for a submission email. */
@@ -29,7 +32,10 @@ export function renderSubmissionEmail(
   submission: Submission,
   subjectTemplate?: string,
 ): { subject: string; text: string; html: string } {
-  const subject = (subjectTemplate ?? "New {form} submission").replace(/\{form\}/g, submission.form);
+  const subject = (subjectTemplate ?? "New {form} submission").replace(
+    /\{form\}/g,
+    submission.form,
+  );
   const receivedStr = new Date(submission.receivedAt).toISOString();
   const files = submission.files ?? [];
 
@@ -46,11 +52,15 @@ export function renderSubmissionEmail(
   ].join("\n");
 
   const row = (k: string, v: string) =>
-    `<tr><th style="text-align:left;padding:4px 8px;background:#f5f5f5">${escHtml(k)}</th><td style="padding:4px 8px">${escHtml(v)}</td></tr>`;
+    `<tr><th style="text-align:left;padding:4px 8px;background:#f5f5f5">${
+      escHtml(k)
+    }</th><td style="padding:4px 8px">${escHtml(v)}</td></tr>`;
   const html = `
 <div style="font-family:system-ui,sans-serif;max-width:600px">
   <h2 style="color:#1a1a2e">New ${escHtml(submission.form)} submission</h2>
-  <p style="color:#666;font-size:0.9em">Received ${escHtml(receivedStr)} — ID: ${escHtml(submission.id)}</p>
+  <p style="color:#666;font-size:0.9em">Received ${escHtml(receivedStr)} — ID: ${
+    escHtml(submission.id)
+  }</p>
   <table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0">
     ${Object.entries(submission.fields).map(([k, v]) => row(k, v)).join("")}${
     files.map((f) => row("attachment", `${f.name} (${f.contentType}, ${f.size} bytes)`)).join("")
@@ -98,7 +108,9 @@ export async function sendWebhookNotification(
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     throw new Error(
-      `Webhook POST to ${cfg.url} failed: ${resp.status} ${resp.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+      `Webhook POST to ${cfg.url} failed: ${resp.status} ${resp.statusText}${
+        text ? ` — ${text.slice(0, 200)}` : ""
+      }`,
     );
   }
 }
@@ -164,7 +176,10 @@ export function createSubmissionNotifier(
           ? { ...(notif.webhook ?? {}), url: overrides.webhookUrl } as WebhookNotificationConfig
           : notif.webhook!;
         sendWebhook(cfg, submission).catch((err: Error) =>
-          logger.error("forms.notify.webhook_failed", { form: submission.form, reason: err.message })
+          logger.error("forms.notify.webhook_failed", {
+            form: submission.form,
+            reason: err.message,
+          })
         );
       }
     },

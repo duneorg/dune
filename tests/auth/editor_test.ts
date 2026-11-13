@@ -26,7 +26,8 @@ function makeAuthz(allowed: boolean) {
 function provider(user: Record<string, unknown> | null, cookies?: string[]) {
   return {
     sessionCookies: cookies,
-    authenticate: () => Promise.resolve(user ? { authenticated: true, user } : { authenticated: false }),
+    authenticate: () =>
+      Promise.resolve(user ? { authenticated: true, user } : { authenticated: false }),
   };
 }
 
@@ -46,9 +47,18 @@ function siteRequest(user: Record<string, unknown>): Request {
 Deno.test("editor: a site user holding pages.update is an editor, named by username, then name, then email", async () => {
   // This fake authz says yes to everything, so the relation read from it is the highest, whatever the role is called.
   const authz = makeAuthz(true);
-  const resolve = createEditorResolver({ capabilities: caps(), siteAuthz: () => authz, sessionAuthz: () => undefined });
-  const r = await resolve(siteRequest({ id: "u1", roles: ["editor"], email: "e@x.test", name: "Ed" }));
-  assertEquals(r, { ok: true, editor: { id: "u1", username: "Ed", roles: ["editor"], relation: "admin", source: "site" } });
+  const resolve = createEditorResolver({
+    capabilities: caps(),
+    siteAuthz: () => authz,
+    sessionAuthz: () => undefined,
+  });
+  const r = await resolve(
+    siteRequest({ id: "u1", roles: ["editor"], email: "e@x.test", name: "Ed" }),
+  );
+  assertEquals(r, {
+    ok: true,
+    editor: { id: "u1", username: "Ed", roles: ["editor"], relation: "admin", source: "site" },
+  });
   assertEquals((authz.calls[0] as { onWhat: unknown }).onWhat, { type: "app", id: "site" });
 });
 
@@ -58,8 +68,15 @@ Deno.test("editor: a site user the authz system denies is 403, and so is one whe
     siteAuthz: () => makeAuthz(false),
     sessionAuthz: () => undefined,
   });
-  assertEquals(await denied(siteRequest({ id: "u1", roles: ["editor"] })), { ok: false, status: 403 });
-  const none = createEditorResolver({ capabilities: caps(), siteAuthz: () => undefined, sessionAuthz: () => undefined });
+  assertEquals(await denied(siteRequest({ id: "u1", roles: ["editor"] })), {
+    ok: false,
+    status: 403,
+  });
+  const none = createEditorResolver({
+    capabilities: caps(),
+    siteAuthz: () => undefined,
+    sessionAuthz: () => undefined,
+  });
   assertEquals(await none(siteRequest({ id: "u1", roles: ["admin"] })), { ok: false, status: 403 });
 });
 
@@ -72,7 +89,10 @@ Deno.test("editor: a session-provider user is an editor when authz allows; the s
     sessionAuthz: () => session,
   });
   const r = await resolve(new Request("https://site.test/", { headers: { cookie: "sid=abc" } }));
-  assertEquals(r, { ok: true, editor: { id: "a1", username: "ada", roles: ["admin"], relation: "admin", source: "session" } });
+  assertEquals(r, {
+    ok: true,
+    editor: { id: "a1", username: "ada", roles: ["admin"], relation: "admin", source: "session" },
+  });
   assertEquals(site.calls.length, 0);
 });
 
@@ -85,19 +105,29 @@ Deno.test("editor: no site user and no session cookie is 401 without asking the 
     siteAuthz: () => makeAuthz(true),
     sessionAuthz: () => makeAuthz(true),
   });
-  assertEquals(await resolve(new Request("https://site.test/", { headers: { cookie: "other=1" } })), {
-    ok: false,
-    status: 401,
-  });
+  assertEquals(
+    await resolve(new Request("https://site.test/", { headers: { cookie: "other=1" } })),
+    {
+      ok: false,
+      status: 401,
+    },
+  );
   assertEquals(asked, 0);
 });
 
 Deno.test("editor: an invalid session, a failing provider and a missing provider are all 401", async () => {
   const mk = (p?: ReturnType<typeof provider>) =>
-    createEditorResolver({ capabilities: caps(p), siteAuthz: () => undefined, sessionAuthz: () => makeAuthz(true) });
+    createEditorResolver({
+      capabilities: caps(p),
+      siteAuthz: () => undefined,
+      sessionAuthz: () => makeAuthz(true),
+    });
   const withCookie = new Request("https://site.test/", { headers: { cookie: "sid=x" } });
   assertEquals(await mk(provider(null, ["sid"]))(withCookie), { ok: false, status: 401 });
-  const throwing = { sessionCookies: ["sid"], authenticate: () => Promise.reject(new Error("store down")) };
+  const throwing = {
+    sessionCookies: ["sid"],
+    authenticate: () => Promise.reject(new Error("store down")),
+  };
   // deno-lint-ignore no-explicit-any
   assertEquals(await mk(throwing as any)(withCookie), { ok: false, status: 401 });
   assertEquals(await mk(undefined)(withCookie), { ok: false, status: 401 });
@@ -113,7 +143,6 @@ Deno.test("editor: a session user without pages.update is 403", async () => {
   assertEquals(r, { ok: false, status: 403 });
 });
 
-
 Deno.test("mayEditPage: admin and editor relations edit any page; an author only the pages it created; no page, no edit", () => {
   const page = { createdBy: "a1" };
   assertEquals(mayEditPage({ id: "x", relation: "admin" }, page), true);
@@ -128,7 +157,11 @@ Deno.test("mayEditPage: admin and editor relations edit any page; an author only
 
 import { createStorage } from "../../src/storage/mod.ts";
 import { bootstrapRoleGrants, createDuneAuthSystem } from "../../src/auth/authz.ts";
-import { DUNE_BASE_AUTHZ_ACTIONS, RELATION_PROBE_ACTIONS, SITE_RESOURCE } from "../../src/auth/authz-schema.ts";
+import {
+  DUNE_BASE_AUTHZ_ACTIONS,
+  RELATION_PROBE_ACTIONS,
+  SITE_RESOURCE,
+} from "../../src/auth/authz-schema.ts";
 import type { RoleGrants } from "../../src/auth/role-grants.ts";
 
 Deno.test("the relation probes tell the three relations apart in the built-in schema", () => {
@@ -137,16 +170,32 @@ Deno.test("the relation probes tell the three relations apart in the built-in sc
   assertEquals([...DUNE_BASE_AUTHZ_ACTIONS["pages.update"]], ["admin", "editor", "author"]);
 });
 
-async function relationUnder(grants: RoleGrants, roles: string[], direct?: "admin" | "editor" | "author") {
+async function relationUnder(
+  grants: RoleGrants,
+  roles: string[],
+  direct?: "admin" | "editor" | "author",
+) {
   const root = await Deno.makeTempDir({ prefix: "dune_test_editor_relation_" });
   try {
-    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, createStorage({ rootDir: root }));
+    const { authz, adapter } = createDuneAuthSystem(
+      { authzStore: "local", dataDir: "data" },
+      createStorage({ rootDir: root }),
+    );
     await bootstrapRoleGrants(authz, adapter, grants);
     for (const role of roles) {
-      await authz.addMember({ member: { type: "user", id: "u1" }, group: { type: "group", id: role } });
+      await authz.addMember({
+        member: { type: "user", id: "u1" },
+        group: { type: "group", id: role },
+      });
     }
-    if (direct) await authz.allow({ who: { type: "user", id: "u1" }, toBe: direct, onWhat: SITE_RESOURCE });
-    const resolve = createEditorResolver({ capabilities: caps(), siteAuthz: () => authz, sessionAuthz: () => undefined });
+    if (direct) {
+      await authz.allow({ who: { type: "user", id: "u1" }, toBe: direct, onWhat: SITE_RESOURCE });
+    }
+    const resolve = createEditorResolver({
+      capabilities: caps(),
+      siteAuthz: () => authz,
+      sessionAuthz: () => undefined,
+    });
     const r = await resolve(siteRequest({ id: "u1", roles }));
     return r.ok ? r.editor.relation : r.status;
   } finally {

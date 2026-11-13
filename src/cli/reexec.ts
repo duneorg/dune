@@ -8,11 +8,7 @@
  * @module
  */
 
-import {
-  computeLockPolicy,
-  lockPolicyToArgs,
-  preflightLockPolicy,
-} from "./lock-policy.ts";
+import { computeLockPolicy, lockPolicyToArgs, preflightLockPolicy } from "./lock-policy.ts";
 import { waitForwardingSignals } from "./forward-signals.ts";
 
 /**

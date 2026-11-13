@@ -3,10 +3,7 @@
  * the 2026-04-17 audit.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { sanitizeHtml, stripTags } from "../../src/security/sanitize-html.ts";
 
 function assertNoScript(s: string, input: string) {
@@ -136,8 +133,7 @@ Deno.test("preserves tables", () => {
 });
 
 Deno.test("preserves images with safe attrs", () => {
-  const input =
-    `<img src="/pic.jpg" alt="pic" width="100" height="50" loading="lazy">`;
+  const input = `<img src="/pic.jpg" alt="pic" width="100" height="50" loading="lazy">`;
   assertEquals(sanitizeHtml(input), input);
 });
 

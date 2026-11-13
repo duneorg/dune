@@ -39,7 +39,9 @@ function createMemoryStorage() {
       }
       return entries;
     },
-    async stat(path: string): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean }> {
+    async stat(
+      path: string,
+    ): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean }> {
       const data = files.get(path);
       if (!data) throw new Error(`Not found: ${path}`);
       return { size: data.length, mtime: Date.now(), isFile: true, isDirectory: false };

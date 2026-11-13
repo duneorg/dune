@@ -17,16 +17,13 @@ import { logger } from "./logger.ts";
 import { tracer } from "../tracing/mod.ts";
 import type { StorageAdapter } from "../storage/types.ts";
 import type { DuneConfig, SiteConfig } from "../config/types.ts";
-import type {
-  Page,
-  PageIndex,
-} from "../content/types.ts";
+import type { Page, PageIndex } from "../content/types.ts";
 import type { FormatRegistry } from "../content/formats/registry.ts";
 import { buildIndex } from "../content/index-builder.ts";
 import type { IndexError } from "../content/index-builder.ts";
 import { createContentStorage, resolveContentDirPath } from "../content/content-root.ts";
 import { parseFolderName } from "../content/path-utils.ts";
-import { loadPage as loadPageFromIndex, getMimeType } from "../content/page-loader.ts";
+import { getMimeType, loadPage as loadPageFromIndex } from "../content/page-loader.ts";
 import { IFRAME_SENDER_SCRIPT } from "../content/formats/media-resolve.ts";
 import { loadBlueprints } from "../blueprints/loader.ts";
 import type { BlueprintMap } from "../blueprints/types.ts";
@@ -218,7 +215,9 @@ export async function createDuneEngine(
     ? resolveContentDirPath(config.system.content, storageRoot ?? Deno.cwd())
     : storageRoot;
   const sharedThemesDir = options.sharedThemesDir;
-  const blueprintsDir = options.blueprintsDir === null ? null : (options.blueprintsDir ?? "blueprints");
+  const blueprintsDir = options.blueprintsDir === null
+    ? null
+    : (options.blueprintsDir ?? "blueprints");
   const dataDir = resolveDataDir(config);
   const themeConfigPath = `${dataDir}/theme-config.json`;
 
@@ -238,9 +237,7 @@ export async function createDuneEngine(
     themePackageIndex = await buildThemePackageIndex({
       siteRoot,
       packages: config.themeList ?? [],
-      active: config.theme.src
-        ? { name: config.theme.name, src: config.theme.src }
-        : undefined,
+      active: config.theme.src ? { name: config.theme.name, src: config.theme.src } : undefined,
     });
     themePackageStaticDirs = buildThemePackageStaticDirs(themePackageIndex);
   }
@@ -349,7 +346,7 @@ export async function createDuneEngine(
     // Persist to config/site.yaml (read → mutate → write)
     try {
       const existingRaw = await storage.readText("config/site.yaml").catch(() => "");
-      const existing = ((parseYaml(existingRaw || "") ?? {}) as Record<string, unknown>);
+      const existing = (parseYaml(existingRaw || "") ?? {}) as Record<string, unknown>;
       const themeKey = existing.theme as Record<string, unknown> | undefined;
       existing.theme = { ...(themeKey ?? {}), name };
       await storage.write(
@@ -413,7 +410,7 @@ export async function createDuneEngine(
     if (!indexEntry) {
       throw new Error(
         `[dune] loadPage: "${sourcePath}" not found in content index. ` +
-        `This usually means the page was deleted or the index is stale — call rebuild() first.`,
+          `This usually means the page was deleted or the index is stale — call rebuild() first.`,
       );
     }
 
@@ -640,7 +637,10 @@ export async function createDuneEngine(
    * is that plugin's problem, logged by name of the event, and must not fail
    * the caller (an admin save) or stop later rebuilds.
    */
-  async function fireLifecycleHook(event: "onRebuild" | "onThemeSwitch", data: unknown): Promise<void> {
+  async function fireLifecycleHook(
+    event: "onRebuild" | "onThemeSwitch",
+    data: unknown,
+  ): Promise<void> {
     if (!hooks) return;
     try {
       await hooks.fire(event, data);
@@ -707,7 +707,9 @@ export async function createDuneEngine(
           try {
             await listener();
           } catch (err) {
-            logger.warn("engine.rebuilt_listener_failed", { reason: err instanceof Error ? err.message : String(err) });
+            logger.warn("engine.rebuilt_listener_failed", {
+              reason: err instanceof Error ? err.message : String(err),
+            });
           }
         }
         await fireLifecycleHook("onRebuild", {});

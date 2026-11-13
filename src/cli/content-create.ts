@@ -82,11 +82,7 @@ function buildFrontmatter(fields: Record<string, unknown>): string {
         value.trim() !== value || value === "" || value === "null" ||
         value === "true" || value === "false";
       lines.push(
-        `${key}: ${
-          needsQuote
-            ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
-            : value
-        }`,
+        `${key}: ${needsQuote ? `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : value}`,
       );
     } else {
       lines.push(`${key}: ${JSON.stringify(value)}`);
@@ -217,9 +213,7 @@ export async function contentCreateCommand(
   const today = new Date().toISOString().slice(0, 10);
   const frontmatter = buildFrontmatter({
     title,
-    ...(options.template && options.template !== "default"
-      ? { template: options.template }
-      : {}),
+    ...(options.template && options.template !== "default" ? { template: options.template } : {}),
     date: today,
     published: options.publish === true ? true : false,
   });
@@ -251,9 +245,7 @@ export async function contentCreateCommand(
       });
     } catch (err) {
       console.error(
-        `  ⚠  onPageCreate hook failed: ${
-          err instanceof Error ? err.message : err
-        }`,
+        `  ⚠  onPageCreate hook failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

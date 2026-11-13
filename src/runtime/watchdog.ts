@@ -330,15 +330,22 @@ self.onmessage = (e) => {
 export function startWatchdog(opts: WatchdogOptions): Watchdog {
   let mode = opts.mode ?? parseWatchdogMode(Deno.env.get("DUNE_WATCHDOG"));
   if (mode === "off") return { ready() {}, stop() {} };
-  if (mode === "exit" && opts.mode === undefined && Deno.env.get("DUNE_WATCHDOG") === undefined && inspectorAttached()) {
-    console.warn("[dune] watchdog: inspector detected, reporting stalls instead of killing (DUNE_WATCHDOG=warn)");
+  if (
+    mode === "exit" && opts.mode === undefined && Deno.env.get("DUNE_WATCHDOG") === undefined &&
+    inspectorAttached()
+  ) {
+    console.warn(
+      "[dune] watchdog: inspector detected, reporting stalls instead of killing (DUNE_WATCHDOG=warn)",
+    );
     mode = "warn";
   }
 
-  const stallMs = opts.stallMs ?? parseMs(Deno.env.get("DUNE_WATCHDOG_TIMEOUT_MS"), DEFAULT_STALL_MS);
+  const stallMs = opts.stallMs ??
+    parseMs(Deno.env.get("DUNE_WATCHDOG_TIMEOUT_MS"), DEFAULT_STALL_MS);
   const startupStallMs = Math.max(
     stallMs,
-    opts.startupStallMs ?? parseMs(Deno.env.get("DUNE_WATCHDOG_STARTUP_TIMEOUT_MS"), DEFAULT_STARTUP_STALL_MS),
+    opts.startupStallMs ??
+      parseMs(Deno.env.get("DUNE_WATCHDOG_STARTUP_TIMEOUT_MS"), DEFAULT_STARTUP_STALL_MS),
   );
   const heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
   const lagWarnMs = opts.lagWarnMs ?? DEFAULT_LAG_WARN_MS;

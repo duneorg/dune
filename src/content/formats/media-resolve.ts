@@ -61,7 +61,8 @@ function isNonRelative(href: string): boolean {
  * Refused (replaced with about:blank):
  *   javascript:, vbscript:, livescript:, data:text/html, data:image/svg+xml
  */
-const UNSAFE_SCHEME_RE = /^\s*(javascript|vbscript|livescript|data:text\/html|data:image\/svg\+xml)/i;
+const UNSAFE_SCHEME_RE =
+  /^\s*(javascript|vbscript|livescript|data:text\/html|data:image\/svg\+xml)/i;
 function neutralizeUnsafeScheme(value: string): string {
   if (UNSAFE_SCHEME_RE.test(value)) return "about:blank";
   return value;
@@ -230,8 +231,7 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
       // iframe we just emitted), shape (must be the dune envelope), and clamp
       // height to a sane range so a hostile iframe can't resize the host
       // arbitrarily for clickjacking or UI-redress attacks.
-      const listener =
-        `<script>(function(){` +
+      const listener = `<script>(function(){` +
         `var f=document.currentScript.previousElementSibling;` +
         `var SELF=window.location.origin;` +
         `window.addEventListener('message',function(e){` +
@@ -261,8 +261,7 @@ export function resolveMediaRefs(text: string, ctx: RenderContext): string {
  * Exported so engine.ts can import a single canonical copy rather than
  * duplicating the string.
  */
-export const IFRAME_SENDER_SCRIPT =
-  `<script>(function(){` +
+export const IFRAME_SENDER_SCRIPT = `<script>(function(){` +
   // Resolve target origin from document.referrer (the embedding page).
   // Falls back to refusing to send if no referrer (e.g. opened directly).
   `var T=null;try{T=new URL(document.referrer).origin;}catch(_){}` +

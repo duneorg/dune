@@ -12,8 +12,8 @@
  *   dune upgrade [version]    # default: latest on JSR
  */
 
-import { resolve, join, dirname, fromFileUrl } from "@std/path";
-import { isNewer, fetchLatestVersion } from "./upgrade-check.ts";
+import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { fetchLatestVersion, isNewer } from "./upgrade-check.ts";
 import { lockfileSyncCommand } from "./lockfile.ts";
 
 const JSR_META_URL = "https://jsr.io/@dune/core/meta.json";
@@ -45,17 +45,20 @@ export function rewriteCoreRefs(
 ): { updated: string; changes: CoreRefChange[] } {
   const changes: CoreRefChange[] = [];
   const re = /jsr:@dune\/core@(\^|~)?(\d+(?:\.\d+){0,2})/g;
-  const updated = raw.replace(re, (match, prefix: string | undefined, ver: string, offset: number) => {
-    // Skip JSON keys: the enclosing string is followed by a colon.
-    const close = raw.indexOf('"', offset + match.length);
-    if (close !== -1 && /^\s*:/.test(raw.slice(close + 1, close + 40))) return match;
-    if (!force && !isNewer(version, ver)) return match;
-    const segments = ver.split(".").length;
-    const next = version.split(".").slice(0, segments).join(".");
-    const to = `jsr:@dune/core@${prefix ?? ""}${next}`;
-    if (to !== match) changes.push({ from: match, to });
-    return to;
-  });
+  const updated = raw.replace(
+    re,
+    (match, prefix: string | undefined, ver: string, offset: number) => {
+      // Skip JSON keys: the enclosing string is followed by a colon.
+      const close = raw.indexOf('"', offset + match.length);
+      if (close !== -1 && /^\s*:/.test(raw.slice(close + 1, close + 40))) return match;
+      if (!force && !isNewer(version, ver)) return match;
+      const segments = ver.split(".").length;
+      const next = version.split(".").slice(0, segments).join(".");
+      const to = `jsr:@dune/core@${prefix ?? ""}${next}`;
+      if (to !== match) changes.push({ from: match, to });
+      return to;
+    },
+  );
   return { updated, changes };
 }
 
@@ -82,7 +85,11 @@ export async function upgradeCommand(
         console.log(`  ─  You're running Dune ${localVersion} from local source.`);
         console.log(`     Dune ${latest} is available on JSR. To update:`);
       } else {
-        console.log(`  ─  You're running Dune ${localVersion} from local source${latest ? " — up to date with JSR" : ""}.`);
+        console.log(
+          `  ─  You're running Dune ${localVersion} from local source${
+            latest ? " — up to date with JSR" : ""
+          }.`,
+        );
         console.log(`     To update to the latest commits:`);
       }
     } else {
@@ -125,7 +132,9 @@ export async function upgradeCommand(
       if (!meta.latest) throw new Error("No latest version in JSR response");
       target = meta.latest;
     } catch (err) {
-      console.error(`  ✗ Could not fetch latest version: ${err instanceof Error ? err.message : err}`);
+      console.error(
+        `  ✗ Could not fetch latest version: ${err instanceof Error ? err.message : err}`,
+      );
       Deno.exit(1);
     }
   }
@@ -155,7 +164,11 @@ export async function upgradeCommand(
     // Cache file absent — no problem
   }
 
-  console.log(`  ✅ @dune/core updated to ${target} (${changes.length} reference${changes.length === 1 ? "" : "s"}):`);
+  console.log(
+    `  ✅ @dune/core updated to ${target} (${changes.length} reference${
+      changes.length === 1 ? "" : "s"
+    }):`,
+  );
   for (const c of changes) console.log(`       ${c.from} → ${c.to}`);
 
   // The CLI specifier in tasks (jsr:@dune/core@X/cli) is a separate re-exec path
@@ -164,13 +177,17 @@ export async function upgradeCommand(
     console.log(`\n  💡 This site still launches through a versioned CLI specifier in its tasks.`);
     console.log(`     \`dune migrate:entrypoint\` moves it to the single-pin entrypoint pattern.`);
   }
-  console.log(`  💡 Plugin versions are separate: \`dune plugin:update\` bumps the ones in site.yaml.`);
+  console.log(
+    `  💡 Plugin versions are separate: \`dune plugin:update\` bumps the ones in site.yaml.`,
+  );
 
   console.log(`\n  🔒 Syncing lockfile...`);
   try {
     await lockfileSyncCommand(root, {});
     console.log(`\n  Commit deno.lock along with deno.json before deploying.\n`);
   } catch {
-    console.log(`  ⚠  Lockfile sync failed — run \`dune lockfile:sync\` manually before deploying.\n`);
+    console.log(
+      `  ⚠  Lockfile sync failed — run \`dune lockfile:sync\` manually before deploying.\n`,
+    );
   }
 }

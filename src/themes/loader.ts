@@ -23,10 +23,10 @@
  *   get their own `?v=N` when loaded via loadLayout().
  */
 
-import { join, dirname, resolve } from "@std/path";
+import { dirname, join, resolve } from "@std/path";
 import type { StorageAdapter } from "../storage/types.ts";
-import type { TemplateComponent, Page, PageIndex } from "../content/types.ts";
-import type { ThemeManifest, ResolvedTheme, LoadedTemplate } from "./types.ts";
+import type { Page, PageIndex, TemplateComponent } from "../content/types.ts";
+import type { LoadedTemplate, ResolvedTheme, ThemeManifest } from "./types.ts";
 import { parseTemplateOutput, type TemplateOutput } from "./output.ts";
 import { logger } from "../core/logger.ts";
 import type { ThemePackageIndex } from "./packages.ts";
@@ -370,12 +370,22 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
       if (cached) {
         const now = Date.now();
         if (now - cached.lastChecked < MTIME_CHECK_TTL_MS) {
-          return { name, component: cached.component, fromTheme: theme.manifest.name, output: cached.output };
+          return {
+            name,
+            component: cached.component,
+            fromTheme: theme.manifest.name,
+            output: cached.output,
+          };
         }
         const currentMtime = await getMtime(cached.absPath);
         if (currentMtime === cached.mtime) {
           cached.lastChecked = now;
-          return { name, component: cached.component, fromTheme: theme.manifest.name, output: cached.output };
+          return {
+            name,
+            component: cached.component,
+            fromTheme: theme.manifest.name,
+            output: cached.output,
+          };
         }
         // File changed — invalidate this entry and re-import with a bumped version
         templateCache.delete(name);
@@ -410,7 +420,8 @@ export async function createThemeLoader(options: ThemeLoaderOptions): Promise<Th
               logger.warn("theme.template.invalid_output", {
                 template: templatePath,
                 output: String(mod.output),
-                reason: 'expected "fragment", "json", "xml", "text" or a media type like "text/csv"; rendering as a normal HTML page',
+                reason:
+                  'expected "fragment", "json", "xml", "text" or a media type like "text/csv"; rendering as a normal HTML page',
               });
             }
           }
@@ -626,8 +637,7 @@ const _warnedTemplateFailures = new Set<string>();
  * destructuring of `Layout` from props) suppresses the warning.
  */
 export function hasUnsafeStaticLayoutImport(source: string): boolean {
-  const hasStaticImport =
-    /import\s+\w+\s+from\s+["'][^"']*\/components\/[^"']*["']/.test(source);
+  const hasStaticImport = /import\s+\w+\s+from\s+["'][^"']*\/components\/[^"']*["']/.test(source);
   if (!hasStaticImport) return false;
   const usesLayoutProp = /\bLayout\s*\?\?/.test(source) ||
     /[{,]\s*Layout\s*[},=:]/.test(source);
@@ -640,7 +650,10 @@ export function hasUnsafeStaticLayoutImport(source: string): boolean {
  * won't be cache-busted during hot-reload — the template must use the `Layout`
  * prop passed by the router instead.
  */
-async function warnStaticLayoutImport(templatePath: string, storage: StorageAdapter): Promise<void> {
+async function warnStaticLayoutImport(
+  templatePath: string,
+  storage: StorageAdapter,
+): Promise<void> {
   if (_warnedTemplates.has(templatePath)) return;
   try {
     const source = await storage.readText(templatePath);
@@ -648,7 +661,7 @@ async function warnStaticLayoutImport(templatePath: string, storage: StorageAdap
       _warnedTemplates.add(templatePath);
       console.warn(
         `  ⚠️  ${templatePath}: static layout import won't hot-reload.\n` +
-        `     Use the Layout prop instead: const LayoutComponent = Layout ?? StaticLayout;`,
+          `     Use the Layout prop instead: const LayoutComponent = Layout ?? StaticLayout;`,
       );
     }
   } catch {
@@ -692,9 +705,11 @@ async function locateTheme(
     const name = ctx.packages.byName.has(trimmed)
       ? trimmed
       : defaultThemeNameFromSpecifier(resolvedSpec);
-    return await packageLocatedTheme(name, srcRoot, isRemoteThemeSpecifier(resolvedSpec)
-      ? resolvedSpec
-      : undefined);
+    return await packageLocatedTheme(
+      name,
+      srcRoot,
+      isRemoteThemeSpecifier(resolvedSpec) ? resolvedSpec : undefined,
+    );
   }
 
   if (isRemoteThemeSpecifier(resolvedSpec) || isLocalThemePath(resolvedSpec)) {
@@ -709,9 +724,7 @@ async function locateTheme(
 
   // Local theme slug under themes/ — directory may not exist yet (empty/custom theme).
   const localDir = join(ctx.themesDir, trimmed);
-  const absoluteRoot = ctx.themesDir
-    ? join(ctx.siteRoot, localDir)
-    : join(ctx.siteRoot, trimmed);
+  const absoluteRoot = ctx.themesDir ? join(ctx.siteRoot, localDir) : join(ctx.siteRoot, trimmed);
   return {
     name: trimmed,
     storage: ctx.siteStorage,
@@ -806,13 +819,18 @@ async function loadThemeManifest(
         const data = parsed as Record<string, unknown>;
 
         // Parse config_schema if present (must be a plain object, not an array)
-        let configSchema: Record<string, import("../blueprints/types.ts").BlueprintField> | undefined;
+        let configSchema:
+          | Record<string, import("../blueprints/types.ts").BlueprintField>
+          | undefined;
         if (
           data.config_schema &&
           typeof data.config_schema === "object" &&
           !Array.isArray(data.config_schema)
         ) {
-          configSchema = data.config_schema as Record<string, import("../blueprints/types.ts").BlueprintField>;
+          configSchema = data.config_schema as Record<
+            string,
+            import("../blueprints/types.ts").BlueprintField
+          >;
         }
 
         return {
@@ -880,4 +898,3 @@ async function discoverLayouts(
 
   return names;
 }
-

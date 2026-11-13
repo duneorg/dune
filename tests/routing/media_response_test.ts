@@ -1,8 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import {
-  mediaBodyResponse,
-  parseByteRange,
-} from "../../src/routing/media-response.ts";
+import { mediaBodyResponse, parseByteRange } from "../../src/routing/media-response.ts";
 
 const data = new Uint8Array(Array.from({ length: 1000 }, (_, i) => i % 256));
 const media = { data, contentType: "audio/mpeg", size: data.length };

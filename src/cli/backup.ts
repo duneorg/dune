@@ -168,7 +168,9 @@ export async function restoreCommand(
   }
   const fileList = new TextDecoder().decode(listResult.stdout);
   if (!fileList.includes("dune-backup-manifest.json")) {
-    console.error("✗ Archive does not appear to be a Dune backup (missing dune-backup-manifest.json).");
+    console.error(
+      "✗ Archive does not appear to be a Dune backup (missing dune-backup-manifest.json).",
+    );
     Deno.exit(1);
   }
 

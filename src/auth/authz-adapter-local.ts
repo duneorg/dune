@@ -46,8 +46,7 @@ export function authzStrictHmacFromEnv(): boolean {
     const allowUnsigned = Deno.env.get("DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED");
     if (allowUnsigned === "1" || allowUnsigned?.toLowerCase() === "true") {
       logger.warn("authz.hmac.allow_unsigned", {
-        reason:
-          "DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED is set — unsigned permission tuples are " +
+        reason: "DUNE_AUTHZ_HMAC_ALLOW_UNSIGNED is set — unsigned permission tuples are " +
           "accepted. This weakens tamper detection and should only be used during " +
           "a signed-tuple migration, never in steady-state production.",
       });
@@ -56,8 +55,7 @@ export function authzStrictHmacFromEnv(): boolean {
     const legacy = Deno.env.get("DUNE_AUTHZ_HMAC_STRICT");
     if (legacy === "0" || legacy?.toLowerCase() === "false") {
       logger.warn("authz.hmac.allow_unsigned", {
-        reason:
-          "DUNE_AUTHZ_HMAC_STRICT=0 — unsigned permission tuples are accepted. " +
+        reason: "DUNE_AUTHZ_HMAC_STRICT=0 — unsigned permission tuples are accepted. " +
           "This weakens tamper detection; re-enable strict mode after migration.",
       });
       return false;
@@ -125,8 +123,7 @@ export class AuthzLocalAdapter {
    */
   private readonly bySubjectRelation: Map<string, Set<string>> = new Map();
   private readonly byObjectRelation: Map<string, Set<string>> = new Map();
-  private readonly bySubjectObjectRelation: Map<string, Set<string>> =
-    new Map();
+  private readonly bySubjectObjectRelation: Map<string, Set<string>> = new Map();
   private loaded = false;
   /**
    * In-flight load promise — shared by all concurrent callers so they all await
@@ -371,8 +368,7 @@ export class AuthzLocalAdapter {
           logger.warn("authz.tuple.invalid_hmac", {
             tupleId: tuple.id,
             file: e.name,
-            reason:
-              "invalid HMAC — file may have been tampered with. Tuple NOT loaded.",
+            reason: "invalid HMAC — file may have been tampered with. Tuple NOT loaded.",
           });
           return;
         }

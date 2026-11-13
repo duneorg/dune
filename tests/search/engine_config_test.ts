@@ -48,7 +48,9 @@ function makeFormats(bodyMap: Record<string, string> = {}): FormatRegistry {
   return registry;
 }
 
-function makePage(overrides: Partial<PageIndex> & { title: string; sourcePath: string }): PageIndex {
+function makePage(
+  overrides: Partial<PageIndex> & { title: string; sourcePath: string },
+): PageIndex {
   return {
     route: "/" + overrides.sourcePath.replace(/\/default\.md$/, "").replace(/^\d+\./, ""),
     language: "en",
@@ -87,8 +89,7 @@ Deno.test("fieldWeights: high title weight makes title match rank above body mat
   };
   const bodies = {
     "content/01.deno/default.md": "nothing relevant here",
-    "content/02.other/default.md":
-      "deno deno deno deno deno deno deno deno deno deno deno deno",
+    "content/02.other/default.md": "deno deno deno deno deno deno deno deno deno deno deno deno",
   };
 
   const engine = createSearchEngine({
@@ -119,8 +120,7 @@ Deno.test("fieldWeights: high body weight makes body match rank above title matc
   };
   const bodies = {
     "content/01.deno/default.md": "",
-    "content/02.other/default.md":
-      "deno deno deno deno deno",
+    "content/02.other/default.md": "deno deno deno deno deno",
   };
 
   const engine = createSearchEngine({

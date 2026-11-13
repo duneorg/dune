@@ -87,9 +87,7 @@ Deno.test("migrate:roles-to-tuples: finds users with roles on a real site (regre
       console.log = origLog;
     }
 
-    const foundNothing = logs.some((l) =>
-      l.includes("No users with roles found")
-    );
+    const foundNothing = logs.some((l) => l.includes("No users with roles found"));
     assertEquals(foundNothing, false);
   });
 });

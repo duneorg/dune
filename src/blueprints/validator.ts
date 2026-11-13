@@ -214,7 +214,9 @@ function checkType(
         if (typeof (value as unknown[])[i] !== "string") {
           return {
             field: fieldName,
-            message: `list items must be strings (item [${i}] got: ${formatGot((value as unknown[])[i])})`,
+            message: `list items must be strings (item [${i}] got: ${
+              formatGot((value as unknown[])[i])
+            })`,
           };
         }
       }

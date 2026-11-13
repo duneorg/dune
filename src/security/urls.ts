@@ -47,7 +47,10 @@ export function isSafeUrl(url: string | null | undefined): boolean {
   if (trimmed !== raw) return false;
 
   // Fragment-only and path-relative are always safe.
-  if (trimmed.startsWith("#") || trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../")) {
+  if (
+    trimmed.startsWith("#") || trimmed.startsWith("/") || trimmed.startsWith("./") ||
+    trimmed.startsWith("../")
+  ) {
     return true;
   }
 

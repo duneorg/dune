@@ -192,7 +192,12 @@ export function createSearchAnalytics(
       await loaded;
       if (!dirty) return;
       dirty = false;
-      const snap: Snapshot = { version: 1, since, totalSearches, queries: Object.fromEntries(counters) };
+      const snap: Snapshot = {
+        version: 1,
+        since,
+        totalSearches,
+        queries: Object.fromEntries(counters),
+      };
       const tmp = `${snapshotPath}.${crypto.randomUUID().slice(0, 8)}.tmp`;
       try {
         await Deno.mkdir(dirname(snapshotPath), { recursive: true });

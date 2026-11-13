@@ -5,19 +5,16 @@
  * Does NOT test full routing integration — only the pure gating logic.
  */
 
+import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  assertEquals,
-  assertStrictEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  parseRolesSpec,
+  canAccessIndexEntry,
   checkRoles,
   enforceRoles,
-  isPublicIndexEntry,
-  canAccessIndexEntry,
   filterAccessibleEntries,
   findPageForMediaUrl,
+  isPublicIndexEntry,
   navigationForRequest,
+  parseRolesSpec,
 } from "../../src/auth/gating.ts";
 import type { RolesSpec } from "../../src/auth/gating.ts";
 import type { User } from "../../src/auth/types.ts";

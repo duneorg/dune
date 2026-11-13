@@ -17,9 +17,7 @@ export class ConfigError extends DuneError {
     public readonly filePath?: string,
     public readonly line?: number,
   ) {
-    const location = filePath
-      ? ` in ${filePath}${line ? `:${line}` : ""}`
-      : "";
+    const location = filePath ? ` in ${filePath}${line ? `:${line}` : ""}` : "";
     super(`Config error${location}: ${message}`, "CONFIG_ERROR");
     this.name = "ConfigError";
   }

@@ -26,7 +26,9 @@ function mockSiteConfig(overrides?: Partial<SiteConfig>): SiteConfig {
 }
 
 /** Create a minimal PageIndex for testing */
-function mockPage(overrides: Partial<PageIndex> & { sourcePath: string; route: string }): PageIndex {
+function mockPage(
+  overrides: Partial<PageIndex> & { sourcePath: string; route: string },
+): PageIndex {
   return {
     language: "en",
     format: "md",

@@ -27,7 +27,7 @@
  * hand-edited, and this is the enforcement of that contract.
  */
 
-import { resolve, join } from "@std/path";
+import { join, resolve } from "@std/path";
 import {
   DUNE_CORE_RUNTIME_IMPORTS,
   ENTRYPOINT_MCP_ARGS,
@@ -143,12 +143,18 @@ export async function migrateEntrypointCommand(
 
   if (existingMainTs === MAIN_TS_TEMPLATE && tasksAlreadyMigrated(tasks)) {
     console.log(`  ✅ ${absRoot} already uses the main.ts entrypoint pattern — nothing to do.`);
-    return { migrated: false, alreadyMigrated: true, addedImports: [], rewroteTasks: false, rewroteOtherTasks: [], rewroteMcpJson: false };
+    return {
+      migrated: false,
+      alreadyMigrated: true,
+      addedImports: [],
+      rewroteTasks: false,
+      rewroteOtherTasks: [],
+      rewroteMcpJson: false,
+    };
   }
 
   if (existingMainTs !== null && existingMainTs !== MAIN_TS_TEMPLATE) {
-    const reason =
-      `main.ts exists at ${mainTsPath} but its contents don't match the generated ` +
+    const reason = `main.ts exists at ${mainTsPath} but its contents don't match the generated ` +
       `template. Refusing to overwrite it — main.ts is meant to be generated, not ` +
       `hand-edited. Compare it against the template (dune new's scaffold produces the ` +
       `current version) and reconcile manually before re-running this command.`;
@@ -177,16 +183,31 @@ export async function migrateEntrypointCommand(
   if (opts.dryRun) {
     console.log(`  Would write main.ts at ${mainTsPath}`);
     if (addedImports.length > 0) {
-      console.log(`  Would add ${addedImports.length} import map entr${addedImports.length === 1 ? "y" : "ies"}:`);
+      console.log(
+        `  Would add ${addedImports.length} import map entr${
+          addedImports.length === 1 ? "y" : "ies"
+        }:`,
+      );
       for (const key of addedImports) console.log(`    + ${key}`);
     }
     console.log(`  Would rewrite tasks (dev/build/serve) to invoke main.ts`);
     const { rewritten: wouldRewrite } = rewriteVersionedCliTasks(tasks);
     if (wouldRewrite.length > 0) {
-      console.log(`  Would also move ${wouldRewrite.join(", ")} off the versioned jsr:@dune/core CLI specifier`);
+      console.log(
+        `  Would also move ${
+          wouldRewrite.join(", ")
+        } off the versioned jsr:@dune/core CLI specifier`,
+      );
     }
     console.log(`  Would rewrite .mcp.json to invoke main.ts`);
-    return { migrated: false, alreadyMigrated: false, addedImports, rewroteTasks: false, rewroteOtherTasks: [], rewroteMcpJson: false };
+    return {
+      migrated: false,
+      alreadyMigrated: false,
+      addedImports,
+      rewroteTasks: false,
+      rewroteOtherTasks: [],
+      rewroteMcpJson: false,
+    };
   }
 
   // ── Step 2: write main.ts and merge imports BEFORE touching tasks ────────────
@@ -196,10 +217,14 @@ export async function migrateEntrypointCommand(
   // Preserve any flags the site had customized on the old task (e.g. a
   // non-default --port, --frozen) instead of clobbering them with the bare
   // template — see extractExtraArgs.
-  const { tasks: otherTasksMigrated, rewritten: rewroteOtherTasks } = rewriteVersionedCliTasks(tasks);
+  const { tasks: otherTasksMigrated, rewritten: rewroteOtherTasks } = rewriteVersionedCliTasks(
+    tasks,
+  );
   const newTasks = { ...otherTasksMigrated };
   for (const [commandName, template] of Object.entries(ENTRYPOINT_TASKS)) {
-    const oldValue = typeof tasks[commandName] === "string" ? tasks[commandName] as string : undefined;
+    const oldValue = typeof tasks[commandName] === "string"
+      ? tasks[commandName] as string
+      : undefined;
     const extraArgs = extractExtraArgs(oldValue, commandName);
     newTasks[commandName] = extraArgs.length > 0 ? `${template} ${extraArgs.join(" ")}` : template;
   }
@@ -221,7 +246,11 @@ export async function migrateEntrypointCommand(
 
   console.log(`  ✅ ${absRoot} migrated to the main.ts entrypoint pattern.`);
   if (addedImports.length > 0) {
-    console.log(`     Added ${addedImports.length} import map entr${addedImports.length === 1 ? "y" : "ies"}:`);
+    console.log(
+      `     Added ${addedImports.length} import map entr${
+        addedImports.length === 1 ? "y" : "ies"
+      }:`,
+    );
     for (const key of addedImports) console.log(`       + ${key}`);
   }
   console.log(`     Rewrote tasks: dev, build, serve`);
@@ -232,5 +261,12 @@ export async function migrateEntrypointCommand(
   console.log(`\n  This cutover is one commit — rollback is \`git revert\` + restart.`);
   console.log(`  Soak-test this site before migrating the rest of the fleet.\n`);
 
-  return { migrated: true, alreadyMigrated: false, addedImports, rewroteTasks: true, rewroteOtherTasks, rewroteMcpJson };
+  return {
+    migrated: true,
+    alreadyMigrated: false,
+    addedImports,
+    rewroteTasks: true,
+    rewroteOtherTasks,
+    rewroteMcpJson,
+  };
 }

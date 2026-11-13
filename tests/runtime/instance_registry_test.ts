@@ -48,26 +48,30 @@ Deno.test("registryDir: honours DUNE_REGISTRY_DIR, defaults under ~/.dune", () =
   }
 });
 
-Deno.test("register: writes a record for this process, listed back with its fields", unixOnly, async () => {
-  await withRegistry(async (dir) => {
-    const handle = await registerInstance(INIT);
-    const names: string[] = [];
-    for await (const e of Deno.readDir(dir)) names.push(e.name);
-    assertEquals(names, [`${Deno.pid}.json`], "exactly the record, no leftover temp file");
+Deno.test(
+  "register: writes a record for this process, listed back with its fields",
+  unixOnly,
+  async () => {
+    await withRegistry(async (dir) => {
+      const handle = await registerInstance(INIT);
+      const names: string[] = [];
+      for await (const e of Deno.readDir(dir)) names.push(e.name);
+      assertEquals(names, [`${Deno.pid}.json`], "exactly the record, no leftover temp file");
 
-    const list = await listRegisteredInstances();
-    assertEquals(list.length, 1);
-    const r = list[0];
-    assertEquals(r.pid, Deno.pid);
-    assertEquals(r.mode, "serve");
-    assertEquals(r.root, "/sites/example");
-    assertEquals(r.title, "Example");
-    assertEquals(r.port, 3123);
-    assertEquals(r.version, "9.9.9");
-    assertExists(r.processStart);
-    handle.unregister();
-  });
-});
+      const list = await listRegisteredInstances();
+      assertEquals(list.length, 1);
+      const r = list[0];
+      assertEquals(r.pid, Deno.pid);
+      assertEquals(r.mode, "serve");
+      assertEquals(r.root, "/sites/example");
+      assertEquals(r.title, "Example");
+      assertEquals(r.port, 3123);
+      assertEquals(r.version, "9.9.9");
+      assertExists(r.processStart);
+      handle.unregister();
+    });
+  },
+);
 
 Deno.test("unregister: removes the record, and is safe to repeat", unixOnly, async () => {
   await withRegistry(async () => {
@@ -78,52 +82,73 @@ Deno.test("unregister: removes the record, and is safe to repeat", unixOnly, asy
   });
 });
 
-Deno.test("list: a record whose process is gone is dropped and its file pruned", unixOnly, async () => {
-  await withRegistry(async (dir) => {
-    // A real process that has definitely exited.
-    const child = new Deno.Command(Deno.execPath(), { args: ["eval", "1"], stdout: "null", stderr: "null" })
-      .spawn();
-    const pid = child.pid;
-    const start = await readProcessStart(pid) ?? "Thu Jan  1 00:00:00 1970";
-    await child.status;
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(
-      join(dir, `${pid}.json`),
-      JSON.stringify({ pid, processStart: start, ...INIT, registeredAt: new Date().toISOString() }),
-    );
-    assertEquals(await listRegisteredInstances(), []);
-    assertEquals([...Deno.readDirSync(dir)].length, 0, "stale file should be pruned");
-  });
-});
+Deno.test(
+  "list: a record whose process is gone is dropped and its file pruned",
+  unixOnly,
+  async () => {
+    await withRegistry(async (dir) => {
+      // A real process that has definitely exited.
+      const child = new Deno.Command(Deno.execPath(), {
+        args: ["eval", "1"],
+        stdout: "null",
+        stderr: "null",
+      })
+        .spawn();
+      const pid = child.pid;
+      const start = await readProcessStart(pid) ?? "Thu Jan  1 00:00:00 1970";
+      await child.status;
+      await Deno.mkdir(dir, { recursive: true });
+      await Deno.writeTextFile(
+        join(dir, `${pid}.json`),
+        JSON.stringify({
+          pid,
+          processStart: start,
+          ...INIT,
+          registeredAt: new Date().toISOString(),
+        }),
+      );
+      assertEquals(await listRegisteredInstances(), []);
+      assertEquals([...Deno.readDirSync(dir)].length, 0, "stale file should be pruned");
+    });
+  },
+);
 
-Deno.test("list: a live pid with a different start time (pid reuse) is treated as stale", unixOnly, async () => {
-  await withRegistry(async (dir) => {
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(
-      join(dir, `${Deno.pid}.json`),
-      JSON.stringify({
-        pid: Deno.pid,
-        processStart: "Mon Jan  1 00:00:00 2001", // not when this process started
-        ...INIT,
-        registeredAt: new Date().toISOString(),
-      }),
-    );
-    assertEquals(await listRegisteredInstances(), []);
-    assertEquals([...Deno.readDirSync(dir)].length, 0);
-  });
-});
+Deno.test(
+  "list: a live pid with a different start time (pid reuse) is treated as stale",
+  unixOnly,
+  async () => {
+    await withRegistry(async (dir) => {
+      await Deno.mkdir(dir, { recursive: true });
+      await Deno.writeTextFile(
+        join(dir, `${Deno.pid}.json`),
+        JSON.stringify({
+          pid: Deno.pid,
+          processStart: "Mon Jan  1 00:00:00 2001", // not when this process started
+          ...INIT,
+          registeredAt: new Date().toISOString(),
+        }),
+      );
+      assertEquals(await listRegisteredInstances(), []);
+      assertEquals([...Deno.readDirSync(dir)].length, 0);
+    });
+  },
+);
 
-Deno.test("list: garbage, mismatched names and non-record files never throw and are not listed", unixOnly, async () => {
-  await withRegistry(async (dir) => {
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(join(dir, "123.json"), "{ not json");
-    await Deno.writeTextFile(join(dir, "124.json"), JSON.stringify({ pid: 999, nope: true }));
-    await Deno.writeTextFile(join(dir, "notes.txt"), "keep me");
-    assertEquals(await listRegisteredInstances(), []);
-    const left = [...Deno.readDirSync(dir)].map((e) => e.name);
-    assertEquals(left, ["notes.txt"], "unrelated files are left alone");
-  });
-});
+Deno.test(
+  "list: garbage, mismatched names and non-record files never throw and are not listed",
+  unixOnly,
+  async () => {
+    await withRegistry(async (dir) => {
+      await Deno.mkdir(dir, { recursive: true });
+      await Deno.writeTextFile(join(dir, "123.json"), "{ not json");
+      await Deno.writeTextFile(join(dir, "124.json"), JSON.stringify({ pid: 999, nope: true }));
+      await Deno.writeTextFile(join(dir, "notes.txt"), "keep me");
+      assertEquals(await listRegisteredInstances(), []);
+      const left = [...Deno.readDirSync(dir)].map((e) => e.name);
+      assertEquals(left, ["notes.txt"], "unrelated files are left alone");
+    });
+  },
+);
 
 Deno.test("list: no registry directory yet is an empty list, not an error", async () => {
   await withRegistry(async () => {
@@ -153,13 +178,17 @@ Deno.test("register: a process exiting normally leaves no record behind", unixOn
       args: [
         "eval",
         `import { registerInstance } from ${JSON.stringify(url)};` +
-          `await registerInstance({ mode: "dev", root: "/x", title: null, port: null, version: "0" });`,
+        `await registerInstance({ mode: "dev", root: "/x", title: null, port: null, version: "0" });`,
       ],
       env: { DUNE_REGISTRY_DIR: dir },
       stdout: "null",
       stderr: "piped",
     }).output();
     assert(out.success, new TextDecoder().decode(out.stderr));
-    assertEquals([...Deno.readDirSync(dir)].length, 0, "unload handler should have removed the record");
+    assertEquals(
+      [...Deno.readDirSync(dir)].length,
+      0,
+      "unload handler should have removed the record",
+    );
   });
 });

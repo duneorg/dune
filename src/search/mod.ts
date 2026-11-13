@@ -11,16 +11,16 @@ export {
 } from "./engine.ts";
 export type {
   FacetCounts,
+  InjectedSearchRecord,
   /** Full-text search engine over the Dune content index. Obtain via {@link createSearchEngine}. */
   SearchEngine,
+  SearchEngineCreateContext,
   SearchEngineOptions,
   SearchFilter,
   SearchOptions,
+  SearchRecordsCollectContext,
   /** A single result returned by {@link SearchEngine.search}. */
   SearchResult,
-  SearchEngineCreateContext,
-  SearchRecordsCollectContext,
-  InjectedSearchRecord,
 } from "./engine.ts";
 
 // Re-export PageIndex from content types for plugin consumers.
@@ -29,7 +29,12 @@ export type {
   PageIndex,
 } from "../content/types.ts";
 
-export { createSearchManager, isSearchConfigError, SearchConfigError, SearchUnavailableError } from "./manager.ts";
+export {
+  createSearchManager,
+  isSearchConfigError,
+  SearchConfigError,
+  SearchUnavailableError,
+} from "./manager.ts";
 export type { SearchEngineStatus, SearchManager, SearchManagerOptions } from "./manager.ts";
 
 export { createSearchAnalytics, resolveSearchAnalytics } from "./analytics.ts";

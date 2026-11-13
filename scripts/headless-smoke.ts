@@ -145,7 +145,9 @@ try {
     await check("sitemap lists only live pages", async () => {
       const { text } = await get("/sitemap.xml");
       const bad = ["/future", "/expired", "/draft"].filter((p) => text.includes(p));
-      return !bad.length && text.includes("/window") ? undefined : `bad: ${bad.join(", ") || "window missing"}`;
+      return !bad.length && text.includes("/window")
+        ? undefined
+        : `bad: ${bad.join(", ") || "window missing"}`;
     });
     await check("search finds only live pages", async () => {
       const { text } = await get("/api/search?q=body");
@@ -168,12 +170,18 @@ try {
 
     await check("form schema is served", async () => {
       const res = await get("/api/forms/contact");
-      return res.status === 200 && res.text.includes('"honeypot":"_hp"') ? undefined : `status ${res.status}`;
+      return res.status === 200 && res.text.includes('"honeypot":"_hp"')
+        ? undefined
+        : `status ${res.status}`;
     });
     await check("unknown form is 404", expectStatus("/api/forms/nope", 404));
     await check("form submission is accepted and stored", async () => {
       const before = await stored();
-      const res = await post("/api/forms/contact", JSON.stringify({ name: "A", message: "hello" }), asJson);
+      const res = await post(
+        "/api/forms/contact",
+        JSON.stringify({ name: "A", message: "hello" }),
+        asJson,
+      );
       if (res.status !== 200) return `status ${res.status}: ${res.text}`;
       return (await stored()) === before + 1 ? undefined : "no submission file written";
     });
@@ -195,7 +203,11 @@ try {
     });
     await check("honeypot submission is swallowed, not stored", async () => {
       const before = await stored();
-      const res = await post("/api/forms/contact", JSON.stringify({ name: "A", message: "x", _hp: "bot" }), asJson);
+      const res = await post(
+        "/api/forms/contact",
+        JSON.stringify({ name: "A", message: "x", _hp: "bot" }),
+        asJson,
+      );
       return res.status === 200 && (await stored()) === before ? undefined : `status ${res.status}`;
     });
     await check("incoming webhook rejects a wrong token", async () => {
@@ -203,12 +215,20 @@ try {
       return res.status === 401 ? undefined : `status ${res.status}`;
     });
     await check("incoming webhook runs a permitted action", async () => {
-      const res = await post("/api/webhook/incoming", "{}", { authorization: "Bearer smoke-token" });
-      return res.status === 200 && res.text.includes("purge-cache") ? undefined : `status ${res.status}: ${res.text}`;
+      const res = await post("/api/webhook/incoming", "{}", {
+        authorization: "Bearer smoke-token",
+      });
+      return res.status === 200 && res.text.includes("purge-cache")
+        ? undefined
+        : `status ${res.status}: ${res.text}`;
     });
     await check("form submissions are rate limited", async () => {
       for (let i = 0; i < 8; i++) {
-        const res = await post("/api/forms/contact", JSON.stringify({ name: "R", message: "hello" }), asJson);
+        const res = await post(
+          "/api/forms/contact",
+          JSON.stringify({ name: "R", message: "hello" }),
+          asJson,
+        );
         if (res.status === 429) return undefined;
       }
       return "never got a 429 in 8 submissions";

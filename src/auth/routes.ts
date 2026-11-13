@@ -23,9 +23,9 @@ import type { User } from "./types.ts";
 import { DuplicateEmailError, type UserStore } from "./user-store.ts";
 import type { SiteAuthMiddleware } from "./middleware.ts";
 import { OAUTH_LINK_COOKIE, OAUTH_STATE_COOKIE } from "./middleware.ts";
-import { createMagicLink, verifyMagicToken, type MagicTokenStore } from "./magic-link.ts";
+import { createMagicLink, type MagicTokenStore, verifyMagicToken } from "./magic-link.ts";
 import type { OAuthProvider } from "./providers/types.ts";
-import { RateLimiter, clientIp, rateLimitResponse } from "../security/rate-limit.ts";
+import { clientIp, RateLimiter, rateLimitResponse } from "../security/rate-limit.ts";
 import { checkSameOriginCsrf } from "../security/csrf.ts";
 import { logger } from "../core/logger.ts";
 import { sanitizeNext } from "./redirect.ts";
@@ -135,15 +135,26 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
   } = config;
   const loginPath = resolveLoginPath(config.loginPath);
 
-  const passwordLoginActive = passwordLoginEnabled && mode === "dune" && userStoreType !== "session" &&
+  const passwordLoginActive = passwordLoginEnabled && mode === "dune" &&
+    userStoreType !== "session" &&
     rateLimitStore !== undefined;
   const passwordLoginHandler = passwordLoginActive
-    ? createPasswordLogin({ userStore, middleware, rateLimitStore: rateLimitStore!, trustForwardedFor, loginPath })
+    ? createPasswordLogin({
+      userStore,
+      middleware,
+      rateLimitStore: rateLimitStore!,
+      trustForwardedFor,
+      loginPath,
+    })
     : null;
 
   // ── Login page ─────────────────────────────────────────────────────────────
 
-  async function login(req: Request, siteUser: User | null, renderJsx?: RenderJsx): Promise<Response> {
+  async function login(
+    req: Request,
+    siteUser: User | null,
+    renderJsx?: RenderJsx,
+  ): Promise<Response> {
     if (siteUser) {
       // Already logged in — honour a sanitised ?next= redirect target.
       const url = new URL(req.url);
@@ -194,7 +205,9 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
         const themed = await loginPage(req, view, renderJsx, status);
         if (themed) return themed;
       } catch (err) {
-        logger.error("auth.login_page.theme_failed", { error: err instanceof Error ? err.message : String(err) });
+        logger.error("auth.login_page.theme_failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
     return new Response(loginHtml(view), {
@@ -208,13 +221,18 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
   async function passwordLogin(req: Request, renderJsx?: RenderJsx): Promise<Response> {
     if (!passwordLoginHandler) return new Response("Password login not enabled", { status: 404 });
     return await passwordLoginHandler(req, (view, status) =>
-      renderLogin(req, {
-        providers: [...providers.keys()],
-        magicLink: magicLinkEnabled,
-        passwordLogin: true,
-        error: view.error,
-        next: view.next,
-      }, renderJsx, status));
+      renderLogin(
+        req,
+        {
+          providers: [...providers.keys()],
+          magicLink: magicLinkEnabled,
+          passwordLogin: true,
+          error: view.error,
+          next: view.next,
+        },
+        renderJsx,
+        status,
+      ));
   }
 
   // ── Logout ─────────────────────────────────────────────────────────────────
@@ -482,7 +500,11 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
           lastSeenAt: Date.now(),
           enabled: true,
         };
-        sessionId = await middleware.createSession(syntheticUser.id, ip || undefined, syntheticUser);
+        sessionId = await middleware.createSession(
+          syntheticUser.id,
+          ip || undefined,
+          syntheticUser,
+        );
       } else {
         // userStoreType: "local" — upsert a persistent user record.
 
@@ -610,7 +632,8 @@ export function createAuthRoutes(config: AuthRoutesConfig): AuthRouteHandlers {
       const link = await createMagicLink(email, magicLinkSecret, siteUrl);
 
       if (sendEmail) {
-        const text = `Click the link below to log in:\n\n${link}\n\nThis link expires in 15 minutes.`;
+        const text =
+          `Click the link below to log in:\n\n${link}\n\nThis link expires in 15 minutes.`;
         const html = magicEmailHtml(link);
         await sendEmail(email, "Your login link", text, html).catch((err) => {
           logger.error("auth.magic_link.email_failed", {
@@ -833,7 +856,9 @@ function magicEmailHtml(link: string): string {
 <div style="font-family:system-ui,sans-serif;max-width:480px">
   <h2>Your login link</h2>
   <p>Click the button below to log in. This link expires in 15 minutes.</p>
-  <a href="${escHtml(link)}" style="display:inline-block;padding:12px 24px;background:#333;color:#fff;border-radius:4px;text-decoration:none">
+  <a href="${
+    escHtml(link)
+  }" style="display:inline-block;padding:12px 24px;background:#333;color:#fff;border-radius:4px;text-decoration:none">
     Log in
   </a>
   <p style="margin-top:16px;font-size:0.85em;color:#666">
@@ -859,7 +884,10 @@ function loginErrorResponse(message: string, loginPath: string): Response {
 }
 
 function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(
+    /"/g,
+    "&quot;",
+  );
 }
 
 function generateState(): string {

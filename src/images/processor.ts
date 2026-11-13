@@ -69,7 +69,10 @@ export interface ImageProcessorConfig {
 /** On-the-fly image resize, crop, and format conversion. Obtain via {@link createImageProcessor}. */
 export interface ImageProcessor {
   process(input: Uint8Array, options: ImageProcessingOptions): Promise<ProcessedImage | null>;
-  generateSrcset(input: Uint8Array, options?: Omit<ImageProcessingOptions, "width" | "height">): Promise<ProcessedImage[]>;
+  generateSrcset(
+    input: Uint8Array,
+    options?: Omit<ImageProcessingOptions, "width" | "height">,
+  ): Promise<ProcessedImage[]>;
   isAllowedSize(size: number): boolean;
   parseOptions(params: URLSearchParams): ImageProcessingOptions | null;
 }
@@ -263,7 +266,10 @@ export function createImageProcessor(config: ImageProcessorConfig): ImageProcess
     if (options.height !== undefined && options.height > MAX_IMAGE_DIMENSION) {
       options.height = MAX_IMAGE_DIMENSION;
     }
-    if (options.quality !== undefined && (isNaN(options.quality) || options.quality < 1 || options.quality > 100)) {
+    if (
+      options.quality !== undefined &&
+      (isNaN(options.quality) || options.quality < 1 || options.quality > 100)
+    ) {
       return null;
     }
 
@@ -272,7 +278,6 @@ export function createImageProcessor(config: ImageProcessorConfig): ImageProcess
 
   return { process, generateSrcset, isAllowedSize, parseOptions };
 }
-
 
 // === Helpers ===
 

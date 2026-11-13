@@ -29,9 +29,9 @@ export class ConsoleEmailProvider implements EmailProvider {
   constructor(opts?: ConsoleEmailProviderOptions) {
     const isDev = Deno.env.get("DUNE_ENV") === "dev";
     this.devEmailDir = isDev
-      ? (opts?.devEmailDir
-          ?? Deno.env.get("DUNE_DEV_EMAIL_DIR")   // set by serve.ts from configured runtimeDir
-          ?? join(Deno.cwd(), ".dune", "admin", "dev-email"))
+      ? (opts?.devEmailDir ??
+        Deno.env.get("DUNE_DEV_EMAIL_DIR") ?? // set by serve.ts from configured runtimeDir
+        join(Deno.cwd(), ".dune", "admin", "dev-email"))
       : null;
   }
 

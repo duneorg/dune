@@ -14,7 +14,7 @@
  * silently discard the query string when serving the raw file.
  */
 
-import { join, dirname, normalize, isAbsolute } from "@std/path";
+import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { parseFolderName } from "../content/path-utils.ts";
 import { resolveContentDirPath } from "../content/content-root.ts";
 import { ensureDir } from "@std/fs";
@@ -24,18 +24,18 @@ import type { DuneEngine } from "../core/engine.ts";
 import type { DuneConfig } from "../config/types.ts";
 import type { FlexEngine } from "../flex/engine.ts";
 import { generateSitemap } from "../sitemap/generator.ts";
-import { generateRss, generateAtom, type FeedItem, type FeedOptions } from "../feeds/generator.ts";
+import { type FeedItem, type FeedOptions, generateAtom, generateRss } from "../feeds/generator.ts";
 import { detectHomeSlug } from "../content/index-builder.ts";
 import { MDX_ERROR_CLASS } from "../content/formats/mdx.ts";
 import type { SSGOptions, SSGResult } from "./types.ts";
 import type { PageIndex } from "../content/types.ts";
 import { findPageForMediaUrl } from "../auth/gating.ts";
 import {
-  newManifest,
-  loadManifest,
-  saveManifest,
-  hashFile,
   type BuildManifest,
+  hashFile,
+  loadManifest,
+  newManifest,
+  saveManifest,
 } from "./manifest.ts";
 import { resolveCapabilities } from "../plugins/loader.ts";
 import { adminPrefixOf } from "../plugin-api/capabilities.ts";
@@ -44,7 +44,11 @@ import { adminPrefixOf } from "../plugin-api/capabilities.ts";
 
 /** File extensions that identify content/config files (skip when copying media). */
 const CONTENT_EXTENSIONS = new Set([
-  "md", "mdx", "tsx", "yaml", "yml",
+  "md",
+  "mdx",
+  "tsx",
+  "yaml",
+  "yml",
 ]);
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -85,7 +89,13 @@ export async function buildStatic(
   // serve /auth/* from, and shouldn't create site-user/session-store
   // directories or risk failing on auth misconfiguration as a side effect
   // of generating static HTML.
-  const { app } = await createDuneApp(ctx, { root, port: 8000, debug: false, dev: false, mountAuth: false });
+  const { app } = await createDuneApp(ctx, {
+    root,
+    port: 8000,
+    debug: false,
+    dev: false,
+    mountAuth: false,
+  });
   const handler = app.handler();
 
   // ── Enumerate routes ──────────────────────────────────────────────────────
@@ -161,7 +171,10 @@ export async function buildStatic(
         if (contentType.includes("html")) {
           const bodyText = new TextDecoder().decode(bodyBuffer);
           if (bodyText.includes(`class="${MDX_ERROR_CLASS}"`)) {
-            errors.push({ route, error: "MDX render error embedded in output (see mdx-error div in page body)" });
+            errors.push({
+              route,
+              error: "MDX render error embedded in output (see mdx-error div in page body)",
+            });
           }
         }
 
@@ -183,7 +196,9 @@ export async function buildStatic(
   const custom404 = engine.pages.some((p) => p.route === "/404");
   if (!custom404) {
     const fallback404Path = join(outDir, "404.html");
-    try { await Deno.stat(fallback404Path); } catch {
+    try {
+      await Deno.stat(fallback404Path);
+    } catch {
       await writeDefault404(fallback404Path, engine.site.title);
     }
   }
@@ -302,7 +317,9 @@ async function writeRedirectStub(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  await Deno.writeTextFile(fullPath, `<!DOCTYPE html>
+  await Deno.writeTextFile(
+    fullPath,
+    `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -310,12 +327,15 @@ async function writeRedirectStub(
   <link rel="canonical" href="${safeLocation}">
 </head>
 <body><p>Redirecting to <a href="${safeLocation}">${safeLocation}</a>…</p></body>
-</html>`);
+</html>`,
+  );
 }
 
 async function writeDefault404(path: string, siteName: string): Promise<void> {
   await ensureDir(dirname(path));
-  await Deno.writeTextFile(path, `<!DOCTYPE html>
+  await Deno.writeTextFile(
+    path,
+    `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -333,7 +353,8 @@ async function writeDefault404(path: string, siteName: string): Promise<void> {
   <p>The page you were looking for doesn't exist.</p>
   <p><a href="/">← Back to ${siteName}</a></p>
 </body>
-</html>`);
+</html>`,
+  );
 }
 
 // ─── Special files ────────────────────────────────────────────────────────────
@@ -381,9 +402,7 @@ async function writeSpecialFiles(
         const result = await engine.resolve(pageIndex.route);
         if (result.type !== "page" || !result.page) continue;
         const page = result.page;
-        const description = contentMode === "full"
-          ? await page.html()
-          : await page.summary();
+        const description = contentMode === "full" ? await page.html() : await page.summary();
         items.push({
           title: page.frontmatter.title || pageIndex.title,
           link: `${siteBase}${pageIndex.route}`,
@@ -496,7 +515,10 @@ async function copyMediaWithRoutes(
       count += await copyMediaWithRoutes(srcPath, contentRoot, outDir, pages);
     } else if (entry.isFile) {
       const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
-      if (!CONTENT_EXTENSIONS.has(ext) && !entry.name.endsWith(".meta.yaml") && !entry.name.endsWith(".frontmatter.yaml")) {
+      if (
+        !CONTENT_EXTENSIONS.has(ext) && !entry.name.endsWith(".meta.yaml") &&
+        !entry.name.endsWith(".frontmatter.yaml")
+      ) {
         // Compute the route prefix for this file's containing directory
         const relDir = src.length > contentRoot.length ? src.slice(contentRoot.length + 1) : "";
         const routePrefix = relDir
@@ -557,7 +579,6 @@ async function copyDir(
  * static assets.
  */
 async function writeHybridConfig(outDir: string, adminPath: string | null): Promise<void> {
-
   // Cloudflare Pages _routes.json
   const routesJson = {
     version: 1,

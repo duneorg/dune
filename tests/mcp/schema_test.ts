@@ -5,10 +5,7 @@
  * SCHEMA_VERSION is a non-empty string.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { CONFIG_SCHEMA, SCHEMA_VERSION } from "../../src/schema/config-schema.ts";
 

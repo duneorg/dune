@@ -6,12 +6,7 @@
 import { ensureDir } from "@std/fs";
 import { dirname, isAbsolute, join, normalize, relative, resolve, SEPARATOR } from "@std/path";
 import { StorageError } from "../core/errors.ts";
-import type {
-  StorageAdapter,
-  StorageEntry,
-  StorageStat,
-  WatchEvent,
-} from "./types.ts";
+import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "./types.ts";
 
 /**
  * Defense-in-depth path-containment guard. Every caller is *supposed* to

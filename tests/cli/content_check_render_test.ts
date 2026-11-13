@@ -29,7 +29,7 @@ async function withTempSite(
   try {
     await fn(root);
   } finally {
-    for (let attempt = 0; ; attempt++) {
+    for (let attempt = 0;; attempt++) {
       try {
         await Deno.remove(root, { recursive: true });
         break;

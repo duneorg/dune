@@ -10,7 +10,7 @@
  */
 
 /** @jsxImportSource preact */
-import { h, type ComponentType } from "preact";
+import { type ComponentType, h } from "preact";
 import type { DuneEngine } from "../core/engine.ts";
 import type { Page, TemplateProps } from "../content/types.ts";
 import type { ContentApi } from "../content/api.ts";
@@ -83,18 +83,24 @@ export async function renderErrorPage(
 
   if (Layout) {
     return renderJsx(
-      h(Layout as unknown as ComponentType<TemplateProps>, {
-        site: engine.site,
-        page: errorPage,
-        nav,
-        pageTitle: title,
-        config: engine.config,
-        dir,
-        t: createTranslator(await engine.themes.loadLocale(lang)),
-        content: contentApi,
-      },
-        h("div", { class: "content-page" },
-          h("div", { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
+      h(
+        Layout as unknown as ComponentType<TemplateProps>,
+        {
+          site: engine.site,
+          page: errorPage,
+          nav,
+          pageTitle: title,
+          config: engine.config,
+          dir,
+          t: createTranslator(await engine.themes.loadLocale(lang)),
+          content: contentApi,
+        },
+        h(
+          "div",
+          { class: "content-page" },
+          h(
+            "div",
+            { style: "text-align: center; max-width: 600px; margin: 4rem auto; padding: 2rem;" },
             h("h1", null, String(statusCode)),
             h("p", null, message),
             h("a", { href: "/" }, "← Go home"),
@@ -106,19 +112,29 @@ export async function renderErrorPage(
   }
 
   return renderJsx(
-    h("html", null,
-      h("head", null,
+    h(
+      "html",
+      null,
+      h(
+        "head",
+        null,
         h("title", null, title),
         h("meta", { charset: "utf-8" }),
         h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-        h("style", null, `
+        h(
+          "style",
+          null,
+          `
           body { font-family: system-ui, sans-serif; max-width: 600px; margin: 4rem auto; padding: 0 1rem; color: #333; }
           h1 { font-size: 3rem; margin-bottom: 0.5rem; }
           p { color: #666; }
           a { color: #0066cc; }
-        `),
+        `,
+        ),
       ),
-      h("body", null,
+      h(
+        "body",
+        null,
         h("h1", null, String(statusCode)),
         h("p", null, message, ": ", url.pathname),
         h("a", { href: "/" }, "← Go home"),

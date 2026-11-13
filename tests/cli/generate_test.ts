@@ -4,10 +4,7 @@
  * Each test uses an isolated temporary directory to avoid cross-test pollution.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import {
   generateCommand,
@@ -57,10 +54,8 @@ async function captureOutput(
   const errLines: string[] = [];
   const origLog = console.log;
   const origErr = console.error;
-  console.log = (...args: unknown[]) =>
-    outLines.push(args.map(String).join(" "));
-  console.error = (...args: unknown[]) =>
-    errLines.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) => outLines.push(args.map(String).join(" "));
+  console.error = (...args: unknown[]) => errLines.push(args.map(String).join(" "));
   try {
     await fn();
   } finally {

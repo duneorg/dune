@@ -2,10 +2,7 @@
  * Tests for the FileSystem storage adapter.
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { FileSystemAdapter } from "../../src/storage/fs.ts";

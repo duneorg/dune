@@ -69,8 +69,7 @@ export function mediaBodyResponse(
 
   if (range.kind === "partial") {
     const slice = media.data.subarray(range.start, range.end + 1);
-    headers["Content-Range"] =
-      `bytes ${range.start}-${range.end}/${media.size}`;
+    headers["Content-Range"] = `bytes ${range.start}-${range.end}/${media.size}`;
     headers["Content-Length"] = String(slice.byteLength);
     return new Response(slice as BodyInit, { status: 206, headers });
   }

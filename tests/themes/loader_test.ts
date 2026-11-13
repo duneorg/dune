@@ -116,7 +116,10 @@ Deno.test("resolveTemplateName: uses explicit frontmatter.template", async () =>
   const loader = await makeLoader("base");
   const page = makePage({
     frontmatter: {
-      title: "T", published: true, visible: true, taxonomy: {},
+      title: "T",
+      published: true,
+      visible: true,
+      taxonomy: {},
       template: "article",
     } as PageFrontmatter,
   });
@@ -352,7 +355,11 @@ Deno.test("loadLocale: child overrides one key, parent keys survive", async () =
   const loader = await makeLoader("child", {
     "themes/child/theme.yaml": "name: child\nparent: parent\n",
     "themes/child/locales/en.json": JSON.stringify({ de: "German" }),
-    "themes/parent/locales/en.json": JSON.stringify({ de: "Deutsch", fr: "Français", greeting: "Hello" }),
+    "themes/parent/locales/en.json": JSON.stringify({
+      de: "Deutsch",
+      fr: "Français",
+      greeting: "Hello",
+    }),
   });
   const locale = await loader.loadLocale("en");
   // child wins on the overridden key…
@@ -390,8 +397,7 @@ Deno.test("loadLocale: en fallback is chain-merged too", async () => {
 Deno.test("loadLocale: caches result on second call", async () => {
   let readCount = 0;
   const storage: StorageAdapter = {
-    exists: (path: string) =>
-      Promise.resolve(path === "themes/base/locales/en.json"),
+    exists: (path: string) => Promise.resolve(path === "themes/base/locales/en.json"),
     readText: (path: string) => {
       if (path === "themes/base/locales/en.json") {
         readCount++;

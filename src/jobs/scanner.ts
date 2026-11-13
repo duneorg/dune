@@ -168,8 +168,7 @@ async function warnIfUndeclaredJobsDir(root: string): Promise<void> {
     for await (const entry of Deno.readDir(jobsDir)) {
       if (entry.isFile && entry.name.endsWith(".ts")) {
         logger.warn("jobs.undeclared", {
-          reason:
-            "jobs/ contains .ts files but site.yaml has no `jobs:` list, so no background " +
+          reason: "jobs/ contains .ts files but site.yaml has no `jobs:` list, so no background " +
             "jobs run. Jobs are no longer discovered automatically; declare them " +
             "(site.jobs: [./jobs/your-job.ts]) or set jobs: [] to silence this warning.",
         });

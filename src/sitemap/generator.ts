@@ -29,7 +29,10 @@ export interface SitemapOptions {
    * Overrides the depth-based heuristic (depth 0→daily, 1→weekly, 2+→monthly).
    * @example { "/": "hourly", "/blog": "daily" }
    */
-  changefreqOverrides?: Record<string, "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never">;
+  changefreqOverrides?: Record<
+    string,
+    "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never"
+  >;
 }
 
 /**
@@ -42,10 +45,9 @@ export function generateSitemap(
   pages: PageIndex[],
   siteUrlOrOptions: string | SitemapOptions,
 ): string {
-  const options: SitemapOptions =
-    typeof siteUrlOrOptions === "string"
-      ? { siteUrl: siteUrlOrOptions }
-      : siteUrlOrOptions;
+  const options: SitemapOptions = typeof siteUrlOrOptions === "string"
+    ? { siteUrl: siteUrlOrOptions }
+    : siteUrlOrOptions;
 
   const base = options.siteUrl.replace(/\/$/, "");
   const supportedLangs = options.supportedLanguages ?? [];
@@ -118,15 +120,14 @@ export function generateSitemap(
     .filter((p) =>
       p.published && p.routable && !p.isModule && !p.gated &&
       !hasUnpublishedAncestor(p) &&
-      !isExcluded(p.route, options.exclude ?? []),
+      !isExcluded(p.route, options.exclude ?? [])
     )
     .map((p) => {
       const loc = escapeXml(pageToUrl(p));
       // Prefer the editorial `dateModified` frontmatter over file mtime: mtime
       // is reset by every fresh clone/deploy, so it says nothing about content.
-      const lastmod = p.dateModified ?? (p.mtime
-        ? new Date(p.mtime).toISOString().split("T")[0]
-        : undefined);
+      const lastmod = p.dateModified ??
+        (p.mtime ? new Date(p.mtime).toISOString().split("T")[0] : undefined);
       const priority = Math.max(0.1, 1.0 - p.depth * 0.2).toFixed(1);
 
       let entry = `  <url>\n    <loc>${loc}</loc>`;
@@ -140,10 +141,13 @@ export function generateSitemap(
           const defaultHref = defaultPage ? escapeXml(pageToUrl(defaultPage)) : null;
           for (const [, altPage] of group) {
             const href = escapeXml(pageToUrl(altPage));
-            entry += `\n    <xhtml:link rel="alternate" hreflang="${escapeXml(altPage.language)}" href="${href}"/>`;
+            entry += `\n    <xhtml:link rel="alternate" hreflang="${
+              escapeXml(altPage.language)
+            }" href="${href}"/>`;
           }
           if (defaultHref) {
-            entry += `\n    <xhtml:link rel="alternate" hreflang="x-default" href="${defaultHref}"/>`;
+            entry +=
+              `\n    <xhtml:link rel="alternate" hreflang="x-default" href="${defaultHref}"/>`;
           }
         }
       }
@@ -153,7 +157,9 @@ export function generateSitemap(
 
       // Add cover image entry when present
       if (p.coverImage) {
-        entry += `\n    <image:image>\n      <image:loc>${escapeXml(base + p.coverImage)}</image:loc>\n    </image:image>`;
+        entry += `\n    <image:image>\n      <image:loc>${
+          escapeXml(base + p.coverImage)
+        }</image:loc>\n    </image:image>`;
       }
 
       if (lastmod) entry += `\n    <lastmod>${lastmod}</lastmod>`;
@@ -163,8 +169,10 @@ export function generateSitemap(
       return entry;
     });
 
-  const hasImages = pages.some((p) => p.published && p.routable && !p.isModule && !p.gated && p.coverImage &&
-    !isExcluded(p.route, options.exclude ?? []));
+  const hasImages = pages.some((p) =>
+    p.published && p.routable && !p.isModule && !p.gated && p.coverImage &&
+    !isExcluded(p.route, options.exclude ?? [])
+  );
   const urlsetAttrs = [
     'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
     ...(isMultilingual ? ['xmlns:xhtml="http://www.w3.org/1999/xhtml"'] : []),

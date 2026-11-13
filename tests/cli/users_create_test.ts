@@ -127,9 +127,7 @@ Deno.test("users:create with mixed roles keeps all tags and syncs only the admin
 
 Deno.test("users:create exits 1 for an invalid email", async () => {
   await withTempSite(async (root) => {
-    const exitCode = await withMockedExit(() =>
-      usersCreateCommand(root, "not-an-email", {})
-    );
+    const exitCode = await withMockedExit(() => usersCreateCommand(root, "not-an-email", {}));
     assertEquals(exitCode, 1);
   });
 });
@@ -138,9 +136,7 @@ Deno.test("users:create exits 1 when the email already exists", async () => {
   await withTempSite(async (root) => {
     await usersCreateCommand(root, "alice@example.com", {});
 
-    const exitCode = await withMockedExit(() =>
-      usersCreateCommand(root, "alice@example.com", {})
-    );
+    const exitCode = await withMockedExit(() => usersCreateCommand(root, "alice@example.com", {}));
     assertEquals(exitCode, 1);
   });
 });
@@ -186,7 +182,9 @@ Deno.test("users:create with a password defaults the username to the email's loc
 Deno.test("users:create exits 1 on a weak password and creates nothing", async () => {
   await withTempSite(async (root) => {
     const code = await withMockedExit(() =>
-      usersCreateCommand(root, "alice@example.com", { readPassword: () => Promise.resolve("short") })
+      usersCreateCommand(root, "alice@example.com", {
+        readPassword: () => Promise.resolve("short"),
+      })
     );
     assertEquals(code, 1);
     assertEquals(await userStoreFor(root).getByEmail("alice@example.com"), null);
@@ -220,7 +218,9 @@ Deno.test("users:create --generate prints a usable password once", async () => {
     } finally {
       console.log = log;
     }
-    const printed = lines.flatMap((l) => l.split("\n")).map((l) => l.trim()).find((l) => /^[A-Za-z0-9_-]{24}$/.test(l));
+    const printed = lines.flatMap((l) => l.split("\n")).map((l) => l.trim()).find((l) =>
+      /^[A-Za-z0-9_-]{24}$/.test(l)
+    );
     assertExists(printed);
     const user = await userStoreFor(root).getByUsername("gen");
     assertEquals(await verifyPassword(printed!, user!.passwordHash!), true);

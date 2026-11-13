@@ -206,8 +206,10 @@ export async function createDbUserStore(
       for (const row of allRows) {
         if (!row.linkedProviders) continue;
         try {
-          const linked = JSON.parse(row.linkedProviders) as
-            { provider: string; providerId: string }[];
+          const linked = JSON.parse(row.linkedProviders) as {
+            provider: string;
+            providerId: string;
+          }[];
           if (linked.some((lp) => lp.provider === provider && lp.providerId === providerId)) {
             return rowToUser(row);
           }

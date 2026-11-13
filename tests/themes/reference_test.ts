@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join, resolve } from "@std/path";
 import {
   assertPinnedThemeSpecifier,
@@ -61,7 +65,10 @@ Deno.test("importKeyForThemeSpecifier: maps to import map key", () => {
 });
 
 Deno.test("normalizeThemeSpecifier: trims trailing slashes", () => {
-  assertEquals(normalizeThemeSpecifier("jsr:@dune/theme-paper@1.0.0/"), "jsr:@dune/theme-paper@1.0.0");
+  assertEquals(
+    normalizeThemeSpecifier("jsr:@dune/theme-paper@1.0.0/"),
+    "jsr:@dune/theme-paper@1.0.0",
+  );
 });
 
 Deno.test("resolveThemePackageRoot: resolves local fixture directory", async () => {

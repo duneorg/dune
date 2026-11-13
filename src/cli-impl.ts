@@ -246,9 +246,7 @@ export async function main(args: string[] = Deno.args) {
           outDir: options.outDir as string | undefined,
           baseUrl: options.baseUrl as string | undefined,
           noIncremental: options.noIncremental === true,
-          concurrency: options.concurrency
-            ? parseInt(options.concurrency as string)
-            : undefined,
+          concurrency: options.concurrency ? parseInt(options.concurrency as string) : undefined,
           hybrid: options.hybrid === true,
           includeDrafts: options.includeDrafts === true,
           verbose: options.verbose === true,

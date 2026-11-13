@@ -114,7 +114,10 @@ export function createScheduler(config: SchedulerConfig): Scheduler {
             await this.cancel(action.id);
             executed++;
           } catch (err) {
-            logger.error("workflow.scheduler.action_failed", { actionId: action.id, reason: String(err) });
+            logger.error("workflow.scheduler.action_failed", {
+              actionId: action.id,
+              reason: String(err),
+            });
           }
         }
       }
@@ -125,7 +128,9 @@ export function createScheduler(config: SchedulerConfig): Scheduler {
     start(onAction): void {
       this.stop();
       timer = setInterval(() => {
-        this.tick(onAction).catch((err) => logger.error("workflow.scheduler.tick_failed", { reason: String(err) }));
+        this.tick(onAction).catch((err) =>
+          logger.error("workflow.scheduler.tick_failed", { reason: String(err) })
+        );
       }, interval);
     },
 

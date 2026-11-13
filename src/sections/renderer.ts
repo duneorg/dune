@@ -148,19 +148,17 @@ function renderHero(s: SectionInstance): string {
   const wrapClass = hasImage ? "pb-hero-wrap" : "";
   const sectionClass = `pb-section pb-hero ${bg} ${wrapClass}`.trim();
 
-  const imgTag = hasImage
-    ? `<img class="pb-hero-img" src="${escUrl(s.image)}" alt="">`
-    : "";
+  const imgTag = hasImage ? `<img class="pb-hero-img" src="${escUrl(s.image)}" alt="">` : "";
 
   const primary = s.cta_text
-    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn ${bg === "pb-bg-light" ? "pb-btn-primary" : "pb-btn-primary-inv"}">${esc(s.cta_text)}</a>`
+    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn ${
+      bg === "pb-bg-light" ? "pb-btn-primary" : "pb-btn-primary-inv"
+    }">${esc(s.cta_text)}</a>`
     : "";
   const secondary = s.cta2_text
     ? `<a href="${escUrl(s.cta2_url)}" class="pb-btn pb-btn-secondary">${esc(s.cta2_text)}</a>`
     : "";
-  const ctas = primary || secondary
-    ? `<div class="pb-hero-ctas">${primary}${secondary}</div>`
-    : "";
+  const ctas = primary || secondary ? `<div class="pb-hero-ctas">${primary}${secondary}</div>` : "";
 
   return `
 <section class="${sectionClass}">
@@ -205,7 +203,9 @@ function renderTestimonials(s: SectionInstance): string {
         ${avatar}
         <div>
           <p class="pb-testimonial-name">${esc(item.author)}</p>
-          <p class="pb-testimonial-role">${[item.role, item.company].filter(Boolean).map(esc).join(", ")}</p>
+          <p class="pb-testimonial-role">${
+      [item.role, item.company].filter(Boolean).map(esc).join(", ")
+    }</p>
         </div>
       </div>
     </div>`;
@@ -243,7 +243,9 @@ function renderGallery(s: SectionInstance): string {
   const imgs = items.map((item) => `
     <div>
       <div class="pb-gallery-img-wrap">
-        <img class="pb-gallery-img" src="${escUrl(item.image)}" alt="${esc(item.alt || item.caption || "")}">
+        <img class="pb-gallery-img" src="${escUrl(item.image)}" alt="${
+    esc(item.alt || item.caption || "")
+  }">
       </div>
       ${item.caption ? `<p class="pb-gallery-caption">${esc(item.caption)}</p>` : ""}
     </div>`).join("");
@@ -265,7 +267,11 @@ function renderPricing(s: SectionInstance): string {
     const features = String(item.features ?? "").split("\n").filter((f) => f.trim());
     const fItems = features.map((f) => `<li>${esc(f.trim())}</li>`).join("");
     const btn = item.cta_text
-      ? `<a href="${escUrl(item.cta_url)}" class="pb-btn pb-btn-primary" style="width:100%;text-align:center">${esc(item.cta_text)}</a>`
+      ? `<a href="${
+        escUrl(item.cta_url)
+      }" class="pb-btn pb-btn-primary" style="width:100%;text-align:center">${
+        esc(item.cta_text)
+      }</a>`
       : "";
     return `
     <div class="pb-pricing-card${hl ? " pb-highlighted" : ""}">
@@ -291,7 +297,9 @@ function renderFaq(s: SectionInstance): string {
   const items = Array.isArray(s.items) ? s.items as Record<string, unknown>[] : [];
   const faqs = items.map((item, i) => `
     <div class="pb-faq-item" id="pb-faq-${i}">
-      <h3 class="pb-faq-question" onclick="(function(el){el.closest('.pb-faq-item').classList.toggle('pb-open')})(this)">${esc(item.question)}</h3>
+      <h3 class="pb-faq-question" onclick="(function(el){el.closest('.pb-faq-item').classList.toggle('pb-open')})(this)">${
+    esc(item.question)
+  }</h3>
       <p class="pb-faq-answer">${esc(item.answer)}</p>
     </div>`).join("");
 
@@ -329,11 +337,31 @@ function renderColumns(s: SectionInstance): string {
 
 function renderContact(s: SectionInstance): string {
   const details: string[] = [];
-  if (s.email) details.push(`<div class="pb-contact-detail"><span class="pb-contact-icon">✉️</span><span class="pb-contact-text">${esc(s.email)}</span></div>`);
-  if (s.phone) details.push(`<div class="pb-contact-detail"><span class="pb-contact-icon">📞</span><span class="pb-contact-text">${esc(s.phone)}</span></div>`);
-  if (s.address) details.push(`<div class="pb-contact-detail"><span class="pb-contact-icon">📍</span><span class="pb-contact-text">${esc(s.address)}</span></div>`);
+  if (s.email) {
+    details.push(
+      `<div class="pb-contact-detail"><span class="pb-contact-icon">✉️</span><span class="pb-contact-text">${
+        esc(s.email)
+      }</span></div>`,
+    );
+  }
+  if (s.phone) {
+    details.push(
+      `<div class="pb-contact-detail"><span class="pb-contact-icon">📞</span><span class="pb-contact-text">${
+        esc(s.phone)
+      }</span></div>`,
+    );
+  }
+  if (s.address) {
+    details.push(
+      `<div class="pb-contact-detail"><span class="pb-contact-icon">📍</span><span class="pb-contact-text">${
+        esc(s.address)
+      }</span></div>`,
+    );
+  }
   const btn = s.cta_text
-    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn pb-btn-primary" style="margin-top:1.5rem">${esc(s.cta_text)}</a>`
+    ? `<a href="${escUrl(s.cta_url)}" class="pb-btn pb-btn-primary" style="margin-top:1.5rem">${
+      esc(s.cta_text)
+    }</a>`
     : "";
 
   return `
@@ -355,17 +383,28 @@ function renderSectionHeader(s: SectionInstance): string {
 
 function renderSection(s: SectionInstance): string {
   switch (s.type) {
-    case "hero":         return renderHero(s);
-    case "features":     return renderFeatures(s);
-    case "testimonials": return renderTestimonials(s);
-    case "cta":          return renderCta(s);
-    case "gallery":      return renderGallery(s);
-    case "pricing":      return renderPricing(s);
-    case "faq":          return renderFaq(s);
-    case "text":         return renderText(s);
-    case "columns":      return renderColumns(s);
-    case "contact":      return renderContact(s);
-    default:             return `<!-- unknown section type: ${esc(s.type)} -->`;
+    case "hero":
+      return renderHero(s);
+    case "features":
+      return renderFeatures(s);
+    case "testimonials":
+      return renderTestimonials(s);
+    case "cta":
+      return renderCta(s);
+    case "gallery":
+      return renderGallery(s);
+    case "pricing":
+      return renderPricing(s);
+    case "faq":
+      return renderFaq(s);
+    case "text":
+      return renderText(s);
+    case "columns":
+      return renderColumns(s);
+    case "contact":
+      return renderContact(s);
+    default:
+      return `<!-- unknown section type: ${esc(s.type)} -->`;
   }
 }
 

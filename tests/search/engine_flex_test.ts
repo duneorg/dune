@@ -44,7 +44,9 @@ function makeFormats(): FormatRegistry {
   return registry;
 }
 
-function makePage(overrides: Partial<PageIndex> & { title: string; sourcePath: string }): PageIndex {
+function makePage(
+  overrides: Partial<PageIndex> & { title: string; sourcePath: string },
+): PageIndex {
   return {
     route: "/" + overrides.sourcePath.replace(/\/default\.md$/, "").replace(/^\d+\./, ""),
     language: "en",

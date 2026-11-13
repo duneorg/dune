@@ -22,7 +22,9 @@ export function describePort(inst: DuneInstance): string {
       ? `${urls} — NOT RESPONDING (no answer to a health check; the server may be hung)`
       : urls;
   }
-  if (inst.portStatus === "not-listening") return "not listening (no open port; likely a hung or leftover process)";
+  if (inst.portStatus === "not-listening") {
+    return "not listening (no open port; likely a hung or leftover process)";
+  }
   return "port unknown (lsof not available)";
 }
 
@@ -32,12 +34,22 @@ export function formatInstance(inst: DuneInstance, opts: { fullCommand?: boolean
     ? `  (+${inst.pids.length - 1} child process${inst.pids.length > 2 ? "es" : ""})`
     : "";
   return [
-    `  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}${inst.version ? `  v${inst.version}` : ""}${extra}`,
+    `  PID ${inst.pid}  ${inst.mode.padEnd(5)}  up ${inst.elapsed ?? "?"}${
+      inst.version ? `  v${inst.version}` : ""
+    }${extra}`,
     `    ${inst.title ?? "(untitled)"}`,
-    `    ${inst.root ?? "(site root unconfirmed — no config/site.yaml via --root, PWD or live cwd)"}`,
+    `    ${
+      inst.root ?? "(site root unconfirmed — no config/site.yaml via --root, PWD or live cwd)"
+    }`,
     `    ${describePort(inst)}`,
-    `    $ ${!opts.fullCommand && inst.command.length > 110 ? inst.command.slice(0, 107) + "..." : inst.command}`,
-    ...(inst.confirmed ? [] : [`    (not confirmed as a dune site: no config/site.yaml at the root its command line points to)`]),
+    `    $ ${
+      !opts.fullCommand && inst.command.length > 110
+        ? inst.command.slice(0, 107) + "..."
+        : inst.command
+    }`,
+    ...(inst.confirmed ? [] : [
+      `    (not confirmed as a dune site: no config/site.yaml at the root its command line points to)`,
+    ]),
     "",
   ];
 }
@@ -77,6 +89,8 @@ export async function psCommand(deps: PsDeps = {}): Promise<void> {
       `${stuck > 0 ? ` (${stuck} not responding)` : ""}, ${notListening} not listening\n`,
   );
   if (stuck + notListening > 0) {
-    log("  `dune stop --idle` stops only the ones that aren't serving (not listening or not responding); `dune stop <pid>` stops one instance.");
+    log(
+      "  `dune stop --idle` stops only the ones that aren't serving (not listening or not responding); `dune stop <pid>` stops one instance.",
+    );
   }
 }

@@ -7,12 +7,7 @@
 
 import type { StorageAdapter } from "../storage/types.ts";
 import type { PageIndex } from "../content/types.ts";
-import type {
-  ContentStatus,
-  WorkflowConfig,
-  WorkflowStage,
-  WorkflowTransition,
-} from "./types.ts";
+import type { ContentStatus, WorkflowConfig, WorkflowStage, WorkflowTransition } from "./types.ts";
 
 /** Options for {@link createWorkflowEngine}. */
 export interface WorkflowEngineConfig {

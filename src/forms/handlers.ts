@@ -205,7 +205,6 @@ async function guardAndParseSubmission(
   return { fields, uploadedFiles };
 }
 
-
 const MAX_STORED_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES_PER_SUBMISSION = 5;
 
@@ -239,8 +238,7 @@ async function storeUploads(
     const check = checkUpload(safeName);
     if (!check.ok) continue; // silently skip disallowed extensions
 
-    const storagePath =
-      `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
+    const storagePath = `${dataDir}/uploads/${formName}/${submissionId}/${safeName}`;
     await storage.write(storagePath, new Uint8Array(await file.arrayBuffer()));
 
     storedFiles.push({
@@ -329,7 +327,11 @@ export async function handleFormSubmission(
         );
       }
       // For regular form POST, redirect back with error indicator
-      const redirectPath = refererRedirectPath(req, "form_error", config.system?.trusted_proxies === true);
+      const redirectPath = refererRedirectPath(
+        req,
+        "form_error",
+        config.system?.trusted_proxies === true,
+      );
       return new Response(null, {
         status: 302,
         headers: { Location: redirectPath },
@@ -447,7 +449,9 @@ export async function handleIncomingWebhook(
   for (const wh of incomingWebhooks) {
     const expected = expandToken(wh.token);
     if (expected === null) {
-      logger.warn("forms.webhook.token_unresolved", { token: wh.token.startsWith("$") ? wh.token : "(empty)" });
+      logger.warn("forms.webhook.token_unresolved", {
+        token: wh.token.startsWith("$") ? wh.token : "(empty)",
+      });
       continue;
     }
     if (timingSafeEqualStrings(await digest(expected), tokenDigest)) matched = wh;
@@ -484,9 +488,7 @@ export async function handleIncomingWebhook(
       action,
       ip: ip === "unknown" ? null : ip,
       userAgent: req.headers.get("user-agent"),
-    }).catch((err: unknown) =>
-      logger.error("forms.webhook.hook_failed", { reason: String(err) })
-    );
+    }).catch((err: unknown) => logger.error("forms.webhook.hook_failed", { reason: String(err) }));
 
   try {
     for (const action of requestedActions) {

@@ -4,10 +4,7 @@
  * Uses `Deno.openKv(":memory:")` so no external service is required.
  */
 
-import {
-  assertEquals,
-  assertNotEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createKVSessionStore } from "../../src/session/kv.ts";
 import type { Session } from "../../src/session/types.ts";
 

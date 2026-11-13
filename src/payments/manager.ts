@@ -175,7 +175,11 @@ export function createPaymentManager(config: PaymentManagerConfig): PaymentManag
         const already = await authz.check({ who, canThey: "access", onWhat: group });
         if (!already) await authz.addMember({ member: who, group });
       } catch (err) {
-        logger.error("payments.webhook.role_grant_failed", { userId, role: roleToGrant, reason: String(err) });
+        logger.error("payments.webhook.role_grant_failed", {
+          userId,
+          role: roleToGrant,
+          reason: String(err),
+        });
       }
     }
   }

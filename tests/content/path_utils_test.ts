@@ -4,19 +4,19 @@
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  parseFolderName,
-  parseContentFilename,
-  sourcePathToRoute,
   calculateDepth,
   getParentPath,
   isContentFile,
-  isMediaFile,
-  isMetadataFile,
+  isFlatContentFile,
   isInDraftsFolder,
   isInModuleFolder,
+  isMediaFile,
+  isMetadataFile,
   isNonReservedFlatFile,
-  isFlatContentFile,
+  parseContentFilename,
+  parseFolderName,
   RESERVED_STEMS,
+  sourcePathToRoute,
 } from "../../src/content/path-utils.ts";
 
 // === parseFolderName tests ===

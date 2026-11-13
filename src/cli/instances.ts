@@ -128,7 +128,6 @@ export async function runCommand(
   }
 }
 
-
 // ── Process table ────────────────────────────────────────────────────────────
 
 export interface ProcRow {
@@ -166,7 +165,9 @@ export async function readProcessTable(): Promise<ProcRow[]> {
   if (!out) return [];
   const rows: ProcRow[] = [];
   for (const line of out.split("\n")) {
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(\S+)\s+(.*)$/);
+    const m = line.match(
+      /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(\S+)\s+(.*)$/,
+    );
     if (!m) continue;
     rows.push({
       pid: parseInt(m[1], 10),
@@ -212,7 +213,11 @@ export function matchDuneCommand(command: string): CommandMatch | null {
 
   const cli = command.match(/(?:^|[\s/])cli(?:\.ts)?\s+(dev|serve)\b/);
   if (cli) {
-    return { mode: cli[1] as "dev" | "serve", strength: /dune/i.test(command) ? "strong" : "weak", kind: "cli" };
+    return {
+      mode: cli[1] as "dev" | "serve",
+      strength: /dune/i.test(command) ? "strong" : "weak",
+      kind: "cli",
+    };
   }
 
   const task = command.match(/\bdeno\s+task\s+(dev|serve)\b/);
@@ -240,7 +245,11 @@ export function parseRootArg(command: string): string | null {
  *   - nothing for a bare `deno task` wrapper (its child carries the evidence).
  * `base` is the process's PWD/cwd, used to resolve relative paths.
  */
-export function commandSiteRootHint(command: string, match: CommandMatch, base: string | null): string | null {
+export function commandSiteRootHint(
+  command: string,
+  match: CommandMatch,
+  base: string | null,
+): string | null {
   const rootArg = parseRootArg(command);
   if (rootArg) return isAbsolute(rootArg) ? rootArg : base ? resolve(base, rootArg) : null;
   if (match.kind === "entry") {
@@ -320,7 +329,6 @@ async function getListeningPorts(pids: number[]): Promise<number[]> {
   return [...ports].sort((a, b) => a - b);
 }
 
-
 /**
  * Extract one env var's value from `ps eww`'s raw dump. There's no
  * delimiter between the command and its environment in that output (both
@@ -374,7 +382,6 @@ async function getLiveCwd(pid: number): Promise<string | null> {
   return null;
 }
 
-
 /** `config/site.yaml`'s `title` field, or null if the file is missing/unreadable/has no title. */
 async function readSiteTitle(root: string): Promise<string | null> {
   try {
@@ -389,7 +396,6 @@ async function readSiteTitle(root: string): Promise<string | null> {
     return null;
   }
 }
-
 
 /**
  * First directory among `dirs` that holds a `config/site.yaml`, or null.
@@ -434,7 +440,9 @@ export async function probePort(port: number, timeoutMs = PROBE_TIMEOUT_MS): Pro
     const text = (await res.text()).slice(0, 512);
     try {
       const body = JSON.parse(text);
-      if (res.ok && body && typeof body === "object" && typeof body.status === "string") return "dune";
+      if (res.ok && body && typeof body === "object" && typeof body.status === "string") {
+        return "dune";
+      }
     } catch { /* not JSON */ }
     return "other";
   } catch {
@@ -496,7 +504,9 @@ export async function findDuneInstances(
   // missing nothing can be filtered, and we say so.
   const myUid = allRows.find((r) => r.pid === Deno.pid)?.uid ?? null;
   if (myUid === null && allRows.length > 0) {
-    opts.onWarning?.("Could not tell which user owns this process, so processes of other users are not filtered out.");
+    opts.onWarning?.(
+      "Could not tell which user owns this process, so processes of other users are not filtered out.",
+    );
   }
   const table = myUid === null ? allRows : allRows.filter((r) => r.uid === myUid);
   const byPid = new Map(table.map((r) => [r.pid, r]));
@@ -521,7 +531,9 @@ export async function findDuneInstances(
     const [pwdRoot, liveCwd] = await Promise.all([getPwdEnv(row.pid), getLiveCwd(row.pid)]);
     const rootArg = parseRootArg(row.command);
     const base = pwdRoot ?? liveCwd;
-    const explicit = rootArg ? (isAbsolute(rootArg) ? rootArg : base ? resolve(base, rootArg) : null) : null;
+    const explicit = rootArg
+      ? (isAbsolute(rootArg) ? rootArg : base ? resolve(base, rootArg) : null)
+      : null;
     const root = await confirmSiteRoot([explicit, pwdRoot, liveCwd]);
     cands.push({ ...row, match, root });
   }
@@ -592,7 +604,9 @@ export async function findDuneInstances(
       elapsed: c.elapsed,
       ageSeconds: parseElapsedSeconds(c.elapsed),
       confirmed: confirmedRoot !== null,
-      startTimes: Object.fromEntries(pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : [])),
+      startTimes: Object.fromEntries(
+        pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : []),
+      ),
       command: c.command,
     });
   }
@@ -629,7 +643,9 @@ export async function findDuneInstances(
       elapsed: row.elapsed,
       ageSeconds: parseElapsedSeconds(row.elapsed),
       confirmed: true,
-      startTimes: Object.fromEntries(pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : [])),
+      startTimes: Object.fromEntries(
+        pids.flatMap((p) => byPid.get(p) ? [[p, byPid.get(p)!.started]] : []),
+      ),
       command: row.command,
     });
     registeredPorts.set(rec.pid, rec.port);

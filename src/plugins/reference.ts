@@ -103,9 +103,7 @@ export function assertHttpsPluginIntegrity(
 /** SHA-256 hex digest of `bytes`. */
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes.slice());
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("");
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** True when `actualHex` matches the integrity pin (constant-time). */

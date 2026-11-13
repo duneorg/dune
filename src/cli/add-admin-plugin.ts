@@ -42,7 +42,9 @@ export function addAdminPluginToText(text: string): AddAdminResult {
     : {};
   const plugins = doc.plugins;
   if (Array.isArray(plugins) && plugins.some(isAdminEntry)) return { text, outcome: "present" };
-  if (plugins !== undefined && plugins !== null && !Array.isArray(plugins)) return { text, outcome: "manual" };
+  if (plugins !== undefined && plugins !== null && !Array.isArray(plugins)) {
+    return { text, outcome: "manual" };
+  }
 
   const entry = `src: ${ADMIN_PLUGIN_ENTRY_SRC}`;
   const lines = text.split("\n");
@@ -93,7 +95,10 @@ export interface SetConfigResult {
  * settings are its plugin config since 0.36). Refuses to merge into an
  * existing `config:` block.
  */
-export function setAdminPluginConfigInText(text: string, settings: Record<string, unknown>): SetConfigResult {
+export function setAdminPluginConfigInText(
+  text: string,
+  settings: Record<string, unknown>,
+): SetConfigResult {
   if (Object.keys(settings).length === 0) return { text, outcome: "none" };
   const lines = text.split("\n");
   const idx = lines.findIndex((l) => /^\s*(-\s+)?src:\s*\S*plugin-admin/.test(l));

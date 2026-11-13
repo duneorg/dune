@@ -78,9 +78,7 @@ export default function LoginForm({
           method="POST"
           action={`/auth/magic${redirectParam}`}
         >
-          {redirectTo && (
-            <input type="hidden" name="next" value={redirectTo} />
-          )}
+          {redirectTo && <input type="hidden" name="next" value={redirectTo} />}
           <label class="dune-login-form__label" for="dune-magic-email">
             Email address
           </label>

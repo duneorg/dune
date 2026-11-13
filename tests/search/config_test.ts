@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { searchOptionsFromConfig } from "../../src/search/config.ts";
 import { createSearchEngine } from "../../src/search/engine.ts";
-import { initFlags, flag } from "../../src/flags/mod.ts";
+import { flag, initFlags } from "../../src/flags/mod.ts";
 import { FormatRegistry } from "../../src/content/formats/registry.ts";
 import type { PageIndex } from "../../src/content/types.ts";
 import type { StorageAdapter } from "../../src/storage/types.ts";
@@ -58,7 +58,13 @@ Deno.test("search config end to end: custom_fields makes a frontmatter field sea
     hash: "h",
   } as unknown as PageIndex;
   const build = async (extra: Record<string, unknown>) => {
-    const e = createSearchEngine({ pages: [page], storage, contentDir: "content", formats, ...extra });
+    const e = createSearchEngine({
+      pages: [page],
+      storage,
+      contentDir: "content",
+      formats,
+      ...extra,
+    });
     await e.build();
     return e;
   };
@@ -72,7 +78,12 @@ Deno.test("initFlags(config.system.flags): declared flags resolve, undeclared on
   Deno.env.set("DUNE_TEST_FLAG", "yes");
   try {
     initFlags({ comments: true, beta: "env:DUNE_TEST_FLAG", off: false });
-    assertEquals([flag("comments"), flag("beta"), flag("off"), flag("nope")], [true, true, false, false]);
+    assertEquals([flag("comments"), flag("beta"), flag("off"), flag("nope")], [
+      true,
+      true,
+      false,
+      false,
+    ]);
   } finally {
     Deno.env.delete("DUNE_TEST_FLAG");
     initFlags({});
@@ -86,7 +97,10 @@ Deno.test("bootstrap() resolves system.yaml flags, so flag() works without any m
     await Deno.mkdir(`${root}/config`, { recursive: true });
     await Deno.mkdir(`${root}/content/01.home`, { recursive: true });
     await Deno.writeTextFile(`${root}/config/site.yaml`, "title: Flags\n");
-    await Deno.writeTextFile(`${root}/config/system.yaml`, "flags:\n  comments: true\n  beta: false\n");
+    await Deno.writeTextFile(
+      `${root}/config/system.yaml`,
+      "flags:\n  comments: true\n  beta: false\n",
+    );
     await Deno.writeTextFile(`${root}/content/01.home/default.md`, "---\ntitle: Home\n---\nhi\n");
     await bootstrap(root);
     assertEquals([flag("comments"), flag("beta"), flag("undeclared")], [true, false, false]);

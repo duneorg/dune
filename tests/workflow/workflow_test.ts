@@ -6,7 +6,7 @@ import { assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert
 import { createWorkflowEngine } from "../../src/workflow/engine.ts";
 import { createScheduler } from "../../src/workflow/scheduler.ts";
 import { createHistoryEngine } from "../../src/history/engine.ts";
-import { computeDiff, applyPatch } from "../../src/history/diff.ts";
+import { applyPatch, computeDiff } from "../../src/history/diff.ts";
 import type { PageIndex } from "../../src/content/types.ts";
 import type { ContentStatus } from "../../src/workflow/types.ts";
 import { createStorage } from "../../src/storage/mod.ts";

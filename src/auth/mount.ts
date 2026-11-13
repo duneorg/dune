@@ -94,8 +94,10 @@ export async function mountDuneAuth(
     assertExternalJwtBound(authConfig.jwt);
   }
   const sessionLifetimeSec = authConfig?.session_lifetime ?? 30 * 24 * 60 * 60;
-  const userStoreType: "local" | "session" | "db" =
-    (authConfig?.user_store ?? "local") as "local" | "session" | "db";
+  const userStoreType: "local" | "session" | "db" = (authConfig?.user_store ?? "local") as
+    | "local"
+    | "session"
+    | "db";
   const trustForwardedFor = config.system?.trusted_proxies === true;
   const secureCookies = Deno.env.get("DUNE_ENV") !== "dev";
   const siteUrl = config.site.url.replace(/\/$/, "");
@@ -211,10 +213,13 @@ export async function mountDuneAuth(
     setGatingAuthz(bundle.authz, siteOrigin);
     mountAuthz = bundle.authz;
     mountAdapter = bundle.adapter;
-    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((
+      err,
+    ) =>
       logger.error("auth.role_grants_failed", {
         error: err instanceof Error ? err.message : String(err),
-        effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
+        effect:
+          "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
       })
     );
   } else if (authzStoreCfg === "local") {
@@ -239,10 +244,13 @@ export async function mountDuneAuth(
     mountAdapter = bundle.adapter;
     // Idempotent; bootstrap() already did this for its own bundle, a headless
     // caller's fresh one has not been seeded yet.
-    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((err) =>
+    await bootstrapRoleGrants(bundle.authz, bundle.adapter, resolveRoleGrants(config)).catch((
+      err,
+    ) =>
       logger.error("auth.role_grants_failed", {
         error: err instanceof Error ? err.message : String(err),
-        effect: "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
+        effect:
+          "users with an admin-tier role are denied site-wide permissions until the next start succeeds",
       })
     );
 
@@ -309,9 +317,7 @@ export async function mountDuneAuth(
   // ── Magic token store (single-use enforcement) ─────────────────────────────
   // Use an in-memory store by default. Multi-process deployments should inject
   // a shared store (KV, Redis) via the authConfig extension points.
-  const magicTokenStore = magicEnabled
-    ? new InMemoryMagicTokenStore()
-    : undefined;
+  const magicTokenStore = magicEnabled ? new InMemoryMagicTokenStore() : undefined;
 
   // ── Startup warning: session userStore + payments is a lossy combination ──────
   // Payments grant roles by calling userStore.update() + authz.addMember().
@@ -323,8 +329,7 @@ export async function mountDuneAuth(
   // `payments.enabled` through an `as any` cast and never fired).
   if (userStoreType === "session" && config.site.payments?.secret_key) {
     logger.warn("auth.userstore.session_payments_lossy", {
-      reason:
-        "user_store: session + payments: enabled — role grants after payment " +
+      reason: "user_store: session + payments: enabled — role grants after payment " +
         "will NOT be reflected in the user's session until they log out and log in again. " +
         "Consider user_store: local to persist role assignments across sessions.",
     });
@@ -440,7 +445,8 @@ export async function mountDuneAuth(
 
   // GET /auth/login
   // Fresh's ctx.render takes no status; wrap it so a themed page can answer 429.
-  const renderJsxFor = (fc: { render: (vnode: never) => Response | Promise<Response> }): RenderJsx =>
+  const renderJsxFor =
+    (fc: { render: (vnode: never) => Response | Promise<Response> }): RenderJsx =>
     async (jsx: unknown, status = 200) => {
       const res = await fc.render(jsx as never);
       return status === 200 ? res : new Response(res.body, { status, headers: res.headers });

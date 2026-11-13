@@ -17,7 +17,11 @@ Deno.test("hasSessionCookie: declared names match exactly, anywhere in the heade
   assertEquals(hasSessionCookie(req("stub_sid=abc"), ["other", "stub_sid"]), true);
   assertEquals(hasSessionCookie(req("analytics=1"), ["stub_sid"]), false);
   assertEquals(hasSessionCookie(req("xstub_sid=abc"), ["stub_sid"]), false, "not a suffix match");
-  assertEquals(hasSessionCookie(req("stub_sid="), ["stub_sid"]), false, "an empty value is not a session");
+  assertEquals(
+    hasSessionCookie(req("stub_sid="), ["stub_sid"]),
+    false,
+    "an empty value is not a session",
+  );
 });
 
 Deno.test("hasSessionCookie: names are matched literally, not as patterns", () => {

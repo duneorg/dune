@@ -1,9 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { MediaFile } from "../../src/content/types.ts";
-import {
-  rewriteInternalLinks,
-  stripLangPrefix,
-} from "../../src/routing/link-rewriter.ts";
+import { rewriteInternalLinks, stripLangPrefix } from "../../src/routing/link-rewriter.ts";
 
 const media = (url: string) => ({ url } as MediaFile);
 const rw = (html: string, m: MediaFile[] = []) =>

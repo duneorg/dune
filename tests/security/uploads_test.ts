@@ -14,14 +14,38 @@ Deno.test("checkUpload: accepts common image extensions", () => {
 });
 
 Deno.test("checkUpload: accepts pdf, office docs, txt, csv, zip", () => {
-  for (const name of ["a.pdf", "b.doc", "c.docx", "d.xls", "e.xlsx", "f.odt", "g.ods", "h.txt", "i.csv", "j.zip"]) {
+  for (
+    const name of [
+      "a.pdf",
+      "b.doc",
+      "c.docx",
+      "d.xls",
+      "e.xlsx",
+      "f.odt",
+      "g.ods",
+      "h.txt",
+      "i.csv",
+      "j.zip",
+    ]
+  ) {
     const r = checkUpload(name);
     assert(r.ok, `expected ${name} to be accepted`);
   }
 });
 
 Deno.test("checkUpload: rejects executable and script extensions", () => {
-  for (const name of ["evil.php", "evil.sh", "evil.exe", "evil.js", "evil.html", "evil.svg", "evil.phtml", "evil.py"]) {
+  for (
+    const name of [
+      "evil.php",
+      "evil.sh",
+      "evil.exe",
+      "evil.js",
+      "evil.html",
+      "evil.svg",
+      "evil.phtml",
+      "evil.py",
+    ]
+  ) {
     const r = checkUpload(name);
     assertEquals(r.ok, false, `expected ${name} to be rejected`);
   }
@@ -65,13 +89,23 @@ Deno.test("contentMatchesMime: accepts correct magic bytes", () => {
   webp.set(enc("WEBP"), 8);
 
   assert(contentMatchesMime(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), "image/jpeg"));
-  assert(contentMatchesMime(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "image/png"));
+  assert(
+    contentMatchesMime(
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      "image/png",
+    ),
+  );
   assert(contentMatchesMime(enc("GIF89a"), "image/gif"));
   assert(contentMatchesMime(webp, "image/webp"));
   assert(contentMatchesMime(enc("....ftypavif...."), "image/avif"));
   assert(contentMatchesMime(enc("%PDF-1.7"), "application/pdf"));
   assert(contentMatchesMime(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), "application/zip"));
-  assert(contentMatchesMime(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+  assert(
+    contentMatchesMime(
+      new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
+  );
 });
 
 Deno.test("contentMatchesMime: rejects polyglot mismatches", () => {

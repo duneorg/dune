@@ -23,7 +23,11 @@ import type { UserStore } from "../auth/user-store.ts";
 import type { DuneAuthSystem } from "../auth/authz.ts";
 import type { AuthzLocalAdapter } from "../auth/authz-adapter-local.ts";
 import type { AuthzDbAdapter } from "../auth/authz-adapter-db.ts";
-import type { BlueprintMap, BlueprintValidationError, ResolvedBlueprint } from "../blueprints/types.ts";
+import type {
+  BlueprintMap,
+  BlueprintValidationError,
+  ResolvedBlueprint,
+} from "../blueprints/types.ts";
 import type { PageFrontmatter } from "../content/types.ts";
 import type { SearchAnalytics, SearchAnalyticsSummary } from "../search/analytics.ts";
 import type { WorkflowEngine } from "../workflow/engine.ts";
@@ -39,7 +43,10 @@ export interface SecurityService {
   /** A 413 response if the declared Content-Length exceeds `maxBytes`, else null. */
   checkBodySize(req: Request, maxBytes: number): Response | null;
   /** Wrap a body stream so reading past `maxBytes` fails with a `body_too_large` error. */
-  limitedBody(stream: ReadableStream<Uint8Array> | null, maxBytes: number): ReadableStream<Uint8Array>;
+  limitedBody(
+    stream: ReadableStream<Uint8Array> | null,
+    maxBytes: number,
+  ): ReadableStream<Uint8Array>;
   /** Password strength policy. */
   checkPasswordStrength(password: unknown): PasswordCheckResult;
   /** The client's IP, honouring forwarded headers only when `trustForwardedFor` is set. */
@@ -158,5 +165,7 @@ export interface PluginServicesOptions {
   /** The blueprints currently loaded by the content engine (read at call time; they reload). */
   getBlueprints?: () => BlueprintMap;
   /** Resolves the site's authz system once bootstrap has created it. */
-  getAuthz?: () => { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter } | undefined;
+  getAuthz?: () =>
+    | { authz: DuneAuthSystem; adapter: AuthzLocalAdapter | AuthzDbAdapter }
+    | undefined;
 }

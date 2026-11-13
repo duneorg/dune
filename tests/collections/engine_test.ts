@@ -1,10 +1,5 @@
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  createCollectionEngine,
-} from "../../src/collections/engine.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { createCollectionEngine } from "../../src/collections/engine.ts";
 import type { Page, PageIndex } from "../../src/content/types.ts";
 import type { TaxonomyMap } from "../../src/content/index-builder.ts";
 
@@ -353,7 +348,7 @@ Deno.test("resolveSource @self.children: numeric-prefix parent suppresses flat c
   });
   const templateSelector = makePage({
     sourcePath: "02.blog/post.md",
-    route: "/blog",  // same route — it's a template variant
+    route: "/blog", // same route — it's a template variant
     parentPath: null,
   });
 
@@ -974,8 +969,7 @@ Deno.test("pagination: limit restricts item count, total reflects full set", asy
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1006,8 +1000,7 @@ Deno.test("pagination: offset skips leading items", async () => {
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1039,8 +1032,7 @@ Deno.test("pagination: pagination object sets page/pages/hasNext/hasPrev", async
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1083,8 +1075,7 @@ Deno.test("pagination: page 1 and page 2 render different items (regression: lim
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1104,7 +1095,12 @@ Deno.test("pagination: page 1 and page 2 render different items (regression: lim
   const page2 = await engine.resolve(definition, parent, undefined, 2);
   await page2.load();
 
-  assertEquals(page1.items.map((p) => p.route), ["/blog/post-1", "/blog/post-2", "/blog/post-3", "/blog/post-4"]);
+  assertEquals(page1.items.map((p) => p.route), [
+    "/blog/post-1",
+    "/blog/post-2",
+    "/blog/post-3",
+    "/blog/post-4",
+  ]);
   assertEquals(page2.items.map((p) => p.route), ["/blog/post-5", "/blog/post-6"]);
   assertEquals(page1.hasNext, true);
   assertEquals(page2.hasNext, false);
@@ -1119,8 +1115,7 @@ Deno.test("pagination: first page has hasPrev false", async () => {
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1157,8 +1152,7 @@ Deno.test("collection.slice: returns a subset of index items", async () => {
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1192,8 +1186,7 @@ Deno.test("collection.paginate: returns correct page and pagination state", asyn
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({
@@ -1597,8 +1590,7 @@ Deno.test("collection: total reflects full unsliced result set", async () => {
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
 
   const allPages = [parent, ...children];
   const engine = createCollectionEngine({

@@ -109,10 +109,14 @@ Deno.test("active tracer: startActiveSpan calls end() even on throw", async () =
 
 Deno.test("active tracer: startActiveSpan with attributes propagates them to span", async () => {
   const tracer = createTracer({ enabled: true });
-  const result = await tracer.startActiveSpan("test.op", { count: 5, label: "test" }, async (span) => {
-    span.setAttribute("extra", true);
-    return "ok";
-  });
+  const result = await tracer.startActiveSpan(
+    "test.op",
+    { count: 5, label: "test" },
+    async (span) => {
+      span.setAttribute("extra", true);
+      return "ok";
+    },
+  );
   assertEquals(result, "ok");
 });
 

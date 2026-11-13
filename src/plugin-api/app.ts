@@ -37,7 +37,9 @@ export interface PluginRouteContext<
 
 /** A route handler or middleware. */
 // deno-lint-ignore no-explicit-any
-export type PluginRouteHandler<S = any> = (ctx: PluginRouteContext<S>) => Response | Promise<Response>;
+export type PluginRouteHandler<S = any> = (
+  ctx: PluginRouteContext<S>,
+) => Response | Promise<Response>;
 
 /** What `mount()` receives as `app`. Core passes the Fresh `App`, which satisfies this. */
 export interface PluginApp {

@@ -131,7 +131,17 @@ export async function buildIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields, templateNames } = options;
+  const {
+    storage,
+    contentDir,
+    formats,
+    siteHome,
+    supportedLanguages,
+    defaultLanguage,
+    blueprints,
+    facetFields,
+    templateNames,
+  } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   const pages: PageIndex[] = [];
@@ -258,7 +268,17 @@ export async function updateIndex(
   options: IndexBuilderOptions,
 ): Promise<BuildResult> {
   const start = performance.now();
-  const { storage, contentDir, formats, siteHome, supportedLanguages, defaultLanguage, blueprints, facetFields, templateNames } = options;
+  const {
+    storage,
+    contentDir,
+    formats,
+    siteHome,
+    supportedLanguages,
+    defaultLanguage,
+    blueprints,
+    facetFields,
+    templateNames,
+  } = options;
   const defaultLang = defaultLanguage ?? "en";
 
   // Build a map of existing pages by sourcePath
@@ -548,14 +568,29 @@ function deduplicateRoutes(pages: PageIndex[]): PageIndex[] {
       const newIsFlat = isFlatFilePath(page.sourcePath);
       if (!existingIsFlat && newIsFlat) {
         // Existing directory-based page wins
-        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "directory-wins" });
+        logger.warn("content.index.route_collision", {
+          route: page.route,
+          kept: existing.sourcePath,
+          dropped: page.sourcePath,
+          resolution: "directory-wins",
+        });
       } else if (existingIsFlat && !newIsFlat) {
         // New directory-based page wins — replace
-        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "directory-wins" });
+        logger.warn("content.index.route_collision", {
+          route: page.route,
+          kept: existing.sourcePath,
+          dropped: page.sourcePath,
+          resolution: "directory-wins",
+        });
         routeMap.set(key, page);
       } else {
         // Both same type — keep first
-        logger.warn("content.index.route_collision", { route: page.route, kept: existing.sourcePath, dropped: page.sourcePath, resolution: "first-wins" });
+        logger.warn("content.index.route_collision", {
+          route: page.route,
+          kept: existing.sourcePath,
+          dropped: page.sourcePath,
+          resolution: "first-wins",
+        });
       }
     } else {
       routeMap.set(key, page);
@@ -591,13 +626,18 @@ function buildPageIndex(
   // Determine order: flat files use their own numeric prefix; directory-based use folder prefix
   const parts = sourcePath.split("/");
   const filename = parts[parts.length - 1];
-  const filenameStem = filename.slice(0, filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length);
+  const filenameStem = filename.slice(
+    0,
+    filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length,
+  );
   const flatMatch = filenameStem.match(/^(\d+)\.(.*)/);
   const folderName = parts.length > 1 ? parts[parts.length - 2] : "";
   const folderInfo = parseFolderName(folderName);
   const order = frontmatter.order != null
     ? frontmatter.order
-    : flatMatch ? parseInt(flatMatch[1], 10) : folderInfo.order;
+    : flatMatch
+    ? parseInt(flatMatch[1], 10)
+    : folderInfo.order;
 
   // Template: frontmatter override > filename convention
   const template = frontmatter.template ?? defaultTemplate;
@@ -653,7 +693,11 @@ function buildPageIndex(
     mtime,
     hash,
     coverImage: buildCoverImageUrl(sourcePath, frontmatter.image as string | undefined),
-    fileUrl: buildFileUrl(sourcePath, frontmatter.file as string | undefined, frontmatter.file_url as string | undefined),
+    fileUrl: buildFileUrl(
+      sourcePath,
+      frontmatter.file as string | undefined,
+      frontmatter.file_url as string | undefined,
+    ),
     termPageFor: normaliseTermPageFor(frontmatter.termPageFor),
     extra: extractFacetExtra(frontmatter, facetFields),
   };

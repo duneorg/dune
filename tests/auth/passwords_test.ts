@@ -1,8 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   changePassword,
   hashPassword,
@@ -40,8 +36,7 @@ Deno.test("verifyPassword accepts a hash written by plugin-admin's implementatio
       256,
     ),
   );
-  const hex = (b: Uint8Array) =>
-    [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
   const stored = `pbkdf2:600000:${hex(salt)}:${hex(bits)}`;
   assertEquals(await verifyPassword("legacy-pass-123", stored), true);
 });

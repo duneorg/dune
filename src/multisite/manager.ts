@@ -1,4 +1,4 @@
-import { join, resolve, isAbsolute } from "@std/path";
+import { isAbsolute, join, resolve } from "@std/path";
 import { Builder } from "jsr:@fresh/core@^2/dev";
 import { bootstrap } from "../runtime/bootstrap.ts";
 import { createDuneApp } from "../runtime/server.ts";
@@ -67,13 +67,14 @@ export class MultisiteManager {
       Deno.chdir(duneRoot);
     }
 
-
-    const booted: { entry: SiteEntry; siteRoot: string; ctx: Awaited<ReturnType<typeof bootstrap>> }[] = [];
+    const booted: {
+      entry: SiteEntry;
+      siteRoot: string;
+      ctx: Awaited<ReturnType<typeof bootstrap>>;
+    }[] = [];
     for (const entry of cfg.sites) {
       // Resolve site root relative to the directory containing sites.yaml
-      const siteRoot = isAbsolute(entry.root)
-        ? entry.root
-        : resolve(configDir, entry.root);
+      const siteRoot = isAbsolute(entry.root) ? entry.root : resolve(configDir, entry.root);
 
       // Resolve sharedThemesDir relative to configDir (same convention as site roots)
       const sharedThemesDir = cfg.sharedThemesDir

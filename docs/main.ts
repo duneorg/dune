@@ -21,7 +21,7 @@ import { createApiHandler } from "../src/api/handlers.ts";
 import { createSearchEngine } from "../src/search/engine.ts";
 import { createTaxonomyEngine } from "../src/taxonomy/engine.ts";
 import { createCollectionEngine } from "../src/collections/engine.ts";
-import { join, extname } from "@std/path";
+import { extname, join } from "@std/path";
 
 const MIME: Record<string, string> = {
   ".css": "text/css",
@@ -107,7 +107,9 @@ async function main() {
           const filePath = join("docs", path);
           const data = await Deno.readFile(filePath);
           const mime = MIME[extname(path)] ?? "application/octet-stream";
-          return new Response(data, { headers: { "Content-Type": mime, "Cache-Control": "public, max-age=3600" } });
+          return new Response(data, {
+            headers: { "Content-Type": mime, "Cache-Control": "public, max-age=3600" },
+          });
         } catch {
           return new Response("Not found", { status: 404 });
         }

@@ -17,8 +17,19 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
     icon: "🚀",
     description: "Full-width headline with CTA buttons",
     fields: [
-      { id: "headline", type: "text", label: "Headline", required: true, default: "Welcome to Our Site" },
-      { id: "subtext", type: "textarea", label: "Subtext", default: "A short description of what you offer." },
+      {
+        id: "headline",
+        type: "text",
+        label: "Headline",
+        required: true,
+        default: "Welcome to Our Site",
+      },
+      {
+        id: "subtext",
+        type: "textarea",
+        label: "Subtext",
+        default: "A short description of what you offer.",
+      },
       { id: "cta_text", type: "text", label: "Primary CTA Label", default: "Get Started" },
       { id: "cta_url", type: "url", label: "Primary CTA URL", default: "/" },
       { id: "cta2_text", type: "text", label: "Secondary CTA Label", placeholder: "Learn More" },
@@ -65,7 +76,12 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
         itemFields: [
           { id: "icon", type: "text", label: "Icon (emoji)", default: "⚡" },
           { id: "title", type: "text", label: "Title", required: true, default: "Feature" },
-          { id: "description", type: "textarea", label: "Description", default: "A short description." },
+          {
+            id: "description",
+            type: "textarea",
+            label: "Description",
+            default: "A short description.",
+          },
         ],
       },
     ],
@@ -84,8 +100,20 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
         type: "list",
         label: "Testimonials",
         itemFields: [
-          { id: "quote", type: "textarea", label: "Quote", required: true, default: "This is an amazing product!" },
-          { id: "author", type: "text", label: "Author Name", required: true, default: "Jane Smith" },
+          {
+            id: "quote",
+            type: "textarea",
+            label: "Quote",
+            required: true,
+            default: "This is an amazing product!",
+          },
+          {
+            id: "author",
+            type: "text",
+            label: "Author Name",
+            required: true,
+            default: "Jane Smith",
+          },
           { id: "role", type: "text", label: "Role", default: "CEO" },
           { id: "company", type: "text", label: "Company", default: "Acme Corp" },
           { id: "avatar", type: "image", label: "Avatar URL" },
@@ -101,8 +129,19 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
     icon: "📣",
     description: "Prominent call-to-action band",
     fields: [
-      { id: "headline", type: "text", label: "Headline", required: true, default: "Ready to get started?" },
-      { id: "subtext", type: "textarea", label: "Subtext", default: "Join thousands of happy customers today." },
+      {
+        id: "headline",
+        type: "text",
+        label: "Headline",
+        required: true,
+        default: "Ready to get started?",
+      },
+      {
+        id: "subtext",
+        type: "textarea",
+        label: "Subtext",
+        default: "Join thousands of happy customers today.",
+      },
       { id: "cta_text", type: "text", label: "Button Label", required: true, default: "Start Now" },
       { id: "cta_url", type: "url", label: "Button URL", required: true, default: "/contact" },
       {
@@ -143,7 +182,13 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
         type: "list",
         label: "Images",
         itemFields: [
-          { id: "image", type: "image", label: "Image URL", required: true, default: "/media/photo.jpg" },
+          {
+            id: "image",
+            type: "image",
+            label: "Image URL",
+            required: true,
+            default: "/media/photo.jpg",
+          },
           { id: "caption", type: "text", label: "Caption" },
           { id: "alt", type: "text", label: "Alt text" },
         ],
@@ -159,7 +204,12 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
     description: "Pricing plans comparison table",
     fields: [
       { id: "title", type: "text", label: "Section Title", default: "Simple Pricing" },
-      { id: "subtitle", type: "textarea", label: "Subtitle", default: "No hidden fees. Cancel anytime." },
+      {
+        id: "subtitle",
+        type: "textarea",
+        label: "Subtitle",
+        default: "No hidden fees. Cancel anytime.",
+      },
       {
         id: "items",
         type: "list",
@@ -168,7 +218,12 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
           { id: "name", type: "text", label: "Plan Name", required: true, default: "Starter" },
           { id: "price", type: "text", label: "Price", required: true, default: "$9" },
           { id: "period", type: "text", label: "Period", default: "per month" },
-          { id: "features", type: "textarea", label: "Features (one per line)", default: "5 projects\n10 GB storage\nEmail support" },
+          {
+            id: "features",
+            type: "textarea",
+            label: "Features (one per line)",
+            default: "5 projects\n10 GB storage\nEmail support",
+          },
           { id: "cta_text", type: "text", label: "Button Label", default: "Get Started" },
           { id: "cta_url", type: "url", label: "Button URL", default: "/signup" },
           { id: "highlighted", type: "toggle", label: "Highlight this plan", default: false },
@@ -190,8 +245,20 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
         type: "list",
         label: "Questions",
         itemFields: [
-          { id: "question", type: "text", label: "Question", required: true, default: "How does it work?" },
-          { id: "answer", type: "textarea", label: "Answer", required: true, default: "It works by..." },
+          {
+            id: "question",
+            type: "text",
+            label: "Question",
+            required: true,
+            default: "How does it work?",
+          },
+          {
+            id: "answer",
+            type: "textarea",
+            label: "Answer",
+            required: true,
+            default: "It works by...",
+          },
         ],
       },
     ],
@@ -204,7 +271,13 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
     icon: "📝",
     description: "Free-form HTML content block",
     fields: [
-      { id: "content", type: "richtext", label: "Content", required: true, default: "<p>Write your content here.</p>" },
+      {
+        id: "content",
+        type: "richtext",
+        label: "Content",
+        required: true,
+        default: "<p>Write your content here.</p>",
+      },
       {
         id: "width",
         type: "select",
@@ -238,7 +311,12 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
       },
       { id: "col1", type: "richtext", label: "Column 1", default: "<p>Column 1 content.</p>" },
       { id: "col2", type: "richtext", label: "Column 2", default: "<p>Column 2 content.</p>" },
-      { id: "col3", type: "richtext", label: "Column 3 (if 3-col)", placeholder: "<p>Column 3 content.</p>" },
+      {
+        id: "col3",
+        type: "richtext",
+        label: "Column 3 (if 3-col)",
+        placeholder: "<p>Column 3 content.</p>",
+      },
     ],
   },
 
@@ -250,7 +328,12 @@ export const BUILT_IN_SECTIONS: SectionDef[] = [
     description: "Contact details and optional form link",
     fields: [
       { id: "title", type: "text", label: "Section Title", default: "Get in Touch" },
-      { id: "subtext", type: "textarea", label: "Intro text", default: "We'd love to hear from you." },
+      {
+        id: "subtext",
+        type: "textarea",
+        label: "Intro text",
+        default: "We'd love to hear from you.",
+      },
       { id: "email", type: "text", label: "Email address" },
       { id: "phone", type: "text", label: "Phone number" },
       { id: "address", type: "textarea", label: "Address" },

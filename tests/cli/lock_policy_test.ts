@@ -81,7 +81,8 @@ Deno.test("computeLockPolicy: DUNE_FROZEN=0 is a no-op against the none default"
 Deno.test("computeLockPolicy: explicit flag beats DUNE_FROZEN", async () => {
   const site = await makeSite();
   assertEquals(
-    (await computeLockPolicy(["serve", "--root", site, "--frozen"], env({ DUNE_FROZEN: "0" }))).mode,
+    (await computeLockPolicy(["serve", "--root", site, "--frozen"], env({ DUNE_FROZEN: "0" })))
+      .mode,
     "frozen",
   );
   assertEquals(

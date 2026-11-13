@@ -14,7 +14,8 @@ import type { StorageAdapter } from "../storage/types.ts";
 const CONFIG_RESOURCE: McpResource = {
   uri: "dune://site/config",
   name: "Site Configuration",
-  description: "Full Dune site configuration (secrets omitted). Contains site.yaml merged with system defaults.",
+  description:
+    "Full Dune site configuration (secrets omitted). Contains site.yaml merged with system defaults.",
   mimeType: "application/json",
 };
 
@@ -67,8 +68,7 @@ async function schemaHandler(uri: string): Promise<McpResourceContent> {
 const PAGES_RESOURCE: McpResource = {
   uri: "dune://content/pages",
   name: "Pages Index",
-  description:
-    "Complete list of all pages in the content index. " +
+  description: "Complete list of all pages in the content index. " +
     "Each entry includes route, title, template, format, published status, and taxonomy.",
   mimeType: "application/json",
 };
@@ -99,8 +99,7 @@ function makePagesHandler(engine: DuneEngine): ResourceHandler {
 const TAXONOMY_RESOURCE: McpResource = {
   uri: "dune://content/taxonomy",
   name: "Taxonomy Index",
-  description:
-    "All taxonomy names and their values with page counts. " +
+  description: "All taxonomy names and their values with page counts. " +
     "Taxonomies are defined in site.yaml under site.taxonomies.",
   mimeType: "application/json",
 };
@@ -127,8 +126,7 @@ function makeTaxonomyHandler(engine: DuneEngine): ResourceHandler {
 const BLUEPRINTS_RESOURCE: McpResource = {
   uri: "dune://content/blueprints",
   name: "Blueprint Schemas",
-  description:
-    "All blueprint (frontmatter schema) definitions, with inheritance fully resolved. " +
+  description: "All blueprint (frontmatter schema) definitions, with inheritance fully resolved. " +
     "Each entry describes a template's expected fields with types, labels, " +
     "required flags, defaults, and validation constraints.",
   mimeType: "application/json",
@@ -176,8 +174,7 @@ function makeBlueprintsHandler(engine: DuneEngine): ResourceHandler {
 const FORMS_RESOURCE: McpResource = {
   uri: "dune://content/forms",
   name: "Form Schemas",
-  description:
-    "All form definitions from the forms/ directory (not schemas/ — that's " +
+  description: "All form definitions from the forms/ directory (not schemas/ — that's " +
     "the DB data-layer's own, incompatible format). Each entry describes " +
     "the form name, title, and fields. Use this before scaffold_form to " +
     "see what already exists.",

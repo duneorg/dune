@@ -38,8 +38,7 @@ export function applyOrphanProtection(html: string): string {
   result = result.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (match, attrs, content) => {
     const lastSpaceIndex = lastTextSpaceIndex(content);
     if (lastSpaceIndex === -1) return match;
-    const newContent =
-      content.slice(0, lastSpaceIndex) + NBSP + content.slice(lastSpaceIndex + 1);
+    const newContent = content.slice(0, lastSpaceIndex) + NBSP + content.slice(lastSpaceIndex + 1);
     return `<p${attrs}>${newContent}</p>`;
   });
 
@@ -48,8 +47,7 @@ export function applyOrphanProtection(html: string): string {
     const trimmed = content.trimEnd();
     const lastSpaceIndex = lastTextSpaceIndex(trimmed);
     if (lastSpaceIndex === -1) return match;
-    const newContent =
-      trimmed.slice(0, lastSpaceIndex) + NBSP + trimmed.slice(lastSpaceIndex + 1) +
+    const newContent = trimmed.slice(0, lastSpaceIndex) + NBSP + trimmed.slice(lastSpaceIndex + 1) +
       content.slice(trimmed.length);
     return `<div${attrs}>${newContent}</div>`;
   });
@@ -59,8 +57,7 @@ export function applyOrphanProtection(html: string): string {
     const trimmed = text.trimEnd();
     const lastSpaceIndex = trimmed.lastIndexOf(" ");
     if (lastSpaceIndex === -1) return match;
-    const newText =
-      trimmed.slice(0, lastSpaceIndex) + NBSP + trimmed.slice(lastSpaceIndex + 1);
+    const newText = trimmed.slice(0, lastSpaceIndex) + NBSP + trimmed.slice(lastSpaceIndex + 1);
     return newText + text.slice(trimmed.length) + br;
   });
 

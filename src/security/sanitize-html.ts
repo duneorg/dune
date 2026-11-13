@@ -445,8 +445,7 @@ function parseAttrs(
   }
 
   // Regex-based tokenizer — keep it simple.
-  const re =
-    /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  const re = /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) {
     const name = m[1].toLowerCase();
@@ -489,9 +488,7 @@ function parseAttrs(
   // If <a target="_blank"> is present without a safe rel, inject one to
   // prevent reverse-tabnabbing.
   if (tag === "a") {
-    const hasTargetBlank = out.some((a) =>
-      a.name === "target" && a.value === "_blank"
-    );
+    const hasTargetBlank = out.some((a) => a.name === "target" && a.value === "_blank");
     const relIdx = out.findIndex((a) => a.name === "rel");
     if (hasTargetBlank) {
       const safeRel = "noopener noreferrer";

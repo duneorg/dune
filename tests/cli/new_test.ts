@@ -33,7 +33,11 @@ Deno.test("dune new: site.yaml declares theme.name matching the scaffolded theme
     const themeDirExists = await Deno.stat(join(dir, "themes", "starter"))
       .then((s) => s.isDirectory)
       .catch(() => false);
-    assertEquals(themeDirExists, true, "themes/starter/ must exist to match the declared theme.name");
+    assertEquals(
+      themeDirExists,
+      true,
+      "themes/starter/ must exist to match the declared theme.name",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -55,7 +59,7 @@ Deno.test(
           "content would silently render through the bare unstyled fallback instead",
       );
     } finally {
-      for (let attempt = 0; ; attempt++) {
+      for (let attempt = 0;; attempt++) {
         try {
           await Deno.remove(dir, { recursive: true });
           break;

@@ -121,9 +121,7 @@ async function assertThemePackageRoot(dir: string): Promise<void> {
 
 /** Walk up from a resolved module file to the directory containing theme.yaml. */
 async function findThemeRootFromEntry(entryPath: string): Promise<string> {
-  let dir = (await Deno.stat(entryPath)).isDirectory
-    ? entryPath
-    : dirname(entryPath);
+  let dir = (await Deno.stat(entryPath)).isDirectory ? entryPath : dirname(entryPath);
   for (let i = 0; i < 12; i++) {
     try {
       await Deno.stat(join(dir, "theme.yaml"));

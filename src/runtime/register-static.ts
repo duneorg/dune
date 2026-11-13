@@ -1,16 +1,12 @@
 import type { App } from "fresh";
 import type { BootstrapResult } from "./bootstrap.ts";
-import {
-  serveStaticFile,
-  servePluginAsset,
-  withSecurityHeaders,
-} from "../cli/serve-utils.ts";
+import { servePluginAsset, serveStaticFile, withSecurityHeaders } from "../cli/serve-utils.ts";
 import type { buildPluginClientBundles } from "../cli/client-bundles.ts";
 import { serveClientBundle } from "../cli/client-bundles.ts";
 import {
   denialForIndexEntry,
-  mediaDenialResponse,
   findPagesForContentMediaPath,
+  mediaDenialResponse,
   siteDefaultGate,
 } from "../auth/gating.ts";
 

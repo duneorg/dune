@@ -9,7 +9,7 @@
  */
 
 import type { JSX } from "preact";
-import { useState, useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
 /** Props for the {@link FormRenderer} island component. */
 export interface FormRendererProps {
@@ -19,7 +19,16 @@ export interface FormRendererProps {
 }
 
 interface FormField {
-  type: "text" | "email" | "tel" | "textarea" | "number" | "select" | "checkbox" | "file" | "hidden";
+  type:
+    | "text"
+    | "email"
+    | "tel"
+    | "textarea"
+    | "number"
+    | "select"
+    | "checkbox"
+    | "file"
+    | "hidden";
   label: string;
   required?: boolean;
   placeholder?: string;
@@ -195,9 +204,7 @@ export default function FormRenderer({
 
   return (
     <div class={`dune-form-renderer${className ? ` ${className}` : ""}`}>
-      {schema.title && (
-        <h2 class="dune-form-renderer__title">{schema.title}</h2>
-      )}
+      {schema.title && <h2 class="dune-form-renderer__title">{schema.title}</h2>}
 
       <form
         class="dune-form-renderer__form"
@@ -271,78 +278,86 @@ function FormField({ fieldName, field, value, error, onChange }: FormFieldProps)
       {field.type !== "checkbox" && (
         <label class="dune-form-renderer__label" for={id}>
           {field.label}
-          {field.required && <span class="dune-form-renderer__required" aria-hidden="true"> *</span>}
+          {field.required && <span class="dune-form-renderer__required" aria-hidden="true">*</span>}
         </label>
       )}
 
-      {field.type === "textarea" ? (
-        <textarea
-          id={id}
-          class="dune-form-renderer__textarea"
-          name={fieldName}
-          required={field.required}
-          placeholder={field.placeholder}
-          rows={4}
-          minLength={field.validate?.min}
-          maxLength={field.validate?.max}
-          value={value}
-          onInput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
-          aria-invalid={error ? "true" : undefined}
-          aria-describedby={errorId}
-        />
-      ) : field.type === "select" ? (
-        <select
-          id={id}
-          class="dune-form-renderer__select"
-          name={fieldName}
-          required={field.required}
-          value={value}
-          onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
-          aria-invalid={error ? "true" : undefined}
-          aria-describedby={errorId}
-        >
-          <option value="">-- Select --</option>
-          {Object.entries(field.options ?? {}).map(([optValue, optLabel]) => (
-            <option key={optValue} value={optValue}>
-              {optLabel}
-            </option>
-          ))}
-        </select>
-      ) : field.type === "checkbox" ? (
-        <label class="dune-form-renderer__checkbox-label" for={id}>
-          <input
+      {field.type === "textarea"
+        ? (
+          <textarea
             id={id}
-            class="dune-form-renderer__checkbox"
-            type="checkbox"
+            class="dune-form-renderer__textarea"
             name={fieldName}
             required={field.required}
-            checked={value === "on" || value === "true"}
-            onChange={(e) => onChange((e.target as HTMLInputElement).checked ? "on" : "")}
+            placeholder={field.placeholder}
+            rows={4}
+            minLength={field.validate?.min}
+            maxLength={field.validate?.max}
+            value={value}
+            onInput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
             aria-invalid={error ? "true" : undefined}
             aria-describedby={errorId}
           />
-          {field.label}
-          {field.required && <span class="dune-form-renderer__required" aria-hidden="true"> *</span>}
-        </label>
-      ) : (
-        <input
-          id={id}
-          class="dune-form-renderer__input"
-          type={field.type}
-          name={fieldName}
-          required={field.required}
-          placeholder={field.placeholder}
-          value={value}
-          onInput={(e) => onChange((e.target as HTMLInputElement).value)}
-          min={field.type === "number" ? field.validate?.min : undefined}
-          max={field.type === "number" ? field.validate?.max : undefined}
-          minLength={field.type !== "number" ? field.validate?.min : undefined}
-          maxLength={field.type !== "number" ? field.validate?.max : undefined}
-          pattern={field.validate?.pattern}
-          aria-invalid={error ? "true" : undefined}
-          aria-describedby={errorId}
-        />
-      )}
+        )
+        : field.type === "select"
+        ? (
+          <select
+            id={id}
+            class="dune-form-renderer__select"
+            name={fieldName}
+            required={field.required}
+            value={value}
+            onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+            aria-invalid={error ? "true" : undefined}
+            aria-describedby={errorId}
+          >
+            <option value="">-- Select --</option>
+            {Object.entries(field.options ?? {}).map(([optValue, optLabel]) => (
+              <option key={optValue} value={optValue}>
+                {optLabel}
+              </option>
+            ))}
+          </select>
+        )
+        : field.type === "checkbox"
+        ? (
+          <label class="dune-form-renderer__checkbox-label" for={id}>
+            <input
+              id={id}
+              class="dune-form-renderer__checkbox"
+              type="checkbox"
+              name={fieldName}
+              required={field.required}
+              checked={value === "on" || value === "true"}
+              onChange={(e) => onChange((e.target as HTMLInputElement).checked ? "on" : "")}
+              aria-invalid={error ? "true" : undefined}
+              aria-describedby={errorId}
+            />
+            {field.label}
+            {field.required && (
+              <span class="dune-form-renderer__required" aria-hidden="true">*</span>
+            )}
+          </label>
+        )
+        : (
+          <input
+            id={id}
+            class="dune-form-renderer__input"
+            type={field.type}
+            name={fieldName}
+            required={field.required}
+            placeholder={field.placeholder}
+            value={value}
+            onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+            min={field.type === "number" ? field.validate?.min : undefined}
+            max={field.type === "number" ? field.validate?.max : undefined}
+            minLength={field.type !== "number" ? field.validate?.min : undefined}
+            maxLength={field.type !== "number" ? field.validate?.max : undefined}
+            pattern={field.validate?.pattern}
+            aria-invalid={error ? "true" : undefined}
+            aria-describedby={errorId}
+          />
+        )}
 
       {error && (
         <p id={errorId} class="dune-form-renderer__field-error" role="alert">

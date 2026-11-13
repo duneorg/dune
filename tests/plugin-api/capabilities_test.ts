@@ -1,4 +1,10 @@
-import { assertEquals, assertExists, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import { join } from "@std/path";
 import { App } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
@@ -22,8 +28,9 @@ import {
 // The contract names no extension point of a plugin's own. A plugin exports
 // typed keys next to its types, prefixed with its name; these two stand in for
 // `admin.pages` / `admin.routes` of the admin plugin.
-const TEST_PAGES: CapabilityKey<{ path: string; label: string; permission: string; handler: () => Response }> =
-  capabilityKey("test.pages");
+const TEST_PAGES: CapabilityKey<
+  { path: string; label: string; permission: string; handler: () => Response }
+> = capabilityKey("test.pages");
 const TEST_ROUTES: CapabilityKey<
   { method: "GET" | "POST" | "DELETE"; path: string; permission: string; handler: () => Response }
 > = capabilityKey("test.routes");
@@ -41,7 +48,12 @@ Deno.test("capabilities: a slot is empty until resolved, then active", async () 
   assertEquals(reg.reader.providers()[0].status, "unresolved");
   await reg.resolve(ctx);
   assertExists(reg.reader.get("editor.session"));
-  assertEquals(reg.reader.providers(), [{ name: "editor.session", kind: "slot", provider: "admin", status: "active" }]);
+  assertEquals(reg.reader.providers(), [{
+    name: "editor.session",
+    kind: "slot",
+    provider: "admin",
+    status: "active",
+  }]);
 });
 
 Deno.test("capabilities: an unprovided slot is simply absent", async () => {
@@ -67,8 +79,15 @@ Deno.test("capabilities: two plugins providing editor.session is a conflict, not
   reg.registrar("first").provide("editor.session", () => auth("first"));
   reg.registrar("second").provide("editor.session", () => auth("second"));
   reg.registrar("third").provide("editor.session", () => auth("third"));
-  assertEquals(reg.conflicts(), [{ capability: "editor.session", providers: ["first", "second", "third"] }]);
-  assertEquals(reg.reader.providers().map((p) => p.provider), ["first"], "the first provider is kept");
+  assertEquals(reg.conflicts(), [{
+    capability: "editor.session",
+    providers: ["first", "second", "third"],
+  }]);
+  assertEquals(
+    reg.reader.providers().map((p) => p.provider),
+    ["first"],
+    "the first provider is kept",
+  );
   await reg.resolve(ctx);
   const who = await reg.reader.get("editor.session")!.authenticate(new Request("http://x/"));
   assertEquals(who.user?.id, "first");
@@ -126,11 +145,19 @@ Deno.test("capabilities: a factory returning undefined declines the slot", async
 
 Deno.test("capabilities: contributions append in registration order and name their provider", () => {
   const reg = createCapabilityRegistry();
-  const page = (path: string) => ({ path, label: path, permission: "pages.read", handler: () => new Response("") });
+  const page = (path: string) => ({
+    path,
+    label: path,
+    permission: "pages.read",
+    handler: () => new Response(""),
+  });
   reg.registrar("x").contribute(TEST_PAGES, page("/x"));
   reg.registrar("y").contribute(TEST_PAGES, page("/y"));
   assertEquals(reg.reader.list(TEST_PAGES).map((p) => p.path), ["/x", "/y"]);
-  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), ["test.pages:x", "test.pages:y"]);
+  assertEquals(reg.reader.providers().map((p) => `${p.name}:${p.provider}`), [
+    "test.pages:x",
+    "test.pages:y",
+  ]);
 });
 
 Deno.test("capabilities: test.routes contributions keep their method and order", () => {
@@ -173,7 +200,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_capabilities_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
 
       let seen: string | undefined = "not-run";
       let factoryRanBeforeMount = false;
@@ -186,7 +216,12 @@ Deno.test(
             factoryRanBeforeMount = true;
             return auth("provided");
           });
-          api.capabilities.contribute(TEST_PAGES, { path: "/p", label: "P", permission: "pages.read", handler: () => new Response("") });
+          api.capabilities.contribute(TEST_PAGES, {
+            path: "/p",
+            label: "P",
+            permission: "pages.read",
+            handler: () => new Response(""),
+          });
         },
       };
       const consumer: DunePlugin = {
@@ -238,7 +273,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_resolve_caps_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n",
+      );
       let runs = 0;
       const plugin: DunePlugin = {
         name: "test-admin",
@@ -271,7 +309,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_capabilities_conflict_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
       let mounted = false;
       const plugin = (name: string): DunePlugin => ({
         name,
@@ -301,27 +342,42 @@ Deno.test("capabilities: two plugins providing admin.prefix is a conflict (one a
   const reg = createCapabilityRegistry();
   reg.registrar("admin-a").provide("admin.prefix", () => ({ prefix: "/admin" }));
   reg.registrar("admin-b").provide("admin.prefix", () => ({ prefix: "/studio" }));
-  assertEquals(reg.conflicts(), [{ capability: "admin.prefix", providers: ["admin-a", "admin-b"] }]);
+  assertEquals(reg.conflicts(), [{
+    capability: "admin.prefix",
+    providers: ["admin-a", "admin-b"],
+  }]);
 });
 
 Deno.test("capabilities: invalidAdminPrefix names an unusable prefix and accepts a usable one", async () => {
-  for (const [prefix, bad] of [["/admin", false], ["/a/b", false], ["admin", true], ["/", true], ["/admin/", true], ["", true]] as const) {
+  for (
+    const [prefix, bad] of [["/admin", false], ["/a/b", false], ["admin", true], ["/", true], [
+      "/admin/",
+      true,
+    ], ["", true]] as const
+  ) {
     const reg = createCapabilityRegistry();
     reg.registrar("a").provide("admin.prefix", () => ({ prefix }));
     await reg.resolve(ctx);
     assertEquals(invalidAdminPrefix(reg.reader) !== null, bad, JSON.stringify(prefix));
   }
-  assertEquals(invalidAdminPrefix(createCapabilityRegistry().reader), null, "no provider is not an error");
+  assertEquals(
+    invalidAdminPrefix(createCapabilityRegistry().reader),
+    null,
+    "no provider is not an error",
+  );
 });
 
 Deno.test(
-  "mountPlugins: an unusable admin.prefix stops the boot instead of meaning \"no admin\"",
+  'mountPlugins: an unusable admin.prefix stops the boot instead of meaning "no admin"',
   { sanitizeOps: false, sanitizeResources: false },
   async () => {
     const root = await Deno.makeTempDir({ prefix: "dune_test_capabilities_prefix_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
       const plugin: DunePlugin = {
         name: "odd-admin",
         version: "1.0.0",
@@ -366,7 +422,12 @@ Deno.test("capabilities: a plugin's own slot is provided and read through its ke
   assertEquals(reg.reader.get(EDITOR)?.label, "alt");
   // Another plugin recreates the key from its documented name instead of importing it.
   assertEquals(reg.reader.get(capabilityKey<{ label: string }>("test.editor"))?.label, "alt");
-  assertEquals(reg.reader.providers(), [{ name: "test.editor", kind: "slot", provider: "alt", status: "active" }]);
+  assertEquals(reg.reader.providers(), [{
+    name: "test.editor",
+    kind: "slot",
+    provider: "alt",
+    status: "active",
+  }]);
 });
 
 Deno.test("capabilities: list() and contribute() refuse the string form instead of silently ignoring it", () => {
@@ -377,9 +438,15 @@ Deno.test("capabilities: list() and contribute() refuse the string form instead 
   // deno-lint-ignore no-explicit-any
   const registrar = reg.registrar("old-plugin") as any;
   const listErr = assertThrows(() => reader.list("bar.actions"), TypeError);
-  assertStringIncludes(listErr.message, 'capabilities.list() needs a CapabilityKey, got the string "bar.actions"');
+  assertStringIncludes(
+    listErr.message,
+    'capabilities.list() needs a CapabilityKey, got the string "bar.actions"',
+  );
   assertStringIncludes(listErr.message, 'capabilityKey("bar.actions")');
-  const contributeErr = assertThrows(() => registrar.contribute("bar.actions", () => []), TypeError);
+  const contributeErr = assertThrows(
+    () => registrar.contribute("bar.actions", () => []),
+    TypeError,
+  );
   assertStringIncludes(contributeErr.message, "capabilities.contribute() needs a CapabilityKey");
   // Nothing was registered under a stray name, and a real key still works.
   assertEquals(reg.reader.providers(), []);

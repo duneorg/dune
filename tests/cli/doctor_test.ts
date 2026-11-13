@@ -5,7 +5,11 @@
 
 import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { evaluateDenoVersion, runDoctorChecks, searchDegradedFindings } from "../../src/cli/doctor.ts";
+import {
+  evaluateDenoVersion,
+  runDoctorChecks,
+  searchDegradedFindings,
+} from "../../src/cli/doctor.ts";
 
 // ── evaluateDenoVersion (pure) ────────────────────────────────────────────────
 
@@ -59,7 +63,10 @@ Deno.test(
     try {
       await writeMinimalSite(root);
       const findings = await runDoctorChecks(root);
-      assertEquals(findings.filter((f) => f.category === "resolution" || f.category === "npm-cache"), []);
+      assertEquals(
+        findings.filter((f) => f.category === "resolution" || f.category === "npm-cache"),
+        [],
+      );
     } finally {
       await Deno.remove(root, { recursive: true }).catch(() => {});
     }
@@ -80,7 +87,9 @@ Deno.test(
         `import { nope } from "jsr:@dune/definitely-not-a-real-package@999.0.0";\nnope();\n`,
       );
       const findings = await runDoctorChecks(root);
-      const resolutionFindings = findings.filter((f) => f.category === "resolution" || f.category === "npm-cache");
+      const resolutionFindings = findings.filter((f) =>
+        f.category === "resolution" || f.category === "npm-cache"
+      );
       assertEquals(resolutionFindings.length, 1);
       assertEquals(resolutionFindings[0].severity, "error");
     } finally {
@@ -97,7 +106,10 @@ Deno.test(
     try {
       await writeMinimalSite(root, { withMainTs: false });
       const findings = await runDoctorChecks(root);
-      assertEquals(findings.filter((f) => f.category === "resolution" || f.category === "npm-cache"), []);
+      assertEquals(
+        findings.filter((f) => f.category === "resolution" || f.category === "npm-cache"),
+        [],
+      );
     } finally {
       await Deno.remove(root, { recursive: true }).catch(() => {});
     }
@@ -111,7 +123,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_doctor_lockfile_" });
     try {
       await writeMinimalSite(root);
-      await Deno.writeTextFile(join(root, "deno.lock"), JSON.stringify({ version: "5", specifiers: {} }));
+      await Deno.writeTextFile(
+        join(root, "deno.lock"),
+        JSON.stringify({ version: "5", specifiers: {} }),
+      );
       const findings = await runDoctorChecks(root);
       const lockfileFindings = findings.filter((f) => f.category === "lockfile");
       assertEquals(lockfileFindings.length, 1);
@@ -207,7 +222,11 @@ async function bootFixture(report: string | null): Promise<string> {
     join(root, "main.ts"),
     `const portFlag = Deno.args.indexOf("--port");\n` +
       `const port = portFlag >= 0 ? parseInt(Deno.args[portFlag + 1]) : 3000;\n` +
-      (report === null ? "" : `const f = Deno.env.get("DUNE_DOCTOR_REPORT"); if (f) await Deno.writeTextFile(f, ${JSON.stringify(report)});\n`) +
+      (report === null
+        ? ""
+        : `const f = Deno.env.get("DUNE_DOCTOR_REPORT"); if (f) await Deno.writeTextFile(f, ${
+          JSON.stringify(report)
+        });\n`) +
       `Deno.serve({ port }, () => new Response("ok"));\n`,
   );
   return root;
@@ -239,7 +258,9 @@ Deno.test(
   async () => {
     const root = await bootFixture(null);
     try {
-      const caps = (await runDoctorChecks(root, { boot: true })).filter((f) => f.category === "capabilities");
+      const caps = (await runDoctorChecks(root, { boot: true })).filter((f) =>
+        f.category === "capabilities"
+      );
       assertEquals(caps.map((f) => f.severity), ["warning"]);
     } finally {
       await Deno.remove(root, { recursive: true }).catch(() => {});

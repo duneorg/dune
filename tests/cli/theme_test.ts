@@ -3,16 +3,10 @@
  * ensureParentChainInstalled and deriveParentSpecifier.
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import type { ThemePackageEntry } from "../../src/config/types.ts";
-import {
-  deriveParentSpecifier,
-  ensureParentChainInstalled,
-} from "../../src/cli/theme.ts";
+import { deriveParentSpecifier, ensureParentChainInstalled } from "../../src/cli/theme.ts";
 
 /**
  * Replace globalThis.fetch with a stub answering api.jsr.io package lookups.
@@ -145,8 +139,7 @@ Deno.test("deriveParentSpecifier: jsr — package exists but has no published ve
   // Simulate a 200 response with no latestVersion field by overriding again:
   restore();
   const original = globalThis.fetch;
-  globalThis.fetch = () =>
-    Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+  globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
   try {
     await assertRejects(
       () =>

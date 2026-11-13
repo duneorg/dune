@@ -2,10 +2,7 @@
  * Inherited and site-default page gating (#157): own `roles:` → nearest
  * ancestor's → `site.auth.default_roles`, with `roles: public` as an opt-out.
  */
-import {
-  assertEquals,
-  assertStrictEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { applyGatingInheritance } from "../../src/content/index-builder.ts";
 import type { PageIndex } from "../../src/content/types.ts";
 

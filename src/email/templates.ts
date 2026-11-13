@@ -95,9 +95,7 @@ function buildMarkdownTemplate(name: string, source: string): EmailTemplate {
       const subject = headingMatch ? headingMatch[1].trim() : name;
 
       // Remove the heading from body so it doesn't appear twice
-      const body = headingMatch
-        ? interpolated.replace(/^#\s+.+\n?/m, "").trim()
-        : interpolated;
+      const body = headingMatch ? interpolated.replace(/^#\s+.+\n?/m, "").trim() : interpolated;
 
       const marked = new Marked();
       const html = await marked.parse(body);

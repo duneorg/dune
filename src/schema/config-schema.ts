@@ -56,7 +56,10 @@ export const CONFIG_SCHEMA = {
                   required: ["url"],
                   properties: {
                     url: { type: "string" },
-                    secret: { type: "string", description: "HMAC-SHA256 signing secret; supports $ENV_VAR" },
+                    secret: {
+                      type: "string",
+                      description: "HMAC-SHA256 signing secret; supports $ENV_VAR",
+                    },
                     allow_private: { type: "boolean", default: false },
                   },
                 },
@@ -81,8 +84,7 @@ export const CONFIG_SCHEMA = {
         },
         home: {
           type: "string",
-          description:
-            "Folder slug or route that serves as homepage. Autodetected if omitted.",
+          description: "Folder slug or route that serves as homepage. Autodetected if omitted.",
         },
         metadata: {
           type: "object",
@@ -107,14 +109,12 @@ export const CONFIG_SCHEMA = {
         cors_origins: {
           type: "array",
           items: { type: "string", format: "uri" },
-          description:
-            "Additional origins allowed for cross-origin API requests",
+          description: "Additional origins allowed for cross-origin API requests",
         },
         trusted_html: {
           type: "boolean",
           default: false,
-          description:
-            "Trust raw HTML in authored content. Only use when all authors are trusted.",
+          description: "Trust raw HTML in authored content. Only use when all authors are trusted.",
         },
         feed: {
           type: "object",
@@ -308,7 +308,8 @@ export const CONFIG_SCHEMA = {
             },
             fields: {
               type: "object",
-              description: "Per-field relevance weights (title, summary, body, or a custom field). Default weight: 1.",
+              description:
+                "Per-field relevance weights (title, summary, body, or a custom field). Default weight: 1.",
               additionalProperties: {
                 type: "object",
                 properties: { weight: { type: "number" } },
@@ -385,7 +386,10 @@ export const CONFIG_SCHEMA = {
                 type: "object",
                 required: ["token", "actions"],
                 properties: {
-                  token: { type: "string", description: 'Secret token; supports "$ENV_VAR" expansion' },
+                  token: {
+                    type: "string",
+                    description: 'Secret token; supports "$ENV_VAR" expansion',
+                  },
                   actions: {
                     type: "array",
                     items: { type: "string", enum: ["rebuild", "purge-cache"] },
@@ -413,7 +417,10 @@ export const CONFIG_SCHEMA = {
       description: "Theme settings",
       required: ["name"],
       properties: {
-        name: { type: "string", description: "Active theme name (local folder or registered package)" },
+        name: {
+          type: "string",
+          description: "Active theme name (local folder or registered package)",
+        },
         src: {
           type: "string",
           description: "When set, load the active theme from this pinned jsr:/npm: package",
@@ -458,8 +465,7 @@ export const CONFIG_SCHEMA = {
               },
               integrity: {
                 type: "string",
-                description:
-                  "Required for https: src. sha256:<64 hex> or SRI sha256-<base64>.",
+                description: "Required for https: src. sha256:<64 hex> or SRI sha256-<base64>.",
               },
               config: {
                 type: "object",

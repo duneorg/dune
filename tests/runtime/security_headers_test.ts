@@ -37,12 +37,16 @@ export default {
 `;
 
 async function withApp(
-  fn: (handler: (req: Request) => Promise<Response>, serve: () => { port: number; stop: () => Promise<void> }) => Promise<void>,
+  fn: (
+    handler: (req: Request) => Promise<Response>,
+    serve: () => { port: number; stop: () => Promise<void> },
+  ) => Promise<void>,
 ): Promise<void> {
   const root = await Deno.makeTempDir({ prefix: "dune_test_sechdr_" });
   try {
     const files: Record<string, string> = {
-      "config/site.yaml": "title: T\nurl: http://localhost:3000\nplugins:\n  - src: ./plugins/frag.ts\n",
+      "config/site.yaml":
+        "title: T\nurl: http://localhost:3000\nplugins:\n  - src: ./plugins/frag.ts\n",
       "content/01.home/default.md": "---\ntitle: Home\n---\nhi\n",
       "plugins/frag.ts": PLUGIN,
     };
@@ -55,7 +59,10 @@ async function withApp(
     const handler = app.handler();
     const serve = () => {
       const ac = new AbortController();
-      const server = Deno.serve({ port: 0, signal: ac.signal, onListen: () => {} }, (req, info) => handler(req, info));
+      const server = Deno.serve(
+        { port: 0, signal: ac.signal, onListen: () => {} },
+        (req, info) => handler(req, info),
+      );
       return {
         port: (server.addr as Deno.NetAddr).port,
         stop: async () => {
@@ -139,7 +146,11 @@ Deno.test("a streaming (SSE) response stays streaming and gets the headers", opt
       }
       // Chunks arrive ~150ms apart, not all at once when the stream closes.
       assertEquals(arrivals.length >= 3, true, `chunks: ${arrivals.length}`);
-      assertEquals(arrivals[arrivals.length - 1] - arrivals[0] > 200, true, `arrivals: ${arrivals.join(",")}`);
+      assertEquals(
+        arrivals[arrivals.length - 1] - arrivals[0] > 200,
+        true,
+        `arrivals: ${arrivals.join(",")}`,
+      );
     } finally {
       await stop();
     }

@@ -19,15 +19,15 @@ export type {
   WhereClause,
 } from "./types.ts";
 
-export { createDbAdapter, SQLiteAdapter, KVAdapter, PostgresAdapter } from "./adapters/mod.ts";
+export { createDbAdapter, KVAdapter, PostgresAdapter, SQLiteAdapter } from "./adapters/mod.ts";
 export { createRepository, createRepositoryFromSchema } from "./repository.ts";
-export { loadSchemas, parseSchemaYaml, parseRawSchema, modelToTableName } from "./schema-parser.ts";
-export { generateCode, writeGeneratedFiles, generateApiRoutes } from "./codegen.ts";
+export { loadSchemas, modelToTableName, parseRawSchema, parseSchemaYaml } from "./schema-parser.ts";
+export { generateApiRoutes, generateCode, writeGeneratedFiles } from "./codegen.ts";
 export {
   generateCreateTableSql,
   generateMigrations,
-  runMigrations,
   migrationStatus,
+  runMigrations,
 } from "./migrate.ts";
 export type { MigrationStatus } from "./migrate.ts";
 export type { CodegenResult } from "./codegen.ts";

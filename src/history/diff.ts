@@ -154,23 +154,43 @@ function diffLines(oldLines: string[], newLines: string[]): DiffHunk[] {
   const lcs = computeLCS(oldTrimmed, newTrimmed);
 
   // Build changes from LCS
-  const changes: Array<{ type: "add" | "remove" | "equal"; oldIdx: number; newIdx: number; content: string }> = [];
+  const changes: Array<
+    { type: "add" | "remove" | "equal"; oldIdx: number; newIdx: number; content: string }
+  > = [];
 
   let oi = 0;
   let ni = 0;
   let li = 0;
 
   while (oi < oldTrimmed.length || ni < newTrimmed.length) {
-    if (li < lcs.length && oi < oldTrimmed.length && ni < newTrimmed.length && oldTrimmed[oi] === lcs[li] && newTrimmed[ni] === lcs[li]) {
-      changes.push({ type: "equal", oldIdx: prefixLen + oi, newIdx: prefixLen + ni, content: oldTrimmed[oi] });
+    if (
+      li < lcs.length && oi < oldTrimmed.length && ni < newTrimmed.length &&
+      oldTrimmed[oi] === lcs[li] && newTrimmed[ni] === lcs[li]
+    ) {
+      changes.push({
+        type: "equal",
+        oldIdx: prefixLen + oi,
+        newIdx: prefixLen + ni,
+        content: oldTrimmed[oi],
+      });
       oi++;
       ni++;
       li++;
     } else if (oi < oldTrimmed.length && (li >= lcs.length || oldTrimmed[oi] !== lcs[li])) {
-      changes.push({ type: "remove", oldIdx: prefixLen + oi, newIdx: prefixLen + ni, content: oldTrimmed[oi] });
+      changes.push({
+        type: "remove",
+        oldIdx: prefixLen + oi,
+        newIdx: prefixLen + ni,
+        content: oldTrimmed[oi],
+      });
       oi++;
     } else if (ni < newTrimmed.length) {
-      changes.push({ type: "add", oldIdx: prefixLen + oi, newIdx: prefixLen + ni, content: newTrimmed[ni] });
+      changes.push({
+        type: "add",
+        oldIdx: prefixLen + oi,
+        newIdx: prefixLen + ni,
+        content: newTrimmed[ni],
+      });
       ni++;
     }
   }
@@ -222,7 +242,9 @@ function computeLCS(a: string[], b: string[]): string[] {
  * Group changes into unified diff hunks with context lines.
  */
 function groupIntoHunks(
-  changes: Array<{ type: "add" | "remove" | "equal"; oldIdx: number; newIdx: number; content: string }>,
+  changes: Array<
+    { type: "add" | "remove" | "equal"; oldIdx: number; newIdx: number; content: string }
+  >,
   _prefixLen: number,
 ): DiffHunk[] {
   if (changes.length === 0) return [];

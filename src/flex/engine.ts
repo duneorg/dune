@@ -13,13 +13,8 @@
 import { stringify as stringifyYaml } from "@std/yaml";
 import { parseUserYaml as parseYaml } from "../security/safe-yaml.ts";
 import type { StorageAdapter } from "../storage/types.ts";
-import type {
-  FlexRecord,
-  FlexSchema,
-  FlexSchemaMap,
-  FlexValidationError,
-} from "./types.ts";
-import { applyMigrations, loadMigrations, type FlexMigration } from "./migrations.ts";
+import type { FlexRecord, FlexSchema, FlexSchemaMap, FlexValidationError } from "./types.ts";
+import { applyMigrations, type FlexMigration, loadMigrations } from "./migrations.ts";
 
 // === Options ===
 
@@ -293,8 +288,7 @@ export function createFlexEngine(opts: FlexEngineOptions): FlexEngine {
 
     for (const [fieldName, field] of Object.entries(schema.fields)) {
       const value = data[fieldName];
-      const isEmpty =
-        value === undefined ||
+      const isEmpty = value === undefined ||
         value === null ||
         value === "" ||
         (Array.isArray(value) && value.length === 0);

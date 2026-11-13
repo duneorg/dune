@@ -117,7 +117,15 @@ export async function loadPage(
     html: lazyOnce(async () => {
       if (index.format !== "md" && index.format !== "mdx") return "";
       const trustedHtml = options.site?.trusted_html === true || frontmatter.trusted_html === true;
-      const ctx = buildMinimalRenderContext(media, index.sourcePath, contentDir, options.site, trustedHtml, index.route, options.hooks);
+      const ctx = buildMinimalRenderContext(
+        media,
+        index.sourcePath,
+        contentDir,
+        options.site,
+        trustedHtml,
+        index.route,
+        options.hooks,
+      );
       let html = await handler.renderToHtml(page, ctx);
       if (options.orphanProtection !== false) {
         html = applyOrphanProtection(html);
@@ -139,7 +147,9 @@ export async function loadPage(
       if (index.format !== "tsx") return null;
       const absPath = await resolveAbsolutePath(options.storageRoot, contentFilePath);
       const mod = await import(toFileUrl(absPath).href); // lockfile-safe: site-local file; a `file://${...}` template here is rewritten by `deno publish` into a broken relative specifier
-      return (mod.handler ?? null) as Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>> | null;
+      return (mod.handler ?? null) as
+        | Record<string, (req: Request, ctx: ContentHandlerContext) => Response | Promise<Response>>
+        | null;
     }),
 
     // Lazy: summary/excerpt
@@ -183,7 +193,9 @@ export async function loadPage(
         const pParent = dirname(pDir);
         return pParent === myDir && !p.isModule;
       });
-      childPages.sort((a, b) => effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route));
+      childPages.sort((a, b) =>
+        effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route)
+      );
       return Promise.all(childPages.map((c) => options.loadPage(c.sourcePath)));
     }),
 
@@ -193,7 +205,9 @@ export async function loadPage(
         if (p.sourcePath === index.sourcePath) return false;
         return p.parentPath === index.parentPath && !p.isModule;
       });
-      siblingPages.sort((a, b) => effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route));
+      siblingPages.sort((a, b) =>
+        effectiveOrder(a.order) - effectiveOrder(b.order) || a.route.localeCompare(b.route)
+      );
       return Promise.all(siblingPages.map((s) => options.loadPage(s.sourcePath)));
     }),
 
@@ -317,8 +331,7 @@ async function discoverMedia(
     // (permissions failure, KV-storage error, filesystem corruption, etc.) is
     // unexpected and should be surfaced so it doesn't silently corrupt the
     // media list.
-    const isNotFound =
-      err instanceof StorageError && err.message.startsWith("Directory not found");
+    const isNotFound = err instanceof StorageError && err.message.startsWith("Directory not found");
     if (!isNotFound) {
       console.warn(`[dune] discoverMedia: unexpected error for "${sourcePath}": ${err}`);
     }

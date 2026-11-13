@@ -19,11 +19,13 @@ async function withApp(
   const root = await Deno.makeTempDir({ prefix: "dune_test_inline_edit_cap_" });
   try {
     await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-    await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\nHello\n");
+    await Deno.writeTextFile(
+      join(root, "content", "01.home", "default.md"),
+      "---\ntitle: Home\n---\n\nHello\n",
+    );
     const ctx = await bootstrap(root, {
       plugins,
       // deno-lint-ignore no-explicit-any
-      
     });
     const { app } = await createDuneApp(ctx, { root, port: 0, dev: false });
     await fn(app.handler());

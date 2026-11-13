@@ -36,7 +36,8 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
       parseUserYaml,
     },
     rateLimit: {
-      createLimiter: (maxRequests, windowMs, store) => new RateLimiter(maxRequests, windowMs, store),
+      createLimiter: (maxRequests, windowMs, store) =>
+        new RateLimiter(maxRequests, windowMs, store),
       createLocalStore: () => new LocalRateLimitStore(),
     },
     sessions: {
@@ -59,7 +60,8 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
     users: {
       // Writes through this store keep group membership in step with roles[],
       // so a role an admin grants takes effect without a restart.
-      createLocalStore: ({ usersDir }) => withRoleSync(createLocalUserStore({ storage, usersDir }), () => opts.getAuthz?.()),
+      createLocalStore: ({ usersDir }) =>
+        withRoleSync(createLocalUserStore({ storage, usersDir }), () => opts.getAuthz?.()),
     },
     passwords: {
       hash: hashPassword,
@@ -69,7 +71,10 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
     },
     logger,
     engines: {
-      workflow: createWorkflowEngine({ storage, dataDir: runtimeDir }, config.site?.workflow ?? undefined),
+      workflow: createWorkflowEngine(
+        { storage, dataDir: runtimeDir },
+        config.site?.workflow ?? undefined,
+      ),
       scheduler: createScheduler({ storage, dataDir: runtimeDir }),
       staging: createStagingEngine({ storage, runtimeDir }),
     },
@@ -80,14 +85,20 @@ export function createPluginServices(opts: PluginServicesOptions): PluginService
         const bp = all[template];
         return bp ? resolveBlueprint(template, bp, all, 0) : null;
       },
-      validate: (frontmatter, template) => validateFrontmatter(frontmatter, template, opts.getBlueprints?.() ?? {}),
+      validate: (frontmatter, template) =>
+        validateFrontmatter(frontmatter, template, opts.getBlueprints?.() ?? {}),
     },
     search: {
       analytics: {
         enabled: !!opts.searchAnalytics,
         summarize: (limit) =>
           opts.searchAnalytics?.summarize(limit) ??
-            Promise.resolve({ totalSearches: 0, since: null, topQueries: [], zeroResultQueries: [] }),
+            Promise.resolve({
+              totalSearches: 0,
+              since: null,
+              topQueries: [],
+              zeroResultQueries: [],
+            }),
       },
     },
     paths: { dataDir: resolveDataDir(config), runtimeDir },

@@ -7,10 +7,7 @@ import {
   assertInstanceOf,
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  createLocalUserStore,
-  DuplicateEmailError,
-} from "../../src/auth/user-store.ts";
+import { createLocalUserStore, DuplicateEmailError } from "../../src/auth/user-store.ts";
 
 // Minimal in-memory StorageAdapter for tests
 function createMemoryStorage() {
@@ -638,8 +635,7 @@ Deno.test("LocalUserStore: create() throws DuplicateEmailError for an already-us
   });
 
   await assertRejects(
-    () =>
-      store.create({ email: "dup@example.com", provider: "google", roles: [] }),
+    () => store.create({ email: "dup@example.com", provider: "google", roles: [] }),
     DuplicateEmailError,
   );
 });

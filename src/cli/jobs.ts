@@ -33,7 +33,9 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
       console.log(JSON.stringify({ jobs: [] }));
     } else {
       console.log("🏜️  Dune — jobs:list\n");
-      console.log("  No jobs registered. Add a `jobs:` list to site.yaml to enable background jobs.");
+      console.log(
+        "  No jobs registered. Add a `jobs:` list to site.yaml to enable background jobs.",
+      );
     }
     return;
   }
@@ -85,7 +87,11 @@ export async function jobsListCommand(root: string, opts: JobsOptions = {}): Pro
   }
 }
 
-export async function jobsRunCommand(root: string, name: string, opts: JobsOptions = {}): Promise<void> {
+export async function jobsRunCommand(
+  root: string,
+  name: string,
+  opts: JobsOptions = {},
+): Promise<void> {
   root = resolve(root);
 
   if (!name) {
@@ -128,8 +134,13 @@ export async function jobsRunCommand(root: string, name: string, opts: JobsOptio
 
   const emailCfg = (ctx.config as { site?: { email?: Record<string, unknown> } }).site?.email ?? {};
   const emailProvider = createEmailProvider(emailCfg as Parameters<typeof createEmailProvider>[0]);
-  const emailFrom = (emailCfg as { from?: string }).from ?? `noreply@${new URL(ctx.config.site.url).hostname}`;
-  const emailClient = createEmailClient({ provider: emailProvider, from: emailFrom, storage: ctx.storage });
+  const emailFrom = (emailCfg as { from?: string }).from ??
+    `noreply@${new URL(ctx.config.site.url).hostname}`;
+  const emailClient = createEmailClient({
+    provider: emailProvider,
+    from: emailFrom,
+    storage: ctx.storage,
+  });
 
   const jobContext = {
     content: ctx.engine,

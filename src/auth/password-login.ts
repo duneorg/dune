@@ -59,7 +59,10 @@ export interface PasswordLoginDeps {
 }
 
 /** What the handler needs to show the login page again (a 429 renders it in place). */
-export type RenderLogin = (view: { error: LoginError; next: string }, status: number) => Promise<Response>;
+export type RenderLogin = (
+  view: { error: LoginError; next: string },
+  status: number,
+) => Promise<Response>;
 
 function wantsJson(req: Request): boolean {
   return (req.headers.get("content-type") ?? "").toLowerCase().includes("application/json");
@@ -98,7 +101,12 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
   const { userStore, middleware, rateLimitStore, trustForwardedFor } = deps;
   const loginPath = deps.loginPath ?? "/auth/login";
 
-  const fail = (req: Request, error: LoginError, next: string, render?: RenderLogin): Promise<Response> | Response => {
+  const fail = (
+    req: Request,
+    error: LoginError,
+    next: string,
+    render?: RenderLogin,
+  ): Promise<Response> | Response => {
     const status = error === "rate_limited" ? 429 : 401;
     if (wantsJson(req)) {
       return json(
@@ -109,11 +117,14 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
     }
     if (error === "rate_limited") {
       // A redirect cannot carry a 429; show the page in place.
-      return render
-        ? render({ error, next }, 429)
-        : new Response("Too many attempts", { status: 429, headers: { "Retry-After": String(PASSWORD_LOGIN_WINDOW_MS / 1000) } });
+      return render ? render({ error, next }, 429) : new Response("Too many attempts", {
+        status: 429,
+        headers: { "Retry-After": String(PASSWORD_LOGIN_WINDOW_MS / 1000) },
+      });
     }
-    const location = `${loginPath}?error=invalid${next && next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}`;
+    const location = `${loginPath}?error=invalid${
+      next && next !== "/" ? `&next=${encodeURIComponent(next)}` : ""
+    }`;
     return new Response(null, { status: 303, headers: { Location: location } });
   };
 
@@ -130,7 +141,11 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
     // client lock everyone out, so they skip this limit like RateLimiter does; the
     // per-identifier lockout below still applies.
     if (ip !== "unknown") {
-      const ipCheck = await rateLimitStore.check(`pw-login:ip:${ip}`, PASSWORD_LOGIN_IP_LIMIT, PASSWORD_LOGIN_WINDOW_MS);
+      const ipCheck = await rateLimitStore.check(
+        `pw-login:ip:${ip}`,
+        PASSWORD_LOGIN_IP_LIMIT,
+        PASSWORD_LOGIN_WINDOW_MS,
+      );
       if (!ipCheck.allowed) return fail(req, "rate_limited", next, render);
     }
 
@@ -143,7 +158,13 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
 
     const identifier = creds.identifier;
     const accountKey = `pw-login:id:${identifier.toLowerCase()}`;
-    if (await rateLimitStore.isLocked(accountKey, PASSWORD_LOGIN_LOCKOUT_THRESHOLD, PASSWORD_LOGIN_WINDOW_MS)) {
+    if (
+      await rateLimitStore.isLocked(
+        accountKey,
+        PASSWORD_LOGIN_LOCKOUT_THRESHOLD,
+        PASSWORD_LOGIN_WINDOW_MS,
+      )
+    ) {
       return fail(req, "rate_limited", next, render);
     }
 
@@ -154,12 +175,15 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
         ? await userStore.getByEmail(identifier.toLowerCase())
         : await userStore.getByUsername(identifier);
     } catch (err) {
-      logger.error("auth.password.lookup_failed", { error: err instanceof Error ? err.message : String(err) });
+      logger.error("auth.password.lookup_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // Only an enabled local account with a password can sign in this way. Everything
     // else still pays for a full verification, against the dummy hash.
-    const eligible = user !== null && user.enabled && user.provider === "local" && !!user.passwordHash;
+    const eligible = user !== null && user.enabled && user.provider === "local" &&
+      !!user.passwordHash;
     const valid = await verifyPassword(creds.password, eligible ? user!.passwordHash! : DUMMY_HASH);
 
     if (!eligible || !valid) {
@@ -179,7 +203,9 @@ export function createPasswordLogin(deps: PasswordLoginDeps) {
       } catch { /* keep the old hash */ }
     }
     await userStore.update(account.id, patch).catch((err) =>
-      logger.warn("auth.password.update_failed", { error: err instanceof Error ? err.message : String(err) })
+      logger.warn("auth.password.update_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      })
     );
 
     const sessionId = await middleware.createSession(account.id, ip === "unknown" ? undefined : ip);

@@ -11,7 +11,14 @@
 
 /** @module */
 
-import type { DbAdapter, DbFieldDef, DbSchema, FindOptions, Repository, WhereClause } from "./types.ts";
+import type {
+  DbAdapter,
+  DbFieldDef,
+  DbSchema,
+  FindOptions,
+  Repository,
+  WhereClause,
+} from "./types.ts";
 import { KVAdapter } from "./adapters/kv.ts";
 // ---------------------------------------------------------------------------
 // UUID generation
@@ -105,7 +112,9 @@ function buildWhereClause<T>(
         continue;
       }
 
-      if (typeof value === "object" && !Array.isArray(value) && !(value as object instanceof Date)) {
+      if (
+        typeof value === "object" && !Array.isArray(value) && !(value as object instanceof Date)
+      ) {
         const ops = value as Record<string, unknown>;
         for (const [op, opVal] of Object.entries(ops)) {
           const pVal = isDatetime ? toIso(opVal) : opVal;
@@ -177,7 +186,9 @@ function deserialiseRow<T>(row: Record<string, unknown>, fields: DbFieldDef[]): 
   const result: Record<string, unknown> = { ...row };
 
   for (const field of fields) {
-    if (field.type === "datetime" && result[field.name] !== undefined && result[field.name] !== null) {
+    if (
+      field.type === "datetime" && result[field.name] !== undefined && result[field.name] !== null
+    ) {
       result[field.name] = fromIso(result[field.name]);
     }
     if (field.type === "boolean" && typeof result[field.name] === "number") {
@@ -231,7 +242,11 @@ function writableEntries(
   );
 }
 
-function injectDefaults(data: Record<string, unknown>, fields: DbFieldDef[], isCreate: boolean): Record<string, unknown> {
+function injectDefaults(
+  data: Record<string, unknown>,
+  fields: DbFieldDef[],
+  isCreate: boolean,
+): Record<string, unknown> {
   const result = { ...data };
   for (const field of fields) {
     if (isCreate && result[field.name] === undefined && field.default !== undefined) {
@@ -288,26 +303,42 @@ function matchesWhere<T extends Record<string, unknown>>(
         for (const [op, opVal] of Object.entries(ops)) {
           switch (op) {
             case "$gt": {
-              const a = datetimeFields.has(key) ? new Date(recVal as string).getTime() : Number(recVal);
-              const b = datetimeFields.has(key) ? new Date(opVal as string).getTime() : Number(opVal);
+              const a = datetimeFields.has(key)
+                ? new Date(recVal as string).getTime()
+                : Number(recVal);
+              const b = datetimeFields.has(key)
+                ? new Date(opVal as string).getTime()
+                : Number(opVal);
               if (!(a > b)) return false;
               break;
             }
             case "$lt": {
-              const a = datetimeFields.has(key) ? new Date(recVal as string).getTime() : Number(recVal);
-              const b = datetimeFields.has(key) ? new Date(opVal as string).getTime() : Number(opVal);
+              const a = datetimeFields.has(key)
+                ? new Date(recVal as string).getTime()
+                : Number(recVal);
+              const b = datetimeFields.has(key)
+                ? new Date(opVal as string).getTime()
+                : Number(opVal);
               if (!(a < b)) return false;
               break;
             }
             case "$gte": {
-              const a = datetimeFields.has(key) ? new Date(recVal as string).getTime() : Number(recVal);
-              const b = datetimeFields.has(key) ? new Date(opVal as string).getTime() : Number(opVal);
+              const a = datetimeFields.has(key)
+                ? new Date(recVal as string).getTime()
+                : Number(recVal);
+              const b = datetimeFields.has(key)
+                ? new Date(opVal as string).getTime()
+                : Number(opVal);
               if (!(a >= b)) return false;
               break;
             }
             case "$lte": {
-              const a = datetimeFields.has(key) ? new Date(recVal as string).getTime() : Number(recVal);
-              const b = datetimeFields.has(key) ? new Date(opVal as string).getTime() : Number(opVal);
+              const a = datetimeFields.has(key)
+                ? new Date(recVal as string).getTime()
+                : Number(recVal);
+              const b = datetimeFields.has(key)
+                ? new Date(opVal as string).getTime()
+                : Number(opVal);
               if (!(a <= b)) return false;
               break;
             }
@@ -414,7 +445,10 @@ function createSqlRepository<T, TCreate, TUpdate>(
       const id = generateId();
       const withDefaults = injectDefaults(data as Record<string, unknown>, fields, true);
 
-      const columns = ["id", ...fields.map((f) => f.name).filter((n) => withDefaults[n] !== undefined)];
+      const columns = [
+        "id",
+        ...fields.map((f) => f.name).filter((n) => withDefaults[n] !== undefined),
+      ];
       const values = columns.map((c) => {
         if (c === "id") return id;
         const field = fields.find((f) => f.name === c)!;
@@ -520,7 +554,10 @@ function createSqlRepository<T, TCreate, TUpdate>(
         } else {
           // Insert new row
           const id = generateId();
-          const columns = ["id", ...fields.map((f) => f.name).filter((n) => withDefaults[n] !== undefined)];
+          const columns = [
+            "id",
+            ...fields.map((f) => f.name).filter((n) => withDefaults[n] !== undefined),
+          ];
           const values = columns.map((c) => {
             if (c === "id") return id;
             const field = fields.find((f) => f.name === c)!;
@@ -588,7 +625,9 @@ function createKvRepository<T, TCreate, TUpdate>(
       let records = all.map(({ id, record }) => kvRecordToT(id, record));
 
       if (opts?.where) {
-        records = records.filter((r) => matchesWhere(r as Record<string, unknown>, opts.where!, fields));
+        records = records.filter((r) =>
+          matchesWhere(r as Record<string, unknown>, opts.where!, fields)
+        );
       }
 
       if (opts?.orderBy) {
@@ -597,8 +636,18 @@ function createKvRepository<T, TCreate, TUpdate>(
           : [opts.orderBy as string, "asc" as const];
 
         records.sort((a, b) => {
-          const av = (a as Record<string, unknown>)[col] as string | number | boolean | null | undefined;
-          const bv = (b as Record<string, unknown>)[col] as string | number | boolean | null | undefined;
+          const av = (a as Record<string, unknown>)[col] as
+            | string
+            | number
+            | boolean
+            | null
+            | undefined;
+          const bv = (b as Record<string, unknown>)[col] as
+            | string
+            | number
+            | boolean
+            | null
+            | undefined;
           const cmp = (av ?? "") < (bv ?? "") ? -1 : (av ?? "") > (bv ?? "") ? 1 : 0;
           return dir === "desc" ? -cmp : cmp;
         });

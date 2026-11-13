@@ -13,8 +13,7 @@ import type { DbAdapter } from "../types.ts";
 // Dynamic import so the module can be loaded on non-SQLite environments
 // without hard errors.  We type it loosely and assert at runtime.
 
-let _DatabaseClass: typeof import("jsr:@db/sqlite@^0.12").Database | null =
-  null;
+let _DatabaseClass: typeof import("jsr:@db/sqlite@^0.12").Database | null = null;
 
 async function getDatabaseClass(): Promise<
   typeof import("jsr:@db/sqlite@^0.12").Database

@@ -47,10 +47,15 @@ for await (const entry of walk(srcDir, { exts: [".ts", ".tsx"], skip: [/node_mod
     const lineIndex = src.slice(0, match.index).split("\n").length - 1;
     const lineText = lines[lineIndex] ?? "";
 
-    if (/^`file:/.test(arg) && !lineText.trimStart().startsWith("//") && !lineText.trimStart().startsWith("*")) {
+    if (
+      /^`file:/.test(arg) && !lineText.trimStart().startsWith("//") &&
+      !lineText.trimStart().startsWith("*")
+    ) {
       console.error(
-        `src/${relative(srcDir, entry.path)}:${lineIndex + 1}: template-literal file: import() is rewritten by \`deno publish\` into a broken relative specifier: import(${arg})\n` +
-        `  Use import(toFileUrl(absPath).href) (from @std/path) instead.`,
+        `src/${relative(srcDir, entry.path)}:${
+          lineIndex + 1
+        }: template-literal file: import() is rewritten by \`deno publish\` into a broken relative specifier: import(${arg})\n` +
+          `  Use import(toFileUrl(absPath).href) (from @std/path) instead.`,
       );
       violations++;
       continue;
@@ -68,8 +73,10 @@ for await (const entry of walk(srcDir, { exts: [".ts", ".tsx"], skip: [/node_mod
 
     const rel = relative(srcDir, entry.path);
     console.error(
-      `src/${rel}:${lineIndex + 1}: non-literal import() may escape lockfile graph: import(${arg})\n` +
-      `  Add \`// lockfile-safe: <reason>\` if this is intentional (site-local / discovery / constant).`,
+      `src/${rel}:${
+        lineIndex + 1
+      }: non-literal import() may escape lockfile graph: import(${arg})\n` +
+        `  Add \`// lockfile-safe: <reason>\` if this is intentional (site-local / discovery / constant).`,
     );
     violations++;
   }

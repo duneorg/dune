@@ -42,22 +42,45 @@ export interface ValidateFinding {
 // ── Skills check constants ────────────────────────────────────────────────────
 
 const VALID_HOOK_EVENTS = new Set([
-  "onConfigLoaded", "onStorageReady", "onContentIndexReady",
-  "onRequest", "onCollectionResolved",
+  "onConfigLoaded",
+  "onStorageReady",
+  "onContentIndexReady",
+  "onRequest",
+  "onCollectionResolved",
   "onBeforeRender",
-  "onMarkdownProcess", "onMarkdownProcessed", "onMediaDiscovered",
-  "onCacheHit", "onCacheMiss", "onCacheInvalidate",
-  "onApiRequest", "onApiResponse",
-  "onRebuild", "onThemeSwitch",
-  "onPageCreate", "onPageUpdate", "onPageDelete", "onPageMove", "onWorkflowChange",
+  "onMarkdownProcess",
+  "onMarkdownProcessed",
+  "onMediaDiscovered",
+  "onCacheHit",
+  "onCacheMiss",
+  "onCacheInvalidate",
+  "onApiRequest",
+  "onApiResponse",
+  "onRebuild",
+  "onThemeSwitch",
+  "onPageCreate",
+  "onPageUpdate",
+  "onPageDelete",
+  "onPageMove",
+  "onWorkflowChange",
 ]);
 
 const VALID_PERMISSIONS = new Set([
-  "pages.create", "pages.read", "pages.update", "pages.delete",
-  "media.upload", "media.read", "media.delete",
-  "users.create", "users.read", "users.update", "users.delete",
-  "config.read", "config.update",
-  "submissions.read", "submissions.delete",
+  "pages.create",
+  "pages.read",
+  "pages.update",
+  "pages.delete",
+  "media.upload",
+  "media.read",
+  "media.delete",
+  "users.create",
+  "users.read",
+  "users.update",
+  "users.delete",
+  "config.read",
+  "config.update",
+  "submissions.read",
+  "submissions.delete",
 ]);
 
 /**
@@ -166,7 +189,8 @@ async function checkSkills(
         skillFindings.push({
           category: "skills",
           severity: "warning",
-          message: `Unknown permission "${perm}" — not in AdminPermission union (may be a future API)`,
+          message:
+            `Unknown permission "${perm}" — not in AdminPermission union (may be a future API)`,
           source: rel,
         });
         findings.push(skillFindings.at(-1)!);
@@ -178,7 +202,9 @@ async function checkSkills(
     if (skillFindings.length === 0) {
       console.log(`  ✅ Skills valid (${files.length} file(s) checked)`);
     } else {
-      console.log(`  ⚠️  Skills: ${skillFindings.length} warning(s) across ${files.length} file(s)`);
+      console.log(
+        `  ⚠️  Skills: ${skillFindings.length} warning(s) across ${files.length} file(s)`,
+      );
       for (const f of skillFindings) {
         console.log(`     ⚠ ${f.source}: ${f.message}`);
       }
@@ -236,7 +262,8 @@ export async function validateCommand(
     ) {
       // jsr:@scope/name@^1.2.0 — must contain @<version>
       // npm:package@^1.2.0 — must contain @<version> (after the package name)
-      const hasVersion = src.startsWith("https://") || /[@^~][\d*]/.test(src.slice(src.lastIndexOf("/") + 1));
+      const hasVersion = src.startsWith("https://") ||
+        /[@^~][\d*]/.test(src.slice(src.lastIndexOf("/") + 1));
       if (!hasVersion) {
         unpinned.push(src);
         findings.push({
@@ -321,7 +348,9 @@ export async function validateCommand(
       } else {
         console.log(`  ❌ Templates: ${missingTemplates.length} missing`);
         for (const t of missingTemplates) {
-          console.log(`     ✗ "${t}" not found in ${themeName}'s theme chain (checked ${themeDir}/ and any parent themes)`);
+          console.log(
+            `     ✗ "${t}" not found in ${themeName}'s theme chain (checked ${themeDir}/ and any parent themes)`,
+          );
         }
       }
     }

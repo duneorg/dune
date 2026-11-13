@@ -276,9 +276,7 @@ export function createCollectionEngine(
       ? withSlash.slice(0, -1)
       : withSlash;
     return pages.find((p) => {
-      const pRoute = p.route.length > 1 && p.route.endsWith("/")
-        ? p.route.slice(0, -1)
-        : p.route;
+      const pRoute = p.route.length > 1 && p.route.endsWith("/") ? p.route.slice(0, -1) : p.route;
       return pRoute === normalized;
     });
   }
@@ -367,9 +365,7 @@ export function createCollectionEngine(
       }
       // Template filter
       if (filter.template) {
-        const templates = Array.isArray(filter.template)
-          ? filter.template
-          : [filter.template];
+        const templates = Array.isArray(filter.template) ? filter.template : [filter.template];
         if (!templates.includes(page.template)) return false;
       }
       // Taxonomy filter
@@ -457,9 +453,7 @@ export function createCollectionEngine(
       // unrelated offset/limit frontmatter fields — otherwise every page
       // renders the same items while page/pages/hasNext/hasPrev report as
       // if slicing had happened.
-      const pageSize = typeof definition.pagination === "object"
-        ? definition.pagination.size
-        : 10;
+      const pageSize = typeof definition.pagination === "object" ? definition.pagination.size : 10;
       totalPages = Math.max(1, Math.ceil(total / pageSize));
       pageNum = Math.min(Math.max(1, requestedPage), totalPages);
       offset = (pageNum - 1) * pageSize;
@@ -483,7 +477,7 @@ export function createCollectionEngine(
     if (!flex) {
       throw new Error(
         `Collection source "@flex" requires a Flex engine. ` +
-        `Pass flex to createCollectionEngine options.`,
+          `Pass flex to createCollectionEngine options.`,
       );
     }
     const records = await flex.list(flexType);
@@ -596,9 +590,7 @@ export function createCollectionEngine(
 function flexRecordToPage(record: FlexRecord, type: string): Page {
   const { _id, _type, _createdAt, _updatedAt, ...userFields } = record;
   const title = String((userFields.name ?? userFields.title ?? _id) as string);
-  const date = _createdAt
-    ? new Date(_createdAt).toISOString().split("T")[0]
-    : null;
+  const date = _createdAt ? new Date(_createdAt).toISOString().split("T")[0] : null;
 
   const frontmatter: PageFrontmatter = {
     title,
@@ -653,7 +645,9 @@ function createCollectionObject(
     // across concurrent collection loads. Templates can then read item.excerpt
     // synchronously without any async calls in JSX.
     await Promise.all(
-      pages.map(async (p) => { p.excerpt = await p.summary(); }),
+      pages.map(async (p) => {
+        p.excerpt = await p.summary();
+      }),
     );
     loadedItems = pages;
     return loadedItems;
@@ -707,7 +701,7 @@ function createCollectionObject(
       if (!loadedItems) {
         console.warn(
           "[dune] collection.filter() called before items were loaded. " +
-          "Call `await collection.load()` first to populate items.",
+            "Call `await collection.load()` first to populate items.",
         );
         return createCollectionObject([], 0, 1, 1, loadPage);
       }

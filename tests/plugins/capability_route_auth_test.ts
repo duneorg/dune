@@ -24,7 +24,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_capability_route_auth_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
 
       // Registered (and mounted) first, like a site-configured plugin.
       const userPlugin: DunePlugin = {
@@ -50,7 +53,9 @@ Deno.test(
             authenticate(req) {
               const name = req.headers.get("x-test-admin");
               return Promise.resolve(
-                name ? { authenticated: true, user: { id: name, username: name } } : { authenticated: false },
+                name
+                  ? { authenticated: true, user: { id: name, username: name } }
+                  : { authenticated: false },
               );
             },
           }));
@@ -60,14 +65,15 @@ Deno.test(
       const ctx = await bootstrap(root, {
         plugins: [userPlugin, authProvider],
         // deno-lint-ignore no-explicit-any
-        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();
       await mountPlugins(app, ctx);
       const handler = app.handler();
 
-      const signedIn = await handler(new Request("http://localhost:8000/who", { headers: { "x-test-admin": "alice" } }));
+      const signedIn = await handler(
+        new Request("http://localhost:8000/who", { headers: { "x-test-admin": "alice" } }),
+      );
       assertEquals(await signedIn.text(), "alice");
       const anonymous = await handler(new Request("http://localhost:8000/who"));
       assertEquals(await anonymous.text(), "anonymous");
@@ -84,7 +90,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_capability_route_auth_none_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
       const userPlugin: DunePlugin = {
         name: "test-user-plugin",
         version: "1.0.0",
@@ -92,14 +101,15 @@ Deno.test(
         mount({ app, capabilities }) {
           app.get("/who", (fc) => {
             void fc;
-            return new Response(capabilities.get("editor.session") ? "has-provider" : "no-provider");
+            return new Response(
+              capabilities.get("editor.session") ? "has-provider" : "no-provider",
+            );
           });
         },
       };
       const ctx = await bootstrap(root, {
         plugins: [userPlugin],
         // deno-lint-ignore no-explicit-any
-        
       });
       // deno-lint-ignore no-explicit-any
       const app = new App<any>();

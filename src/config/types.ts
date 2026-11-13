@@ -13,9 +13,9 @@
 export type { Role } from "./role.ts";
 
 export type {
-  FormsConfig,
-  FormNotificationsConfig,
   FormEmailNotificationConfig,
+  FormNotificationsConfig,
+  FormsConfig,
   IncomingWebhookConfig,
   WebhookNotificationConfig,
 } from "./forms-config.ts";
@@ -27,23 +27,23 @@ export type {
 } from "./site-config.ts";
 
 export type {
+  ConfigSource,
+  /** Top-level structure of `config/sites.yaml`. Present only when running in multi-site mode. */
+  MultisiteConfig,
+  /** One site entry in `config/sites.yaml`. A single Dune installation can serve multiple independent sites. */
+  SiteEntry,
   /** System-level configuration (engine behavior) */
   SystemConfig,
   /** Theme configuration */
   ThemeConfig,
-  ConfigSource,
-  /** One site entry in `config/sites.yaml`. A single Dune installation can serve multiple independent sites. */
-  SiteEntry,
-  /** Top-level structure of `config/sites.yaml`. Present only when running in multi-site mode. */
-  MultisiteConfig,
 } from "./system-config.ts";
 
 export type {
-  /** A plugin entry in `site.yaml`'s `plugins:` list. */
-  PluginEntry,
-  ThemePackageEntry,
   /** Top-level Dune configuration (result of merging all config sources) */
   DuneConfig,
+  /** A plugin entry in `site.yaml`'s `plugins:` list. */
+  PluginEntry,
   /** The slice of the configuration a theme template may rely on. */
   TemplateConfig,
+  ThemePackageEntry,
 } from "./dune-config.ts";

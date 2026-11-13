@@ -19,14 +19,20 @@ Deno.test(
     const reportPath = join(root, "report.json");
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
 
       const good: DunePlugin = {
         name: "good-admin",
         version: "1.0.0",
         hooks: {},
         setup(api) {
-          api.capabilities.provide("editor.session", () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }));
+          api.capabilities.provide(
+            "editor.session",
+            () => ({ authenticate: () => Promise.resolve({ authenticated: false }) }),
+          );
         },
       };
       const broken: DunePlugin = {
@@ -46,7 +52,9 @@ Deno.test(
       await mountPlugins(new App<any>(), ctx);
 
       const report = JSON.parse(await Deno.readTextFile(reportPath)) as DoctorReport;
-      const bySlot = Object.fromEntries(report.providers.map((p) => [p.name, `${p.provider}:${p.status}`]));
+      const bySlot = Object.fromEntries(
+        report.providers.map((p) => [p.name, `${p.provider}:${p.status}`]),
+      );
       assertEquals(bySlot["editor.session"], "good-admin:active");
       assertEquals(bySlot["scheduler.executor"], "broken-executor:failed");
       assertEquals(report.scheduledActions, 0);

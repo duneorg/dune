@@ -5,7 +5,10 @@ import type { CapabilityContext } from "../../src/plugin-api/capabilities.ts";
 import type { ScheduledAction } from "../../src/workflow/types.ts";
 
 function fakeScheduler() {
-  const calls = { started: 0, handler: undefined as ((a: ScheduledAction) => Promise<void>) | undefined };
+  const calls = {
+    started: 0,
+    handler: undefined as ((a: ScheduledAction) => Promise<void>) | undefined,
+  };
   return {
     calls,
     scheduler: {
@@ -49,6 +52,13 @@ Deno.test("startScheduledActions: a provider's executor runs the actions core's 
 
   assertEquals(started, true);
   assertEquals(calls.started, 1);
-  await calls.handler!({ id: "act-1", action: "publish", sourcePath: "content/a.md", scheduledAt: 0 } as ScheduledAction);
+  await calls.handler!(
+    {
+      id: "act-1",
+      action: "publish",
+      sourcePath: "content/a.md",
+      scheduledAt: 0,
+    } as ScheduledAction,
+  );
   assertEquals(executed, ["act-1"]);
 });

@@ -32,7 +32,9 @@ export function createKVSessionStore(config: KVSessionStoreConfig): SessionStore
   const ns: string[] = config.prefix ? [config.prefix] : [];
   const sKey = (id: string): Deno.KvKey => [...ns, "sessions", id];
   const uKey = (userId: string, id?: string): Deno.KvKey =>
-    id === undefined ? [...ns, "sessions_by_user", userId] : [...ns, "sessions_by_user", userId, id];
+    id === undefined
+      ? [...ns, "sessions_by_user", userId]
+      : [...ns, "sessions_by_user", userId, id];
 
   async function get(id: string): Promise<Session | null> {
     const result = await kv.get<Session>(sKey(id));

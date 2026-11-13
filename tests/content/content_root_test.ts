@@ -10,10 +10,7 @@ import {
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { FileSystemAdapter } from "../../src/storage/fs.ts";
-import {
-  createContentStorage,
-  resolveContentDirPath,
-} from "../../src/content/content-root.ts";
+import { createContentStorage, resolveContentDirPath } from "../../src/content/content-root.ts";
 
 const SITE_DIR = join(Deno.cwd(), ".dune-test-content-root-site");
 const EXTERNAL_DIR = join(Deno.cwd(), ".dune-test-content-root-external");
@@ -63,7 +60,10 @@ Deno.test("createContentStorage: unset src is a passthrough to site storage", ()
 Deno.test("createContentStorage: src set returns a separate storage rooted at the external path, contentDir '.'", async () => {
   try {
     await ensureDir(join(EXTERNAL_DIR, "01.home"));
-    await Deno.writeTextFile(join(EXTERNAL_DIR, "01.home", "default.md"), "---\ntitle: Home\n---\n");
+    await Deno.writeTextFile(
+      join(EXTERNAL_DIR, "01.home", "default.md"),
+      "---\ntitle: Home\n---\n",
+    );
 
     const siteStorage = new FileSystemAdapter(SITE_DIR);
     const { storage, contentDir } = createContentStorage(

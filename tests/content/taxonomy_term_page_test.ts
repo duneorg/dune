@@ -88,14 +88,16 @@ async function buildTestIndex(files: Record<string, string>) {
 
 Deno.test("termPageFor: string form normalises to { tag: value }", async () => {
   const { pages } = await buildTestIndex({
-    "content/dossiers/ewr.md": `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: true\n---\nEWR body`,
+    "content/dossiers/ewr.md":
+      `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: true\n---\nEWR body`,
   });
   assertEquals(pages[0].termPageFor, { tag: "ewr" });
 });
 
 Deno.test("termPageFor: object form passes through as-is", async () => {
   const { pages } = await buildTestIndex({
-    "content/dossiers/politics.md": `---\nslug: politics\ntitle: Politics\ntermPageFor:\n  category: politics\npublished: true\n---`,
+    "content/dossiers/politics.md":
+      `---\nslug: politics\ntitle: Politics\ntermPageFor:\n  category: politics\npublished: true\n---`,
   });
   assertEquals(pages[0].termPageFor, { category: "politics" });
 });
@@ -109,7 +111,8 @@ Deno.test("termPageFor: absent frontmatter key → undefined in PageIndex", asyn
 
 Deno.test("termPageFor: empty string → undefined", async () => {
   const { pages } = await buildTestIndex({
-    "content/dossiers/empty.md": `---\nslug: empty\ntitle: Empty\ntermPageFor: ""\npublished: true\n---`,
+    "content/dossiers/empty.md":
+      `---\nslug: empty\ntitle: Empty\ntermPageFor: ""\npublished: true\n---`,
   });
   assertEquals(pages[0].termPageFor, undefined);
 });
@@ -118,8 +121,10 @@ Deno.test("termPageFor: empty string → undefined", async () => {
 
 Deno.test("taxonomy(): pageRoute set when a termPageFor page exists for that tag", async () => {
   const { pages, taxonomyMap } = await buildTestIndex({
-    "content/dossiers/ewr.md": `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: true\ntaxonomy:\n  tag: []\n---`,
-    "content/articles/an-article.md": `---\nslug: an-article\ntitle: An Article\npublished: true\ntaxonomy:\n  tag: [ewr]\n---`,
+    "content/dossiers/ewr.md":
+      `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: true\ntaxonomy:\n  tag: []\n---`,
+    "content/articles/an-article.md":
+      `---\nslug: an-article\ntitle: An Article\npublished: true\ntaxonomy:\n  tag: [ewr]\n---`,
   });
 
   // Build a minimal taxonomy engine + content API to test the API layer
@@ -128,7 +133,7 @@ Deno.test("taxonomy(): pageRoute set when a termPageFor page exists for that tag
   const valueMap = taxEngine.values("tag");
   const terms = Object.entries(valueMap).map(([value, count]) => {
     const termPageRoute = pages.find(
-      (p) => p.published && p.termPageFor?.["tag"] === value
+      (p) => p.published && p.termPageFor?.["tag"] === value,
     )?.route ?? null;
     return { name: value, slug: value, count, pageRoute: termPageRoute };
   });
@@ -141,7 +146,8 @@ Deno.test("taxonomy(): pageRoute set when a termPageFor page exists for that tag
 
 Deno.test("taxonomy(): pageRoute is null when no termPageFor page exists", async () => {
   const { pages, taxonomyMap } = await buildTestIndex({
-    "content/articles/an-article.md": `---\nslug: an-article\ntitle: Article\npublished: true\ntaxonomy:\n  tag: [demokratie]\n---`,
+    "content/articles/an-article.md":
+      `---\nslug: an-article\ntitle: Article\npublished: true\ntaxonomy:\n  tag: [demokratie]\n---`,
   });
 
   const { createTaxonomyEngine } = await import("../../src/taxonomy/engine.ts");
@@ -149,7 +155,7 @@ Deno.test("taxonomy(): pageRoute is null when no termPageFor page exists", async
   const valueMap = taxEngine.values("tag");
   const terms = Object.entries(valueMap).map(([value, count]) => {
     const termPageRoute = pages.find(
-      (p) => p.published && p.termPageFor?.["tag"] === value
+      (p) => p.published && p.termPageFor?.["tag"] === value,
     )?.route ?? null;
     return { name: value, count, pageRoute: termPageRoute };
   });
@@ -163,7 +169,8 @@ Deno.test("taxonomy(): pageRoute is null when no termPageFor page exists", async
 
 Deno.test("termPageFor: multi-vocab object — only the declared vocab is indexed", async () => {
   const { pages } = await buildTestIndex({
-    "content/dossiers/politics.md": `---\nslug: politics\ntitle: Politics\ntermPageFor:\n  category: politics\npublished: true\n---`,
+    "content/dossiers/politics.md":
+      `---\nslug: politics\ntitle: Politics\ntermPageFor:\n  category: politics\npublished: true\n---`,
   });
   const page = pages[0];
   // "category" is set
@@ -176,7 +183,8 @@ Deno.test("termPageFor: multi-vocab object — only the declared vocab is indexe
 
 Deno.test("termPageFor: unpublished term page is indexed but API should filter it", async () => {
   const { pages } = await buildTestIndex({
-    "content/dossiers/ewr.md": `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: false\n---`,
+    "content/dossiers/ewr.md":
+      `---\nslug: ewr\ntitle: EWR\ntermPageFor: ewr\npublished: false\n---`,
   });
   // PageIndex still has the field (the index records it)
   const page = pages[0];

@@ -7,7 +7,14 @@
  *   → Did you mean: ["category", "tag"]?
  */
 
-import type { DuneConfig, PluginEntry, SiteConfig, SystemConfig, ThemeConfig, ThemePackageEntry } from "./types.ts";
+import type {
+  DuneConfig,
+  PluginEntry,
+  SiteConfig,
+  SystemConfig,
+  ThemeConfig,
+  ThemePackageEntry,
+} from "./types.ts";
 import { roleGrantProblems } from "../auth/role-grants.ts";
 import { isValidLoginPath } from "../auth/gating.ts";
 import {
@@ -83,7 +90,9 @@ function validateSite(site: SiteConfig, errors: ValidationError[]): void {
       message: "must be an array of strings",
       got: site.taxonomies,
       suggestion: typeof site.taxonomies === "string"
-        ? `Did you mean: ${JSON.stringify((site.taxonomies as string).split(/[,\s]+/).filter(Boolean))}?`
+        ? `Did you mean: ${
+          JSON.stringify((site.taxonomies as string).split(/[,\s]+/).filter(Boolean))
+        }?`
         : undefined,
     });
   } else {
@@ -310,7 +319,11 @@ function validateThemeList(
       seen.add(entry.name);
     }
     if (typeof entry.src !== "string" || !entry.src.trim()) {
-      errors.push({ path: `${base}.src`, message: "must be a non-empty package specifier", got: entry.src });
+      errors.push({
+        path: `${base}.src`,
+        message: "must be a non-empty package specifier",
+        got: entry.src,
+      });
     } else if (isRemoteThemeSpecifier(entry.src)) {
       try {
         assertPinnedThemeSpecifier(entry.src);
@@ -364,7 +377,11 @@ function validatePluginList(
       continue;
     }
     if (typeof entry.src !== "string" || !entry.src.trim()) {
-      errors.push({ path: `${base}.src`, message: "must be a non-empty package specifier", got: entry.src });
+      errors.push({
+        path: `${base}.src`,
+        message: "must be a non-empty package specifier",
+        got: entry.src,
+      });
     } else if (isRemotePluginSpecifier(entry.src)) {
       try {
         assertPinnedPluginSpecifier(entry.src);

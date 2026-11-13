@@ -1,9 +1,6 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
-import {
-  isRemoteIslandSpec,
-  materializeRemoteIslands,
-} from "../../src/cli/remote-islands.ts";
+import { isRemoteIslandSpec, materializeRemoteIslands } from "../../src/cli/remote-islands.ts";
 
 Deno.test("isRemoteIslandSpec: classifies specifiers", () => {
   assert(isRemoteIslandSpec("https://jsr.io/@dune/core/0.18.1/src/admin/islands/X.tsx"));

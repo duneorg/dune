@@ -25,12 +25,7 @@ import matter from "gray-matter";
 import { dirname, join, SEPARATOR as SEP, toFileUrl } from "@std/path";
 import { h } from "preact";
 import { render } from "preact-render-to-string";
-import type {
-  ContentFormatHandler,
-  Page,
-  PageFrontmatter,
-  RenderContext,
-} from "../types.ts";
+import type { ContentFormatHandler, Page, PageFrontmatter, RenderContext } from "../types.ts";
 import type { MdxComponentRegistry, MdxSanitizeExtension } from "./mdx-components.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
 import { logger } from "../../core/logger.ts";
@@ -212,10 +207,11 @@ export class MdxHandler implements ContentFormatHandler {
       const isProd = !Deno.env.get("DUNE_DEV");
       const safeMessage = isProd ? sanitizeMdxError(message) : message;
       logger.error("mdx.render_failed", { sourcePath: page.sourcePath, reason: safeMessage });
-      return `<div class="${MDX_ERROR_CLASS}"><p><strong>MDX Error:</strong> ${escapeHtml(sanitizeMdxError(message))}</p></div>`;
+      return `<div class="${MDX_ERROR_CLASS}"><p><strong>MDX Error:</strong> ${
+        escapeHtml(sanitizeMdxError(message))
+      }</p></div>`;
     }
   }
-
 }
 
 /**

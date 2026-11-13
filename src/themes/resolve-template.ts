@@ -13,7 +13,7 @@
  * safe. Nested components (including the `Layout` a template renders) must
  * stay synchronous.
  */
-import { h, type ComponentType, type VNode } from "preact";
+import { type ComponentType, h, type VNode } from "preact";
 
 const AsyncFunction = (async () => {}).constructor;
 

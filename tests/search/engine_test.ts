@@ -40,7 +40,9 @@ function makeFormats(bodyMap: Record<string, string> = {}): FormatRegistry {
 }
 
 /** Minimal published + routable PageIndex */
-function makePage(overrides: Partial<PageIndex> & { title: string; sourcePath: string }): PageIndex {
+function makePage(
+  overrides: Partial<PageIndex> & { title: string; sourcePath: string },
+): PageIndex {
   return {
     route: "/" + overrides.sourcePath.replace(/\/default\.md$/, "").replace(/^\d+\./, ""),
     language: "en",
@@ -235,8 +237,9 @@ Deno.test("search: results sorted by score descending", async () => {
 });
 
 Deno.test("search: limit parameter restricts result count", async () => {
-  const pages = Array.from({ length: 5 }, (_, i) =>
-    makePage({ title: `Page ${i}`, sourcePath: `0${i + 1}.page/default.md` })
+  const pages = Array.from(
+    { length: 5 },
+    (_, i) => makePage({ title: `Page ${i}`, sourcePath: `0${i + 1}.page/default.md` }),
   );
   const engine = createSearchEngine({
     pages,
@@ -381,8 +384,9 @@ Deno.test("search.suggest: returns empty for short prefix", async () => {
 });
 
 Deno.test("search.suggest: respects limit", async () => {
-  const pages = Array.from({ length: 10 }, (_, i) =>
-    makePage({ title: `Term${i} article`, sourcePath: `0${i}.t/default.md` })
+  const pages = Array.from(
+    { length: 10 },
+    (_, i) => makePage({ title: `Term${i} article`, sourcePath: `0${i}.t/default.md` }),
   );
   const engine = createSearchEngine({
     pages,

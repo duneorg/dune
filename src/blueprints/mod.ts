@@ -15,4 +15,4 @@ export type {
 } from "./types.ts";
 
 export { loadBlueprints } from "./loader.ts";
-export { validateFrontmatter, resolveBlueprint } from "./validator.ts";
+export { resolveBlueprint, validateFrontmatter } from "./validator.ts";

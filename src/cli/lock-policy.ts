@@ -124,9 +124,7 @@ export async function computeLockPolicy(
 
 /** Render the policy as Deno CLI flags for a re-exec child's args list. */
 export function lockPolicyToArgs(policy: LockPolicy): string[] {
-  return policy.mode === "frozen"
-    ? [`--lock=${policy.lockPath}`, "--frozen"]
-    : ["--no-lock"];
+  return policy.mode === "frozen" ? [`--lock=${policy.lockPath}`, "--frozen"] : ["--no-lock"];
 }
 
 /**

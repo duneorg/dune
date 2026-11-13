@@ -7,13 +7,26 @@
  */
 
 import type { StorageAdapter } from "../storage/types.ts";
-import type { BlueprintDefinition, BlueprintField, BlueprintFieldType, BlueprintMap } from "./types.ts";
+import type {
+  BlueprintDefinition,
+  BlueprintField,
+  BlueprintFieldType,
+  BlueprintMap,
+} from "./types.ts";
 import { logger } from "../core/logger.ts";
 
 /** Valid field types — used for YAML parsing validation. */
 const VALID_TYPES = new Set<BlueprintFieldType>([
-  "text", "textarea", "markdown", "number", "toggle",
-  "date", "select", "list", "file", "color",
+  "text",
+  "textarea",
+  "markdown",
+  "number",
+  "toggle",
+  "date",
+  "select",
+  "list",
+  "file",
+  "color",
 ]);
 
 /**

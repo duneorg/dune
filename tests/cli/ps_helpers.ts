@@ -36,7 +36,8 @@ export async function stop(child: Deno.ChildProcess): Promise<void> {
   await child.status.catch(() => {});
 }
 
-export const SERVER = (port: number) => `Deno.serve({ port: ${port}, onListen: () => {} }, () => new Response("ok"));\n`;
+export const SERVER = (port: number) =>
+  `Deno.serve({ port: ${port}, onListen: () => {} }, () => new Response("ok"));\n`;
 
 export async function makeSite(prefix: string, title: string): Promise<string> {
   const dir = await Deno.makeTempDir({ prefix });
@@ -56,9 +57,14 @@ export function spawnDeno(args: string[], cwd: string): Deno.ChildProcess {
 }
 
 /** A `deno task serve` wrapper around `deno run -A main.ts serve`: two processes, one instance. */
-export async function startTaskTree(port: number): Promise<{ site: string; child: Deno.ChildProcess }> {
+export async function startTaskTree(
+  port: number,
+): Promise<{ site: string; child: Deno.ChildProcess }> {
   const site = await makeSite("dune_test_ps_tree_", "Tree Site");
-  await Deno.writeTextFile(join(site, "deno.json"), JSON.stringify({ tasks: { serve: "deno run -A main.ts serve" } }));
+  await Deno.writeTextFile(
+    join(site, "deno.json"),
+    JSON.stringify({ tasks: { serve: "deno run -A main.ts serve" } }),
+  );
   await Deno.writeTextFile(join(site, "main.ts"), SERVER(port) + `await new Promise(() => {});\n`);
   const child = spawnDeno(["task", "serve"], site);
   await waitForPort(port);
@@ -85,10 +91,13 @@ export function fakeInstance(overrides: Partial<DuneInstance> = {}): DuneInstanc
   };
 }
 
-
 /** Start times of real processes, in the form `findDuneInstances` records them. */
 export async function realStartTimes(pids: number[]): Promise<Record<number, string>> {
-  const out = await new Deno.Command("ps", { args: ["-o", "pid=,lstart=", "-p", pids.join(",")], stdout: "piped", stderr: "null" })
+  const out = await new Deno.Command("ps", {
+    args: ["-o", "pid=,lstart=", "-p", pids.join(",")],
+    stdout: "piped",
+    stderr: "null",
+  })
     .output();
   const times: Record<number, string> = {};
   for (const line of new TextDecoder().decode(out.stdout).split("\n")) {

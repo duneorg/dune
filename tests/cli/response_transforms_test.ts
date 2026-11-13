@@ -7,21 +7,15 @@
  * - anonymous requests reach plugins with auth: null and no session lookup
  */
 
+import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  assertEquals,
-  assertStrictEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  type RunResponseTransformsOptions,
   runPluginResponseTransforms as run,
+  type RunResponseTransformsOptions,
 } from "../../src/cli/response-transforms.ts";
 import { createEditorResolver } from "../../src/auth/editor.ts";
 import { DUNE_BASE_AUTHZ_ACTIONS } from "../../src/auth/authz-schema.ts";
 import type { DuneAuthSystem } from "../../src/auth/authz.ts";
-import type {
-  DunePlugin,
-  ResponseTransformContext,
-} from "../../src/hooks/types.ts";
+import type { DunePlugin, ResponseTransformContext } from "../../src/hooks/types.ts";
 import type { DuneConfig } from "../../src/config/types.ts";
 import type { User } from "../../src/auth/types.ts";
 
@@ -368,7 +362,8 @@ function makeAuthz(allowed: boolean, relation: "admin" | "editor" | "author" = "
     // deno-lint-ignore no-explicit-any
     check(args: any): Promise<boolean> {
       calls.check++;
-      const relations: readonly string[] = (DUNE_BASE_AUTHZ_ACTIONS as Record<string, readonly string[]>)[args.canThey] ?? [];
+      const relations: readonly string[] =
+        (DUNE_BASE_AUTHZ_ACTIONS as Record<string, readonly string[]>)[args.canThey] ?? [];
       return Promise.resolve(allowed && relations.includes(relation));
     },
   };
@@ -472,8 +467,7 @@ Deno.test("runPluginResponseTransforms: transforms compose in registration order
 
 // ── Marker scrub policy ───────────────────────────────────────────────────────
 
-const MARKED_HTML =
-  `<h1 data-dune-field="title" data-dune-source="content/about.md">About</h1>` +
+const MARKED_HTML = `<h1 data-dune-field="title" data-dune-source="content/about.md">About</h1>` +
   `<div data-dune-body data-dune-source="content/about.md">body</div>`;
 
 Deno.test("marker scrub: anonymous HTML response loses all data-dune-* attributes", async () => {

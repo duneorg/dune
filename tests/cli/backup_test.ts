@@ -7,9 +7,9 @@
  */
 
 import {
+  assert,
   assertEquals,
   assertStringIncludes,
-  assert,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 

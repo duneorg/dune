@@ -26,7 +26,10 @@ async function withStore(
   const root = await Deno.makeTempDir({ prefix: "dune_test_sync_roles_" });
   try {
     const storage = createStorage({ rootDir: root });
-    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, storage);
+    const { authz, adapter } = createDuneAuthSystem(
+      { authzStore: "local", dataDir: "data" },
+      storage,
+    );
     await bootstrapRoleGrants(authz, adapter);
     const store = withRoleSync(
       createLocalUserStore({ storage, usersDir: "data/users" }),
@@ -54,7 +57,11 @@ async function withStore(
 
 Deno.test("create: a user created with roles is a member of those groups", async () => {
   await withStore(async ({ store, groups, canEdit }) => {
-    const ed = await store.create({ email: "ed@example.com", provider: "local", roles: ["editor", "vip"] });
+    const ed = await store.create({
+      email: "ed@example.com",
+      provider: "local",
+      roles: ["editor", "vip"],
+    });
     assertEquals(await groups(ed.id), ["editor", "vip"]);
     assertEquals(await canEdit(ed.id), true);
   });
@@ -110,8 +117,15 @@ Deno.test("no authz target: writes pass straight through", async () => {
 
 Deno.test("membership is exactly roles[]: a group added by hand is removed on the next role write", async () => {
   await withStore(async ({ store, authz, groups }) => {
-    const user = await store.create({ email: "m@example.com", provider: "local", roles: ["member"] });
-    await authz.addMember({ member: { type: "user", id: user.id }, group: { type: "group", id: "vip" } });
+    const user = await store.create({
+      email: "m@example.com",
+      provider: "local",
+      roles: ["member"],
+    });
+    await authz.addMember({
+      member: { type: "user", id: user.id },
+      group: { type: "group", id: "vip" },
+    });
     assertEquals(await groups(user.id), ["member", "vip"]);
     await store.update(user.id, { roles: ["member"] });
     assertEquals(await groups(user.id), ["member"]);
@@ -145,7 +159,10 @@ async function withFlakyStore(
   const root = await Deno.makeTempDir({ prefix: "dune_test_sync_roles_flaky_" });
   try {
     const storage = createStorage({ rootDir: root });
-    const { authz, adapter } = createDuneAuthSystem({ authzStore: "local", dataDir: "data" }, storage);
+    const { authz, adapter } = createDuneAuthSystem(
+      { authzStore: "local", dataDir: "data" },
+      storage,
+    );
     await bootstrapRoleGrants(authz, adapter);
     const state = { fail: 0 };
     const store = withRoleSync(
@@ -166,7 +183,11 @@ async function withFlakyStore(
 
 Deno.test("update: a failed membership write is retried once", async () => {
   await withFlakyStore(async ({ store, state, groups }) => {
-    const user = await store.create({ email: "r@example.com", provider: "local", roles: ["editor"] });
+    const user = await store.create({
+      email: "r@example.com",
+      provider: "local",
+      roles: ["editor"],
+    });
     state.fail = 1;
     await store.update(user.id, { roles: ["member"] });
     assertEquals(await groups(user.id), ["member"]);
@@ -175,7 +196,11 @@ Deno.test("update: a failed membership write is retried once", async () => {
 
 Deno.test("update: when the membership write keeps failing the caller is told, and saving again fixes it", async () => {
   await withFlakyStore(async ({ store, state, groups }) => {
-    const user = await store.create({ email: "r2@example.com", provider: "local", roles: ["editor"] });
+    const user = await store.create({
+      email: "r2@example.com",
+      provider: "local",
+      roles: ["editor"],
+    });
     state.fail = Infinity;
     let message = "";
     try {
@@ -195,7 +220,11 @@ Deno.test("update: when the membership write keeps failing the caller is told, a
 
 Deno.test("delete: a failed tuple removal is not swallowed", async () => {
   await withFlakyStore(async ({ store, state }) => {
-    const user = await store.create({ email: "r3@example.com", provider: "local", roles: ["editor"] });
+    const user = await store.create({
+      email: "r3@example.com",
+      provider: "local",
+      roles: ["editor"],
+    });
     state.fail = Infinity;
     let threw = false;
     try {
@@ -210,7 +239,11 @@ Deno.test("delete: a failed tuple removal is not swallowed", async () => {
 Deno.test("create: a failed membership write is logged, not thrown (the user has too little access, never too much)", async () => {
   await withFlakyStore(async ({ store, state, groups }) => {
     state.fail = Infinity;
-    const user = await store.create({ email: "r4@example.com", provider: "local", roles: ["editor"] });
+    const user = await store.create({
+      email: "r4@example.com",
+      provider: "local",
+      roles: ["editor"],
+    });
     assertEquals(user.email, "r4@example.com");
     assertEquals(await groups(user.id), []);
   });

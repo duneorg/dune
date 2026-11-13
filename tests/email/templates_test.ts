@@ -4,7 +4,12 @@
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { loadTemplate } from "../../src/email/templates.ts";
-import type { StorageAdapter, StorageEntry, StorageStat, WatchEvent } from "../../src/storage/types.ts";
+import type {
+  StorageAdapter,
+  StorageEntry,
+  StorageStat,
+  WatchEvent,
+} from "../../src/storage/types.ts";
 
 // ─── Mock StorageAdapter ──────────────────────────────────────────────────────
 
@@ -30,12 +35,18 @@ function mockStorage(files: Record<string, string>): StorageAdapter {
     },
     async delete(_path: string): Promise<void> {},
     async rename(_oldPath: string, _newPath: string): Promise<void> {},
-    async list(_path: string): Promise<StorageEntry[]> { return []; },
-    async listRecursive(_path: string): Promise<StorageEntry[]> { return []; },
+    async list(_path: string): Promise<StorageEntry[]> {
+      return [];
+    },
+    async listRecursive(_path: string): Promise<StorageEntry[]> {
+      return [];
+    },
     async stat(_path: string): Promise<StorageStat> {
       return { size: 0, mtime: 0, isFile: true, isDirectory: false };
     },
-    async getJSON<T>(_key: string): Promise<T | null> { return null; },
+    async getJSON<T>(_key: string): Promise<T | null> {
+      return null;
+    },
     async setJSON<T>(_key: string, _value: T, _ttl?: number): Promise<void> {},
     async deleteJSON(_key: string): Promise<void> {},
     watch(_path: string, _callback: (event: WatchEvent) => void): () => void {

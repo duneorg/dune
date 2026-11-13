@@ -9,10 +9,7 @@
  */
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  formatImportMapError,
-  isImportMapError,
-} from "../../src/cli/import-map-error.ts";
+import { formatImportMapError, isImportMapError } from "../../src/cli/import-map-error.ts";
 
 function importMapError(specifier: string): Error {
   return new Error(`Import "${specifier}" not a dependency and not in import map`);

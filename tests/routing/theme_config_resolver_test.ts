@@ -68,9 +68,14 @@ function makeFullPage(
  *   other (section, no override)
  *     └── page (leaf page, no override)
  */
-function makeFixture(siteThemeConfig: Record<string, unknown> = { color_scheme: "blue", show_search: true }) {
+function makeFixture(
+  siteThemeConfig: Record<string, unknown> = { color_scheme: "blue", show_search: true },
+) {
   const sectionFrontmatter = new Map<string, Record<string, unknown>>([
-    ["01.getting-started/default.md", { title: "Getting Started", theme_config: { color_scheme: "green" } }],
+    ["01.getting-started/default.md", {
+      title: "Getting Started",
+      theme_config: { color_scheme: "green" },
+    }],
     ["02.other/default.md", { title: "Other" }],
   ]);
 
@@ -157,7 +162,11 @@ Deno.test("resolveThemeConfig: page under a section with no override falls back 
 });
 
 Deno.test("resolveThemeConfig: shallow-merges — only matching keys are overridden", async () => {
-  const { engine, intro, fullPageFrontmatter } = makeFixture({ color_scheme: "blue", show_search: true, scheme_switcher: false });
+  const { engine, intro, fullPageFrontmatter } = makeFixture({
+    color_scheme: "blue",
+    show_search: true,
+    scheme_switcher: false,
+  });
   const page = makeFullPage(intro, fullPageFrontmatter.get(intro.sourcePath));
 
   const result = await resolveThemeConfig(page, engine);

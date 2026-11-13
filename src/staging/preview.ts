@@ -42,13 +42,16 @@ export async function serveStagedPreview(
     const fmYaml = stringifyYaml(draft.frontmatter as Record<string, unknown>).trimEnd();
     const rawContent = `---\n${fmYaml}\n---\n\n${draft.content}`;
 
-    const bannerHtml = `<div style="position:fixed;top:0;left:0;right:0;background:#d97706;color:#fff;text-align:center;padding:0.5rem 1rem;font-family:system-ui;font-size:0.85rem;z-index:9999">
-      ⚠️ Draft preview — not published. <a href="/__preview?path=${encodeURIComponent(sourcePath)}&token=${encodeURIComponent(token)}" style="color:#fff;text-decoration:underline">Refresh</a>
+    const bannerHtml =
+      `<div style="position:fixed;top:0;left:0;right:0;background:#d97706;color:#fff;text-align:center;padding:0.5rem 1rem;font-family:system-ui;font-size:0.85rem;z-index:9999">
+      ⚠️ Draft preview — not published. <a href="/__preview?path=${
+        encodeURIComponent(sourcePath)
+      }&token=${encodeURIComponent(token)}" style="color:#fff;text-decoration:underline">Refresh</a>
     </div><div style="padding-top:2.5rem">`;
 
-    const templateName = (draft.frontmatter.template as string)
-      ?? pageIndex.template
-      ?? "default";
+    const templateName = (draft.frontmatter.template as string) ??
+      pageIndex.template ??
+      "default";
     const [template, layout] = await Promise.all([
       engine.themes.loadTemplate(templateName),
       engine.themes.loadLayout("layout"),

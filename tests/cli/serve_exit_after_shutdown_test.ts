@@ -20,12 +20,16 @@ const READY_TIMEOUT_MS = 60_000;
 const EXIT_TIMEOUT_MS = 15_000;
 
 /** A plugin whose timer is ref'd and never cleared. */
-const HOLD_PLUGIN = `setInterval(() => {}, 3_600_000);\nexport default { name: "hold", version: "1.0.0", hooks: {} };\n`;
+const HOLD_PLUGIN =
+  `setInterval(() => {}, 3_600_000);\nexport default { name: "hold", version: "1.0.0", hooks: {} };\n`;
 // Fresh reads compilerOptions from the site root on the first build.
-const DENO_JSON = JSON.stringify({ compilerOptions: { jsx: "react-jsx", jsxImportSource: "preact" } });
+const DENO_JSON = JSON.stringify({
+  compilerOptions: { jsx: "react-jsx", jsxImportSource: "preact" },
+});
 
 const singleSite = (port: number): Record<string, string> => ({
-  "config/site.yaml": `title: Exit Test\nurl: http://localhost:${port}\nplugins:\n  - src: ./plugins/hold.ts\n`,
+  "config/site.yaml":
+    `title: Exit Test\nurl: http://localhost:${port}\nplugins:\n  - src: ./plugins/hold.ts\n`,
   "deno.json": DENO_JSON,
   "content/01.home/default.md": "---\ntitle: Home\n---\nhi\n",
   "plugins/hold.ts": HOLD_PLUGIN,
@@ -35,7 +39,8 @@ const singleSite = (port: number): Record<string, string> => ({
 const multiSite = (port: number): Record<string, string> => ({
   "config/sites.yaml": "sites:\n  - id: main\n    root: ../main\n    default: true\n",
   "deno.json": DENO_JSON,
-  "main/config/site.yaml": `title: Exit Test\nurl: http://localhost:${port}\nplugins:\n  - src: ./plugins/hold.ts\n`,
+  "main/config/site.yaml":
+    `title: Exit Test\nurl: http://localhost:${port}\nplugins:\n  - src: ./plugins/hold.ts\n`,
   "main/deno.json": DENO_JSON,
   "main/content/01.home/default.md": "---\ntitle: Home\n---\nhi\n",
   "main/plugins/hold.ts": HOLD_PLUGIN,
@@ -56,7 +61,17 @@ async function expectExitAfterSigterm(files: Record<string, string>, port: numbe
       const cliPath = join(import.meta.dirname!, "..", "..", "src", "cli.ts");
 
       child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", `--config=${duneDenoJson}`, cliPath, "serve", "--root", root, "--port", String(port)],
+        args: [
+          "run",
+          "-A",
+          `--config=${duneDenoJson}`,
+          cliPath,
+          "serve",
+          "--root",
+          root,
+          "--port",
+          String(port),
+        ],
         env: { ...Deno.env.toObject(), DUNE_CONFIG_APPLIED: "1" },
         stdout: "piped",
         stderr: "piped",
@@ -72,7 +87,9 @@ async function expectExitAfterSigterm(files: Record<string, string>, port: numbe
       const readyDeadline = Date.now() + READY_TIMEOUT_MS;
       while (Date.now() < readyDeadline) {
         try {
-          const res = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(1500) });
+          const res = await fetch(`http://localhost:${port}/`, {
+            signal: AbortSignal.timeout(1500),
+          });
           await res.body?.cancel();
           ready = true;
           break;
@@ -86,7 +103,9 @@ async function expectExitAfterSigterm(files: Record<string, string>, port: numbe
       child.kill("SIGTERM");
       const outcome = await Promise.race([
         child.status.then((s) => ({ exited: true as const, code: s.code })),
-        new Promise<{ exited: false }>((r) => setTimeout(() => r({ exited: false }), EXIT_TIMEOUT_MS)),
+        new Promise<{ exited: false }>((r) =>
+          setTimeout(() => r({ exited: false }), EXIT_TIMEOUT_MS)
+        ),
       ]);
 
       assertEquals(

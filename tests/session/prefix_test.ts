@@ -1,9 +1,6 @@
 import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
-import {
-  assertValidSessionPrefix,
-  resolveSessionPrefix,
-} from "../../src/session/prefix.ts";
+import { assertValidSessionPrefix, resolveSessionPrefix } from "../../src/session/prefix.ts";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 
 Deno.test("resolveSessionPrefix: configured wins, multisite derives, single-site stays unprefixed", () => {
@@ -69,13 +66,20 @@ Deno.test("bootstrap: a multisite site gets a site-scoped session prefix", opts,
   });
 });
 
-Deno.test("bootstrap: a configured prefix is kept; single-site stays unprefixed", opts, async () => {
-  await withSite("session_store:\n  type: redis\n  url: redis://x\n  prefix: mine\n", async (root) => {
-    const ctx = await bootstrap(root, { siteId: "blog" });
-    assertEquals(ctx.config.system.session_store?.prefix, "mine");
-  });
-  await withSite("session_store:\n  type: redis\n  url: redis://x\n", async (root) => {
-    const ctx = await bootstrap(root, {});
-    assertEquals(ctx.config.system.session_store?.prefix, undefined);
-  });
-});
+Deno.test(
+  "bootstrap: a configured prefix is kept; single-site stays unprefixed",
+  opts,
+  async () => {
+    await withSite(
+      "session_store:\n  type: redis\n  url: redis://x\n  prefix: mine\n",
+      async (root) => {
+        const ctx = await bootstrap(root, { siteId: "blog" });
+        assertEquals(ctx.config.system.session_store?.prefix, "mine");
+      },
+    );
+    await withSite("session_store:\n  type: redis\n  url: redis://x\n", async (root) => {
+      const ctx = await bootstrap(root, {});
+      assertEquals(ctx.config.system.session_store?.prefix, undefined);
+    });
+  },
+);

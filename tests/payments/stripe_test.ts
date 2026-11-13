@@ -6,10 +6,7 @@
  * we can craft both valid and invalid webhook payloads deterministically.
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { encodeBase64 } from "@std/encoding/base64";
 import { encodeHex } from "@std/encoding/hex";
@@ -282,7 +279,8 @@ Deno.test("createPortalSession: builds correct request", async () => {
   globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     capturedUrls.push(url);
-    const body = (init?.body as string) ?? (input instanceof Request ? await (input as Request).text() : "");
+    const body = (init?.body as string) ??
+      (input instanceof Request ? await (input as Request).text() : "");
     capturedBodies.push(body);
 
     return new Response(

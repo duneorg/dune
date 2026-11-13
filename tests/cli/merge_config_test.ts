@@ -4,10 +4,7 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  absolutizeImports,
-  buildMergedConfig,
-} from "../../src/cli/merge-config.ts";
+import { absolutizeImports, buildMergedConfig } from "../../src/cli/merge-config.ts";
 
 Deno.test("absolutizeImports: rewrites relative paths to absolute file:// URLs", () => {
   const configUrl = new URL("file:///site/deno.json");

@@ -33,8 +33,7 @@ export function registerHealthRoutes(
     const detailed = fc.url.searchParams.get("detailed") === "true";
     const token = fc.url.searchParams.get("token");
     const configured = config.system?.health_token;
-    const tokenOk =
-      typeof configured === "string" &&
+    const tokenOk = typeof configured === "string" &&
       configured.length > 0 &&
       typeof token === "string" &&
       token.length === configured.length &&
@@ -46,9 +45,7 @@ export function registerHealthRoutes(
         uptime: Math.floor((Date.now() - startTime) / 1000),
         pages: engine.pages.length,
         cache: pageCache ? pageCache.stats() : null,
-        search: search
-          ? { serving: search.servingEngineName(), engines: search.status() }
-          : null,
+        search: search ? { serving: search.servingEngineName(), engines: search.status() } : null,
       }, { headers: { "Cache-Control": "no-cache" } });
     }
     return Response.json(
@@ -57,8 +54,9 @@ export function registerHealthRoutes(
     );
   });
 
-  app.get("/health/live", () =>
-    Response.json({ status: "alive" }, { headers: { "Cache-Control": "no-cache" } })
+  app.get(
+    "/health/live",
+    () => Response.json({ status: "alive" }, { headers: { "Cache-Control": "no-cache" } }),
   );
 
   app.get("/health/ready", () => {
@@ -79,5 +77,9 @@ export function registerHealthRoutes(
     );
   });
 
-  return { setShuttingDown: (v: boolean) => { shuttingDown = v; } };
+  return {
+    setShuttingDown: (v: boolean) => {
+      shuttingDown = v;
+    },
+  };
 }

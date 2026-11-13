@@ -15,12 +15,7 @@
 
 import { parseUserYaml as parseYaml } from "../../security/safe-yaml.ts";
 import { dirname, join } from "@std/path";
-import type {
-  ContentFormatHandler,
-  Page,
-  PageFrontmatter,
-  RenderContext,
-} from "../types.ts";
+import type { ContentFormatHandler, Page, PageFrontmatter, RenderContext } from "../types.ts";
 
 /** {@link ContentFormatHandler} for `.tsx` content files — the component IS the content, optionally with a sidecar `.frontmatter.yaml`. */
 export class TsxHandler implements ContentFormatHandler {
@@ -256,8 +251,7 @@ export class TsxHandler implements ContentFormatHandler {
     // This is simplified — handles basic cases
     result = result.replace(
       /'([^'\\]*(?:\\.[^'\\]*)*)'/g,
-      (_match, content: string) =>
-        `"${content.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+      (_match, content: string) => `"${content.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
     );
 
     // Quote unquoted keys: { key: → { "key":

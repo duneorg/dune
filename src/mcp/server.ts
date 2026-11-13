@@ -169,7 +169,12 @@ export class McpServer {
       Deno.stdout.writeSync(encoder.encode(line));
     };
 
-    const sendError = (id: string | number | null, code: number, message: string, data?: unknown) => {
+    const sendError = (
+      id: string | number | null,
+      code: number,
+      message: string,
+      data?: unknown,
+    ) => {
       send({ jsonrpc: "2.0", id, error: { code, message, data } } satisfies JsonRpcError);
     };
 
@@ -275,7 +280,9 @@ export class McpServer {
       }
 
       case "tools/call": {
-        const params = req.params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+        const params = req.params as
+          | { name?: string; arguments?: Record<string, unknown> }
+          | undefined;
         if (!params?.name) {
           sendError(id, INVALID_PARAMS, "Missing tool name");
           break;
@@ -291,10 +298,16 @@ export class McpServer {
           const result = await tool.handler(params.arguments ?? {});
           sendResult(id, result);
         } catch (err) {
-          sendResult(id, {
-            content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
-            isError: true,
-          } satisfies McpToolResult);
+          sendResult(
+            id,
+            {
+              content: [{
+                type: "text",
+                text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+              }],
+              isError: true,
+            } satisfies McpToolResult,
+          );
         }
         break;
       }

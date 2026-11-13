@@ -8,12 +8,8 @@
  * Redis tests: require an external Redis service — run manually with REDIS_URL set.
  */
 
-import {
-  assert,
-  assertEquals,
-  assertFalse,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { LocalRateLimitStore, KVRateLimitStore } from "../../src/security/rate-limit-store.ts";
+import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { KVRateLimitStore, LocalRateLimitStore } from "../../src/security/rate-limit-store.ts";
 
 // ── LocalRateLimitStore ────────────────────────────────────────────────────────
 
@@ -43,8 +39,8 @@ Deno.test("LocalRateLimitStore: check tracks keys independently", async () => {
 
 Deno.test("LocalRateLimitStore: check resets after window", async () => {
   const store = new LocalRateLimitStore();
-  await store.check("ip", 1, 50);  // window = 50ms
-  await store.check("ip", 1, 50);  // should be blocked
+  await store.check("ip", 1, 50); // window = 50ms
+  await store.check("ip", 1, 50); // should be blocked
   await new Promise((r) => setTimeout(r, 60));
   const { allowed } = await store.check("ip", 1, 50);
   assert(allowed);
@@ -84,7 +80,7 @@ Deno.test("LocalRateLimitStore: isLocked returns true at threshold", async () =>
 Deno.test("LocalRateLimitStore: isLocked ignores failures outside window", async () => {
   const store = new LocalRateLimitStore();
   // Record failures with a very short window, then check against a later window
-  await store.recordFailure("u", 50);  // 50ms window
+  await store.recordFailure("u", 50); // 50ms window
   await store.recordFailure("u", 50);
   await store.recordFailure("u", 50);
   await new Promise((r) => setTimeout(r, 60));

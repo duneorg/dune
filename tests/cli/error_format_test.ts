@@ -11,7 +11,9 @@ Deno.test("formatErrorChain: non-Error values are stringified", () => {
 
 Deno.test("formatErrorChain: prints one `caused by` line per cause", () => {
   const root = new Error("Connection refused");
-  const mid = new Error("error sending request for url (http://127.0.0.1:7700/indexes)", { cause: root });
+  const mid = new Error("error sending request for url (http://127.0.0.1:7700/indexes)", {
+    cause: root,
+  });
   const top = new TypeError("fetch failed", { cause: mid });
   assertEquals(formatErrorChain(top), [
     "fetch failed",
@@ -22,7 +24,9 @@ Deno.test("formatErrorChain: prints one `caused by` line per cause", () => {
 
 Deno.test("formatErrorChain: skips a cause whose text the message already carries", () => {
   const cause = new Error("Connection refused");
-  const top = new Error(`Search engine "meilisearch" failed to build: Connection refused`, { cause });
+  const top = new Error(`Search engine "meilisearch" failed to build: Connection refused`, {
+    cause,
+  });
   assertEquals(formatErrorChain(top), [top.message]);
 });
 

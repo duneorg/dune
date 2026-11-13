@@ -1,7 +1,4 @@
-import {
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { KVAdapter } from "../../src/db/adapters/kv.ts";
 import { createRepository } from "../../src/db/repository.ts";
 import { parseSchemaYaml } from "../../src/db/schema-parser.ts";

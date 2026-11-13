@@ -24,9 +24,11 @@ export type FieldOperators<V> = {
 };
 
 /** Filter clause for {@link FindOptions} and {@link Repository.findOne}. Supports field equality, operators, and `$or`. */
-export type WhereClause<T> = {
-  [K in keyof T]?: T[K] | FieldOperators<T[K]>;
-} & { $or?: WhereClause<T>[] };
+export type WhereClause<T> =
+  & {
+    [K in keyof T]?: T[K] | FieldOperators<T[K]>;
+  }
+  & { $or?: WhereClause<T>[] };
 
 // ---------------------------------------------------------------------------
 // Repository interface

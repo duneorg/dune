@@ -119,8 +119,7 @@ export async function mcpServeCommand(
   root: string,
   options: McpServeOptions = {},
 ): Promise<void> {
-  const { debug = false, search: buildSearch = true, readonly = false } =
-    options;
+  const { debug = false, search: buildSearch = true, readonly = false } = options;
 
   // Log to stderr so it doesn't pollute the JSON-RPC stdout stream
   const log = (...args: unknown[]) => {
@@ -151,18 +150,16 @@ export async function mcpServeCommand(
   // content/site storage fields — out of scope for now (mcp write tools
   // aren't used by content.src's driving use case, multisite demo fixtures).
   const contentDir = config.system?.content?.dir ?? "content";
-  const writeTools = readonly
-    ? []
-    : buildWriteTools({
-      engine,
-      storage,
-      root,
-      contentDir,
-      // Plugins load on the first page write, once: a read-only session never
-      // pays for it, and a write announces itself to search indexes, webhooks
-      // and the like like a write through any other front end.
-      hooks: lazyHooks(config, storage, root),
-    });
+  const writeTools = readonly ? [] : buildWriteTools({
+    engine,
+    storage,
+    root,
+    contentDir,
+    // Plugins load on the first page write, once: a read-only session never
+    // pays for it, and a write announces itself to search indexes, webhooks
+    // and the like like a write through any other front end.
+    hooks: lazyHooks(config, storage, root),
+  });
   const resources = buildResources(engine, storage, root);
 
   for (const { meta, handler } of [...tools, ...writeTools]) {
@@ -173,7 +170,9 @@ export async function mcpServeCommand(
   }
 
   log(
-    `MCP server ready — ${tools.length + writeTools.length} tools (${tools.length} read, ${writeTools.length} write/scaffold${
+    `MCP server ready — ${
+      tools.length + writeTools.length
+    } tools (${tools.length} read, ${writeTools.length} write/scaffold${
       readonly ? ", --readonly" : ""
     }), ${resources.length} resources`,
   );

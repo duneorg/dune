@@ -66,7 +66,7 @@ export async function createSessionStore(opts: SessionStoreOptions): Promise<Ses
     if (!opts.redisUrl) {
       throw new Error(
         "[dune] session_store.type is 'redis' but no redis URL was provided. " +
-        "Set session_store.url in config or pass redisUrl to createSessionStore().",
+          "Set session_store.url in config or pass redisUrl to createSessionStore().",
       );
     }
     return createRedisSessionStoreFromUrl(opts.redisUrl, resolvedLifetimeMs / 1000, opts.prefix);

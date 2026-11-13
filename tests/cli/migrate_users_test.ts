@@ -5,10 +5,7 @@
  * index that never existed for admin accounts before the Phase 5b cutover.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
 import { migrateUsersCommand } from "../../src/cli/migrate-users.ts";
 

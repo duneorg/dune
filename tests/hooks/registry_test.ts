@@ -5,8 +5,22 @@ import type { StorageAdapter } from "../../src/storage/types.ts";
 
 // Minimal config and storage stubs
 const stubConfig = {
-  site: { title: "Test", description: "", url: "http://localhost", author: { name: "" }, metadata: {}, taxonomies: [], routes: {}, redirects: {} },
-  system: { content: { dir: "content" }, images: { default_quality: 80, cache_dir: "", allowed_sizes: [] }, languages: { supported: ["en"], default: "en", include_default_in_url: false }, debug: false },
+  site: {
+    title: "Test",
+    description: "",
+    url: "http://localhost",
+    author: { name: "" },
+    metadata: {},
+    taxonomies: [],
+    routes: {},
+    redirects: {},
+  },
+  system: {
+    content: { dir: "content" },
+    images: { default_quality: 80, cache_dir: "", allowed_sizes: [] },
+    languages: { supported: ["en"], default: "en", include_default_in_url: false },
+    debug: false,
+  },
   theme: { name: "default", custom: {} },
   plugins: {},
   pluginList: [],
@@ -25,7 +39,10 @@ Deno.test("hooks.on + fire: handler receives and can mutate data", async () => {
   registry.on("onConfigLoaded", (ctx) => {
     ctx.setData({ ...(ctx.data as object), added: true });
   });
-  const result = await registry.fire("onConfigLoaded", { original: true }) as Record<string, boolean>;
+  const result = await registry.fire("onConfigLoaded", { original: true }) as Record<
+    string,
+    boolean
+  >;
   assertEquals(result.original, true);
   assertEquals(result.added, true);
 });
@@ -33,9 +50,15 @@ Deno.test("hooks.on + fire: handler receives and can mutate data", async () => {
 Deno.test("hooks.on + fire: multiple handlers called in order", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
   const calls: number[] = [];
-  registry.on("onContentIndexReady", (_ctx) => { calls.push(1); });
-  registry.on("onContentIndexReady", (_ctx) => { calls.push(2); });
-  registry.on("onContentIndexReady", (_ctx) => { calls.push(3); });
+  registry.on("onContentIndexReady", (_ctx) => {
+    calls.push(1);
+  });
+  registry.on("onContentIndexReady", (_ctx) => {
+    calls.push(2);
+  });
+  registry.on("onContentIndexReady", (_ctx) => {
+    calls.push(3);
+  });
   await registry.fire("onContentIndexReady", []);
   assertEquals(calls, [1, 2, 3]);
 });
@@ -43,16 +66,25 @@ Deno.test("hooks.on + fire: multiple handlers called in order", async () => {
 Deno.test("hooks.fire: stopPropagation prevents later handlers", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
   const calls: number[] = [];
-  registry.on("onConfigLoaded", (ctx) => { calls.push(1); ctx.stopPropagation(); });
-  registry.on("onConfigLoaded", (_ctx) => { calls.push(2); });
+  registry.on("onConfigLoaded", (ctx) => {
+    calls.push(1);
+    ctx.stopPropagation();
+  });
+  registry.on("onConfigLoaded", (_ctx) => {
+    calls.push(2);
+  });
   await registry.fire("onConfigLoaded", {});
   assertEquals(calls, [1]);
 });
 
 Deno.test("hooks.fire: data threading — each handler sees previous handler's data", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
-  registry.on("onConfigLoaded", (ctx) => { ctx.setData((ctx.data as number) + 1); });
-  registry.on("onConfigLoaded", (ctx) => { ctx.setData((ctx.data as number) * 10); });
+  registry.on("onConfigLoaded", (ctx) => {
+    ctx.setData((ctx.data as number) + 1);
+  });
+  registry.on("onConfigLoaded", (ctx) => {
+    ctx.setData((ctx.data as number) * 10);
+  });
   const result = await registry.fire("onConfigLoaded", 5 as unknown as DuneConfig);
   assertEquals(result as unknown, 60); // (5 + 1) * 10
 });
@@ -60,8 +92,12 @@ Deno.test("hooks.fire: data threading — each handler sees previous handler's d
 Deno.test("hooks.off: removes a specific handler", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
   const calls: string[] = [];
-  const h1 = () => { calls.push("h1"); };
-  const h2 = () => { calls.push("h2"); };
+  const h1 = () => {
+    calls.push("h1");
+  };
+  const h2 = () => {
+    calls.push("h2");
+  };
   registry.on("onStorageReady", h1);
   registry.on("onStorageReady", h2);
   registry.off("onStorageReady", h1);
@@ -78,8 +114,12 @@ Deno.test("hooks.off: no-op when handler not registered", () => {
 Deno.test("hooks.on: handlers on different events don't interfere", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
   const calls: string[] = [];
-  registry.on("onConfigLoaded", () => { calls.push("config"); });
-  registry.on("onStorageReady", () => { calls.push("storage"); });
+  registry.on("onConfigLoaded", () => {
+    calls.push("config");
+  });
+  registry.on("onStorageReady", () => {
+    calls.push("storage");
+  });
   await registry.fire("onConfigLoaded", {} as DuneConfig);
   assertEquals(calls, ["config"]);
 });
@@ -104,7 +144,9 @@ Deno.test("hooks.registerPlugin: registers plugin and its hooks", async () => {
     name: "test-plugin",
     version: "1.0.0",
     hooks: {
-      onConfigLoaded: () => { calls.push("plugin-hook"); },
+      onConfigLoaded: () => {
+        calls.push("plugin-hook");
+      },
     },
   });
   await registry.fire("onConfigLoaded", {} as DuneConfig);
@@ -137,7 +179,9 @@ Deno.test("hooks.fire: async handler is awaited", async () => {
     ctx.setData({ async: true });
     done = true;
   });
-  const result = await registry.fire("onConfigLoaded", {} as DuneConfig) as unknown as { async: boolean };
+  const result = await registry.fire("onConfigLoaded", {} as DuneConfig) as unknown as {
+    async: boolean;
+  };
   assertEquals(done, true);
   assertEquals(result.async, true);
 });
@@ -151,7 +195,9 @@ Deno.test("hooks.fire: stopPropagation + setData — stopped data is still retur
   registry.on("onConfigLoaded", (ctx) => {
     ctx.setData({ stopped: false } as unknown as DuneConfig);
   });
-  const result = await registry.fire("onConfigLoaded", {} as DuneConfig) as unknown as { stopped: boolean };
+  const result = await registry.fire("onConfigLoaded", {} as DuneConfig) as unknown as {
+    stopped: boolean;
+  };
   assertEquals(result.stopped, true);
 });
 
@@ -164,7 +210,9 @@ Deno.test("hooks.fire: stopPropagation + setData — stopped data is still retur
 Deno.test("hooks.ctx: ctx.content is undefined before setContentApi() is called", async () => {
   const registry = createHookRegistry({ config: stubConfig, storage: stubStorage });
   let seen: unknown;
-  registry.on("onConfigLoaded", (ctx) => { seen = ctx.content; });
+  registry.on("onConfigLoaded", (ctx) => {
+    seen = ctx.content;
+  });
   await registry.fire("onConfigLoaded", {} as DuneConfig);
   assertEquals(seen, undefined);
 });
@@ -176,7 +224,9 @@ Deno.test("hooks.ctx: ctx.content is the injected ContentApi after setContentApi
   registry.setContentApi(fakeContentApi);
 
   let seen: unknown;
-  registry.on("onPageCreate", (ctx) => { seen = ctx.content; });
+  registry.on("onPageCreate", (ctx) => {
+    seen = ctx.content;
+  });
   await registry.fire("onPageCreate", { sourcePath: "x.md", title: "X" });
   assertEquals(seen, fakeContentApi);
 });
@@ -187,14 +237,18 @@ Deno.test("hooks.ctx: setContentApi() affects hooks that fire after it, not ones
   const fakeContentApi = { pages: () => [] } as any;
 
   let beforeSet: unknown = "not-run";
-  registry.on("onConfigLoaded", (ctx) => { beforeSet = ctx.content; });
+  registry.on("onConfigLoaded", (ctx) => {
+    beforeSet = ctx.content;
+  });
   await registry.fire("onConfigLoaded", {} as DuneConfig);
   assertEquals(beforeSet, undefined);
 
   registry.setContentApi(fakeContentApi);
 
   let afterSet: unknown = "not-run";
-  registry.on("onStorageReady", (ctx) => { afterSet = ctx.content; });
+  registry.on("onStorageReady", (ctx) => {
+    afterSet = ctx.content;
+  });
   await registry.fire("onStorageReady", {} as StorageAdapter);
   assertEquals(afterSet, fakeContentApi);
 });

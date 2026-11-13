@@ -1,7 +1,4 @@
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { duneRoutes } from "../../src/routing/routes.ts";
 import { createHookRegistry } from "../../src/hooks/registry.ts";
 import type { DuneEngine, ResolveResult } from "../../src/core/engine.ts";
@@ -123,7 +120,8 @@ function makeEngine(
       clearCache: () => {},
     } as unknown as DuneEngine["themes"],
     init: () => Promise.resolve(),
-    resolve: resolveOverride ?? ((_route: string) => Promise.resolve({ type: "not-found" as const })),
+    resolve: resolveOverride ??
+      ((_route: string) => Promise.resolve({ type: "not-found" as const })),
     loadPage: (_sourcePath: string) => Promise.reject(new Error("not implemented")),
     serveMedia: (_mediaPath: string) => Promise.resolve(null),
     rebuild: () => Promise.resolve(),
@@ -330,8 +328,7 @@ Deno.test("contentHandler: /page:N strips the segment and renders a different co
       route: `/blog/post-${i + 1}`,
       parentPath: "/blog",
       order: i + 1,
-    })
-  );
+    }));
   const allPageIndexes = [parentIndex, ...childIndexes];
 
   const blogPage = makeFullPage({
@@ -381,7 +378,8 @@ Deno.test("contentHandler: /page:N strips the segment and renders a different co
   } as unknown as DuneEngine["themes"];
 
   const { contentHandler } = duneRoutes(engine, collections);
-  const renderJsx = (_jsx: unknown, status?: number): Response => new Response("rendered", { status: status ?? 200 });
+  const renderJsx = (_jsx: unknown, status?: number): Response =>
+    new Response("rendered", { status: status ?? 200 });
 
   // Page 1 (no suffix)
   await contentHandler(new Request("http://localhost/blog/"), renderJsx);
@@ -516,8 +514,16 @@ Deno.test("duneRoutes: contentApi param reaches TemplateProps.content for a Mark
     loadLocale: (_lang: string) => Promise.resolve({}),
   } as unknown as DuneEngine["themes"];
 
-  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
-  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const sentinelContentApi = {
+    pages: () => [],
+  } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(
+    engine,
+    undefined,
+    undefined,
+    undefined,
+    sentinelContentApi,
+  );
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
 
@@ -545,8 +551,16 @@ Deno.test("duneRoutes: contentApi param reaches ContentPageProps.content for a T
     page: tsxPage,
   }));
 
-  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
-  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const sentinelContentApi = {
+    pages: () => [],
+  } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(
+    engine,
+    undefined,
+    undefined,
+    undefined,
+    sentinelContentApi,
+  );
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
 
@@ -578,13 +592,14 @@ Deno.test("duneRoutes: contentApi param reaches FlexListTemplateProps.content", 
   } as unknown as DuneEngine["themes"];
 
   const flex = {
-    loadSchemas: () =>
-      Promise.resolve({ products: { title: "Products", fields: {} } }),
+    loadSchemas: () => Promise.resolve({ products: { title: "Products", fields: {} } }),
     list: (_type: string) => Promise.resolve([]),
     get: (_type: string, _id: string) => Promise.resolve(null),
   } as unknown as import("../../src/flex/engine.ts").FlexEngine;
 
-  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const sentinelContentApi = {
+    pages: () => [],
+  } as unknown as import("../../src/content/api.ts").ContentApi;
   const { contentHandler } = duneRoutes(engine, undefined, flex, undefined, sentinelContentApi);
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
@@ -617,14 +632,15 @@ Deno.test("duneRoutes: contentApi param reaches FlexDetailTemplateProps.content"
   } as unknown as DuneEngine["themes"];
 
   const flex = {
-    loadSchemas: () =>
-      Promise.resolve({ products: { title: "Products", fields: {} } }),
+    loadSchemas: () => Promise.resolve({ products: { title: "Products", fields: {} } }),
     list: (_type: string) => Promise.resolve([]),
     get: (_type: string, id: string) =>
       Promise.resolve(id === "widget-1" ? { _id: "widget-1", name: "Widget" } : null),
   } as unknown as import("../../src/flex/engine.ts").FlexEngine;
 
-  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
+  const sentinelContentApi = {
+    pages: () => [],
+  } as unknown as import("../../src/content/api.ts").ContentApi;
   const { contentHandler } = duneRoutes(engine, undefined, flex, undefined, sentinelContentApi);
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
@@ -656,8 +672,16 @@ Deno.test("duneRoutes: contentApi param reaches the themed 404 error page's Temp
     loadLocale: (_lang: string) => Promise.resolve({}),
   } as unknown as DuneEngine["themes"];
 
-  const sentinelContentApi = { pages: () => [] } as unknown as import("../../src/content/api.ts").ContentApi;
-  const { contentHandler } = duneRoutes(engine, undefined, undefined, undefined, sentinelContentApi);
+  const sentinelContentApi = {
+    pages: () => [],
+  } as unknown as import("../../src/content/api.ts").ContentApi;
+  const { contentHandler } = duneRoutes(
+    engine,
+    undefined,
+    undefined,
+    undefined,
+    sentinelContentApi,
+  );
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
 
@@ -731,7 +755,14 @@ Deno.test("duneRoutes: fires onCollectionResolved with req + collection, honors 
     ctx.setData({ ...data, collection: { ...data.collection, injectedByHook: true } });
   });
 
-  const { contentHandler } = duneRoutes(engine, collections, undefined, undefined, undefined, hooks);
+  const { contentHandler } = duneRoutes(
+    engine,
+    collections,
+    undefined,
+    undefined,
+    undefined,
+    hooks,
+  );
   const renderJsx = (_jsx: unknown, status?: number): Response =>
     new Response("rendered", { status: status ?? 200 });
 
@@ -862,18 +893,20 @@ function makeSearchEngine(captured: { props?: Record<string, unknown> }) {
   engine.themes = {
     ...engine.themes,
     loadTemplate: (name: string) =>
-      Promise.resolve(name === "search"
-        ? {
-          name: "search",
-          // Async so resolveTemplateVNode invokes it (and captures props)
-          // without needing a real render pass.
-          component: async (props: Record<string, unknown>) => {
-            captured.props = props;
-            return await Promise.resolve(null);
-          },
-          fromTheme: "default",
-        }
-        : null),
+      Promise.resolve(
+        name === "search"
+          ? {
+            name: "search",
+            // Async so resolveTemplateVNode invokes it (and captures props)
+            // without needing a real render pass.
+            component: async (props: Record<string, unknown>) => {
+              captured.props = props;
+              return await Promise.resolve(null);
+            },
+            fromTheme: "default",
+          }
+          : null,
+      ),
     loadLayout: (_name: string) => Promise.resolve(null),
     loadLocale: (lang: string) => Promise.resolve(locales[lang] ?? {}),
   } as unknown as DuneEngine["themes"];

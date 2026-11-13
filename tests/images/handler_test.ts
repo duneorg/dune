@@ -30,9 +30,15 @@ function createMemoryStorage() {
       if (!d) throw new Error(`Not found: ${path}`);
       return d;
     },
-    async write(path: string, data: Uint8Array) { files.set(path, data); },
-    async exists(path: string) { return files.has(path); },
-    async delete(path: string) { files.delete(path); },
+    async write(path: string, data: Uint8Array) {
+      files.set(path, data);
+    },
+    async exists(path: string) {
+      return files.has(path);
+    },
+    async delete(path: string) {
+      files.delete(path);
+    },
     async list(dir: string) {
       const entries: { name: string; isDirectory: boolean }[] = [];
       const prefix = dir.endsWith("/") ? dir : dir + "/";
@@ -60,8 +66,11 @@ function createMockEngine(mediaMap: Record<string, Uint8Array> = {}) {
       if (!data) return null;
       const ext = path.split(".").pop()?.toLowerCase() ?? "";
       const mimeMap: Record<string, string> = {
-        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
-        webp: "image/webp", gif: "image/gif",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        gif: "image/gif",
       };
       return { data, contentType: mimeMap[ext] ?? "application/octet-stream", size: data.length };
     },

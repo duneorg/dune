@@ -39,8 +39,7 @@ const CACHED_PKG_VERSION_RE =
 // The other half of the mismatch: the specifier Deno was actually trying to
 // resolve, e.g. "npm:preact@^10.29.1/hooks" -> "preact@10.29.1". Caret/tilde
 // range markers are stripped since they're not part of the version itself.
-const REQUESTED_PKG_VERSION_RE =
-  /npm:((?:@[^/@\s]+\/)?[^/@\s]+)@[\^~]?(\d+\.\d+\.\d+)/g;
+const REQUESTED_PKG_VERSION_RE = /npm:((?:@[^/@\s]+\/)?[^/@\s]+)@[\^~]?(\d+\.\d+\.\d+)/g;
 
 function distinctVersionsMentioned(message: string): string[] {
   const found = new Set<string>();

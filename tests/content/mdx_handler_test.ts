@@ -136,7 +136,7 @@ This is MDX content.
   assertEquals(body?.includes("This is MDX content."), true);
   assertEquals(body?.includes('<MyComponent prop="value" />'), true);
   // Should NOT include frontmatter
-  assertEquals(body?.includes("title: \"Test\""), false);
+  assertEquals(body?.includes('title: "Test"'), false);
 });
 
 Deno.test("MdxHandler: empty body returns null", () => {
@@ -308,7 +308,7 @@ Deno.test("MdxHandler: preserve image query params", async () => {
   // MDX renders images as <img> tags; query params may be HTML-encoded (&amp;)
   assertEquals(
     html.includes("/content-media/post/photo.jpg?width=800&quality=80") ||
-    html.includes("/content-media/post/photo.jpg?width=800&amp;quality=80"),
+      html.includes("/content-media/post/photo.jpg?width=800&amp;quality=80"),
     true,
   );
 });

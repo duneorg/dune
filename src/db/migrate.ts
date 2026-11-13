@@ -133,7 +133,9 @@ export function generateCreateTableSql(schema: DbSchema): string {
   for (const field of schema.fields) {
     if (field.index) {
       lines.push(
-        `CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${schema.table}_${field.name}`)} ON ${quoteIdent(schema.table)}(${quoteIdent(field.name)});`,
+        `CREATE INDEX IF NOT EXISTS ${quoteIdent(`idx_${schema.table}_${field.name}`)} ON ${
+          quoteIdent(schema.table)
+        }(${quoteIdent(field.name)});`,
       );
     }
   }
@@ -318,7 +320,10 @@ export interface MigrationStatus {
 /**
  * Return the status (applied / pending) of all migration files.
  */
-export async function migrationStatus(root: string, adapter: DbAdapter): Promise<MigrationStatus[]> {
+export async function migrationStatus(
+  root: string,
+  adapter: DbAdapter,
+): Promise<MigrationStatus[]> {
   const migrationsDir = join(root, "data", "migrations");
 
   // Ensure tracking table exists

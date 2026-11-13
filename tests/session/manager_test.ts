@@ -5,10 +5,7 @@
  * the manager itself is backend-agnostic (works over any SessionStore).
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createLocalSessionStore } from "../../src/session/local.ts";
 import { createSessionManager } from "../../src/session/mod.ts";
 import type { User } from "../../src/auth/types.ts";
@@ -22,9 +19,7 @@ function createMemoryStorage() {
       return d;
     },
     async write(path: string, data: Uint8Array | string): Promise<void> {
-      const bytes = typeof data === "string"
-        ? new TextEncoder().encode(data)
-        : data;
+      const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
       files.set(path, bytes);
     },
     async exists(path: string): Promise<boolean> {

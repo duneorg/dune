@@ -182,7 +182,9 @@ function emitValidationBlock(
       const allowed = JSON.stringify(field.enum);
       checks.push(
         `    if (${bodyVar}.${field.name} !== undefined && !${allowed}.includes(${bodyVar}.${field.name} as string)) {`,
-        `      errors.push({ field: "${field.name}", message: "must be one of: ${field.enum.join(", ")}" });`,
+        `      errors.push({ field: "${field.name}", message: "must be one of: ${
+          field.enum.join(", ")
+        }" });`,
         `    }`,
       );
     }
@@ -278,9 +280,13 @@ function generateApiIndexFile(schema: DbSchema): string {
     if (isOwner) {
       lines.push(`  // Owner scoping: force ownership to the authenticated user; a`);
       lines.push(`  // client-supplied ${ownerField} must never win.`);
-      lines.push(`  const record = await db.${schema.table}.create({ ...data, ${ownerField}: authResult.user!.id } as ${schema.model}Create);`);
+      lines.push(
+        `  const record = await db.${schema.table}.create({ ...data, ${ownerField}: authResult.user!.id } as ${schema.model}Create);`,
+      );
     } else {
-      lines.push(`  const record = await db.${schema.table}.create(data as ${schema.model}Create);`);
+      lines.push(
+        `  const record = await db.${schema.table}.create(data as ${schema.model}Create);`,
+      );
     }
     lines.push(`  return Response.json(record, { status: 201 });`);
     lines.push(`}`);
@@ -310,11 +316,15 @@ function generateApiIdFile(schema: DbSchema): string {
   ];
 
   if (methods.has("get")) {
-    lines.push(`export async function GET(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(
+      `export async function GET(req: Request, params: { id: string }): Promise<Response> {`,
+    );
     lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
     lines.push(`  if (authResult.error) return authResult.error;`);
     lines.push(``);
-    lines.push(`  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+    lines.push(
+      `  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`,
+    );
     lines.push(`  if (!record) return Response.json({ error: "Not found" }, { status: 404 });`);
     if (isOwner) {
       lines.push(`  if ((record as any).${ownerField} !== authResult.user!.id) {`);
@@ -327,12 +337,16 @@ function generateApiIdFile(schema: DbSchema): string {
   }
 
   if (methods.has("update")) {
-    lines.push(`export async function PUT(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(
+      `export async function PUT(req: Request, params: { id: string }): Promise<Response> {`,
+    );
     lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
     lines.push(`  if (authResult.error) return authResult.error;`);
     lines.push(``);
     if (isOwner) {
-      lines.push(`  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+      lines.push(
+        `  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`,
+      );
       lines.push(`  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });`);
       lines.push(`  if ((existing as any).${ownerField} !== authResult.user!.id) {`);
       lines.push(`    return Response.json({ error: "Forbidden" }, { status: 403 });`);
@@ -350,21 +364,31 @@ function generateApiIdFile(schema: DbSchema): string {
     });
     for (const vl of validationLines) lines.push(vl);
     if (validationLines.length > 0) lines.push(``);
-    lines.push(`  const result = await db.${schema.table}.update(params.id, data as ${schema.model}Update);`);
-    lines.push(`  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`);
-    lines.push(`  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+    lines.push(
+      `  const result = await db.${schema.table}.update(params.id, data as ${schema.model}Update);`,
+    );
+    lines.push(
+      `  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`,
+    );
+    lines.push(
+      `  const record = await db.${schema.table}.findOne({ where: { id: params.id } as any });`,
+    );
     lines.push(`  return Response.json(record);`);
     lines.push(`}`);
     lines.push("");
   }
 
   if (methods.has("delete")) {
-    lines.push(`export async function DELETE(req: Request, params: { id: string }): Promise<Response> {`);
+    lines.push(
+      `export async function DELETE(req: Request, params: { id: string }): Promise<Response> {`,
+    );
     lines.push(`  const authResult = await requireAuth(req, ${authMode});`);
     lines.push(`  if (authResult.error) return authResult.error;`);
     lines.push(``);
     if (isOwner) {
-      lines.push(`  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`);
+      lines.push(
+        `  const existing = await db.${schema.table}.findOne({ where: { id: params.id } as any });`,
+      );
       lines.push(`  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });`);
       lines.push(`  if ((existing as any).${ownerField} !== authResult.user!.id) {`);
       lines.push(`    return Response.json({ error: "Forbidden" }, { status: 403 });`);
@@ -372,7 +396,9 @@ function generateApiIdFile(schema: DbSchema): string {
       lines.push(``);
     }
     lines.push(`  const result = await db.${schema.table}.delete(params.id);`);
-    lines.push(`  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`);
+    lines.push(
+      `  if (result.count === 0) return Response.json({ error: "Not found" }, { status: 404 });`,
+    );
     lines.push(`  return new Response(null, { status: 204 });`);
     lines.push(`}`);
     lines.push("");

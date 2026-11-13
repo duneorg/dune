@@ -39,7 +39,9 @@ function stubFetch(captured: CapturedRequest[], status = 200): () => void {
     const headers: Record<string, string> = {};
     const rawHeaders = init?.headers ?? {};
     if (rawHeaders instanceof Headers) {
-      rawHeaders.forEach((v, k) => { headers[k] = v; });
+      rawHeaders.forEach((v, k) => {
+        headers[k] = v;
+      });
     } else {
       for (const [k, v] of Object.entries(rawHeaders as Record<string, string>)) {
         headers[k] = v;
@@ -58,7 +60,9 @@ function stubFetch(captured: CapturedRequest[], status = 200): () => void {
     return new Response(status === 200 ? "" : "error", { status });
   };
 
-  return () => { globalThis.fetch = original; };
+  return () => {
+    globalThis.fetch = original;
+  };
 }
 
 /**
@@ -71,7 +75,9 @@ function stubDns(publicIp = "93.184.216.34"): () => void {
   // deno-lint-ignore no-explicit-any
   (Deno as any).resolveDns = (_host: string, recordType: string) =>
     Promise.resolve(recordType === "A" ? [publicIp] : []);
-  return () => { Deno.resolveDns = original; };
+  return () => {
+    Deno.resolveDns = original;
+  };
 }
 
 // ─── Cloudflare ──────────────────────────────────────────────────────────────

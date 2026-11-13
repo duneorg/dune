@@ -166,9 +166,7 @@ async function main() {
     Deno.exit(1);
   }
   console.log(
-    `check-core-pin-drift: OK${
-      skipped > 0 ? ` (${skipped} skipped, unreachable)` : ""
-    }`,
+    `check-core-pin-drift: OK${skipped > 0 ? ` (${skipped} skipped, unreachable)` : ""}`,
   );
 }
 

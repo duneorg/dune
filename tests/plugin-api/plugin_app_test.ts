@@ -3,7 +3,11 @@ import { join } from "@std/path";
 import { App, type FreshContext } from "fresh";
 import { bootstrap } from "../../src/runtime/bootstrap.ts";
 import { mountPlugins } from "../../src/plugins/loader.ts";
-import type { PluginApp, PluginRouteContext, PluginRouteHandler } from "../../src/plugin-api/app.ts";
+import type {
+  PluginApp,
+  PluginRouteContext,
+  PluginRouteHandler,
+} from "../../src/plugin-api/app.ts";
 import type { PublicRouteRegistration } from "../../src/hooks/types.ts";
 import type { DunePlugin } from "../../src/hooks/types.ts";
 
@@ -24,7 +28,10 @@ Deno.test("the contract's route types are satisfied by Fresh's own, both ways", 
 
   // A route registration takes a handler written against a full Fresh context
   // (it declares `handler` as a method, so the parameter is checked bivariantly).
-  const pub: PublicRouteRegistration = { path: "/pub", handler: (ctx: FreshContext<unknown>) => new Response(ctx.req.method) };
+  const pub: PublicRouteRegistration = {
+    path: "/pub",
+    handler: (ctx: FreshContext<unknown>) => new Response(ctx.req.method),
+  };
   assertEquals(pub.path, "/pub");
 });
 
@@ -37,7 +44,10 @@ Deno.test(
     const root = await Deno.makeTempDir({ prefix: "dune_test_plugin_app_" });
     try {
       await Deno.mkdir(join(root, "content", "01.home"), { recursive: true });
-      await Deno.writeTextFile(join(root, "content", "01.home", "default.md"), "---\ntitle: Home\n---\n\n# Home\n");
+      await Deno.writeTextFile(
+        join(root, "content", "01.home", "default.md"),
+        "---\ntitle: Home\n---\n\n# Home\n",
+      );
 
       const plugin: DunePlugin = {
         name: "plugin-app-probe",
@@ -48,8 +58,16 @@ Deno.test(
             ctx.state = { ...ctx.state, seen: "middleware" };
             return await ctx.next();
           });
-          app.get("/probe/:id", (ctx) =>
-            Response.json({ id: ctx.params.id, path: ctx.url.pathname, state: ctx.state.seen, method: ctx.req.method }));
+          app.get(
+            "/probe/:id",
+            (ctx) =>
+              Response.json({
+                id: ctx.params.id,
+                path: ctx.url.pathname,
+                state: ctx.state.seen,
+                method: ctx.req.method,
+              }),
+          );
           app.post("/probe/:id", (ctx) => new Response(`posted ${ctx.params.id}`));
         },
       };
@@ -60,7 +78,12 @@ Deno.test(
       const handler = app.handler();
 
       const got = await handler(new Request("http://localhost/probe/7"));
-      assertEquals(await got.json(), { id: "7", path: "/probe/7", state: "middleware", method: "GET" });
+      assertEquals(await got.json(), {
+        id: "7",
+        path: "/probe/7",
+        state: "middleware",
+        method: "GET",
+      });
       const posted = await handler(new Request("http://localhost/probe/9", { method: "POST" }));
       assertEquals(await posted.text(), "posted 9");
     } finally {

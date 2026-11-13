@@ -135,8 +135,18 @@ export const MIME_TYPES: Record<string, string> = {
 
 /** Long-lived assets: fonts and images (1 year, immutable). */
 export const IMMUTABLE_EXTS = new Set([
-  "ttf", "otf", "woff", "woff2", "eot",
-  "jpg", "jpeg", "png", "gif", "webp", "svg", "ico",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "eot",
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "svg",
+  "ico",
 ]);
 
 /** Cache-Control header value for a given file extension. */
@@ -297,20 +307,30 @@ export function renderErrorPage(
   siteName: string,
 ): Response {
   const html = render(
-    h("html", { lang: "en" },
-      h("head", null,
+    h(
+      "html",
+      { lang: "en" },
+      h(
+        "head",
+        null,
         h("meta", { charset: "utf-8" }),
         h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
         h("title", null, `${title} | ${siteName}`),
-        h("style", null, `
+        h(
+          "style",
+          null,
+          `
           body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 4rem auto; padding: 0 1.5rem; color: #333; text-align: center; }
           h1 { font-size: 4rem; margin: 0; color: #667eea; }
           p { font-size: 1.1rem; color: #666; }
           a { color: #667eea; text-decoration: none; }
           a:hover { text-decoration: underline; }
-        `),
+        `,
+        ),
       ),
-      h("body", null,
+      h(
+        "body",
+        null,
         h("h1", null, String(status)),
         h("p", null, message),
         h("p", null, h("a", { href: "/" }, `← Back to ${siteName}`)),
@@ -336,7 +356,8 @@ export function injectFeedLinks(siteName: string, response: Response): Response 
 
   return new Response(
     response.body
-      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      ? response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             const text = new TextDecoder().decode(chunk);
             const injected = text.includes("</head>")
@@ -344,7 +365,8 @@ export function injectFeedLinks(siteName: string, response: Response): Response 
               : text;
             controller.enqueue(new TextEncoder().encode(injected));
           },
-        }))
+        }),
+      )
       : null,
     {
       status: response.status,
@@ -402,7 +424,8 @@ export function injectRtlDir(response: Response, rtl: boolean): Response {
 
   return new Response(
     response.body
-      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      ? response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             const text = new TextDecoder().decode(chunk);
             // Only inject when there is no existing dir= on the <html> tag.
@@ -411,7 +434,8 @@ export function injectRtlDir(response: Response, rtl: boolean): Response {
               : text.replace(/(<html\b)([^>]*>)/, '$1 dir="rtl"$2');
             controller.enqueue(new TextEncoder().encode(injected));
           },
-        }))
+        }),
+      )
       : null,
     {
       status: response.status,
@@ -458,7 +482,8 @@ export function injectBasePath(response: Response, basePath: string | undefined)
 
   return new Response(
     response.body
-      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      ? response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             const text = new TextDecoder().decode(chunk);
             const rewritten = text.replace(attrRe, (match, attr: string, path: string) => {
@@ -467,7 +492,8 @@ export function injectBasePath(response: Response, basePath: string | undefined)
             });
             controller.enqueue(new TextEncoder().encode(rewritten));
           },
-        }))
+        }),
+      )
       : null,
     {
       status: response.status,
@@ -485,17 +511,19 @@ export function injectLiveReload(response: Response): Response {
 
   return new Response(
     response.body
-      ? response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      ? response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
           transform(chunk, controller) {
             const text = new TextDecoder().decode(chunk);
             const injected = text.includes("</body>")
               ? text.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`)
               : text.includes("</html>")
-                ? text.replace("</html>", `${LIVE_RELOAD_SCRIPT}</html>`)
-                : text + LIVE_RELOAD_SCRIPT;
+              ? text.replace("</html>", `${LIVE_RELOAD_SCRIPT}</html>`)
+              : text + LIVE_RELOAD_SCRIPT;
             controller.enqueue(new TextEncoder().encode(injected));
           },
-        }))
+        }),
+      )
       : null,
     {
       status: response.status,

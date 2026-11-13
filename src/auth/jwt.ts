@@ -13,11 +13,11 @@ import { crypto as stdCrypto } from "@std/crypto";
 import { safeFetch } from "../security/ssrf.ts";
 
 export interface ExternalJwtOptions {
-  secret?: string;       // HMAC-SHA256 shared secret
-  jwksUrl?: string;      // JWKS endpoint URL
-  userIdClaim?: string;  // default "sub"
-  emailClaim?: string;   // default "email"
-  rolesClaim?: string;   // default "roles"
+  secret?: string; // HMAC-SHA256 shared secret
+  jwksUrl?: string; // JWKS endpoint URL
+  userIdClaim?: string; // default "sub"
+  emailClaim?: string; // default "email"
+  rolesClaim?: string; // default "roles"
   /**
    * Expected `iss` claim. Required in external-jwt mode: without it, any
    * token signed by the same IdP (e.g. another tenant on a shared JWKS) is
@@ -236,9 +236,7 @@ async function verifyRsa(
   if (!Array.isArray(jwks.keys) || jwks.keys.length === 0) return false;
 
   // Find matching key by kid, or use the first key if no kid
-  const jwk = kid
-    ? jwks.keys.find((k) => k.kid === kid)
-    : jwks.keys[0];
+  const jwk = kid ? jwks.keys.find((k) => k.kid === kid) : jwks.keys[0];
 
   if (!jwk) return false;
 

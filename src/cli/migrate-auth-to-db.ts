@@ -59,7 +59,10 @@ export async function migrateAuthToDbCommand(
 
     for (const filePath of userFiles) {
       const user = JSON.parse(await Deno.readTextFile(filePath)) as User;
-      if (!user.id) { usersSkipped++; continue; }
+      if (!user.id) {
+        usersSkipped++;
+        continue;
+      }
 
       if (dryRun) {
         console.log(`  ~ user ${user.id} (${user.email}) — would import`);
@@ -123,9 +126,11 @@ export async function migrateAuthToDbCommand(
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             tuple.id,
-            tuple.subject.type, tuple.subject.id,
+            tuple.subject.type,
+            tuple.subject.id,
             tuple.relation,
-            tuple.object.type, tuple.object.id,
+            tuple.object.type,
+            tuple.object.id,
             tuple.condition?.validSince ?? null,
             tuple.condition?.validUntil ?? null,
           ],

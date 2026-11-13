@@ -29,9 +29,7 @@ export const contentCommands = {
     const ctx = await bootstrap(root, { debug: options.debug });
     const { engine } = ctx;
 
-    const sorted = [...engine.pages].sort((a, b) =>
-      a.route.localeCompare(b.route)
-    );
+    const sorted = [...engine.pages].sort((a, b) => a.route.localeCompare(b.route));
 
     if (options.json) {
       const output = {
@@ -58,7 +56,9 @@ export const contentCommands = {
     console.log("🏜️  Dune — content listing\n");
 
     // Header
-    const header = `  ${"Route".padEnd(40)} ${"Template".padEnd(15)} ${"Format".padEnd(6)} ${"Published"}`;
+    const header = `  ${"Route".padEnd(40)} ${"Template".padEnd(15)} ${
+      "Format".padEnd(6)
+    } ${"Published"}`;
     console.log(header);
     console.log("  " + "─".repeat(header.length - 2));
 
@@ -98,7 +98,10 @@ export const contentCommands = {
     // `dune validate`, so `content:check` doesn't report a clean pass while
     // silently missing pages.
     for (const indexError of engine.indexErrors) {
-      issues.push({ sourcePath: indexError.path, message: `Failed to index: ${indexError.message}` });
+      issues.push({
+        sourcePath: indexError.path,
+        message: `Failed to index: ${indexError.message}`,
+      });
     }
 
     for (const page of engine.pages) {
@@ -154,7 +157,10 @@ export const contentCommands = {
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          issues.push({ sourcePath: pageIndex.sourcePath, message: `Failed to render: ${message}` });
+          issues.push({
+            sourcePath: pageIndex.sourcePath,
+            message: `Failed to render: ${message}`,
+          });
         }
       }
     }
@@ -196,7 +202,9 @@ export const contentCommands = {
     if (options.render) {
       console.log(`  🖨️  ${pagesRendered} page bodies rendered`);
     } else {
-      console.log(`  ℹ️  Page bodies not rendered — pass --render to also catch MDX compile errors`);
+      console.log(
+        `  ℹ️  Page bodies not rendered — pass --render to also catch MDX compile errors`,
+      );
     }
   },
 };

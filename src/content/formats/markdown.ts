@@ -13,12 +13,7 @@
 
 import matter from "gray-matter";
 import { Marked } from "marked";
-import type {
-  ContentFormatHandler,
-  Page,
-  PageFrontmatter,
-  RenderContext,
-} from "../types.ts";
+import type { ContentFormatHandler, Page, PageFrontmatter, RenderContext } from "../types.ts";
 import { resolveMediaRefs } from "./media-resolve.ts";
 import { sanitizeHtml } from "../../security/sanitize-html.ts";
 

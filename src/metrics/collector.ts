@@ -197,9 +197,7 @@ export class MetricsCollector {
       requests: {
         total: this.totalRequests,
         errors: this.totalErrors,
-        errorRate: this.totalRequests > 0
-          ? this.totalErrors / this.totalRequests
-          : 0,
+        errorRate: this.totalRequests > 0 ? this.totalErrors / this.totalRequests : 0,
         latency: computeStats(this.globalLatency),
       },
       topRoutes,

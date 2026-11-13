@@ -8,10 +8,7 @@
  * DUNE_EMAIL_ALLOW_DEV_SEND=1 is also explicitly set.
  */
 
-import {
-  assertEquals,
-  assertInstanceOf,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertInstanceOf } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createEmailProvider } from "../../src/email/providers/mod.ts";
 import { ConsoleEmailProvider } from "../../src/email/providers/console.ts";
 import { ResendEmailProvider } from "../../src/email/providers/resend.ts";

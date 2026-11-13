@@ -59,10 +59,16 @@ function validateField(
         errors.push({ field: name, message: `${field.label} must be a number.` });
       } else {
         if (field.validate?.min !== undefined && num < field.validate.min) {
-          errors.push({ field: name, message: `${field.label} must be at least ${field.validate.min}.` });
+          errors.push({
+            field: name,
+            message: `${field.label} must be at least ${field.validate.min}.`,
+          });
         }
         if (field.validate?.max !== undefined && num > field.validate.max) {
-          errors.push({ field: name, message: `${field.label} must be at most ${field.validate.max}.` });
+          errors.push({
+            field: name,
+            message: `${field.label} must be at most ${field.validate.max}.`,
+          });
         }
       }
       break;
@@ -83,10 +89,16 @@ function validateField(
     field.type === "tel" || field.type === "textarea"
   ) {
     if (field.validate?.min !== undefined && value.length < field.validate.min) {
-      errors.push({ field: name, message: `${field.label} must be at least ${field.validate.min} characters.` });
+      errors.push({
+        field: name,
+        message: `${field.label} must be at least ${field.validate.min} characters.`,
+      });
     }
     if (field.validate?.max !== undefined && value.length > field.validate.max) {
-      errors.push({ field: name, message: `${field.label} must be at most ${field.validate.max} characters.` });
+      errors.push({
+        field: name,
+        message: `${field.label} must be at most ${field.validate.max} characters.`,
+      });
     }
   }
 

@@ -1,7 +1,4 @@
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { generateCode } from "../../src/db/codegen.ts";
 import { parseSchemaYaml } from "../../src/db/schema-parser.ts";
 

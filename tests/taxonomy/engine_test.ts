@@ -28,9 +28,25 @@ function makePage(overrides: Partial<PageIndex> = {}): PageIndex {
   };
 }
 
-const post1 = makePage({ sourcePath: "blog/post1/default.md", route: "/blog/post1", title: "Post 1", taxonomy: { tag: ["deno", "fresh"], category: ["tutorials"] } });
-const post2 = makePage({ sourcePath: "blog/post2/default.md", route: "/blog/post2", title: "Post 2", taxonomy: { tag: ["deno"], category: ["news"] } });
-const post3 = makePage({ sourcePath: "blog/post3/default.md", route: "/blog/post3", title: "Post 3", published: false, taxonomy: { tag: ["deno"] } });
+const post1 = makePage({
+  sourcePath: "blog/post1/default.md",
+  route: "/blog/post1",
+  title: "Post 1",
+  taxonomy: { tag: ["deno", "fresh"], category: ["tutorials"] },
+});
+const post2 = makePage({
+  sourcePath: "blog/post2/default.md",
+  route: "/blog/post2",
+  title: "Post 2",
+  taxonomy: { tag: ["deno"], category: ["news"] },
+});
+const post3 = makePage({
+  sourcePath: "blog/post3/default.md",
+  route: "/blog/post3",
+  title: "Post 3",
+  published: false,
+  taxonomy: { tag: ["deno"] },
+});
 
 const taxMap: TaxonomyMap = {
   tag: {
@@ -48,7 +64,7 @@ Deno.test("taxonomy.find: returns published pages for a tag", () => {
   const results = engine.find("tag", "deno");
   // post3 is unpublished
   assertEquals(results.length, 2);
-  assertEquals(results.map(p => p.route).sort(), ["/blog/post1", "/blog/post2"]);
+  assertEquals(results.map((p) => p.route).sort(), ["/blog/post1", "/blog/post2"]);
 });
 
 Deno.test("taxonomy.find: returns empty for unknown taxonomy", () => {
@@ -103,7 +119,7 @@ Deno.test("taxonomy.findAny: deduplicates pages matched by multiple values", () 
   const engine = createTaxonomyEngine({ pages: [post1, post2], taxonomyMap: taxMap });
   // post1 matches both "deno" and "fresh" — should appear once
   const results = engine.findAny("tag", ["deno", "fresh"]);
-  const routes = results.map(p => p.route);
+  const routes = results.map((p) => p.route);
   assertEquals(new Set(routes).size, routes.length); // no duplicates
 });
 
@@ -134,7 +150,11 @@ Deno.test("taxonomy.map: returns full taxonomy map", () => {
 Deno.test("taxonomy.rebuild: swaps internal state", () => {
   const engine = createTaxonomyEngine({ pages: [post1, post2], taxonomyMap: taxMap });
 
-  const newPage = makePage({ sourcePath: "about/default.md", route: "/about", taxonomy: { tag: ["preact"] } });
+  const newPage = makePage({
+    sourcePath: "about/default.md",
+    route: "/about",
+    taxonomy: { tag: ["preact"] },
+  });
   const newMap: TaxonomyMap = { tag: { preact: ["about/default.md"] } };
   engine.rebuild([newPage], newMap);
 
@@ -145,7 +165,11 @@ Deno.test("taxonomy.rebuild: swaps internal state", () => {
 
 Deno.test("taxonomy.find: excludes unpublished even after rebuild", () => {
   const engine = createTaxonomyEngine({ pages: [], taxonomyMap: {} });
-  const unpub = makePage({ sourcePath: "secret/default.md", published: false, taxonomy: { tag: ["x"] } });
+  const unpub = makePage({
+    sourcePath: "secret/default.md",
+    published: false,
+    taxonomy: { tag: ["x"] },
+  });
   engine.rebuild([unpub], { tag: { x: ["secret/default.md"] } });
   assertEquals(engine.find("tag", "x"), []);
 });

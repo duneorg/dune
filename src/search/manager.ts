@@ -174,8 +174,12 @@ export function createSearchManager(
       // Retry what failed: re-index current pages if we have seen them, else the first build.
       const pages = lastPages;
       const records = lastRecords;
-      void attempt(name, entry, pages ? "rebuild" : "build", () =>
-        pages ? entry.engine.rebuild(pages, records) : entry.engine.build());
+      void attempt(
+        name,
+        entry,
+        pages ? "rebuild" : "build",
+        () => pages ? entry.engine.rebuild(pages, records) : entry.engine.build(),
+      );
     }, delay);
     Deno.unrefTimer(entry.timer as unknown as number);
   }
@@ -272,7 +276,11 @@ export function createSearchManager(
 
     setActiveEngine(name: string): void {
       if (!entries.has(name)) {
-        throw new Error(`Search engine "${name}" is not registered. Registered: ${[...entries.keys()].join(", ")}`);
+        throw new Error(
+          `Search engine "${name}" is not registered. Registered: ${
+            [...entries.keys()].join(", ")
+          }`,
+        );
       }
       active = name;
     },
@@ -315,7 +323,9 @@ export function createSearchManager(
     close,
 
     async build(): Promise<void> {
-      const errors = (await runAll("build", (e) => e.build())).filter((e): e is Error => e !== null);
+      const errors = (await runAll("build", (e) => e.build())).filter((e): e is Error =>
+        e !== null
+      );
       const configError = errors.find((e) => isSearchConfigError(e.cause));
       const abort = configError ?? (options.failOnStartup ? errors[0] : undefined);
       if (abort) {
@@ -359,8 +369,10 @@ export function createSearchManager(
     },
 
     facetCounts(query: string, field: string): Promise<FacetCounts> {
-      return viaCandidates("facetCounts", (e) =>
-        e.facetCounts ? e.facetCounts(query, field) : Promise.resolve({}));
+      return viaCandidates(
+        "facetCounts",
+        (e) => e.facetCounts ? e.facetCounts(query, field) : Promise.resolve({}),
+      );
     },
 
     async suggest(prefix: string, limit = 10): Promise<string[]> {

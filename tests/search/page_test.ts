@@ -55,7 +55,7 @@ Deno.test("generateSearchPage: form action, fetch, and history use the prefixed 
   }));
 
   assertStringIncludes(html, 'action="https://example.com/papermod/search"');
-  assertStringIncludes(html, "var BASE = \"https://example.com/papermod\"");
+  assertStringIncludes(html, 'var BASE = "https://example.com/papermod"');
   assertStringIncludes(html, "fetch(BASE + '/api/search?");
   assertStringIncludes(html, "history.replaceState(null, '', BASE + '/search'");
 });

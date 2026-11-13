@@ -54,7 +54,12 @@ function captureLog(): { lines: string[]; restore: () => void } {
   const lines: string[] = [];
   const orig = console.log;
   console.log = (...args: unknown[]) => lines.push(args.join(" "));
-  return { lines, restore: () => { console.log = orig; } };
+  return {
+    lines,
+    restore: () => {
+      console.log = orig;
+    },
+  };
 }
 
 /** Extract the first JSON object from captured output lines. */
@@ -81,7 +86,9 @@ Deno.test("content:delete exits 1 without --confirm or --dry-run", async () => {
 
     try {
       await contentDeleteCommand(root, "/blog", {});
-    } catch { /* expected */ } finally {
+    } catch {
+      /* expected */
+    } finally {
       Deno.exit = origExit;
     }
 
@@ -149,14 +156,20 @@ Deno.test(
 
       // File gone
       let fileGone = false;
-      try { await Deno.stat(join(root, "content", "01.blog", "default.md")); }
-      catch { fileGone = true; }
+      try {
+        await Deno.stat(join(root, "content", "01.blog", "default.md"));
+      } catch {
+        fileGone = true;
+      }
       assertEquals(fileGone, true, "default.md should be deleted");
 
       // Empty parent folder also gone
       let dirGone = false;
-      try { await Deno.stat(join(root, "content", "01.blog")); }
-      catch { dirGone = true; }
+      try {
+        await Deno.stat(join(root, "content", "01.blog"));
+      } catch {
+        dirGone = true;
+      }
       assertEquals(dirGone, true, "Empty parent folder should be removed");
     });
   },
@@ -176,8 +189,11 @@ Deno.test(
 
       // default.md gone
       let fileGone = false;
-      try { await Deno.stat(join(dir, "default.md")); }
-      catch { fileGone = true; }
+      try {
+        await Deno.stat(join(dir, "default.md"));
+      } catch {
+        fileGone = true;
+      }
       assertEquals(fileGone, true, "default.md should be deleted");
 
       // Folder remains (has extra.txt)
@@ -220,8 +236,11 @@ Deno.test(
       await contentDeleteCommand(root, "/about", { confirm: true });
 
       let fileGone = false;
-      try { await Deno.stat(join(root, "content", "about.md")); }
-      catch { fileGone = true; }
+      try {
+        await Deno.stat(join(root, "content", "about.md"));
+      } catch {
+        fileGone = true;
+      }
       assertEquals(fileGone, true, "Flat .md file should be deleted");
     });
   },
@@ -242,8 +261,11 @@ Deno.test(
       await contentDeleteCommand(root, "about", { confirm: true });
 
       let fileGone = false;
-      try { await Deno.stat(join(root, "content", "about", "default.md")); }
-      catch { fileGone = true; }
+      try {
+        await Deno.stat(join(root, "content", "about", "default.md"));
+      } catch {
+        fileGone = true;
+      }
       assertEquals(fileGone, true);
     });
   },
@@ -259,8 +281,11 @@ Deno.test(
       await contentDeleteCommand(root, "/services", { confirm: true });
 
       let fileGone = false;
-      try { await Deno.stat(join(root, "content", "03.services", "default.md")); }
-      catch { fileGone = true; }
+      try {
+        await Deno.stat(join(root, "content", "03.services", "default.md"));
+      } catch {
+        fileGone = true;
+      }
       assertEquals(fileGone, true, "Numeric-prefix folder page should be deleted");
     });
   },
@@ -284,7 +309,9 @@ Deno.test(
 
       try {
         await contentDeleteCommand(root, "/nonexistent", { dryRun: true });
-      } catch { /* expected */ } finally {
+      } catch {
+        /* expected */
+      } finally {
         Deno.exit = origExit;
       }
 

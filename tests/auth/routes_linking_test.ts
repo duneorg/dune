@@ -12,7 +12,11 @@
 import { assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createAuthRoutes } from "../../src/auth/routes.ts";
 import { createLocalUserStore } from "../../src/auth/user-store.ts";
-import { createSiteAuthMiddleware, OAUTH_LINK_COOKIE, OAUTH_STATE_COOKIE } from "../../src/auth/middleware.ts";
+import {
+  createSiteAuthMiddleware,
+  OAUTH_LINK_COOKIE,
+  OAUTH_STATE_COOKIE,
+} from "../../src/auth/middleware.ts";
 import { createSessionManager, createSessionStore } from "../../src/session/mod.ts";
 import type { OAuthProvider } from "../../src/auth/providers/types.ts";
 import type { User } from "../../src/auth/types.ts";
@@ -51,7 +55,12 @@ function createMemoryStorage() {
         const segment = rest.split("/")[0];
         if (seen.has(segment)) continue;
         seen.add(segment);
-        result.push({ name: segment, path: prefix + segment, isFile: !rest.includes("/"), isDirectory: rest.includes("/") });
+        result.push({
+          name: segment,
+          path: prefix + segment,
+          isFile: !rest.includes("/"),
+          isDirectory: rest.includes("/"),
+        });
       }
       return result;
     },
@@ -77,7 +86,9 @@ function makeMockProvider(
   return {
     name: "github",
     authorizationUrl: (state, redirectUri) =>
-      `https://provider.example/auth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `https://provider.example/auth?state=${state}&redirect_uri=${
+        encodeURIComponent(redirectUri)
+      }`,
     exchangeCode: (_code, _redirectUri) => Promise.resolve({ accessToken: "tok" }),
     getUser: (_accessToken) => Promise.resolve(profile),
   };
@@ -145,28 +156,44 @@ async function loginAs(
 
 Deno.test("oauthLinkStart: 401 when not logged in", async () => {
   const { routes } = await buildHarness({});
-  const res = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", null);
+  const res = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    null,
+  );
   assertEquals(res.status, 401);
 });
 
 Deno.test("oauthLinkStart: 404 for an unknown provider", async () => {
   const { routes, userStore } = await buildHarness({});
   const user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
-  const res = routes.oauthLinkStart(new Request("https://example.com/auth/google/link"), "google", user);
+  const res = routes.oauthLinkStart(
+    new Request("https://example.com/auth/google/link"),
+    "google",
+    user,
+  );
   assertEquals(res.status, 404);
 });
 
 Deno.test("oauthLinkStart: 400 when userStoreType is 'session'", async () => {
   const { routes, userStore } = await buildHarness({ userStoreType: "session" });
   const user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
-  const res = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", user);
+  const res = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    user,
+  );
   assertEquals(res.status, 400);
 });
 
 Deno.test("oauthLinkStart: sets both the state and link cookies, redirects to the provider", async () => {
   const { routes, userStore } = await buildHarness({});
   const user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
-  const res = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", user);
+  const res = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    user,
+  );
   assertEquals(res.status, 302);
   assertMatch(res.headers.get("Location") ?? "", /^https:\/\/provider\.example\/auth\?state=/);
   const setCookie = res.headers.get("Set-Cookie");
@@ -177,17 +204,27 @@ Deno.test("oauthLinkStart: sets both the state and link cookies, redirects to th
 // ── oauthCallback (link-flow branch) ─────────────────────────────────────
 
 Deno.test("oauthCallback (link): links a brand-new provider identity to the current session's account", async () => {
-  const { routes, userStore } = await buildHarness({ profile: { id: "gh-new", email: "x@example.com" } });
+  const { routes, userStore } = await buildHarness({
+    profile: { id: "gh-new", email: "x@example.com" },
+  });
   const user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
 
-  const start = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", user);
+  const start = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    user,
+  );
   const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
   const stateCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_STATE_COOKIE);
   const linkCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_LINK_COOKIE);
 
   const callbackReq = new Request(
     `https://example.com/auth/github/callback?code=abc&state=${state}`,
-    { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}` } },
+    {
+      headers: {
+        Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}`,
+      },
+    },
   );
   const res = await routes.oauthCallback(callbackReq, "github", user);
 
@@ -199,18 +236,32 @@ Deno.test("oauthCallback (link): links a brand-new provider identity to the curr
 });
 
 Deno.test("oauthCallback (link): 403 when the active session doesn't match who started the flow", async () => {
-  const { routes, userStore } = await buildHarness({ profile: { id: "gh-new", email: "x@example.com" } });
+  const { routes, userStore } = await buildHarness({
+    profile: { id: "gh-new", email: "x@example.com" },
+  });
   const user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
-  const otherUser = await userStore.create({ email: "b@example.com", provider: "magic", roles: [] });
+  const otherUser = await userStore.create({
+    email: "b@example.com",
+    provider: "magic",
+    roles: [],
+  });
 
-  const start = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", user);
+  const start = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    user,
+  );
   const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
   const stateCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_STATE_COOKIE);
   const linkCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_LINK_COOKIE);
 
   const callbackReq = new Request(
     `https://example.com/auth/github/callback?code=abc&state=${state}`,
-    { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}` } },
+    {
+      headers: {
+        Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}`,
+      },
+    },
   );
   // Active session is now otherUser, not the user who started the link flow.
   const res = await routes.oauthCallback(callbackReq, "github", otherUser);
@@ -221,18 +272,28 @@ Deno.test("oauthCallback (link): 403 when the active session doesn't match who s
 });
 
 Deno.test("oauthCallback (link): already linked to this same account is a no-op success", async () => {
-  const { routes, userStore } = await buildHarness({ profile: { id: "gh-1", email: "x@example.com" } });
+  const { routes, userStore } = await buildHarness({
+    profile: { id: "gh-1", email: "x@example.com" },
+  });
   let user = await userStore.create({ email: "a@example.com", provider: "magic", roles: [] });
   user = (await userStore.linkProvider(user.id, "github", "gh-1"))!;
 
-  const start = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", user);
+  const start = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    user,
+  );
   const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
   const stateCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_STATE_COOKIE);
   const linkCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_LINK_COOKIE);
 
   const callbackReq = new Request(
     `https://example.com/auth/github/callback?code=abc&state=${state}`,
-    { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}` } },
+    {
+      headers: {
+        Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}`,
+      },
+    },
   );
   const res = await routes.oauthCallback(callbackReq, "github", user);
 
@@ -244,17 +305,34 @@ Deno.test("oauthCallback (link): exact-match-wins — provider identity already 
   const { routes, userStore, middleware } = await buildHarness({
     profile: { id: "gh-owned", email: "owner@example.com" },
   });
-  const owner = await userStore.create({ email: "owner@example.com", provider: "github", providerId: "gh-owned", roles: [] });
-  const linkingUser = await userStore.create({ email: "linker@example.com", provider: "magic", roles: [] });
+  const owner = await userStore.create({
+    email: "owner@example.com",
+    provider: "github",
+    providerId: "gh-owned",
+    roles: [],
+  });
+  const linkingUser = await userStore.create({
+    email: "linker@example.com",
+    provider: "magic",
+    roles: [],
+  });
 
-  const start = routes.oauthLinkStart(new Request("https://example.com/auth/github/link"), "github", linkingUser);
+  const start = routes.oauthLinkStart(
+    new Request("https://example.com/auth/github/link"),
+    "github",
+    linkingUser,
+  );
   const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
   const stateCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_STATE_COOKIE);
   const linkCookie = extractCookie(start.headers.get("Set-Cookie"), OAUTH_LINK_COOKIE);
 
   const callbackReq = new Request(
     `https://example.com/auth/github/callback?code=abc&state=${state}`,
-    { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}` } },
+    {
+      headers: {
+        Cookie: `${OAUTH_STATE_COOKIE}=${stateCookie}; ${OAUTH_LINK_COOKIE}=${linkCookie}`,
+      },
+    },
   );
   const res = await routes.oauthCallback(callbackReq, "github", linkingUser);
 
@@ -275,7 +353,9 @@ Deno.test("oauthCallback (link): exact-match-wins — provider identity already 
 });
 
 Deno.test("oauthCallback: an ordinary login (no link cookie) is unaffected by the linking feature", async () => {
-  const { routes, userStore } = await buildHarness({ profile: { id: "gh-fresh", email: "fresh@example.com" } });
+  const { routes, userStore } = await buildHarness({
+    profile: { id: "gh-fresh", email: "fresh@example.com" },
+  });
 
   const start = routes.oauthStart(new Request("https://example.com/auth/github"), "github");
   const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
@@ -332,7 +412,12 @@ Deno.test("unlinkProvider: 400 when the provider isn't linked", async () => {
 
 Deno.test("unlinkProvider: 400 when trying to unlink the primary (original signup) provider", async () => {
   const { routes, userStore } = await buildHarness({});
-  const user = await userStore.create({ email: "a@example.com", provider: "github", providerId: "gh-1", roles: [] });
+  const user = await userStore.create({
+    email: "a@example.com",
+    provider: "github",
+    providerId: "gh-1",
+    roles: [],
+  });
   const res = await routes.unlinkProvider(
     new Request("https://example.com/auth/github/unlink", { method: "POST" }),
     "github",
@@ -360,7 +445,12 @@ Deno.test("unlinkProvider: removes a linked entry when magic link is enabled", a
 
 Deno.test("unlinkProvider: blocks removing the last linked entry when magic link is disabled", async () => {
   const { routes, userStore } = await buildHarness({ magicLinkEnabled: false });
-  let user = await userStore.create({ email: "a@example.com", provider: "github", providerId: "gh-primary", roles: [] });
+  let user = await userStore.create({
+    email: "a@example.com",
+    provider: "github",
+    providerId: "gh-primary",
+    roles: [],
+  });
   user = (await userStore.linkProvider(user.id, "google", "gg-1"))!;
 
   const res = await routes.unlinkProvider(
@@ -375,7 +465,12 @@ Deno.test("unlinkProvider: blocks removing the last linked entry when magic link
 
 Deno.test("unlinkProvider: allows removing one of several linked entries even when magic link is disabled", async () => {
   const { routes, userStore } = await buildHarness({ magicLinkEnabled: false });
-  let user = await userStore.create({ email: "a@example.com", provider: "github", providerId: "gh-primary", roles: [] });
+  let user = await userStore.create({
+    email: "a@example.com",
+    provider: "github",
+    providerId: "gh-primary",
+    roles: [],
+  });
   user = (await userStore.linkProvider(user.id, "google", "gg-1"))!;
   user = (await userStore.linkProvider(user.id, "discord", "dc-1"))!;
 

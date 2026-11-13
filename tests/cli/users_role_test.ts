@@ -6,15 +6,9 @@
  * `authz.check()` reads at permission-check time.
  */
 
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { join } from "@std/path";
-import {
-  grantRoleCommand,
-  revokeRoleCommand,
-} from "../../src/cli/users-role.ts";
+import { grantRoleCommand, revokeRoleCommand } from "../../src/cli/users-role.ts";
 import { createStorage } from "../../src/storage/mod.ts";
 import { AuthzLocalAdapter } from "../../src/auth/authz-adapter-local.ts";
 

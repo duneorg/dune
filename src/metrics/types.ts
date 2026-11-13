@@ -5,8 +5,8 @@
 /** A fixed-size circular buffer of numbers for latency tracking */
 export interface LatencySample {
   values: Float64Array;
-  head: number;   // next write position
-  size: number;   // number of valid entries
+  head: number; // next write position
+  size: number; // number of valid entries
   capacity: number;
 }
 
@@ -31,21 +31,21 @@ export interface RouteMetrics {
 
 /** Slow query record */
 export interface SlowQuery {
-  ts: string;       // ISO
+  ts: string; // ISO
   type: "collection" | "search";
-  query: string;    // description or source
+  query: string; // description or source
   durationMs: number;
 }
 
 /** Full metrics snapshot — returned by MetricsCollector.snapshot() */
 export interface MetricsSnapshot {
-  ts: string;                  // ISO timestamp of snapshot
+  ts: string; // ISO timestamp of snapshot
   uptimeSeconds: number;
   requests: {
     total: number;
     errors: number;
-    errorRate: number;         // 0-1
-    latency: LatencyStats;     // across all routes
+    errorRate: number; // 0-1
+    latency: LatencyStats; // across all routes
   };
   topRoutes: Array<{
     route: string;
@@ -61,7 +61,7 @@ export interface MetricsSnapshot {
     evictions: number;
   } | null;
   memory: {
-    heapUsed: number;      // bytes
+    heapUsed: number; // bytes
     heapTotal: number;
     rss: number;
     external: number;
@@ -71,7 +71,7 @@ export interface MetricsSnapshot {
     rebuildCount: number;
     lastRebuildMs: number | null;
   };
-  slowQueries: SlowQuery[];  // last 20
+  slowQueries: SlowQuery[]; // last 20
 }
 
 /** Options for MetricsCollector */

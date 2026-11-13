@@ -45,9 +45,7 @@ export async function loadEnvFile(path: string, root: string): Promise<void> {
     text = await Deno.readTextFile(absPath);
   } catch (err) {
     throw new Error(
-      `--env-file: could not read "${absPath}": ${
-        err instanceof Error ? err.message : err
-      }`,
+      `--env-file: could not read "${absPath}": ${err instanceof Error ? err.message : err}`,
     );
   }
 

@@ -56,7 +56,12 @@ export interface SubmissionManager {
    * Save a new submission. Returns the created record.
    * Pass `id` to use a pre-generated ID (useful when files are stored before create()).
    */
-  create(form: string, fields: Record<string, string>, meta?: SubmissionMeta, options?: { id?: string; files?: SubmissionFile[] }): Promise<Submission>;
+  create(
+    form: string,
+    fields: Record<string, string>,
+    meta?: SubmissionMeta,
+    options?: { id?: string; files?: SubmissionFile[] },
+  ): Promise<Submission>;
   /** Get a single submission by form + id. */
   get(form: string, id: string): Promise<Submission | null>;
   /** List all submissions for a form, newest first. */

@@ -17,8 +17,8 @@ export type {
   RecordInput,
 } from "./engine.ts";
 export {
-  /** Compute a diff between two strings. */
-  computeDiff,
   /** Apply a diff (patch) to reconstruct the new text from the original. */
   applyPatch,
+  /** Compute a diff between two strings. */
+  computeDiff,
 } from "./diff.ts";

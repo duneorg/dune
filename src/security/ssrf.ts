@@ -15,19 +15,19 @@
 
 const PRIVATE_V4_RANGES: Array<[number, number]> = [
   // [network base as 32-bit int, mask bits]
-  [octets(10, 0, 0, 0), 8],          // RFC1918
-  [octets(172, 16, 0, 0), 12],       // RFC1918
-  [octets(192, 168, 0, 0), 16],      // RFC1918
-  [octets(127, 0, 0, 0), 8],         // loopback
-  [octets(169, 254, 0, 0), 16],      // link-local
-  [octets(0, 0, 0, 0), 8],           // "this network"
-  [octets(100, 64, 0, 0), 10],       // CGN
-  [octets(192, 0, 0, 0), 24],        // IETF protocol assignments (incl. NAT64 traversal)
-  [octets(192, 0, 2, 0), 24],        // TEST-NET-1 (documentation)
-  [octets(198, 18, 0, 0), 15],       // benchmarking (RFC2544)
-  [octets(198, 51, 100, 0), 24],     // TEST-NET-2 (documentation)
-  [octets(203, 0, 113, 0), 24],      // TEST-NET-3 (documentation)
-  [octets(240, 0, 0, 0), 4],         // reserved (class E) + broadcast 255.255.255.255
+  [octets(10, 0, 0, 0), 8], // RFC1918
+  [octets(172, 16, 0, 0), 12], // RFC1918
+  [octets(192, 168, 0, 0), 16], // RFC1918
+  [octets(127, 0, 0, 0), 8], // loopback
+  [octets(169, 254, 0, 0), 16], // link-local
+  [octets(0, 0, 0, 0), 8], // "this network"
+  [octets(100, 64, 0, 0), 10], // CGN
+  [octets(192, 0, 0, 0), 24], // IETF protocol assignments (incl. NAT64 traversal)
+  [octets(192, 0, 2, 0), 24], // TEST-NET-1 (documentation)
+  [octets(198, 18, 0, 0), 15], // benchmarking (RFC2544)
+  [octets(198, 51, 100, 0), 24], // TEST-NET-2 (documentation)
+  [octets(203, 0, 113, 0), 24], // TEST-NET-3 (documentation)
+  [octets(240, 0, 0, 0), 4], // reserved (class E) + broadcast 255.255.255.255
 ];
 
 function octets(a: number, b: number, c: number, d: number): number {
@@ -162,7 +162,9 @@ export async function assertOutboundUrlAllowed(
     const aaaa = await Deno.resolveDns(stripped, "AAAA").catch(() => [] as string[]);
     addresses = [...a, ...aaaa];
   } catch (err) {
-    throw new SsrfBlockedError(`DNS resolution failed for ${stripped}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new SsrfBlockedError(
+      `DNS resolution failed for ${stripped}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   if (addresses.length === 0) {

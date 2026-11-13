@@ -12,7 +12,12 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { createPaymentManager } from "../../src/payments/manager.ts";
-import type { PaymentProvider, CheckoutSession, WebhookEvent, Product } from "../../src/payments/types.ts";
+import type {
+  CheckoutSession,
+  PaymentProvider,
+  Product,
+  WebhookEvent,
+} from "../../src/payments/types.ts";
 import type { UserStore } from "../../src/auth/user-store.ts";
 import type { User, UserCreate } from "../../src/auth/types.ts";
 import { createDuneAuthSystem } from "../../src/auth/authz.ts";
@@ -57,10 +62,18 @@ class MockUserStore implements UserStore {
     return this.users.get(id) ?? null;
   }
 
-  async getByEmail(_email: string): Promise<User | null> { return null; }
-  async getByUsername(_username: string): Promise<User | null> { return null; }
-  async getByProvider(_provider: string, _providerId: string): Promise<User | null> { return null; }
-  async create(_user: UserCreate): Promise<User> { throw new Error("not implemented"); }
+  async getByEmail(_email: string): Promise<User | null> {
+    return null;
+  }
+  async getByUsername(_username: string): Promise<User | null> {
+    return null;
+  }
+  async getByProvider(_provider: string, _providerId: string): Promise<User | null> {
+    return null;
+  }
+  async create(_user: UserCreate): Promise<User> {
+    throw new Error("not implemented");
+  }
 
   async update(
     id: string,
@@ -81,8 +94,12 @@ class MockUserStore implements UserStore {
     return null;
   }
 
-  async list(_opts?: { limit?: number; offset?: number }): Promise<User[]> { return []; }
-  async delete(_id: string): Promise<boolean> { return false; }
+  async list(_opts?: { limit?: number; offset?: number }): Promise<User[]> {
+    return [];
+  }
+  async delete(_id: string): Promise<boolean> {
+    return false;
+  }
 }
 
 /** Configurable mock PaymentProvider. */
@@ -108,7 +125,9 @@ class MockPaymentProvider implements PaymentProvider {
     return this.parseWebhookResult;
   }
 
-  async createPortalSession(_opts: { customerId: string; returnUrl: string }): Promise<{ url: string }> {
+  async createPortalSession(
+    _opts: { customerId: string; returnUrl: string },
+  ): Promise<{ url: string }> {
     return { url: this.portalUrl };
   }
 }
@@ -305,12 +324,18 @@ function makeStorage() {
       if (!data) throw new Error(`Not found: ${path}`);
       return data;
     },
-    async readText(path: string) { return new TextDecoder().decode(await (this as any).read(path)); },
+    async readText(path: string) {
+      return new TextDecoder().decode(await (this as any).read(path));
+    },
     async write(path: string, data: Uint8Array | string) {
       files.set(path, typeof data === "string" ? new TextEncoder().encode(data) : data);
     },
-    async exists(path: string) { return files.has(path); },
-    async delete(path: string) { files.delete(path); },
+    async exists(path: string) {
+      return files.has(path);
+    },
+    async delete(path: string) {
+      files.delete(path);
+    },
     async rename(oldPath: string, newPath: string) {
       const data = files.get(oldPath);
       if (!data) throw new Error(`Not found: ${oldPath}`);
@@ -321,14 +346,26 @@ function makeStorage() {
       const entries = [];
       for (const [path] of files) {
         if (path.startsWith(dir + "/") && !path.slice(dir.length + 1).includes("/")) {
-          entries.push({ name: path.slice(dir.length + 1), path, isFile: true, isDirectory: false });
+          entries.push({
+            name: path.slice(dir.length + 1),
+            path,
+            isFile: true,
+            isDirectory: false,
+          });
         }
       }
       return entries;
     },
-    async listRecursive(dir: string) { return (this as any).list(dir); },
+    async listRecursive(dir: string) {
+      return (this as any).list(dir);
+    },
     async stat(path: string) {
-      return { isFile: files.has(path), isDirectory: false, size: files.get(path)?.length ?? 0, mtime: 0 };
+      return {
+        isFile: files.has(path),
+        isDirectory: false,
+        size: files.get(path)?.length ?? 0,
+        mtime: 0,
+      };
     },
     async getJSON<T>(key: string): Promise<T | null> {
       const data = files.get(`__json__/${key}`);
@@ -338,8 +375,12 @@ function makeStorage() {
     async setJSON<T>(key: string, value: T): Promise<void> {
       files.set(`__json__/${key}`, new TextEncoder().encode(JSON.stringify(value)));
     },
-    async deleteJSON(key: string): Promise<void> { files.delete(`__json__/${key}`); },
-    watch(_path: string, _cb: unknown) { return () => {}; },
+    async deleteJSON(key: string): Promise<void> {
+      files.delete(`__json__/${key}`);
+    },
+    watch(_path: string, _cb: unknown) {
+      return () => {};
+    },
   } as import("../../src/storage/types.ts").StorageAdapter;
 }
 
@@ -392,7 +433,12 @@ Deno.test("handleWebhook: on a role-synced user store the membership is written 
 
   const user = makeUser({ id: "user-sync", roles: [] });
   const provider = new MockPaymentProvider();
-  provider.parseWebhookResult = { type: "checkout.session.completed", userId: "user-sync", productId: "membership", raw: {} };
+  provider.parseWebhookResult = {
+    type: "checkout.session.completed",
+    userId: "user-sync",
+    productId: "membership",
+    raw: {},
+  };
   const inner = new MockUserStore();
   inner.users.set(user.id, user);
 
@@ -404,9 +450,13 @@ Deno.test("handleWebhook: on a role-synced user store the membership is written 
     baseUrl: "https://example.com",
     authz,
   });
-  await manager.handleWebhook(new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }));
+  await manager.handleWebhook(
+    new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }),
+  );
 
-  const groups = await adapter.findObjects({ type: "user", id: "user-sync" }, "member", { objectType: "group" });
+  const groups = await adapter.findObjects({ type: "user", id: "user-sync" }, "member", {
+    objectType: "group",
+  });
   assertEquals(groups.map((g) => g.id), ["member"]);
 });
 
@@ -437,7 +487,9 @@ Deno.test("handleWebhook: authz not called when role already present", async () 
     authz,
   });
 
-  await manager.handleWebhook(new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }));
+  await manager.handleWebhook(
+    new Request("http://example.com/payments/webhook", { method: "POST", body: "{}" }),
+  );
 
   // No userStore update (role already present), no authz tuple written
   assertEquals(userStore.updateCalls.length, 0);

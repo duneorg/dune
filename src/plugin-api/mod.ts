@@ -22,13 +22,13 @@ export { createPluginServices } from "./create-services.ts";
 export type {
   AdminPrefix,
   AuthenticateResult,
+  Capabilities,
   CapabilityContext,
   CapabilityFactory,
   CapabilityKey,
   CapabilityProvider,
   CapabilityReader,
   CapabilityRegistrar,
-  Capabilities,
   RequestAuthenticator,
   ScheduledActionExecutor,
 } from "./capabilities.ts";

@@ -55,7 +55,7 @@ export function canonicalPayload(tuple: Omit<SignedTuple, "hmac">): string {
 export async function importHmacKey(secret: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "raw",
-    secret.slice(),   // .slice() produces Uint8Array<ArrayBuffer>, satisfying BufferSource
+    secret.slice(), // .slice() produces Uint8Array<ArrayBuffer>, satisfying BufferSource
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],
@@ -101,8 +101,7 @@ export async function loadHmacKeyFromEnv(): Promise<CryptoKey | null> {
   const secret = Deno.env.get("DUNE_AUTHZ_HMAC_SECRET");
   if (!secret) {
     logger.warn("authz.hmac.disabled", {
-      reason:
-        "DUNE_AUTHZ_HMAC_SECRET is not set — tuple file integrity checking is disabled. " +
+      reason: "DUNE_AUTHZ_HMAC_SECRET is not set — tuple file integrity checking is disabled. " +
         "Set this env var and run `dune authz:sign` to enable tamper detection.",
     });
     return null;

@@ -38,7 +38,9 @@ export function createFastlyProvider(config: FastlyConfig): CdnProvider {
           if (!resp.ok) {
             const text = await resp.text().catch(() => "");
             errors.push(
-              `Fastly purge failed for ${url}: HTTP ${resp.status}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+              `Fastly purge failed for ${url}: HTTP ${resp.status}${
+                text ? ` — ${text.slice(0, 200)}` : ""
+              }`,
             );
           } else {
             await resp.body?.cancel();
