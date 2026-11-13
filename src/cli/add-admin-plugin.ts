@@ -12,7 +12,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "@std/yaml";
 
 /** The specifier written for the admin: a major range, which the plugin pin rule accepts. */
-export const ADMIN_PLUGIN_ENTRY_SRC = "jsr:@dune/plugin-admin@^4";
+export const ADMIN_PLUGIN_ENTRY_SRC = "jsr:@dune/plugin-admin@^5";
 
 export interface AddAdminResult {
   text: string;
@@ -26,7 +26,7 @@ const isAdminEntry = (e: unknown): boolean => {
 };
 
 /**
- * Add `- src: jsr:@dune/plugin-admin@^4` to a site.yaml text. `manual` when the
+ * Add `- src: jsr:@dune/plugin-admin@^5` to a site.yaml text. `manual` when the
  * `plugins:` value is written in a way that cannot be extended safely (flow
  * style with entries, an anchor, a non-list value).
  */

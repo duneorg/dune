@@ -15,6 +15,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 - **`DunePlugin.requiresCore`: a plugin can say which core it needs.** A plugin always sets it to `MIN_CORE_VERSION` from `@dune/plugin-api` (the number belongs to the contract version, not to the plugin); on an older core the loader skips the plugin and logs `plugins.load.core_too_old` ("admin needs @dune/core 0.38.0 or later, but this is 0.37.0") instead of letting it fail at runtime on something core does not provide. Absent or unreadable values never block a plugin.
 
+### Fixed
+
+- **`dune new`, `dune migrate:config` and the admin-plugin helper now list `plugin-admin@^5`.** 0.37.0 wrote `^4`, which does not match the 0.37-compatible admin (4.x pins core 0.36 and imports the subpaths 0.37 removed), so a new site loaded the old admin and failed. `scripts/headless-smoke.ts` and the tests use `^5` too.
+
 ## [0.37.0] — 2026-11-13
 
 Pairs with `@dune/plugin-api` 1.2. The first-party plugins no longer import `@dune/core`: plugin-admin 5, plugin-inline-edit 3.1, plugin-meilisearch 1.4, plugin-orama 1.1 depend on `@dune/plugin-api` only, so from here a core release does not force a plugin release (`@dune/testing`, which boots core, keeps a core pin).

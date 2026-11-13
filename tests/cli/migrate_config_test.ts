@@ -20,7 +20,7 @@ async function withSite(
 }
 
 /** A site.yaml tail that already lists the admin, so tests about other keys leave plugins: alone. */
-const ADMIN = "plugins:\n  - src: jsr:@dune/plugin-admin@^4\n";
+const ADMIN = "plugins:\n  - src: jsr:@dune/plugin-admin@^5\n";
 
 const quiet = async <T>(fn: () => Promise<T>): Promise<string> => {
   const log = console.log, err = console.error;
@@ -121,10 +121,10 @@ Deno.test("migrate:config adds the admin plugin to a site that had the admin by 
       "# my site\ntitle: T\nplugins:\n  - src: ./plugins/mine.ts\n    config:\n      a: 1\ntheme:\n  name: x\n",
   }, async (root) => {
     const out = await quiet(() => migrateConfigCommand(root));
-    assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
+    assertStringIncludes(out, "added jsr:@dune/plugin-admin@^5");
     assertEquals(
       await Deno.readTextFile(join(root, "config/site.yaml")),
-      "# my site\ntitle: T\nplugins:\n  - src: ./plugins/mine.ts\n    config:\n      a: 1\n  - src: jsr:@dune/plugin-admin@^4\ntheme:\n  name: x\n",
+      "# my site\ntitle: T\nplugins:\n  - src: ./plugins/mine.ts\n    config:\n      a: 1\n  - src: jsr:@dune/plugin-admin@^5\ntheme:\n  name: x\n",
     );
     assertStringIncludes(await quiet(() => migrateConfigCommand(root)), "Nothing to migrate");
   });
@@ -140,7 +140,7 @@ Deno.test("migrate:config removes admin.enabled: true and adds the admin plugin"
     assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), "debug: true\n");
     assertEquals(
       await Deno.readTextFile(join(root, "config/site.yaml")),
-      "title: T\n\nplugins:\n  - src: jsr:@dune/plugin-admin@^4\n    config:\n      max_upload_mb: 5\n",
+      "title: T\n\nplugins:\n  - src: jsr:@dune/plugin-admin@^5\n    config:\n      max_upload_mb: 5\n",
     );
   });
 });
@@ -166,7 +166,7 @@ Deno.test("migrate:config --dry-run reports the admin changes and writes nothing
     async (root) => {
       const out = await quiet(() => migrateConfigCommand(root, { dryRun: true }));
       assertStringIncludes(out, "removed admin.enabled");
-      assertStringIncludes(out, "added jsr:@dune/plugin-admin@^4");
+      assertStringIncludes(out, "added jsr:@dune/plugin-admin@^5");
       assertEquals(await Deno.readTextFile(join(root, "config/system.yaml")), system);
       assertEquals(await Deno.readTextFile(join(root, "config/site.yaml")), "title: T\n");
     },
@@ -188,7 +188,7 @@ Deno.test("migrate:config moves the whole admin: block: settings into the plugin
     const site = parseYamlText(await Deno.readTextFile(join(root, "config/site.yaml"))) as {
       plugins: { src: string; config: Record<string, unknown> }[];
     };
-    assertEquals(site.plugins[0].src, "jsr:@dune/plugin-admin@^4");
+    assertEquals(site.plugins[0].src, "jsr:@dune/plugin-admin@^5");
     assertEquals(site.plugins[0].config, {
       path: "/cms",
       audit: { log_file: "audit/a.log" },
