@@ -49,7 +49,7 @@ Deno.test("addAdminPluginToText: an admin entry already there is left alone", ()
   for (
     const text of [
       `plugins:\n  - src: ${SRC}\n`,
-      "plugins:\n  - src: jsr:@dune/plugin-admin@4.0.1\n",
+      "plugins:\n  - src: jsr:@dune/plugin-admin@5.0.0\n",
     ]
   ) {
     const r = addAdminPluginToText(text);
