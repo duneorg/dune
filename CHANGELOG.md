@@ -11,6 +11,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Added
+
+- **Startup says when the admin panel is on but no admin user exists (#165).** Dune creates no default admin, so on a fresh site the panel loaded and nobody could log in, with nothing saying why; an account made with `dune users:create ... --password-prompt` but no `--role admin` logs in and then gets 403 on every admin page. Boot now logs `bootstrap.no_admin_user` with the command to run (`dune users:create you@example.com --role admin --password-prompt`, or `DUNE_ADMIN_EMAIL` / `DUNE_ADMIN_PASSWORD` for containers). It stays quiet when no admin plugin is loaded (a site may not want one), when an enabled admin exists, and when the config hands out admin-tier roles itself (`role_grants`, OAuth role claims).
+
 ## [0.37.0] — 2026-11-13
 
 Pairs with `@dune/plugin-api` 1.2. The first-party plugins no longer import `@dune/core`: plugin-admin 5, plugin-inline-edit 3.1, plugin-meilisearch 1.4, plugin-orama 1.1 depend on `@dune/plugin-api` only, so from here a core release does not force a plugin release (`@dune/testing`, which boots core, keeps a core pin).

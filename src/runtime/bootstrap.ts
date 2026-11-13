@@ -643,25 +643,35 @@ export async function bootstrap(
     }
   }
 
+  // The user store as the auth config selects it, for the two startup checks
+  // below. Callers close it.
+  const openBootstrapUserStore = async (): Promise<{
+    userStore: import("../auth/user-store.ts").UserStore;
+    close: () => Promise<void>;
+  }> => {
+    const { createLocalUserStore } = await import("../auth/user-store.ts");
+    if ((config.site as { auth?: { user_store?: string } }).auth?.user_store === "db") {
+      const { createDbAdapter } = await import("../db/adapters/mod.ts");
+      const { createDbUserStore } = await import("../auth/user-store-db.ts");
+      const dbAdapter = await createDbAdapter();
+      return {
+        userStore: await createDbUserStore({ adapter: dbAdapter }),
+        close: () => dbAdapter.close(),
+      };
+    }
+    return {
+      userStore: createLocalUserStore({ storage, usersDir: `${dataDir}/users` }),
+      close: () => Promise.resolve(),
+    };
+  };
+
   // First-admin bootstrap from DUNE_ADMIN_EMAIL / DUNE_ADMIN_PASSWORD. Dune
   // never creates a default admin; this is the explicit env route (the CLI
   // route is `dune users:create --password-prompt`). Only touches the user
   // store when the env vars are set, and only when no enabled admin exists.
   if (Deno.env.get("DUNE_ADMIN_EMAIL") || Deno.env.get("DUNE_ADMIN_PASSWORD")) {
     const { ensureAdminFromEnv } = await import("../auth/bootstrap-admin.ts");
-    const { createLocalUserStore } = await import("../auth/user-store.ts");
-    const useDb = (config.site as { auth?: { user_store?: string } }).auth?.user_store === "db";
-    let closeDb: () => Promise<void> = () => Promise.resolve();
-    let userStore: import("../auth/user-store.ts").UserStore;
-    if (useDb) {
-      const { createDbAdapter } = await import("../db/adapters/mod.ts");
-      const { createDbUserStore } = await import("../auth/user-store-db.ts");
-      const dbAdapter = await createDbAdapter();
-      userStore = await createDbUserStore({ adapter: dbAdapter });
-      closeDb = () => dbAdapter.close();
-    } else {
-      userStore = createLocalUserStore({ storage, usersDir: `${dataDir}/users` });
-    }
+    const { userStore, close: closeDb } = await openBootstrapUserStore();
     try {
       const result = await ensureAdminFromEnv({
         userStore,
@@ -691,6 +701,27 @@ export async function bootstrap(
       hint:
         "No plugin provides the admin panel. List jsr:@dune/plugin-admin under plugins: in config/site.yaml to run it (`dune migrate:config` adds it).",
     });
+  } else if (automaticAdminTierGrants(config).length === 0) {
+    // The panel is there but nobody can log into it yet. Dune creates no
+    // default admin, so say how to create one. Skipped when the config hands
+    // out admin-tier roles by itself (role_grants, OAuth role claims), where
+    // the first admin arrives with the first login.
+    let close: () => Promise<void> = () => Promise.resolve();
+    try {
+      const opened = await openBootstrapUserStore();
+      const userStore = opened.userStore;
+      close = opened.close;
+      if (!(await userStore.list()).some((u) => u.enabled !== false && u.roles.includes("admin"))) {
+        logger.info("bootstrap.no_admin_user", {
+          hint:
+            "The admin panel is on but no admin user exists, so nobody can log in. Create one with `dune users:create you@example.com --role admin --password-prompt` (or set DUNE_ADMIN_EMAIL and DUNE_ADMIN_PASSWORD for a container deploy).",
+        });
+      }
+    } catch (err) {
+      logger.warn("bootstrap.no_admin_user.check_failed", { reason: String(err) });
+    } finally {
+      await close();
+    }
   }
 
   // 13. Metrics collector
