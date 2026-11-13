@@ -5,7 +5,7 @@
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.14",
     "jsr:@denosaurs/plug@1": "1.1.0",
-    "jsr:@dune/plugin-api@1": "1.0.0",
+    "jsr:@dune/plugin-api@^1.2.0": "1.2.0",
     "jsr:@dune/theme-api@1": "1.0.0",
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@2": "2.3.3",
@@ -86,8 +86,8 @@
         "jsr:@std/path@1"
       ]
     },
-    "@dune/plugin-api@1.0.0": {
-      "integrity": "5b024cc367cd8aabe1e38ed2ed35a1e2adecf0b28c9d57292b226e86423c5817"
+    "@dune/plugin-api@1.2.0": {
+      "integrity": "99e6c3c5b4fc7646e1cd3327f7f7ace0e23340836684b5536b45a2db0c9c2bf1"
     },
     "@dune/theme-api@1.0.0": {
       "integrity": "677dcd4d0aedc0a5c64f39e126d3ef3c547ce1bc2990d99c73dd60215cee99bd"
@@ -1709,7 +1709,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@db/sqlite@0.12",
-      "jsr:@dune/plugin-api@1",
+      "jsr:@dune/plugin-api@^1.2.0",
       "jsr:@dune/theme-api@1",
       "jsr:@fresh/core@2",
       "jsr:@std/assert@1",

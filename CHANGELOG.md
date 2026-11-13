@@ -11,7 +11,15 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-11-13
+
 Pairs with `@dune/plugin-api` 1.2. The first-party plugins no longer import `@dune/core`: plugin-admin 5, plugin-inline-edit 3.1, plugin-meilisearch 1.4, plugin-orama 1.1 depend on `@dune/plugin-api` only, so from here a core release does not force a plugin release (`@dune/testing`, which boots core, keeps a core pin).
+
+### Upgrading from 0.36
+
+1. **Imports.** A plugin or site that imports one of the removed subpaths below stops loading; swap the import to `@dune/plugin-api` (almost always a type-only change). Upgrade the first-party plugins together with core: plugin-admin 5.0.0, plugin-inline-edit 3.1.0, plugin-meilisearch 1.4.0, plugin-orama 1.1.0 and `@dune/testing` 3.0.0. The versions that pin core 0.36 (for example plugin-admin 4.1.0) are not compatible with 0.37.
+2. **Section gating is now inherited (#157).** If a page carries `roles:` and pages beneath it were deliberately public, they are now gated by that rule. Put `roles: public` on those pages or on the section to keep them open. Files in a gated page's folder are no longer served on `/content-media/*` to visitors who may not see the page.
+3. **`roles: any`** now means any logged-in user, as documented, instead of a role literally named `any`. A site with a role of that name must rename it.
 
 ### Removed — BREAKING
 
