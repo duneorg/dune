@@ -37,7 +37,7 @@ const sitePath = `${root}/config/site.yaml`;
 // Headless: the admin is a plugin like any other, so a site without it simply
 // does not list it. `dune new` lists it as the only entry under `plugins:`.
 const scaffolded = await Deno.readTextFile(sitePath);
-const adminEntry = "plugins:\n  - src: jsr:@dune/plugin-admin@^4\n";
+const adminEntry = "plugins:\n  - src: jsr:@dune/plugin-admin@^5\n";
 if (!scaffolded.includes(adminEntry)) {
   console.error("the scaffolded site.yaml no longer lists the admin the way this script expects");
   Deno.exit(2);
