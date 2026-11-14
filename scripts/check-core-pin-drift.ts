@@ -21,17 +21,16 @@
  * downstream, before a core release ships and makes that reality visible
  * to consumers.
  *
- * Scope is deliberately narrower than "every @dune/* package on JSR" —
- * the 40+ theme-* marketplace packages are a different distribution
- * mechanism, not workspace members needing this discipline. The list
- * below mirrors the local dev workspace's member list
- * (/Users/xrs/claude/deno.json's "workspace" array), minus members that
- * don't apply: `themes` imports core via a relative path not jsr:, and
- * private/unpublished members (`getdune`, `eda-worksheets`) can't be
- * checked via JSR fetch at all. A member whose deno.json has no
- * "jsr:@dune/core" import (e.g. plugin-pdf, which doesn't depend on core)
- * is skipped automatically rather than hardcoded as an exception, so this
- * list doesn't need updating if that changes.
+ * Scope is deliberately narrow: only packages whose published code still
+ * imports `@dune/core` need this discipline. Since core 0.37 that is
+ * `@dune/testing` alone, which boots core. The first-party plugins
+ * (plugin-admin, plugin-inline-edit, plugin-meilisearch, plugin-orama) depend
+ * on `@dune/plugin-api` instead (duneorg/dune#161), and plugin-pdf never
+ * imported core, so a core release no longer makes any of them stale. A
+ * package listed here whose deno.json has no "jsr:@dune/core" import is skipped
+ * automatically rather than treated as drift, so adding one back is harmless.
+ * The 40+ theme-* marketplace packages are a different distribution mechanism
+ * and are not checked.
  *
  * Usage: deno run --allow-net --allow-read scripts/check-core-pin-drift.ts
  * Exit: 0 = every checked pin covers this checkout's core version
@@ -45,14 +44,7 @@
 // it for a dependency real sites never touch).
 import { parse, parseRange, satisfies } from "jsr:@std/semver@^1";
 
-const SIBLING_PACKAGES = [
-  "plugin-admin",
-  "plugin-meilisearch",
-  "plugin-orama",
-  "plugin-inline-edit",
-  "plugin-pdf",
-  "testing",
-];
+const SIBLING_PACKAGES = ["testing"];
 
 interface DenoJsonShape {
   imports?: Record<string, string>;
