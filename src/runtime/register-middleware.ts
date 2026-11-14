@@ -5,7 +5,7 @@ import type { HttpCacheRule } from "../config/types.ts";
 import type { PageCache } from "../cache/mod.ts";
 import { isMediaFile } from "../content/path-utils.ts";
 import { mediaBodyResponse } from "../routing/media-response.ts";
-import { stripLangPrefix } from "../routing/link-rewriter.ts";
+import { stripLangPrefix, unprefixedAuthPath } from "../routing/link-rewriter.ts";
 import {
   injectBasePath,
   injectFeedLinks,
@@ -120,6 +120,18 @@ export function registerContentCatchAll(
     let response: Response;
 
     try {
+      // The auth routes exist only unprefixed; a language-prefixed link or
+      // typed URL (/de/auth/login) goes to the real one.
+      if (req.method === "GET" || req.method === "HEAD") {
+        const authPath = unprefixedAuthPath(
+          url.pathname,
+          config.system.languages?.supported ?? [],
+        );
+        if (authPath) {
+          return new Response(null, { status: 302, headers: { Location: authPath + url.search } });
+        }
+      }
+
       // Serve co-located media before routing to the content handler.
       const lastSegment = url.pathname.split("/").pop() ?? "";
       if (lastSegment && isMediaFile(lastSegment)) {

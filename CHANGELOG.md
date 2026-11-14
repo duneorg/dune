@@ -11,6 +11,10 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/<lang>/auth/login` no longer 404s on a multilingual site (#168).** The auth routes exist only unprefixed, but a link to `/auth/login` on a translated page was rewritten to `/de/auth/login`. The link rewriter now leaves `/auth/` links alone, and a GET/HEAD to `/<supported-lang>/auth/login`, `/logout`, `/me` or `/magic` redirects (302, query kept) to the real route, for links already emitted and typed URLs. A site's own content under `/auth/...` still routes in every language.
+
 ## [0.37.1] — 2026-11-14
 
 ### Added

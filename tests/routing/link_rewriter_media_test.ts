@@ -1,6 +1,10 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { MediaFile } from "../../src/content/types.ts";
-import { rewriteInternalLinks, stripLangPrefix } from "../../src/routing/link-rewriter.ts";
+import {
+  rewriteInternalLinks,
+  stripLangPrefix,
+  unprefixedAuthPath,
+} from "../../src/routing/link-rewriter.ts";
 
 const media = (url: string) => ({ url } as MediaFile);
 const rw = (html: string, m: MediaFile[] = []) =>
@@ -43,4 +47,28 @@ Deno.test("stripLangPrefix: strips only a supported leading language segment", (
   assertEquals(stripLangPrefix("/fr/a/doc.pdf", langs), "/fr/a/doc.pdf");
   assertEquals(stripLangPrefix("/de", langs), "/de");
   assertEquals(stripLangPrefix("/de/", langs), "/de/");
+});
+
+Deno.test("rewriteInternalLinks: auth routes are not language-prefixed (#168)", () => {
+  const out = rewriteInternalLinks(
+    '<a href="/auth/login?next=/x">in</a> <a href="/auth/google">g</a> <a href="/contact">c</a>',
+    "de",
+    "en",
+    false,
+    ["en", "de"],
+  );
+  assertEquals(out.includes('href="/auth/login?next=/x"'), true);
+  assertEquals(out.includes('href="/auth/google"'), true);
+  assertEquals(out.includes('href="/de/contact"'), true);
+});
+
+Deno.test("unprefixedAuthPath: only the auth pages under a supported language", () => {
+  const langs = ["en", "de"];
+  assertEquals(unprefixedAuthPath("/de/auth/login", langs), "/auth/login");
+  assertEquals(unprefixedAuthPath("/de/auth/logout/", langs), "/auth/logout");
+  assertEquals(unprefixedAuthPath("/en/auth/me", langs), "/auth/me");
+  assertEquals(unprefixedAuthPath("/auth/login", langs), null);
+  assertEquals(unprefixedAuthPath("/fr/auth/login", langs), null);
+  // a site's own content under /auth keeps routing
+  assertEquals(unprefixedAuthPath("/de/auth/handbook", langs), null);
 });
