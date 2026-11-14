@@ -62,6 +62,22 @@ Deno.test("rewriteInternalLinks: auth routes are not language-prefixed (#168)", 
   assertEquals(out.includes('href="/de/contact"'), true);
 });
 
+Deno.test("rewriteInternalLinks: a site's own /auth/<page> content is still prefixed (#170)", () => {
+  const out = rewriteInternalLinks(
+    '<a href="/auth/handbook">h</a> <a href="/auth/">i</a> <a href="/auth/login#x">l</a> ' +
+      '<a href="/auth/github/callback?code=1">cb</a> <a href="/auth/me">me</a>',
+    "de",
+    "en",
+    false,
+    ["en", "de"],
+  );
+  assertEquals(out.includes('href="/de/auth/handbook"'), true);
+  assertEquals(out.includes('href="/de/auth/"'), true);
+  assertEquals(out.includes('href="/auth/login#x"'), true);
+  assertEquals(out.includes('href="/auth/github/callback?code=1"'), true);
+  assertEquals(out.includes('href="/auth/me"'), true);
+});
+
 Deno.test("unprefixedAuthPath: only the auth pages under a supported language", () => {
   const langs = ["en", "de"];
   assertEquals(unprefixedAuthPath("/de/auth/login", langs), "/auth/login");
