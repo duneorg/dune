@@ -13,7 +13,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ### Fixed
 
-- **`/<lang>/auth/login` no longer 404s on a multilingual site (#168).** The auth routes exist only unprefixed, but a link to `/auth/login` on a translated page was rewritten to `/de/auth/login`. The link rewriter now leaves `/auth/` links alone, and a GET/HEAD to `/<supported-lang>/auth/login`, `/logout`, `/me` or `/magic` redirects (302, query kept) to the real route, for links already emitted and typed URLs. A site's own content under `/auth/...` still routes in every language.
+- **Links to a site's own `/auth/<page>` content are language-prefixed again (#170).** The #168 fix skipped every `/auth/` link in the rewriter, so on a translated page a link to your own `content/auth/handbook` stayed `/auth/handbook` and landed on the default language. The rewriter now skips only the routes core registers (login, logout, me, magic, webhook and the github/google/discord OAuth paths).
+- **`/<lang>/auth/login` no longer 404s on a multilingual site (#168).** The auth routes exist only unprefixed, but a link to `/auth/login` on a translated page was rewritten to `/de/auth/login`. The link rewriter now leaves links to those routes alone, and a GET/HEAD to `/<supported-lang>/auth/login`, `/logout`, `/me` or `/magic` redirects (302, query kept) to the real route, for links already emitted and typed URLs. A site's own content under `/auth/...` still routes in every language.
 
 ## [0.37.1] — 2026-11-14
 

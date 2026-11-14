@@ -28,6 +28,17 @@ export function unprefixedAuthPath(
 }
 
 /**
+ * True for the paths src/auth/mount.ts registers, which exist only unprefixed.
+ * Matched by exact route (login, logout, me, magic, webhook, and the built-in
+ * OAuth providers' start/link/callback/unlink), so a site's own `/auth/<page>`
+ * content is still language-prefixed. Pass a path without query or fragment.
+ */
+export function isAuthRoutePath(path: string): boolean {
+  return /^\/auth\/(?:login|logout|me|magic(?:\/send)?|webhook|(?:github|google|discord)(?:\/(?:link|callback|unlink))?)\/?$/
+    .test(path);
+}
+
+/**
  * Rewrite internal links in HTML to include language prefix when needed.
  * E.g. /contact → /de/contact when rendering a German page. Links to the
  * page's own `colocatedMedia` are left alone.
@@ -44,13 +55,11 @@ export function rewriteInternalLinks(
   if (!needsPrefix) return html;
 
   const langPrefix = `/${lang}`;
-  // `/auth/` holds routes (login, logout, callbacks), registered unprefixed.
   const skipPrefixes = [
     "/themes/",
     "/content-media/",
     "/api/",
     "/admin/",
-    "/auth/",
     "//",
     "mailto:",
     "tel:",
@@ -63,6 +72,8 @@ export function rewriteInternalLinks(
     (_, path: string) => {
       if (hasLangPrefix.test(path)) return `href="${path}"`;
       if (skipPrefixes.some((p) => path.startsWith(p))) return `href="${path}"`;
+      // Auth routes are registered unprefixed (see isAuthRoutePath).
+      if (isAuthRoutePath(path.split(/[?#]/)[0])) return `href="${path}"`;
       if (path.includes(":")) return `href="${path}"`;
       // The page's own co-located files are served at their unprefixed path.
       // Matched by URL, not extension: /old-page.html is a page, not a file.

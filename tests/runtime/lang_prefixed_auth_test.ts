@@ -21,7 +21,7 @@ Deno.test("/<lang>/auth/* goes to /auth/*, and links to it stay unprefixed", opt
       "content/01.home/default.md": "---\ntitle: Home\n---\nhi\n",
       "content/02.docs/default.md": "---\ntitle: Docs\n---\nhi\n",
       "content/02.docs/default.de.md":
-        "---\ntitle: Dokumente\n---\n[Anmelden](/auth/login) [Kontakt](/contact)\n",
+        "---\ntitle: Dokumente\n---\n[Anmelden](/auth/login) [Kontakt](/contact) [Handbuch](/auth/handbook)\n",
       "content/03.auth/01.handbook/default.md": "---\ntitle: Handbook\n---\nhi\n",
       "content/03.auth/01.handbook/default.de.md": "---\ntitle: Handbuch\n---\nhallo\n",
       "content/03.auth/default.md": "---\ntitle: Auth\n---\nhi\n",
@@ -39,6 +39,8 @@ Deno.test("/<lang>/auth/* goes to /auth/*, and links to it stay unprefixed", opt
     const page = await (await get("/de/docs/")).text();
     assertEquals(page.includes('href="/auth/login"'), true, page);
     assertEquals(page.includes('href="/de/contact"'), true, page);
+    // ...but a link to the site's own /auth/<page> content is prefixed (#170).
+    assertEquals(page.includes('href="/de/auth/handbook"'), true, page);
 
     const res = await get("/de/auth/login?next=%2Fde%2Fdocs");
     assertEquals(res.status, 302);
