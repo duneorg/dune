@@ -14,6 +14,20 @@ export function stripLangPrefix(
 }
 
 /**
+ * `/de/auth/login` → `/auth/login`; null when the path is not a language-prefixed
+ * page route of the auth system. The auth routes exist only unprefixed. Only the
+ * fixed pages people link to are matched, so a site's own `/de/auth/<page>`
+ * content still routes normally.
+ */
+export function unprefixedAuthPath(
+  pathname: string,
+  supportedLangs: string[],
+): string | null {
+  const m = pathname.match(/^\/([^/]+)(\/auth\/(?:login|logout|me|magic))\/?$/);
+  return m && supportedLangs.includes(m[1]) ? m[2] : null;
+}
+
+/**
  * Rewrite internal links in HTML to include language prefix when needed.
  * E.g. /contact → /de/contact when rendering a German page. Links to the
  * page's own `colocatedMedia` are left alone.
@@ -30,7 +44,17 @@ export function rewriteInternalLinks(
   if (!needsPrefix) return html;
 
   const langPrefix = `/${lang}`;
-  const skipPrefixes = ["/themes/", "/content-media/", "/api/", "/admin/", "//", "mailto:", "tel:"];
+  // `/auth/` holds routes (login, logout, callbacks), registered unprefixed.
+  const skipPrefixes = [
+    "/themes/",
+    "/content-media/",
+    "/api/",
+    "/admin/",
+    "/auth/",
+    "//",
+    "mailto:",
+    "tel:",
+  ];
   const mediaUrls = new Set(colocatedMedia.map((m) => m.url));
   const hasLangPrefix = new RegExp(`^/(${supportedLangs.join("|")})(/|$)`);
 
