@@ -11,6 +11,8 @@ split, begin at v1.0.0 — see [VERSIONING.md](VERSIONING.md) for exactly what
 
 ## [Unreleased]
 
+## [0.37.1] — 2026-11-14
+
 ### Added
 
 - **`DunePlugin.requiresCore`: a plugin can say which core it needs.** A plugin always sets it to `MIN_CORE_VERSION` from `@dune/plugin-api` (the number belongs to the contract version, not to the plugin); on an older core the loader skips the plugin and logs `plugins.load.core_too_old` ("admin needs @dune/core 0.38.0 or later, but this is 0.37.0") instead of letting it fail at runtime on something core does not provide. Absent or unreadable values never block a plugin.
