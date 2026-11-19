@@ -625,6 +625,17 @@ Deno.test("judgeResponsive: one slow or failed probe is not enough; it takes eve
   );
 });
 
+Deno.test("judgeResponsive: probes get the port only, not map's index as a timeout (#172)", async () => {
+  const seen: unknown[][] = [];
+  // probePort(port, timeoutMs): an index leaking into timeoutMs gives 0 ms, i.e. instant failure.
+  const probe = (...args: unknown[]): Promise<PortProbe> => {
+    seen.push(args);
+    return Promise.resolve("dune");
+  };
+  assertEquals(await judgeResponsive([3000, 9229], null, probe as never, 1, 1), "responding");
+  assertEquals(seen, [[3000], [9229]]);
+});
+
 Deno.test("judgeResponsive: the registered port is the one that counts, and any HTTP answer from it is enough", async () => {
   const probed: number[] = [];
   const probe = (p: number): Promise<PortProbe> => {
