@@ -161,6 +161,7 @@ export function parseElapsedSeconds(elapsed: string | null): number | null {
 export async function readProcessTable(): Promise<ProcRow[]> {
   const out = await runCommand("ps", ["-eo", "pid=,ppid=,uid=,lstart=,etime=,command="], {
     COLUMNS: "4096",
+    LC_ALL: "C", // lstart is localised ("Fr. 20 Nov. ..." under de_CH) and the parse below expects C
   });
   if (!out) return [];
   const rows: ProcRow[] = [];

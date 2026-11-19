@@ -86,7 +86,9 @@ async function waitUntilGone(pids: number[], timeoutMs: number): Promise<number[
 async function currentStartTimes(pids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   if (pids.length === 0) return out;
-  const text = await runCommand("ps", ["-o", "pid=,lstart=", "-p", pids.join(",")]);
+  const text = await runCommand("ps", ["-o", "pid=,lstart=", "-p", pids.join(",")], {
+    LC_ALL: "C", // same format as readProcessTable, whatever the user's locale
+  });
   for (const line of text?.split("\n") ?? []) {
     const m = line.match(/^\s*(\d+)\s+(.*\S)\s*$/);
     if (m) out.set(parseInt(m[1], 10), m[2].replace(/\s+/g, " "));

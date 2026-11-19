@@ -964,3 +964,18 @@ Deno.test("psCommand: points at `dune stop` when idle instances exist, and only 
     "no hint when there is nothing idle",
   );
 });
+
+Deno.test("readProcessTable: finds processes under a non-English locale (#174)", async () => {
+  // ps prints a localised lstart ("Fr. 20 Nov. 00:05:31 2026" under de_CH); the parser expects C.
+  const prev = Deno.env.get("LC_ALL");
+  Deno.env.set("LC_ALL", "de_CH.UTF-8");
+  try {
+    const rows = await readProcessTable();
+    const me = rows.find((r) => r.pid === Deno.pid);
+    assertExists(me, "this process is in the table");
+    assertEquals(/^\w{3} \w{3} \d+ [\d:]+ \d{4}$/.test(me.started), true, me.started);
+  } finally {
+    if (prev === undefined) Deno.env.delete("LC_ALL");
+    else Deno.env.set("LC_ALL", prev);
+  }
+});
