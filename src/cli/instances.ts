@@ -472,7 +472,7 @@ export async function judgeResponsive(
   const candidates = useRegistered ? [registeredPort] : ports;
   let sawOther = false;
   for (let i = 0; i < attempts; i++) {
-    const results = await Promise.all(candidates.map(probe));
+    const results = await Promise.all(candidates.map((p) => probe(p)));
     if (results.some((r) => (useRegistered ? r !== "none" : r === "dune"))) return "responding";
     if (results.includes("other")) sawOther = true;
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, gapMs));
