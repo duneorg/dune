@@ -65,6 +65,7 @@ export async function readProcessStart(pid: number): Promise<string | null> {
   try {
     const out = await new Deno.Command("ps", {
       args: ["-o", "lstart=", "-p", String(pid)],
+      env: { LC_ALL: "C" }, // compared across processes: must not depend on either one's locale
       stdout: "piped",
       stderr: "null",
     }).output();
